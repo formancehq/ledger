@@ -13,6 +13,7 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
@@ -63,7 +64,7 @@ func Module() fx.Option {
 				RegisterSystemService(grpcServer.GetServer(), systemServiceServer)
 				return nil
 			},
-			func(grpcServer *grpcserver.Server, ledgerServiceServer service.LedgerServiceServer) error {
+			func(grpcServer *grpcserver.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) error {
 				RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
 				return nil
 			},
@@ -195,7 +196,7 @@ func (adapter *systemNodeAdapter) GetLedgerCluster(ctx context.Context, name str
 		if grpcConn == nil {
 			panic(fmt.Sprintf("no connection to ledger leader: %d", ledgerLeader))
 		}
-		ledgerClusterClient := service.NewLedgerGrpcClient(name, service.NewLedgerServiceClient(grpcConn))
+		ledgerClusterClient := service.NewLedgerGrpcClient(name, ledgerpb.NewLedgerServiceClient(grpcConn))
 
 		return &ledgerClusterRouter{
 			localNode:     ledgerNode,

@@ -8,18 +8,19 @@ import (
 
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // LedgerGrpcClient implements Ledger by forwarding requests via gRPC to the leader
 type LedgerGrpcClient struct {
-	client LedgerServiceClient
+	client ledgerpb.LedgerServiceClient
 	name   string
 }
 
 // NewLedgerGrpcClient creates a new gRPC-based ledger implementation
-func NewLedgerGrpcClient(name string, client LedgerServiceClient) *LedgerGrpcClient {
+func NewLedgerGrpcClient(name string, client ledgerpb.LedgerServiceClient) *LedgerGrpcClient {
 	return &LedgerGrpcClient{
 		client: client,
 		name:   name,
@@ -27,7 +28,7 @@ func NewLedgerGrpcClient(name string, client LedgerServiceClient) *LedgerGrpcCli
 }
 
 func (g *LedgerGrpcClient) Snapshot(ctx context.Context) error {
-	_, err := g.client.Snapshot(ctx, &LedgerSnapshotRequest{
+	_, err := g.client.Snapshot(ctx, &ledgerpb.LedgerSnapshotRequest{
 		Ledger: g.name,
 	})
 	return err
@@ -74,7 +75,7 @@ func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerName s
 	}
 
 	// Create protobuf request
-	req := &SaveAccountMetadataRequest{
+	req := &ledgerpb.SaveAccountMetadataRequest{
 		Ledger:         g.name,
 		Address:        input.Address,
 		Metadata:       mdStruct,
@@ -145,7 +146,7 @@ func (c *ledgerChannelLogCursor) Close() error {
 
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
 func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
-	req := &StreamLogsRequest{
+	req := &ledgerpb.StreamLogsRequest{
 		Ledger:       g.name,
 		FromSequence: from,
 		ToSequence:   to, // 0 means no limit
@@ -192,13 +193,13 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint6
 	}, nil
 }
 
-func (g *LedgerGrpcClient) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {
+func (g *LedgerGrpcClient) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*ledgerpb.CreateTransactionRequest, error) {
 	input := params.Input
 
 	// Convert postings
-	postings := make([]*Posting, 0, len(input.Postings))
+	postings := make([]*ledgerpb.Posting, 0, len(input.Postings))
 	for _, p := range input.Postings {
-		postings = append(postings, &Posting{
+		postings = append(postings, &ledgerpb.Posting{
 			Source:      p.Source,
 			Destination: p.Destination,
 			Amount:      p.Amount.String(),
@@ -229,15 +230,15 @@ func (g *LedgerGrpcClient) createTransactionRequestToProto(ledgerName string, pa
 	}
 
 	// Convert script if provided
-	var scriptProto *Script
+	var scriptProto *ledgerpb.Script
 	if input.Script != nil {
-		scriptProto = &Script{
+		scriptProto = &ledgerpb.Script{
 			Plain: input.Script.Plain,
 			Vars:  input.Script.Vars,
 		}
 	}
 
-	return &CreateTransactionRequest{
+	return &ledgerpb.CreateTransactionRequest{
 		Ledger:          g.name,
 		AccountMetadata: accountMetadata,
 		Timestamp:       timestamp,
@@ -251,7 +252,7 @@ func (g *LedgerGrpcClient) createTransactionRequestToProto(ledgerName string, pa
 	}, nil
 }
 
-func (g *LedgerGrpcClient) createTransactionResponseFromProto(resp *CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (g *LedgerGrpcClient) createTransactionResponseFromProto(resp *ledgerpb.CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	if resp.Transaction == nil {
 		return nil, nil, fmt.Errorf("empty transaction in response")
 	}
@@ -310,7 +311,7 @@ func (g *LedgerGrpcClient) createTransactionResponseFromProto(resp *CreateTransa
 }
 
 // LogFromLedgerProto converts a ledger.proto Log to ledger.Log
-func LogFromLedgerProto(l *Log) (ledger.Log, error) {
+func LogFromLedgerProto(l *ledgerpb.Log) (ledger.Log, error) {
 	log := ledger.Log{
 		Type:            ledger.LogType(l.Type),
 		IdempotencyKey:  l.IdempotencyKey,
@@ -338,13 +339,13 @@ func LogFromLedgerProto(l *Log) (ledger.Log, error) {
 }
 
 // logPayloadFromLedgerProto converts a ledger.proto LogPayload to ledger.LogPayload
-func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
+func logPayloadFromLedgerProto(payload *ledgerpb.LogPayload) (ledger.LogPayload, error) {
 	if payload == nil {
 		return nil, fmt.Errorf("log payload is nil")
 	}
 
 	switch p := payload.Payload.(type) {
-	case *LogPayload_CreatedTransaction:
+	case *ledgerpb.LogPayload_CreatedTransaction:
 		tx, err := transactionFromLedgerProto(p.CreatedTransaction.Transaction)
 		if err != nil {
 			return nil, err
@@ -361,7 +362,7 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 			Transaction:     tx,
 			AccountMetadata: accountMetadata,
 		}, nil
-	case *LogPayload_RevertedTransaction:
+	case *ledgerpb.LogPayload_RevertedTransaction:
 		revertedTx, err := transactionFromLedgerProto(p.RevertedTransaction.RevertedTransaction)
 		if err != nil {
 			return nil, err
@@ -374,12 +375,12 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 			RevertedTransaction: revertedTx,
 			RevertTransaction:   revertTx,
 		}, nil
-	case *LogPayload_SavedMetadata:
+	case *ledgerpb.LogPayload_SavedMetadata:
 		var targetID interface{}
 		switch id := p.SavedMetadata.TargetId.(type) {
-		case *SavedMetadata_AccountId:
+		case *ledgerpb.SavedMetadata_AccountId:
 			targetID = id.AccountId
-		case *SavedMetadata_TransactionId:
+		case *ledgerpb.SavedMetadata_TransactionId:
 			targetID = id.TransactionId
 		default:
 			return nil, fmt.Errorf("unknown target ID type")
@@ -389,12 +390,12 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 			TargetID:   targetID,
 			Metadata:   StructToMetadata(p.SavedMetadata.Metadata),
 		}, nil
-	case *LogPayload_DeletedMetadata:
+	case *ledgerpb.LogPayload_DeletedMetadata:
 		var targetID interface{}
 		switch id := p.DeletedMetadata.TargetId.(type) {
-		case *DeletedMetadata_AccountId:
+		case *ledgerpb.DeletedMetadata_AccountId:
 			targetID = id.AccountId
-		case *DeletedMetadata_TransactionId:
+		case *ledgerpb.DeletedMetadata_TransactionId:
 			targetID = id.TransactionId
 		default:
 			return nil, fmt.Errorf("unknown target ID type")
@@ -410,7 +411,7 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 }
 
 // transactionFromLedgerProto converts a protobuf Transaction to ledger.Transaction
-func transactionFromLedgerProto(tx *Transaction) (ledger.Transaction, error) {
+func transactionFromLedgerProto(tx *ledgerpb.Transaction) (ledger.Transaction, error) {
 	postings := make(ledger.Postings, 0, len(tx.Postings))
 	for _, p := range tx.Postings {
 		amount, ok := new(big.Int).SetString(p.Amount, 10)

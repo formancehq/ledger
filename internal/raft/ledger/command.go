@@ -21,7 +21,7 @@ func NewInsertLogCommand(log ledger.Log) (*raft.Command, error) {
 	}
 
 	cmdProto := &InsertLogCommand{
-		Log: logProto,
+		Log: logProto, // logProto is *ledgerpb.Log, which matches InsertLogCommand.Log type
 	}
 
 	data, err := proto.Marshal(cmdProto)

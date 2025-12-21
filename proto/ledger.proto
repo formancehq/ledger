@@ -5,7 +5,7 @@ package ledger;
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/ledgerpb";
 
 // Posting represents a single posting in a transaction
 message Posting {
@@ -23,6 +23,91 @@ message Transaction {
   string reference = 4;
   uint64 id = 5;
   bool reverted = 6;
+  google.protobuf.Timestamp inserted_at = 7;      // Optional
+  google.protobuf.Timestamp updated_at = 8;       // Optional
+  google.protobuf.Timestamp reverted_at = 9;      // Optional
+  PostCommitVolumes post_commit_volumes = 10;     // Optional
+  PostCommitVolumes post_commit_effective_volumes = 11; // Optional
+}
+
+// TransactionData represents transaction data without ID and timestamps
+message TransactionData {
+  repeated Posting postings = 1;
+  google.protobuf.Struct metadata = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string reference = 4;
+}
+
+// Transactions represents a collection of transactions
+message Transactions {
+  repeated TransactionData transactions = 1;
+}
+
+// Volumes represents input and output volumes
+message Volumes {
+  string input = 1;   // big.Int as string
+  string output = 2;  // big.Int as string
+}
+
+// VolumesWithBalance represents volumes with balance
+message VolumesWithBalance {
+  string input = 1;    // big.Int as string
+  string output = 2;   // big.Int as string
+  string balance = 3;  // big.Int as string
+}
+
+// VolumesByAssets represents volumes grouped by asset
+message VolumesByAssets {
+  map<string, Volumes> volumes = 1;
+}
+
+// PostCommitVolumes represents volumes after commit, grouped by account and asset
+message PostCommitVolumes {
+  map<string, VolumesByAssets> volumes_by_account = 1;
+}
+
+// VolumesWithBalanceByAssetByAccount represents volumes with balance grouped by asset and account
+message VolumesWithBalanceByAssetByAccount {
+  string account = 1;
+  string asset = 2;
+  VolumesWithBalance volumes_with_balance = 3;
+}
+
+// AggregatedVolumes represents aggregated volumes
+message AggregatedVolumes {
+  VolumesByAssets aggregated = 1;
+}
+
+// Account represents an account in the ledger
+message Account {
+  string address = 1;
+  google.protobuf.Struct metadata = 2;
+  google.protobuf.Timestamp first_usage = 3;
+  google.protobuf.Timestamp insertion_date = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  VolumesByAssets volumes = 6;              // Optional
+  VolumesByAssets effective_volumes = 7;    // Optional
+}
+
+// AccountsVolumes represents volumes for a specific account and asset
+message AccountsVolumes {
+  string account = 1;
+  string asset = 2;
+  string input = 3;   // big.Int as string
+  string output = 4;  // big.Int as string
+}
+
+// Move represents a move (input or output) for an account
+message Move {
+  uint64 transaction_id = 1;
+  bool is_source = 2;
+  string account = 3;
+  string amount = 4;                        // big.Int as string
+  string asset = 5;
+  google.protobuf.Timestamp insertion_date = 6;
+  google.protobuf.Timestamp effective_date = 7;
+  Volumes post_commit_volumes = 8;          // Optional
+  Volumes post_commit_effective_volumes = 9; // Optional
 }
 
 // LedgerService provides ledger operations

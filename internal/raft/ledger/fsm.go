@@ -60,6 +60,7 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	}
 
 	// Convert protobuf Log to ledger.Log
+	// insertCmd.Log is *ledgerpb.Log (from InsertLogCommand)
 	log, err := service.LogFromProto(insertCmd.Log)
 	if err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to convert log from proto")

@@ -4,7 +4,7 @@
 // - protoc             v5.27.5
 // source: proto/ledger.proto
 
-package service
+package ledgerpb
 
 import (
 	context "context"

@@ -7,7 +7,7 @@
 package ledger
 
 import (
-	service "github.com/formancehq/ledger-v3-poc/internal/service"
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
@@ -79,7 +79,7 @@ func (x *CreateLedgerCommand) GetMetadata() *structpb.Struct {
 // InsertLogCommand represents the data for an insert log command
 type InsertLogCommand struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Log           *service.Log           `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	Log           *ledgerpb.Log          `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -114,7 +114,7 @@ func (*InsertLogCommand) Descriptor() ([]byte, []int) {
 	return file_proto_commands_ledger_commands_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *InsertLogCommand) GetLog() *service.Log {
+func (x *InsertLogCommand) GetLog() *ledgerpb.Log {
 	if x != nil {
 		return x.Log
 	}
@@ -149,7 +149,7 @@ var file_proto_commands_ledger_commands_proto_goTypes = []any{
 	(*CreateLedgerCommand)(nil), // 0: bucket_commands.CreateLedgerCommand
 	(*InsertLogCommand)(nil),    // 1: bucket_commands.InsertLogCommand
 	(*structpb.Struct)(nil),     // 2: google.protobuf.Struct
-	(*service.Log)(nil),         // 3: ledger.Log
+	(*ledgerpb.Log)(nil),        // 3: ledger.Log
 }
 var file_proto_commands_ledger_commands_proto_depIdxs = []int32{
 	2, // 0: bucket_commands.CreateLedgerCommand.metadata:type_name -> google.protobuf.Struct

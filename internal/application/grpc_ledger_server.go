@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/grpc"
@@ -18,19 +19,19 @@ import (
 )
 
 type LedgerServiceServerImpl struct {
-	service.UnimplementedLedgerServiceServer
+	ledgerpb.UnimplementedLedgerServiceServer
 	logger     logging.Logger
 	systemNode *system.Node
 }
 
-func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) service.LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) ledgerpb.LedgerServiceServer {
 	return &LedgerServiceServerImpl{
 		logger:     logger,
 		systemNode: systemNode,
 	}
 }
 
-func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *service.LedgerSnapshotRequest) (*service.LedgerSnapshotResponse, error) {
+func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *ledgerpb.LedgerSnapshotRequest) (*ledgerpb.LedgerSnapshotResponse, error) {
 	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.Ledger)
 	if err != nil {
 		return nil, err
@@ -40,12 +41,12 @@ func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *service.
 		return nil, err
 	}
 
-	return &service.LedgerSnapshotResponse{
+	return &ledgerpb.LedgerSnapshotResponse{
 		Message: "Snapshotting completed successfully",
 	}, nil
 }
 
-func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *service.CreateTransactionRequest) (*service.CreateTransactionResponse, error) {
+func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.CreateTransactionResponse, error) {
 	impl.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
 
 	// Convert protobuf request to service types
@@ -121,7 +122,7 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 	}
 
 	// Convert response to protobuf
-	response := &service.CreateTransactionResponse{
+	response := &ledgerpb.CreateTransactionResponse{
 		Transaction:     transactionToProto(createdTx.Transaction),
 		AccountMetadata: metadataMapToProto(createdTx.AccountMetadata),
 	}
@@ -129,7 +130,7 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 	return response, nil
 }
 
-func (impl *LedgerServiceServerImpl) StreamLogs(req *service.StreamLogsRequest, stream service.LedgerService_StreamLogsServer) error {
+func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest, stream ledgerpb.LedgerService_StreamLogsServer) error {
 	ctx := stream.Context()
 
 	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.GetLedger())
@@ -159,7 +160,7 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *service.StreamLogsRequest, 
 			return fmt.Errorf("converting log to proto: %w", err)
 		}
 
-		if err := stream.Send(&service.StreamLogsResponse{
+		if err := stream.Send(&ledgerpb.StreamLogsResponse{
 			Log: logProto,
 		}); err != nil {
 			return fmt.Errorf("sending log: %w", err)
@@ -169,7 +170,7 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *service.StreamLogsRequest, 
 	return nil
 }
 
-func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *service.SaveAccountMetadataRequest) (*service.SaveAccountMetadataResponse, error) {
+func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.SaveAccountMetadataResponse, error) {
 	impl.logger.WithFields(map[string]any{"address": req.Address}).Debugf("SaveAccountMetadata request received")
 
 	// Validate request
@@ -216,18 +217,18 @@ func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, re
 		return nil, fmt.Errorf("converting log to proto: %w", err)
 	}
 
-	return &service.SaveAccountMetadataResponse{
+	return &ledgerpb.SaveAccountMetadataResponse{
 		Log: logProto,
 	}, nil
 }
 
-func RegisterLedgerService(server *grpc.Server, ledgerServiceServer service.LedgerServiceServer) {
-	service.RegisterLedgerServiceServer(server, ledgerServiceServer)
+func RegisterLedgerService(server *grpc.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) {
+	ledgerpb.RegisterLedgerServiceServer(server, ledgerServiceServer)
 }
 
 // logToLedgerProto converts a ledger.Log to ledger.proto Log
-func logToLedgerProto(l ledger.Log) (*service.Log, error) {
-	logProto := &service.Log{
+func logToLedgerProto(l ledger.Log) (*ledgerpb.Log, error) {
+	logProto := &ledgerpb.Log{
 		Type:            int32(l.Type),
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
@@ -253,21 +254,21 @@ func logToLedgerProto(l ledger.Log) (*service.Log, error) {
 }
 
 // logPayloadToLedgerProto converts a ledger.LogPayload to ledger.proto LogPayload
-func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, error) {
+func logPayloadToLedgerProto(payload ledger.LogPayload) (*ledgerpb.LogPayload, error) {
 	switch p := payload.(type) {
 	case *ledger.CreatedTransaction:
-		return &service.LogPayload{
-			Payload: &service.LogPayload_CreatedTransaction{
-				CreatedTransaction: &service.CreatedTransaction{
+		return &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
 					Transaction:     transactionToProto(p.Transaction),
 					AccountMetadata: metadataMapToProto(p.AccountMetadata),
 				},
 			},
 		}, nil
 	case *ledger.RevertedTransaction:
-		return &service.LogPayload{
-			Payload: &service.LogPayload_RevertedTransaction{
-				RevertedTransaction: &service.RevertedTransaction{
+		return &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_RevertedTransaction{
+				RevertedTransaction: &ledgerpb.RevertedTransaction{
 					RevertedTransaction: transactionToProto(p.RevertedTransaction),
 					RevertTransaction:   transactionToProto(p.RevertTransaction),
 				},
@@ -275,34 +276,34 @@ func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, er
 		}, nil
 	case *ledger.SavedMetadata:
 		mdStruct, _ := service.MetadataToStruct(p.Metadata)
-		proto := &service.SavedMetadata{
+		proto := &ledgerpb.SavedMetadata{
 			TargetType: p.TargetType,
 			Metadata:   mdStruct,
 		}
 		switch id := p.TargetID.(type) {
 		case string:
-			proto.TargetId = &service.SavedMetadata_AccountId{AccountId: id}
+			proto.TargetId = &ledgerpb.SavedMetadata_AccountId{AccountId: id}
 		case uint64:
-			proto.TargetId = &service.SavedMetadata_TransactionId{TransactionId: id}
+			proto.TargetId = &ledgerpb.SavedMetadata_TransactionId{TransactionId: id}
 		}
-		return &service.LogPayload{
-			Payload: &service.LogPayload_SavedMetadata{
+		return &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_SavedMetadata{
 				SavedMetadata: proto,
 			},
 		}, nil
 	case *ledger.DeletedMetadata:
-		proto := &service.DeletedMetadata{
+		proto := &ledgerpb.DeletedMetadata{
 			TargetType: p.TargetType,
 			Key:        p.Key,
 		}
 		switch id := p.TargetID.(type) {
 		case string:
-			proto.TargetId = &service.DeletedMetadata_AccountId{AccountId: id}
+			proto.TargetId = &ledgerpb.DeletedMetadata_AccountId{AccountId: id}
 		case uint64:
-			proto.TargetId = &service.DeletedMetadata_TransactionId{TransactionId: id}
+			proto.TargetId = &ledgerpb.DeletedMetadata_TransactionId{TransactionId: id}
 		}
-		return &service.LogPayload{
-			Payload: &service.LogPayload_DeletedMetadata{
+		return &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_DeletedMetadata{
 				DeletedMetadata: proto,
 			},
 		}, nil
@@ -311,10 +312,10 @@ func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, er
 	}
 }
 
-func transactionToProto(tx ledger.Transaction) *service.Transaction {
-	postings := make([]*service.Posting, 0, len(tx.Postings))
+func transactionToProto(tx ledger.Transaction) *ledgerpb.Transaction {
+	postings := make([]*ledgerpb.Posting, 0, len(tx.Postings))
 	for _, p := range tx.Postings {
-		postings = append(postings, &service.Posting{
+		postings = append(postings, &ledgerpb.Posting{
 			Source:      p.Source,
 			Destination: p.Destination,
 			Amount:      p.Amount.String(),
@@ -339,7 +340,7 @@ func transactionToProto(tx ledger.Transaction) *service.Transaction {
 		id = *tx.ID
 	}
 
-	return &service.Transaction{
+	return &ledgerpb.Transaction{
 		Postings:  postings,
 		Metadata:  metadata,
 		Timestamp: timestamp,

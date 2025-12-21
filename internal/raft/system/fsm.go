@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -455,8 +456,8 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 			return service.NewLogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
 
 				conn := fsm.multiplexedTransport.GetPeerConnection(NodeIDFromLedgerNodeID(peerID))
-				client := service.NewLedgerServiceClient(conn)
-				streamLogs, err := client.StreamLogs(ctx, &service.StreamLogsRequest{
+				client := ledgerpb.NewLedgerServiceClient(conn)
+				streamLogs, err := client.StreamLogs(ctx, &ledgerpb.StreamLogsRequest{
 					Ledger:       ledgerInfo.Name,
 					FromSequence: from,
 					ToSequence:   to,
@@ -465,7 +466,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 					return nil, err
 				}
 
-				return service.NewGRPCStreamCursor(streamLogs, func(res service.StreamLogsResponse) (ledger.Log, error) {
+				return service.NewGRPCStreamCursor(streamLogs, func(res ledgerpb.StreamLogsResponse) (ledger.Log, error) {
 					return service.LogFromLedgerProto(res.Log)
 				}), nil
 			})
