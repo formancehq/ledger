@@ -4,9 +4,26 @@ package ledger;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "proto/common.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+
+// Posting represents a single posting in a transaction
+message Posting {
+  string source = 1;
+  string destination = 2;
+  string amount = 3;                        // big.Int as string
+  string asset = 4;
+}
+
+// Transaction represents a transaction
+message Transaction {
+  repeated Posting postings = 1;
+  google.protobuf.Struct metadata = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string reference = 4;
+  uint64 id = 5;
+  bool reverted = 6;
+}
 
 // LedgerService provides ledger operations
 service LedgerService {
@@ -39,7 +56,7 @@ message CreateTransactionRequest {
   google.protobuf.Timestamp timestamp = 3;
   google.protobuf.Struct metadata = 4;
   string reference = 5;
-  repeated common.Posting postings = 6;
+  repeated Posting postings = 6;
   bool dry_run = 7;
   string idempotency_key = 8;
   Script script = 9;
@@ -47,7 +64,7 @@ message CreateTransactionRequest {
 }
 
 message CreateTransactionResponse {
-  common.Transaction transaction = 1;
+  Transaction transaction = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
 }
 
@@ -93,13 +110,13 @@ message LogPayload {
 }
 
 message CreatedTransaction {
-  common.Transaction transaction = 1;
+  Transaction transaction = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
 }
 
 message RevertedTransaction {
-  common.Transaction reverted_transaction = 1;
-  common.Transaction revert_transaction = 2;
+  Transaction reverted_transaction = 1;
+  Transaction revert_transaction = 2;
 }
 
 message SavedMetadata {

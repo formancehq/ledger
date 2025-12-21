@@ -80,7 +80,6 @@ generate-proto:
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
-        proto/common.proto \
         proto/raft_transport.proto \
         proto/system.proto \
         proto/ledger.proto \
