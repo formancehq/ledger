@@ -3,8 +3,6 @@ package ledger
 import (
 	"math/big"
 
-	"github.com/uptrace/bun"
-
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 )
@@ -14,15 +12,13 @@ const (
 )
 
 type Account struct {
-	bun.BaseModel `bun:"table:accounts"`
-
-	Address          string            `json:"address" bun:"address"`
-	Metadata         metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
-	FirstUsage       time.Time         `json:"firstUsage" bun:"first_usage,nullzero"`
-	InsertionDate    time.Time         `json:"insertionDate" bun:"insertion_date,nullzero"`
-	UpdatedAt        time.Time         `json:"updatedAt" bun:"updated_at,nullzero"`
-	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"volumes,scanonly"`
-	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
+	Address          string            `json:"address"`
+	Metadata         metadata.Metadata `json:"metadata"`
+	FirstUsage       time.Time         `json:"firstUsage"`
+	InsertionDate    time.Time         `json:"insertionDate"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
+	Volumes          VolumesByAssets   `json:"volumes,omitempty"`
+	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty"`
 }
 
 func (a Account) GetAddress() string {
@@ -30,10 +26,8 @@ func (a Account) GetAddress() string {
 }
 
 type AccountsVolumes struct {
-	bun.BaseModel `bun:"accounts_volumes"`
-
-	Account string   `bun:"accounts_address,type:varchar"`
-	Asset   string   `bun:"asset,type:varchar"`
-	Input   *big.Int `bun:"input,type:numeric"`
-	Output  *big.Int `bun:"output,type:numeric"`
+	Account string   `json:"account"`
+	Asset   string   `json:"asset"`
+	Input   *big.Int `json:"input"`
+	Output  *big.Int `json:"output"`
 }

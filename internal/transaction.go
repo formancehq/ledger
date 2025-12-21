@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/invopop/jsonschema"
-	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -18,10 +17,10 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings  Postings          `json:"postings" bun:"postings,type:jsonb"`
-	Metadata  metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
-	Timestamp time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
-	Reference string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
+	Postings  Postings          `json:"postings"`
+	Metadata  metadata.Metadata `json:"metadata"`
+	Timestamp time.Time         `json:"timestamp"`
+	Reference string            `json:"reference,omitempty"`
 }
 
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -36,19 +35,17 @@ func NewTransactionData() TransactionData {
 }
 
 type Transaction struct {
-	bun.BaseModel `bun:"table:transactions,alias:transactions"`
-
 	TransactionData
-	ID         *uint64    `json:"id" bun:"id,type:numeric"`
-	InsertedAt time.Time  `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
-	UpdatedAt  time.Time  `json:"updatedAt,omitempty" bun:"updated_at,type:timestamp without time zone,nullzero"`
-	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
+	ID         *uint64    `json:"id"`
+	InsertedAt time.Time  `json:"insertedAt,omitempty"`
+	UpdatedAt  time.Time  `json:"updatedAt,omitempty"`
+	RevertedAt *time.Time `json:"revertedAt,omitempty"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.
-	PostCommitVolumes PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
+	PostCommitVolumes PostCommitVolumes `json:"postCommitVolumes,omitempty"`
 	// PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
 	// Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
-	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
 }
 
 func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema) {

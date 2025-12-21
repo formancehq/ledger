@@ -62,15 +62,15 @@ func NewVolumesInt64(input, output int64) Volumes {
 }
 
 type VolumesWithBalanceByAssetByAccount struct {
-	Account string `json:"account" bun:"account"`
-	Asset   string `json:"asset" bun:"asset"`
+	Account string `json:"account"`
+	Asset   string `json:"asset"`
 	VolumesWithBalance
 }
 
 type VolumesWithBalance struct {
-	Input   *big.Int `json:"input" bun:"input"`
-	Output  *big.Int `json:"output" bun:"output"`
-	Balance *big.Int `json:"balance" bun:"balance"`
+	Input   *big.Int `json:"input"`
+	Output  *big.Int `json:"output"`
+	Balance *big.Int `json:"balance"`
 }
 
 type VolumesWithBalanceByAssets map[string]*VolumesWithBalance
@@ -169,7 +169,7 @@ func (a PostCommitVolumes) Merge(volumes PostCommitVolumes) PostCommitVolumes {
 }
 
 type AggregatedVolumes struct {
-	Aggregated VolumesByAssets `bun:"aggregated,type:jsonb"`
+	Aggregated VolumesByAssets `json:"aggregated"`
 }
 
 type Balances = map[string]map[string]*big.Int

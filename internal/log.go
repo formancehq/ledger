@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/uptrace/bun"
-
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -82,17 +80,15 @@ func LogTypeFromString(logType string) LogType {
 
 // Log represents atomic actions made on the ledger.
 type Log struct {
-	bun.BaseModel `bun:"table:logs,alias:logs"`
-
-	Type           LogType    `json:"type" bun:"type,type:log_type"`
-	Data           LogPayload `json:"data" bun:"data,type:jsonb"`
-	Date           time.Time  `json:"date" bun:"date,type:timestamptz,nullzero"`
-	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
+	Type           LogType    `json:"type"`
+	Data           LogPayload `json:"data"`
+	Date           time.Time  `json:"date"`
+	IdempotencyKey string     `json:"idempotencyKey"`
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
-	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
-	Sequence        uint64  `json:"sequence" bun:"sequence,type:bigint,autoincrement"` // Global sequence number, auto-incremented by database
+	IdempotencyHash string  `json:"idempotencyHash"`
+	ID              *uint64 `json:"id"`
+	Sequence        uint64  `json:"sequence"` // Global sequence number, auto-incremented by database
 }
 
 func (l Log) WithDate(date time.Time) Log {
