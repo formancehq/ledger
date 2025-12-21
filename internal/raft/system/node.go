@@ -80,6 +80,26 @@ func (node *Node) CreateLedger(ctx context.Context, name, driver string, config 
 		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
+	// Wait for leader to be elected
+	node.logger.Infof("Waiting leader election...")
+	ledgerGroup, err := node.Node.Inner().GetLedger(name)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger group: %w", err)
+	}
+
+l:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			if leader := ledgerGroup.GetLeader(); leader != 0 {
+				node.logger.Infof("Ledger Raft group started, leader: %x", leader)
+				break l
+			}
+		}
+	}
+
 	node.logger.
 		WithFields(map[string]any{"name": name, "driver": driver, "commandID": cmd.ID}).
 		Infof("Ledger created on leader")

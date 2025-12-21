@@ -89,10 +89,20 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 		case ch <- msg:
 		case <-t.ctx.Done():
 		default:
-			t.logger.Infof("WARN: Send channel full, dropping message")
+			t.logger.
+				WithFields(map[string]any{
+					"peer": fmt.Sprintf("%x", peerID),
+					"type": msg.Type.String(),
+				}).
+				Errorf("Send channel full, dropping message")
 		}
 	} else {
-		t.logger.Infof("WARN: No send channel for peer, dropping message")
+		t.logger.
+			WithFields(map[string]any{
+				"peer": fmt.Sprintf("%x", peerID),
+				"type": msg.Type.String(),
+			}).
+			Errorf("No send channel for peer, dropping message")
 	}
 }
 
@@ -144,12 +154,15 @@ func (t *GRPCTransport) sendLoop(peerID uint64, addr string) {
 				status, ok := status.FromError(err)
 				if ok && status.Code() == codes.Unavailable {
 					t.logger.
-						WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).
-						Infof("WARN: Peer offline")
+						WithFields(map[string]any{
+							"peer":   fmt.Sprintf("%x", peerID),
+							"status": status,
+						}).
+						Errorf("Peer offline")
 				} else {
 					t.logger.
 						WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).
-						Infof("WARN: Failed to send message via gRPC")
+						Errorf("Failed to send message via gRPC")
 				}
 				cancel()
 				// Report peer as unreachable
@@ -172,8 +185,7 @@ func (t *GRPCTransport) HandleSendMessage(ctx context.Context, req *SendMessageR
 	var msg raftpb.Message
 	if err := msg.Unmarshal(req.Message); err != nil {
 		return &SendMessageResponse{
-			Success: false,
-			Error:   fmt.Sprintf("failed to unmarshal message: %v", err),
+			Error: fmt.Sprintf("failed to unmarshal message: %v", err),
 		}, nil
 	}
 
@@ -200,7 +212,7 @@ func (t *GRPCTransport) HandleSendMessage(ctx context.Context, req *SendMessageR
 				"from": fmt.Sprintf("%x", msg.From),
 				"to":   fmt.Sprintf("%x", msg.To),
 			}).
-			Infof("WARN: Recv channel full, dropping message")
+			Errorf("Recv channel full, dropping message")
 		return &SendMessageResponse{
 			Success: false,
 			Error:   "recv channel full",

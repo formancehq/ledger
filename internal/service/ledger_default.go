@@ -114,6 +114,11 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 
 // CreateTransaction creates a new transaction
 func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+
+	l.logger.
+		WithFields(map[string]any{"ledger": ledgerName}).
+		Info("Creating transaction")
+
 	input := parameters.Input
 
 	// Validate that we have either postings or script, but not both
@@ -143,6 +148,8 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		if existingLog.ID != nil {
 			createdTx.Transaction = createdTx.Transaction.WithID(*existingLog.ID)
 		}
+
+		l.logger.Infof("Returning existing transaction with ID %d", *existingLog.ID)
 		return existingLog, createdTx, nil
 	}
 
@@ -204,6 +211,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			}
 
 			// Ensure locks are released when we're done
+			// TODO: lock all balances at once
 			defer release()
 
 			// Check if accounts have sufficient funds
@@ -313,11 +321,12 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// If not dry run, write the log via LogWriter (which will use Raft)
 	if !parameters.DryRun {
+		l.logger.Info("Writing new log...")
 		if err := l.logWriter.InsertLogs(ctx, log); err != nil {
 			return nil, nil, fmt.Errorf("inserting logs: %w", err)
 		}
 
-		l.logger.WithFields(map[string]any{"count": 1}).Debugf("Logs written successfully")
+		l.logger.Debugf("Logs written successfully")
 	}
 
 	return &log, createdTx, nil
@@ -339,11 +348,11 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 	}
 
 	// Create a store adapter that uses our balance store
+	// todo: need release when the transaction is committed
 	storeAdapter := &numscriptStoreAdapter{
 		ledgerName:         ledgerName,
 		lockedVolumesStore: l.lockedVolumesStore,
 		logStore:           l.logStore,
-		ctx:                ctx,
 	}
 
 	// Execute the script
@@ -473,7 +482,6 @@ type numscriptStoreAdapter struct {
 	ledgerName         string
 	lockedVolumesStore LockedBalancesStore
 	logStore           LogStore
-	ctx                context.Context
 }
 
 func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
@@ -484,10 +492,12 @@ func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.Bal
 	}
 
 	// Get balances using our locked volumes store
-	balances, _, err := s.lockedVolumesStore.LockBalances(ctx, balanceQuery)
+	balances, release, err := s.lockedVolumesStore.LockBalances(ctx, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
+	// todo: need release (put here for debug but it is not good!!!!)
+	release()
 
 	// Convert to numscript.Balances format
 	result := make(numscript.Balances)

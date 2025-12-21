@@ -476,19 +476,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 		return fmt.Errorf("starting ledger Raft group: %w", err)
 	}
 
-	// Wait for leader to be elected
-	logger.Infof("Waiting leader election...")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-			if leader := group.GetLeader(); leader != 0 {
-				logger.Infof("Ledger Raft group started, leader: %d", leader)
-				return nil
-			}
-		}
-	}
+	return nil
 }
 
 func nodeIDFromLedgerAndRootNodeID(rootNodeID uint64, ledgerInfo ledger.LedgerInfo) uint64 {

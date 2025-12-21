@@ -179,27 +179,25 @@ func (node *Node[State, F]) readyLoop() {
 		// Process ticks and messages first, then Ready structures
 		// Always check for ticks first (non-blocking) to ensure election timeouts work
 		// Also, check for incoming messages repeatdly as the queue can become fulleasily
-		for {
-			select {
-			case <-ticker.C:
-				if !node.fsmSyncer.IsSyncing() {
-					node.rawNode.Tick()
-				}
-			case <-node.ctx.Done():
-				close(node.stopped)
-				return
-			case nodeID := <-node.transport.Unreachable():
-				node.rawNode.ReportUnreachable(nodeID)
-			case msg := <-node.transport.Recv():
-				if err := node.rawNode.Step(msg); err != nil {
-					panic(err)
-				}
-			default:
-				break
+		select {
+		case <-ticker.C:
+			if !node.fsmSyncer.IsSyncing() {
+				node.rawNode.Tick()
+			}
+		case <-node.ctx.Done():
+			close(node.stopped)
+			return
+		case nodeID := <-node.transport.Unreachable():
+			node.logger.Errorf("Node %d is unreachable", nodeID)
+			node.rawNode.ReportUnreachable(nodeID)
+		case msg := <-node.transport.Recv():
+			if err := node.rawNode.Step(msg); err != nil {
+				panic(err)
 			}
 		}
 
-		for node.rawNode.HasReady() {
+		//for node.rawNode.HasReady() {
+		if node.rawNode.HasReady() {
 			confState, err = node.processReady(confState, node.ctx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -321,7 +319,7 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 	// Advance the rawNode
 	node.rawNode.Advance(rd)
 
-	// Check if we need to create a snapshot (every 1000 entries or when log is getting large)
+	// Check if we need to create a snapshot
 	status := node.rawNode.Status()
 	if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
 
@@ -331,25 +329,15 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 			return nil, fmt.Errorf("creating snapshot data: %w", err)
 		}
 
-		// Get current ConfState from storage (use confState if available, otherwise get from storage)
-		var currentConfState *raftpb.ConfState
-		if confState != nil {
-			currentConfState = confState
-		} else {
-			_, cs, err := node.storage.InitialState()
-			if err != nil {
-				return nil, fmt.Errorf("getting initial ConfState: %w", err)
-			}
-			currentConfState = &cs
-		}
-
 		// Create snapshot in storage
-		_, err = node.storage.CreateSnapshot(status.Applied, currentConfState, snapshotData)
+		_, err = node.storage.CreateSnapshot(status.Applied, confState, snapshotData)
 		if err != nil {
 			// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 			if err != ErrSnapOutOfDate {
 				return nil, fmt.Errorf("creating snapshot in storage: %w", err)
 			}
+
+			return confState, nil
 		}
 
 		node.logger.Infof("Snapshot created for bucket")
@@ -501,7 +489,6 @@ func (node *Node[State, F]) Snapshot(ctx context.Context) error {
 	// Check if we are the leader (only leader can create snapshots)
 	status := node.rawNode.Status()
 	if status.RaftState != raft.StateLeader {
-		node.logger.WithFields(map[string]any{"state": status.RaftState.String()}).Infof("WARN: Snapshot requested but not leader")
 		return fmt.Errorf("only leader can create snapshots, current state: %v", status.RaftState)
 	}
 
@@ -667,6 +654,8 @@ func restoreFromStorage[State any, F FSM[State]](
 		}
 		logger.WithFields(map[string]any{"lastIndex": lastIndex}).Infof("Finished applying entries after snapshot")
 	}
+
+	logger.Infof("Finished restoring FSM from storage")
 
 	return nil
 }

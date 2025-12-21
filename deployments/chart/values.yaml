@@ -82,7 +82,7 @@ config:
     logs:
       enabled: true
       level: "info"
-      format: "json"
+      #format: "json"
     # Additional resource attributes
     attributes: ""
 

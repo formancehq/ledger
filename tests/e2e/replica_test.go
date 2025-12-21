@@ -31,8 +31,9 @@ var _ = Describe("Simple cluster", func() {
 	}
 
 	var (
-		ctx     context.Context
-		servers []serviceWithClient
+		ctx      context.Context
+		servers  []serviceWithClient
+		leaderID int64
 	)
 	const countInstances = 3
 
@@ -90,6 +91,21 @@ var _ = Describe("Simple cluster", func() {
 				extraDataDir: extraDataTmpDir,
 			})
 		}
+		Eventually(func(g Gomega) bool {
+			state, err := servers[0].client.Cluster.GetClusterState(ctx)
+			g.Expect(err).To(Succeed())
+
+			if state.ClusterStateResponse.Data.Leader == nil {
+				return false
+			}
+
+			leaderID = *state.ClusterStateResponse.Data.Leader
+
+			return leaderID != 0
+		}).
+			Within(10 * time.Second).
+			WithPolling(500 * time.Millisecond).
+			To(BeTrue())
 	})
 
 	AfterEach(func() {
@@ -103,26 +119,33 @@ var _ = Describe("Simple cluster", func() {
 		}
 	})
 
-	It("should start successfully", func() {
-		Eventually(func(g Gomega) bool {
-			state, err := servers[0].client.Cluster.GetClusterState(ctx)
-			g.Expect(err).To(Succeed())
+	It("should start successfully", func() {})
 
-			return state.ClusterStateResponse.Data.Leader != nil &&
-				*state.ClusterStateResponse.Data.Leader != 0
-		}).Within(5 * time.Second).To(BeTrue())
+	Context("When a follower restart", func() {
+		var (
+			followerID int64
+		)
+		BeforeEach(func() {
+			followerID = (leaderID + 1) % countInstances
+			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
+			<-time.After(time.Second)
+			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
+		})
+		It("Should properly rejoin the cluster", func() {
+			clusterState, err := servers[followerID].client.Cluster.GetClusterState(ctx)
+			Expect(err).To(Succeed())
+			// TODO: The node could be leader as well, we should check the terms of the raft nodes
+			Expect(clusterState.ClusterStateResponse.Data.State).To(Equal(components.ClusterStateResponseStateFollower))
+		})
 	})
 
 	Context("when the leader is down", func() {
-		var (
-			leaderID uint64
-		)
 		BeforeEach(func() {
-			Eventually(func(g Gomega) uint64 {
+			Eventually(func(g Gomega) int64 {
 				state, err := servers[0].client.Cluster.GetClusterState(ctx)
 				g.Expect(err).To(Succeed())
 
-				leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
+				leaderID = *state.ClusterStateResponse.Data.Leader
 
 				return leaderID
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).NotTo(BeZero())
@@ -137,7 +160,7 @@ var _ = Describe("Simple cluster", func() {
 
 				return state.ClusterStateResponse.Data.Leader != nil &&
 					*state.ClusterStateResponse.Data.Leader != 0 &&
-					uint64(*state.ClusterStateResponse.Data.Leader) != leaderID
+					*state.ClusterStateResponse.Data.Leader != leaderID
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 		})
 	})

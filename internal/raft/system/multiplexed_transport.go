@@ -29,6 +29,7 @@ func (r *multiplexedTransport) Start() {
 		select {
 		case ch := <-r.stopChannel:
 			close(ch)
+			return
 		case msg := <-r.grpcTransport.Recv():
 			ledgerID := ledgerIDFromLedgerNodeID(msg.To)
 			if ledgerID == 0 {
@@ -42,7 +43,16 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received message from ledger transport: %s", msg.String())
-				ledger.recv <- msg
+				select {
+				case ledger.recv <- msg:
+				default:
+					r.logger.
+						WithFields(map[string]any{
+							"channel": fmt.Sprintf("ledger/%d", ledgerID),
+							"type":    msg.Type.String(),
+						}).
+						Errorf("Ledger transport channel full, dropping message")
+				}
 			} else {
 				r.logger.Infof("Received message from unknown ledger: %d (%s)", msg.To, msg.Type)
 			}
@@ -58,7 +68,11 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received unreachable from ledger transport: %d", nodeID)
-				ledger.unreachable <- nodeID
+				select {
+				case ledger.unreachable <- nodeID:
+				default:
+					r.logger.Errorf("Ledger transport channel full, dropping unreachable")
+				}
 			} else {
 				r.logger.Infof("Received unreachable from unknown ledger: %d", nodeID)
 			}

@@ -347,8 +347,9 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 					// Apply action using bulk operations
 					err = ApplyAction(ctx, benchEnv.Client(), ledgerName, bulkElement)
 					if err != nil {
-						r.config.Logger.Errorf("Error applying action: %v", err)
-						continue
+						panic(err)
+						//r.config.Logger.Errorf("Error applying action: %v", err)
+						//continue
 					}
 
 					report.registerTransactionLatency(time.Since(now))

@@ -55,27 +55,6 @@ func Module() fx.Option {
 			httphandler.NewHandler,
 		),
 		fx.Invoke(
-			func(lc fx.Lifecycle, systemNode *system.Node, logger logging.Logger) (*system.Node, error) {
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						if err := systemNode.Start(ctx); err != nil {
-							return fmt.Errorf("starting raft cluster: %w", err)
-						}
-						logger.Infof("Raft cluster started successfully")
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Shutting down raft cluster")
-						if err := systemNode.Stop(ctx); err != nil {
-							return fmt.Errorf("shutting down raft cluster: %w", err)
-						}
-						logger.Infof("Raft cluster stopped successfully")
-						return nil
-					},
-				})
-
-				return systemNode, nil
-			},
 			func(grpcServer *grpcserver.Server, transport *raft.GRPCTransport) error {
 				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
 				return nil
@@ -102,6 +81,27 @@ func Module() fx.Option {
 						return grpcServer.Stop()
 					},
 				})
+			},
+			func(lc fx.Lifecycle, systemNode *system.Node, logger logging.Logger) (*system.Node, error) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						if err := systemNode.Start(ctx); err != nil {
+							return fmt.Errorf("starting raft cluster: %w", err)
+						}
+						logger.Infof("Raft cluster started successfully")
+						return nil
+					},
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Shutting down raft cluster")
+						if err := systemNode.Stop(ctx); err != nil {
+							return fmt.Errorf("shutting down raft cluster: %w", err)
+						}
+						logger.Infof("Raft cluster stopped successfully")
+						return nil
+					},
+				})
+
+				return systemNode, nil
 			},
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(httpserver.NewHook(handler,
