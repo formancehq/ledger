@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: f54a9cb5ddc8cdbb4db833990c21c168
+  docChecksum: ae1cab00722c4195aad147104812a149
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.18
-  configChecksum: 2ed995981e40fe9ea68df5b7f248843c
+  releaseVersion: 0.11.19
+  configChecksum: 37037d55d686ecfd3e7203af6cdf29a3
 features:
   go:
     additionalDependencies: 0.1.0
@@ -48,6 +48,8 @@ generatedFiles:
   - /models/components/nodeinfo.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
+  - /models/components/progressinfo.go
+  - /models/components/raftstatus.go
   - /models/components/reverttransactionrequest.go
   - /models/components/script.go
   - /models/components/snapshotresponse.go
@@ -91,12 +93,16 @@ generatedFiles:
   - docs/models/components/getledgerresponse.md
   - docs/models/components/httpmetadata.md
   - docs/models/components/ledgerclusterstateresponse.md
+  - docs/models/components/ledgerclusterstateresponsestate.md
   - docs/models/components/ledgerinfo.md
   - docs/models/components/ledgerstate.md
   - docs/models/components/listallledgersresponse.md
   - docs/models/components/nodeinfo.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
+  - docs/models/components/progressinfo.md
+  - docs/models/components/progressinfostate.md
+  - docs/models/components/raftstatus.md
   - docs/models/components/reverttransactionrequest.md
   - docs/models/components/script.md
   - docs/models/components/snapshotresponse.md

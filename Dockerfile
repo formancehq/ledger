@@ -14,10 +14,9 @@ RUN go mod download
 COPY main.go .
 COPY internal internal
 COPY cmd cmd
-COPY pkg pkg
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ledger-v3-poc .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -o ledger-v3-poc .
 
 FROM alpine:latest
 

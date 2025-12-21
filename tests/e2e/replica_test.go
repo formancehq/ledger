@@ -60,9 +60,9 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithGRPCPort(8000+i),
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-					testserver.WithRaftTickInterval(10*time.Millisecond),
-					testserver.WithRaftHeartbeatTick(10),
-					testserver.WithRaftElectionTick(100),
+					//testserver.WithRaftTickInterval(10*time.Millisecond),
+					//testserver.WithRaftHeartbeatTick(10),
+					//testserver.WithRaftElectionTick(100),
 					testserver.WithPeers(func() []raft.Peer {
 						ret := make([]raft.Peer, 0, countInstances-1)
 						for j := range countInstances {
@@ -126,16 +126,28 @@ var _ = Describe("Simple cluster", func() {
 			followerID int64
 		)
 		BeforeEach(func() {
-			followerID = (leaderID + 1) % countInstances
+			followerID = ((leaderID + 1) % countInstances) + 1
 			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
 			<-time.After(time.Second)
 			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 		})
 		It("Should properly rejoin the cluster", func() {
-			clusterState, err := servers[followerID].client.Cluster.GetClusterState(ctx)
-			Expect(err).To(Succeed())
-			// TODO: The node could be leader as well, we should check the terms of the raft nodes
-			Expect(clusterState.ClusterStateResponse.Data.State).To(Equal(components.ClusterStateResponseStateFollower))
+			Eventually(func(g Gomega) bool {
+				clusterState, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
+				g.Expect(err).To(Succeed())
+
+				if clusterState.ClusterStateResponse.Data.Leader == nil {
+					return false
+				}
+				if *clusterState.ClusterStateResponse.Data.Leader == 0 {
+					return false
+				}
+
+				return true
+			}).
+				Within(5 * time.Second).
+				WithPolling(500 * time.Millisecond).
+				To(BeTrue())
 		})
 	})
 

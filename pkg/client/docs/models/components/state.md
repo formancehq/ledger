@@ -1,6 +1,6 @@
 # State
 
-Current state of the local node
+Current Raft state
 
 
 ## Values

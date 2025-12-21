@@ -812,6 +812,9 @@ components:
               items:
                 $ref: '#/components/schemas/NodeInfo'
               description: List of all nodes in the cluster
+            raftStatus:
+              $ref: '#/components/schemas/RaftStatus'
+              description: Complete Raft status information
             innerState:
               $ref: '#/components/schemas/SystemState'
               description: State contained in the FSM
@@ -847,6 +850,9 @@ components:
               items:
                 $ref: '#/components/schemas/NodeInfo'
               description: List of all nodes in the cluster
+            raftStatus:
+              $ref: '#/components/schemas/RaftStatus'
+              description: Complete Raft status information
             innerState:
               $ref: '#/components/schemas/LedgerState'
               description: State contained in the FSM
@@ -927,6 +933,100 @@ components:
           format: int64
           minimum: 0
           description: ID of the local node
+        raftStatus:
+          $ref: '#/components/schemas/RaftStatus'
+          description: Complete Raft status information
+
+    RaftStatus:
+      type: object
+      required:
+        - state
+        - term
+        - leader
+        - applied
+        - commit
+        - lastIndex
+        - vote
+      properties:
+        state:
+          type: string
+          enum: [Leader, Follower, Candidate, PreCandidate, Unknown]
+          description: Current Raft state
+        term:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current term
+        leader:
+          type: integer
+          format: int64
+          minimum: 0
+          description: ID of the current leader (0 if no leader)
+        applied:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Index of the last applied entry
+        commit:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Index of the last committed entry
+        lastIndex:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Index of the last entry in the log
+        vote:
+          type: integer
+          format: int64
+          minimum: 0
+          description: ID of the node that received the vote (0 if no vote)
+        progress:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ProgressInfo'
+          description: Progress information for each node in the cluster
+
+    ProgressInfo:
+      type: object
+      required:
+        - match
+        - next
+        - state
+        - pendingSnapshot
+        - recentActive
+        - probeSent
+        - isPaused
+      properties:
+        match:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Match index - highest log entry known to be replicated to this node
+        next:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Next index - index of the next log entry to send to this node
+        state:
+          type: string
+          enum: [Probe, Replicate, Snapshot, Unknown]
+          description: State of the replication (Probe, Replicate, or Snapshot)
+        pendingSnapshot:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Index of pending snapshot (0 if none)
+        recentActive:
+          type: boolean
+          description: Whether this node is recently active
+        probeSent:
+          type: boolean
+          description: Whether probe message was sent (paused)
+        isPaused:
+          type: boolean
+          description: Whether this node is paused
 
     SQLiteConfig:
       type: object

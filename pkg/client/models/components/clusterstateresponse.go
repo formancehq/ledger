@@ -52,6 +52,7 @@ type ClusterStateResponseData struct {
 	LocalNode int64 `json:"localNode"`
 	// List of all nodes in the cluster
 	Nodes      []NodeInfo  `json:"nodes,omitempty"`
+	RaftStatus *RaftStatus `json:"raftStatus,omitempty"`
 	InnerState SystemState `json:"innerState"`
 }
 
@@ -81,6 +82,13 @@ func (o *ClusterStateResponseData) GetNodes() []NodeInfo {
 		return nil
 	}
 	return o.Nodes
+}
+
+func (o *ClusterStateResponseData) GetRaftStatus() *RaftStatus {
+	if o == nil {
+		return nil
+	}
+	return o.RaftStatus
 }
 
 func (o *ClusterStateResponseData) GetInnerState() SystemState {

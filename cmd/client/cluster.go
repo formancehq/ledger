@@ -117,6 +117,44 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 		pterm.Info.Println("No nodes found")
 	}
 
+	// Display Raft Status
+	if data.RaftStatus != nil {
+		pterm.Println()
+		pterm.DefaultHeader.WithFullWidth().Println("Raft Status")
+		raftInfo := ""
+		raftInfo += fmt.Sprintf("Term: %d\n", data.RaftStatus.Term)
+		raftInfo += fmt.Sprintf("Applied: %d\n", data.RaftStatus.Applied)
+		raftInfo += fmt.Sprintf("Commit: %d\n", data.RaftStatus.Commit)
+		raftInfo += fmt.Sprintf("Last Index: %d\n", data.RaftStatus.LastIndex)
+		if data.RaftStatus.Vote != 0 {
+			raftInfo += fmt.Sprintf("Vote: %d\n", data.RaftStatus.Vote)
+		}
+
+		pterm.DefaultBox.WithTitle("Raft Status").WithBoxStyle(pterm.NewStyle(pterm.FgLightMagenta)).Println(raftInfo)
+
+		// Progress table
+		if len(data.RaftStatus.Progress) > 0 {
+			pterm.Println()
+			progressTableData := pterm.TableData{
+				{"Node ID", "Match", "Next", "State", "Pending Snapshot", "Recent Active", "Paused"},
+			}
+			for nodeID, prog := range data.RaftStatus.Progress {
+				progressTableData = append(progressTableData, []string{
+					nodeID,
+					fmt.Sprintf("%d", prog.Match),
+					fmt.Sprintf("%d", prog.Next),
+					string(prog.State),
+					fmt.Sprintf("%d", prog.PendingSnapshot),
+					fmt.Sprintf("%v", prog.RecentActive),
+					fmt.Sprintf("%v", prog.IsPaused),
+				})
+			}
+			if err := pterm.DefaultTable.WithHasHeader().WithData(progressTableData).Render(); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Display FSM state (SystemState)
 	innerState := data.GetInnerState()
 	if innerState.GetLedgers() != nil && len(innerState.GetLedgers()) > 0 {

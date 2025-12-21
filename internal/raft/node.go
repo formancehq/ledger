@@ -12,6 +12,7 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/etcd/raft/v3/tracker"
 )
 
 type NodeTransport interface {
@@ -473,11 +474,61 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 		})
 	}
 
+	// Build progress information map
+	progress := make(map[uint64]ledger.ProgressInfo)
+	for id, prog := range status.Progress {
+		// Convert StateType to string
+		stateStr := "Unknown"
+		switch prog.State {
+		case tracker.StateProbe:
+			stateStr = "Probe"
+		case tracker.StateReplicate:
+			stateStr = "Replicate"
+		case tracker.StateSnapshot:
+			stateStr = "Snapshot"
+		}
+
+		progress[uint64(id)] = ledger.ProgressInfo{
+			Match:           prog.Match,
+			Next:            prog.Next,
+			State:           stateStr,
+			PendingSnapshot: prog.PendingSnapshot,
+			RecentActive:    prog.RecentActive,
+			ProbeSent:       prog.ProbeSent,
+			IsPaused:        prog.IsPaused(),
+		}
+	}
+
+	// Get HardState for Term, Commit, Vote
+	hardState, _, err := node.storage.InitialState()
+	if err != nil {
+		return nil, fmt.Errorf("getting initial state: %w", err)
+	}
+
+	// Get last index from storage
+	lastIndex, err := node.storage.LastIndex()
+	if err != nil {
+		return nil, fmt.Errorf("getting last index: %w", err)
+	}
+
+	// Build complete Raft status
+	raftStatus := &ledger.RaftStatus{
+		State:     stateStr,
+		Term:      hardState.Term,
+		Leader:    uint64(leaderID),
+		Applied:   status.Applied,
+		Commit:    hardState.Commit,
+		LastIndex: lastIndex,
+		Vote:      hardState.Vote,
+		Progress:  progress,
+	}
+
 	return &ledger.ClusterState[State]{
 		State:      stateStr,
 		Leader:     uint(leaderID),
 		Nodes:      nodes,
 		LocalNode:  uint(node.config.NodeID),
+		RaftStatus: raftStatus,
 		InnerState: node.fsmSyncer.fsm.GetState(),
 	}, nil
 }
