@@ -22,6 +22,10 @@ func filterAccountAddress(address, key string) string {
 
 	if isPartialAddress(address) {
 		src := strings.Split(address, ":")
+		// Pattern semantics:
+		// - "users:" = ["users", ""] = 2 segments = match "users:X"
+		// - "users::" = ["users", "", ""] = 3 segments = match "users:X:Y"
+		// - "users::alice" = ["users", "", "alice"] = 3 segments = match "users:X:alice"
 		parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
 
 		for i, segment := range src {
