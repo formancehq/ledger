@@ -1382,6 +1382,86 @@ func TestVolumesWithMiddleWildcardPatterns(t *testing.T) {
 	})
 }
 
+func TestVolumesWithOrPartialAndExactSamePrefix(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Case from Alix: $or with partial and exact on same prefix
+	// This is a bit silly but should work correctly
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "quux:truc", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "quux:other", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "other:account", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial and non-matching exact - quux: OR quux:nope", func(t *testing.T) {
+		t.Parallel()
+
+		// $or([{$match: {address: "quux:"}}, {$match: {address: "quux:nope"}}])
+		// quux: matches quux:truc and quux:other (2 segments)
+		// quux:nope matches nothing (no such account)
+		// Result should be quux:truc and quux:other
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:nope"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+
+	t.Run("$or with partial and matching exact - quux: OR quux:truc", func(t *testing.T) {
+		t.Parallel()
+
+		// quux: matches quux:truc and quux:other
+		// quux:truc matches quux:truc
+		// OR union = quux:truc and quux:other (no duplicates)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:truc"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+
+	t.Run("without PIT - same query should work", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:nope"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+}
+
 func TestVolumesWithSpecialCharactersAndLongPatterns(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
