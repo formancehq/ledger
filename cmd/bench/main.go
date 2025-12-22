@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -26,7 +28,6 @@ import (
 
 // Environment types
 type EnvConfig struct {
-	StackURL     string
 	ClientID     string
 	ClientSecret string
 	LedgerURL    string
@@ -69,13 +70,6 @@ func (r *RemoteLedgerEnvFactory) Create() (Env, error) {
 }
 
 func getHTTPClient(config EnvConfig) *http.Client {
-	authURL := ""
-	switch {
-	case config.StackURL != "":
-		authURL = config.StackURL + "/api/auth"
-	case config.LedgerURL != "":
-		authURL = config.AuthURL
-	}
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -96,7 +90,7 @@ func getHTTPClient(config EnvConfig) *http.Client {
 		httpClient = (&clientcredentials.Config{
 			ClientID:     config.ClientID,
 			ClientSecret: config.ClientSecret,
-			TokenURL:     authURL + "/oauth/token",
+			TokenURL:     config.AuthURL + "/oauth/token",
 			Scopes:       []string{"ledger:read", "ledger:write"},
 		}).
 			Client(context.WithValue(context.Background(), oauth2.HTTPClient, httpClient))
@@ -106,19 +100,9 @@ func getHTTPClient(config EnvConfig) *http.Client {
 }
 
 func initializeFactory(config EnvConfig) (EnvFactory, error) {
-	if config.StackURL != "" && config.LedgerURL != "" {
-		return nil, fmt.Errorf("cannot specify both stack.url and ledger.url")
-	}
-
 	var factory EnvFactory
 
 	switch {
-	case config.StackURL != "":
-		httpClient := getHTTPClient(config)
-		factory = &RemoteLedgerEnvFactory{
-			httpClient: httpClient,
-			ledgerURL:  config.StackURL + "/api/ledger",
-		}
 	case config.LedgerURL != "":
 		httpClient := getHTTPClient(config)
 		factory = &RemoteLedgerEnvFactory{
@@ -134,13 +118,15 @@ func initializeFactory(config EnvConfig) (EnvFactory, error) {
 
 // Benchmark types
 type BenchmarkConfig struct {
-	Script      string
-	ReportFile  string
-	Parallelism int64
-	Duration    time.Duration
-	Iterations  int
-	LedgerName  string
-	Logger      logging.Logger
+	Script         string
+	ReportFile     string
+	Parallelism    int64
+	Duration       time.Duration
+	Iterations     int
+	LedgerName     string
+	Logger         logging.Logger
+	CPUProfileURL  string
+	CPUProfileFile string
 }
 
 type Result struct {
@@ -220,6 +206,76 @@ func NewRunner(config BenchmarkConfig) *Runner {
 func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Result, error) {
 	results := make(map[string]Result)
 
+	// Start CPU profiling collection if enabled
+	cpuProfileData := make(chan []byte)
+
+	profilingCtx, profilingCancel := context.WithCancel(ctx)
+	defer profilingCancel() // Ensure cleanup
+
+	if r.config.CPUProfileURL != "" {
+		go func() {
+			r.config.Logger.Infof("Starting CPU profiling collection from %s", r.config.CPUProfileURL)
+
+			// Calculate duration for profile collection (use benchmark duration or default to 30s)
+			profileDuration := 30 * time.Second
+			if r.config.Duration > 0 {
+				profileDuration = r.config.Duration
+			} else if r.config.Iterations > 0 {
+				// If using iterations, estimate duration (will be cancelled when benchmark ends)
+				profileDuration = 5 * time.Minute // Long enough for most benchmarks
+			}
+
+			// Start collecting profile immediately for the duration of the benchmark
+			profileURL := fmt.Sprintf("%s?seconds=%d", r.config.CPUProfileURL, int(profileDuration.Seconds()))
+			client := &http.Client{
+				Timeout: profileDuration + 10*time.Second,
+			}
+
+			// Collect profile in background, will be cancelled when context is done
+			done := make(chan struct{})
+			go func() {
+				resp, err := client.Get(profileURL)
+				if err != nil {
+					select {
+					case <-profilingCtx.Done():
+						// Context cancelled, this is expected
+					default:
+						r.config.Logger.Errorf("Failed to collect CPU profile: %v", err)
+					}
+					close(done)
+					return
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					r.config.Logger.Errorf("CPU profile endpoint returned status %d", resp.StatusCode)
+					close(done)
+					return
+				}
+
+				data, err := io.ReadAll(resp.Body)
+				if err != nil {
+					r.config.Logger.Errorf("Failed to read CPU profile: %v", err)
+					close(done)
+					return
+				}
+				cpuProfileData <- data
+
+				r.config.Logger.Infof("Collected CPU profile (%d bytes)", len(cpuProfileData))
+				close(done)
+			}()
+
+			// Wait for either context cancellation or profile collection completion
+			select {
+			case <-profilingCtx.Done():
+				// Benchmark ended, cancel the HTTP request if still running
+				// The HTTP client timeout will handle cleanup
+			case <-done:
+				// Profile collection completed
+			}
+		}()
+	}
+
 	// Load scripts
 	var scriptFactories map[string]ActionProviderFactory
 	var err error
@@ -274,15 +330,13 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 		stopChan := make(chan struct{})
 		var stopOnce sync.Once
 
-		// Setup timeout
-		if r.config.Duration > 0 {
-			go func() {
-				<-time.After(r.config.Duration)
-				stopOnce.Do(func() {
-					close(stopChan)
-				})
-			}()
-		}
+		// Setup timeout - duration is always set due to validation
+		go func() {
+			<-time.After(r.config.Duration)
+			stopOnce.Do(func() {
+				close(stopChan)
+			})
+		}()
 
 		// Setup iterations limit
 		if r.config.Iterations > 0 {
@@ -347,9 +401,9 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 					// Apply action using bulk operations
 					err = ApplyAction(ctx, benchEnv.Client(), ledgerName, bulkElement)
 					if err != nil {
-						panic(err)
-						//r.config.Logger.Errorf("Error applying action: %v", err)
-						//continue
+						//TODO: log errors
+						r.config.Logger.Errorf("Error applying action: %v", err)
+						continue
 					}
 
 					report.registerTransactionLatency(time.Since(now))
@@ -400,6 +454,25 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 		r.config.Logger.Infof("Report written to: %s", r.config.ReportFile)
 	}
 
+	// Stop CPU profiling collection
+	if r.config.CPUProfileURL != "" {
+		r.config.Logger.Infof("Stopping CPU profiling collection...")
+		profilingCancel() // Cancel context to stop profiling goroutine
+		cpuProfileData := <-cpuProfileData
+
+		if len(cpuProfileData) > 0 && r.config.CPUProfileFile != "" {
+			if err := os.MkdirAll(filepath.Dir(r.config.CPUProfileFile), 0755); err != nil {
+				r.config.Logger.Errorf("Failed to create CPU profile directory: %v", err)
+			} else {
+				if err := os.WriteFile(r.config.CPUProfileFile, cpuProfileData, 0644); err != nil {
+					r.config.Logger.Errorf("Failed to write CPU profile: %v", err)
+				} else {
+					r.config.Logger.Infof("CPU profile written to: %s (%d bytes)", r.config.CPUProfileFile, len(cpuProfileData))
+				}
+			}
+		}
+	}
+
 	return results, nil
 }
 
@@ -430,10 +503,11 @@ func newRootCommand() *cobra.Command {
 	rootCmd.Flags().String("script", "", "Script to run (default: all scripts in scripts directory)")
 	rootCmd.Flags().String("report.file", "", "Location to write report file")
 	rootCmd.Flags().Int64("parallelism", 1, "Parallelism (default 1). Value is multiplied by GOMAXPROCS")
-	rootCmd.Flags().Duration("duration", 10*time.Second, "Duration to run the benchmark")
-	rootCmd.Flags().Int("iterations", 0, "Number of iterations (0 = run for duration)")
+	rootCmd.Flags().Duration("duration", 10*time.Second, "Duration to run the benchmark (required if iterations is not set)")
+	rootCmd.Flags().Int("iterations", 0, "Number of iterations (0 = run for duration, requires duration to be set)")
 	rootCmd.Flags().String("ledger.name", "", "Ledger name (required)")
 	rootCmd.Flags().Bool("debug", false, "Enable debug logging")
+	rootCmd.Flags().String("cpu-profile.file", "cpu.prof", "Output file for CPU profile (CPU profiling URL is automatically deduced from ledger URL)")
 
 	return rootCmd
 }
@@ -455,7 +529,6 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Parse flags
-	stackURL, _ := cmd.Flags().GetString("stack.url")
 	clientID, _ := cmd.Flags().GetString("client.id")
 	clientSecret, _ := cmd.Flags().GetString("client.secret")
 	ledgerURL, _ := cmd.Flags().GetString("ledger.url")
@@ -466,19 +539,21 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	duration, _ := cmd.Flags().GetDuration("duration")
 	iterations, _ := cmd.Flags().GetInt("iterations")
 	ledgerName, _ := cmd.Flags().GetString("ledger.name")
+	cpuProfileFile, _ := cmd.Flags().GetString("cpu-profile.file")
+	cpuProfileURL := strings.TrimSuffix(ledgerURL, "/") + "/debug/pprof/profile"
 
-	// Validate flags
-	if stackURL != "" && ledgerURL != "" {
-		return fmt.Errorf("cannot specify both --stack.url and --ledger.url")
+	// Validate that duration is explicitly set (required)
+	if duration <= 0 {
+		return fmt.Errorf("--duration must be explicitly set to define test duration")
 	}
 
-	if stackURL == "" && ledgerURL == "" {
-		return fmt.Errorf("must specify either --stack.url or --ledger.url")
+	// Log CPU profile URL if it was deduced
+	if cpuProfileURL != "" {
+		logger.Infof("CPU profiling enabled: %s (output: %s)", cpuProfileURL, cpuProfileFile)
 	}
 
 	// Initialize environment factory
 	envFactory, err := initializeFactory(EnvConfig{
-		StackURL:     stackURL,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		LedgerURL:    ledgerURL,
@@ -490,13 +565,15 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 
 	// Create benchmark runner
 	runner := NewRunner(BenchmarkConfig{
-		Script:      scriptFlag,
-		ReportFile:  reportFile,
-		Parallelism: parallelism,
-		Duration:    duration,
-		Iterations:  iterations,
-		LedgerName:  ledgerName,
-		Logger:      logger,
+		Script:         scriptFlag,
+		ReportFile:     reportFile,
+		Parallelism:    parallelism,
+		Duration:       duration,
+		Iterations:     iterations,
+		LedgerName:     ledgerName,
+		Logger:         logger,
+		CPUProfileURL:  cpuProfileURL,
+		CPUProfileFile: cpuProfileFile,
 	})
 
 	// Run benchmark
