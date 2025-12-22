@@ -449,11 +449,11 @@ var _ = Describe("Simple cluster", func() {
 								return fmt.Errorf("expected leader to be different from local node")
 							}
 
-							if clusterState.LedgerClusterStateResponse.Data.InnerState.LastSequence !=
-								leaderState.LedgerClusterStateResponse.Data.InnerState.LastSequence {
-								return fmt.Errorf("expected last sequence to be %d, got %d",
-									leaderState.LedgerClusterStateResponse.Data.InnerState.LastSequence,
-									clusterState.LedgerClusterStateResponse.Data.InnerState.LastSequence,
+							if *clusterState.LedgerClusterStateResponse.Data.InnerState.LastLogID !=
+								*leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID {
+								return fmt.Errorf("expected last log id to be %d, got %d",
+									*leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID,
+									*clusterState.LedgerClusterStateResponse.Data.InnerState.LastLogID,
 								)
 							}
 

@@ -20,6 +20,10 @@ import (
 	"modernc.org/sqlite"
 )
 
+// ============================================================================
+// Types and Structures
+// ============================================================================
+
 // SQLiteConfig represents the configuration for a SQLite bucket driver
 type SQLiteConfig struct {
 	DSN string `json:"dsn"` // Data Source Name (connection string)
@@ -31,9 +35,46 @@ type SQLiteLogStore struct {
 	logger logging.Logger
 }
 
+// sqliteLogCursor implements Cursor[*ledgerpb.Log] for SQLite
+type sqliteLogCursor struct {
+	rows  *sql.Rows
+	store *SQLiteLogStore
+}
+
+// ============================================================================
+// Initialization
+// ============================================================================
+
+func init() {
+	// Register bigint_add function (used in applyBalanceDiffs)
+	err := sqlite.RegisterFunction("bigint_add", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 2 {
+				return "0", nil
+			}
+			aStr, okA := args[0].(string)
+			bStr, okB := args[1].(string)
+			if !okA || !okB {
+				return "0", nil
+			}
+			bigA, okA := new(big.Int).SetString(aStr, 10)
+			bigB, okB := new(big.Int).SetString(bStr, 10)
+			if !okA || !okB {
+				return "0", nil
+			}
+			result := new(big.Int).Add(bigA, bigB)
+			return result.String(), nil
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
 // NewSQLiteLogStore creates a new SQLite log store
 func NewSQLiteLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
-
 	// Open SQLite database
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -95,7 +136,6 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS accounts (
 			address TEXT PRIMARY KEY,
-			metadata TEXT NOT NULL DEFAULT '{}',
 			first_usage TEXT,
 			insertion_date TEXT,
 			updated_at TEXT
@@ -107,40 +147,58 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 		return fmt.Errorf("creating accounts table: %w", err)
 	}
 
-	return nil
-}
-
-func init() {
-	// Register bigint_add function (used in applyBalanceDiffs)
-	err := sqlite.RegisterFunction("bigint_add", &sqlite.FunctionImpl{
-		NArgs:         2,
-		Deterministic: true,
-		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			if len(args) != 2 {
-				return "0", nil
-			}
-			aStr, okA := args[0].(string)
-			bStr, okB := args[1].(string)
-			if !okA || !okB {
-				return "0", nil
-			}
-			bigA, okA := new(big.Int).SetString(aStr, 10)
-			bigB, okB := new(big.Int).SetString(bStr, 10)
-			if !okA || !okB {
-				return "0", nil
-			}
-			result := new(big.Int).Add(bigA, bigB)
-			return result.String(), nil
-		},
-	})
+	// Create account_metadata table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS account_metadata (
+			account_address TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			PRIMARY KEY (account_address, key),
+			FOREIGN KEY (account_address) REFERENCES accounts(address) ON DELETE CASCADE
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_account_metadata_account ON account_metadata(account_address);
+		CREATE INDEX IF NOT EXISTS idx_account_metadata_key ON account_metadata(key);
+	`)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("creating account_metadata table: %w", err)
 	}
+
+	// Create transaction_metadata table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS transaction_metadata (
+			transaction_id INTEGER NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			PRIMARY KEY (transaction_id, key)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_transaction ON transaction_metadata(transaction_id);
+		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_key ON transaction_metadata(key);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating transaction_metadata table: %w", err)
+	}
+
+	return nil
 }
 
 // Close closes the database connection
 func (s *SQLiteLogStore) Close() error {
 	return s.db.Close()
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+// convertMetadataToStringMap converts map[string]string to map[string]interface{}
+func convertMetadataToStringMap(m map[string]string) map[string]interface{} {
+	result := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
 }
 
 // accumulateBalanceDiffs accumulates balance differences from postings into a map
@@ -175,6 +233,171 @@ func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, posting
 		}
 	}
 }
+
+// ============================================================================
+// Batch Operations - Accounts
+// ============================================================================
+
+// batchUpdateAccounts updates or inserts multiple accounts in a single batch operation
+// Uses ON CONFLICT to update first_usage with the earliest transaction timestamp
+// first_usage represents the timestamp of the oldest transaction involving this account
+func (s *SQLiteLogStore) batchUpdateAccounts(ctx context.Context, tx *sql.Tx, accountAddrs []string, dateStr string) error {
+	if len(accountAddrs) == 0 {
+		return nil
+	}
+
+	// Prepare batch insert statement with ON CONFLICT
+	// For existing accounts: update first_usage only if new timestamp is earlier (lexicographic comparison works for RFC3339)
+	// For new accounts: set first_usage to the transaction timestamp
+	// dateStr is the RFC3339 formatted timestamp of the transaction
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO accounts (address, first_usage, insertion_date, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(address) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			first_usage = CASE 
+				WHEN excluded.first_usage < accounts.first_usage THEN excluded.first_usage
+				ELSE accounts.first_usage
+			END,
+			insertion_date = COALESCE(NULLIF(accounts.insertion_date, ''), excluded.insertion_date)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing batch insert statement: %w", err)
+	}
+	defer stmt.Close()
+
+	// Insert/update all accounts
+	// dateStr is the transaction timestamp (RFC3339 format)
+	// For new accounts: first_usage is set to the transaction timestamp
+	// For existing accounts: first_usage is updated only if the transaction timestamp is earlier
+	for _, accountAddr := range accountAddrs {
+		if _, err := stmt.ExecContext(ctx, accountAddr, dateStr, dateStr, dateStr); err != nil {
+			return fmt.Errorf("batch updating account %s: %w", accountAddr, err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Batch Operations - Metadata
+// ============================================================================
+
+// batchUpsertAccountMetadata inserts or updates account metadata for multiple accounts in a single batch operation
+func (s *SQLiteLogStore) batchUpsertAccountMetadata(ctx context.Context, tx *sql.Tx, accountMetadata map[string]map[string]interface{}) error {
+	if len(accountMetadata) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT OR REPLACE INTO account_metadata (account_address, key, value)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing account metadata statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for accountAddr, metadataMap := range accountMetadata {
+		for key, value := range metadataMap {
+			valueJSON, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("marshaling metadata value: %w", err)
+			}
+			if _, err := stmt.ExecContext(ctx, accountAddr, key, string(valueJSON)); err != nil {
+				return fmt.Errorf("upserting account metadata: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// batchDeleteAccountMetadataKeys deletes multiple metadata keys for multiple accounts in a single batch operation
+func (s *SQLiteLogStore) batchDeleteAccountMetadataKeys(ctx context.Context, tx *sql.Tx, accountKeys map[string][]string) error {
+	if len(accountKeys) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		DELETE FROM account_metadata
+		WHERE account_address = ? AND key = ?
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing delete account metadata statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for accountAddr, keys := range accountKeys {
+		for _, key := range keys {
+			if _, err := stmt.ExecContext(ctx, accountAddr, key); err != nil {
+				return fmt.Errorf("deleting account metadata key: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// batchDeleteTransactionMetadataKeys deletes multiple metadata keys for multiple transactions in a single batch operation
+func (s *SQLiteLogStore) batchDeleteTransactionMetadataKeys(ctx context.Context, tx *sql.Tx, transactionKeys map[uint64][]string) error {
+	if len(transactionKeys) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		DELETE FROM transaction_metadata
+		WHERE transaction_id = ? AND key = ?
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing delete transaction metadata statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for transactionID, keys := range transactionKeys {
+		for _, key := range keys {
+			if _, err := stmt.ExecContext(ctx, transactionID, key); err != nil {
+				return fmt.Errorf("deleting transaction metadata key: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// batchUpsertTransactionMetadata inserts or updates transaction metadata for multiple transactions in a single batch operation
+func (s *SQLiteLogStore) batchUpsertTransactionMetadata(ctx context.Context, tx *sql.Tx, transactionMetadata map[uint64]map[string]interface{}) error {
+	if len(transactionMetadata) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT OR REPLACE INTO transaction_metadata (transaction_id, key, value)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing transaction metadata statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for transactionID, metadataMap := range transactionMetadata {
+		for key, value := range metadataMap {
+			valueJSON, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("marshaling metadata value: %w", err)
+			}
+			if _, err := stmt.ExecContext(ctx, transactionID, key, string(valueJSON)); err != nil {
+				return fmt.Errorf("upserting transaction metadata: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Balance Operations
+// ============================================================================
 
 // applyBalanceDiffs applies accumulated balance differences to the database
 // Uses INSERT ... ON CONFLICT DO UPDATE to add the diff directly in SQL
@@ -211,75 +434,18 @@ func (s *SQLiteLogStore) applyBalanceDiffs(ctx context.Context, tx *sql.Tx, bala
 	return nil
 }
 
-// updateAccount updates or inserts an account
-func (s *SQLiteLogStore) updateAccount(ctx context.Context, tx *sql.Tx, accountAddr string, metadataJSON string, dateStr string) error {
-	// Get current account data
-	var (
-		currentMetadata      sql.NullString
-		currentFirstUsage    sql.NullString
-		currentInsertionDate sql.NullString
-	)
+// ============================================================================
+// Log Processing - Transaction Handlers
+// ============================================================================
 
-	err := tx.QueryRowContext(ctx, `
-		SELECT metadata, first_usage, insertion_date
-		FROM accounts WHERE address = ?
-	`, accountAddr).Scan(&currentMetadata, &currentFirstUsage, &currentInsertionDate)
-
-	firstUsage := dateStr
-	if err == nil && currentFirstUsage.Valid {
-		firstUsage = currentFirstUsage.String
-	}
-
-	insertionDate := dateStr
-	if err == nil && currentInsertionDate.Valid {
-		insertionDate = currentInsertionDate.String
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT OR REPLACE INTO accounts (address, metadata, first_usage, insertion_date, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, accountAddr, metadataJSON, firstUsage, insertionDate, dateStr)
-	if err != nil {
-		return fmt.Errorf("updating account %s: %w", accountAddr, err)
-	}
-
-	return nil
-}
-
-// mergeMetadata merges two metadata JSON strings
-func mergeMetadata(metadata1, metadata2 string) (string, error) {
-	var map1, map2 map[string]interface{}
-
-	if metadata1 == "" || metadata1 == "{}" {
-		map1 = make(map[string]interface{})
-	} else {
-		if err := json.Unmarshal([]byte(metadata1), &map1); err != nil {
-			return metadata1, nil // Return first if second is invalid
-		}
-	}
-
-	if metadata2 == "" || metadata2 == "{}" {
-		return metadata1, nil
-	}
-
-	if err := json.Unmarshal([]byte(metadata2), &map2); err != nil {
-		return metadata1, nil // Return first if second is invalid
-	}
-
-	// Merge map2 into map1
-	for k, v := range map2 {
-		map1[k] = v
-	}
-
-	result, err := json.Marshal(map1)
-	if err != nil {
-		return metadata1, nil
-	}
-	return string(result), nil
-}
-
-// updateAccountsFromTransaction updates accounts table from a transaction
-func (s *SQLiteLogStore) updateAccountsFromTransaction(ctx context.Context, tx *sql.Tx, transaction *ledgerpb.CreatedTransaction, dateStr string) error {
+// accumulateAccountsFromTransaction accumulates account and metadata updates from a transaction
+func accumulateAccountsFromTransaction(
+	accountsToUpdate map[string]string,
+	accountMetadataBatch map[string]map[string]interface{},
+	transactionMetadataBatch map[uint64]map[string]interface{},
+	transaction *ledgerpb.CreatedTransaction,
+	dateStr string,
+) {
 	postings := transaction.Transaction.Postings
 
 	// Get unique accounts from postings
@@ -296,57 +462,55 @@ func (s *SQLiteLogStore) updateAccountsFromTransaction(ctx context.Context, tx *
 		}
 	}
 
-	// Update each account metadata
+	// Mark accounts for batch update (keep earliest transaction timestamp if multiple)
+	// dateStr is the RFC3339 formatted timestamp of the transaction
+	// first_usage will be set to the earliest transaction timestamp involving this account
 	for accountAddr := range accounts {
-		// Get current metadata
-		var currentMetadata sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT metadata FROM accounts WHERE address = ?`, accountAddr).Scan(&currentMetadata)
-		metadataJSON := "{}"
-		if err == nil && currentMetadata.Valid {
-			metadataJSON = currentMetadata.String
-		}
-
-		// Update account
-		if err := s.updateAccount(ctx, tx, accountAddr, metadataJSON, dateStr); err != nil {
-			return err
+		if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
+			accountsToUpdate[accountAddr] = dateStr
 		}
 	}
 
-	// Update account metadata from accountMetadata in transaction
+	// Accumulate account metadata from accountMetadata in transaction
 	if len(transaction.AccountMetadata) > 0 {
+		// Mark accounts for batch update
+		for accountAddr := range transaction.AccountMetadata {
+			if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
+				accountsToUpdate[accountAddr] = dateStr
+			}
+		}
+
+		// Accumulate account metadata for batch processing
 		for accountAddr, accountMetaStruct := range transaction.AccountMetadata {
-			// Get current metadata
-			var currentMetadata sql.NullString
-			err := tx.QueryRowContext(ctx, `SELECT metadata FROM accounts WHERE address = ?`, accountAddr).Scan(&currentMetadata)
-			metadataJSON := "{}"
-			if err == nil && currentMetadata.Valid {
-				metadataJSON = currentMetadata.String
+			if accountMetadataBatch[accountAddr] == nil {
+				accountMetadataBatch[accountAddr] = make(map[string]interface{})
 			}
-
-			// Convert account metadata to JSON
-			accountMetaJSON, err := json.Marshal(accountMetaStruct.Entries)
-			if err != nil {
-				return fmt.Errorf("marshaling account metadata: %w", err)
-			}
-
-			// Merge metadata
-			mergedMetadata, err := mergeMetadata(metadataJSON, string(accountMetaJSON))
-			if err != nil {
-				return fmt.Errorf("merging metadata: %w", err)
-			}
-
-			// Update account
-			if err := s.updateAccount(ctx, tx, accountAddr, mergedMetadata, dateStr); err != nil {
-				return err
+			for k, v := range convertMetadataToStringMap(accountMetaStruct.Entries) {
+				accountMetadataBatch[accountAddr][k] = v
 			}
 		}
 	}
 
-	return nil
+	// Accumulate transaction metadata if present
+	if transaction.Transaction != nil && transaction.Transaction.Metadata != nil && len(transaction.Transaction.Metadata) > 0 {
+		transactionID := transaction.Transaction.Id
+		if transactionID != 0 {
+			if transactionMetadataBatch[transactionID] == nil {
+				transactionMetadataBatch[transactionID] = make(map[string]interface{})
+			}
+			for k, v := range convertMetadataToStringMap(transaction.Transaction.Metadata) {
+				transactionMetadataBatch[transactionID][k] = v
+			}
+		}
+	}
 }
 
-// updateAccountsFromRevertedTransaction updates accounts table from a reverted transaction
-func (s *SQLiteLogStore) updateAccountsFromRevertedTransaction(ctx context.Context, tx *sql.Tx, revertedTransaction *ledgerpb.RevertedTransaction, dateStr string) error {
+// accumulateAccountsFromRevertedTransaction accumulates account updates from a reverted transaction
+func accumulateAccountsFromRevertedTransaction(
+	accountsToUpdate map[string]string,
+	revertedTransaction *ledgerpb.RevertedTransaction,
+	dateStr string,
+) {
 	postings := revertedTransaction.RevertedTransaction.Postings
 
 	// Get unique accounts from postings
@@ -363,104 +527,86 @@ func (s *SQLiteLogStore) updateAccountsFromRevertedTransaction(ctx context.Conte
 		}
 	}
 
-	// Update each account metadata
+	// Mark accounts for batch update (keep earliest transaction timestamp if multiple)
+	// dateStr is the RFC3339 formatted timestamp of the reverted transaction
+	// first_usage will be set to the earliest transaction timestamp involving this account
 	for accountAddr := range accounts {
-		// Get current metadata
-		var currentMetadata sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT metadata FROM accounts WHERE address = ?`, accountAddr).Scan(&currentMetadata)
-		metadataJSON := "{}"
-		if err == nil && currentMetadata.Valid {
-			metadataJSON = currentMetadata.String
-		}
-
-		// Update account
-		if err := s.updateAccount(ctx, tx, accountAddr, metadataJSON, dateStr); err != nil {
-			return err
+		if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
+			accountsToUpdate[accountAddr] = dateStr
 		}
 	}
-
-	return nil
 }
 
-// updateAccountFromSetMetadata updates account from SET_METADATA log
-func (s *SQLiteLogStore) updateAccountFromSetMetadata(ctx context.Context, tx *sql.Tx, savedMetadata *ledgerpb.SavedMetadata, dateStr string) error {
-	if savedMetadata.TargetType != ledgerpb.MetaTargetTypeAccount {
-		return nil // Only handle ACCOUNT type
-	}
+// accumulateMetadataFromSetMetadata accumulates metadata updates from SET_METADATA log
+func accumulateMetadataFromSetMetadata(
+	accountMetadataBatch map[string]map[string]interface{},
+	transactionMetadataBatch map[uint64]map[string]interface{},
+	accountsToCreate map[string]string,
+	savedMetadata *ledgerpb.SavedMetadata,
+	dateStr string,
+) {
+	if savedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
+		accountAddr := savedMetadata.GetAccountId()
+		if accountAddr == "" {
+			return
+		}
 
-	accountAddr := savedMetadata.GetAccountId()
-	if accountAddr == "" {
-		return nil
-	}
+		// Mark account for creation (keep earliest date if multiple)
+		if existingDate, exists := accountsToCreate[accountAddr]; !exists || dateStr < existingDate {
+			accountsToCreate[accountAddr] = dateStr
+		}
 
-	// Get current metadata
-	var currentMetadata sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT metadata FROM accounts WHERE address = ?`, accountAddr).Scan(&currentMetadata)
-	metadataJSON := "{}"
-	if err == nil && currentMetadata.Valid {
-		metadataJSON = currentMetadata.String
-	}
+		// Accumulate metadata for batch processing
+		if accountMetadataBatch[accountAddr] == nil {
+			accountMetadataBatch[accountAddr] = make(map[string]interface{})
+		}
+		for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
+			accountMetadataBatch[accountAddr][k] = v
+		}
+	} else if savedMetadata.TargetType == ledgerpb.MetaTargetTypeTransaction {
+		transactionID := savedMetadata.GetTransactionId()
+		if transactionID == 0 {
+			return
+		}
 
-	// Convert metadata to JSON
-	metaJSON, err := json.Marshal(savedMetadata.Metadata)
-	if err != nil {
-		return fmt.Errorf("marshaling metadata: %w", err)
+		// Accumulate metadata for batch processing
+		if transactionMetadataBatch[transactionID] == nil {
+			transactionMetadataBatch[transactionID] = make(map[string]interface{})
+		}
+		for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
+			transactionMetadataBatch[transactionID][k] = v
+		}
 	}
-
-	// Merge metadata
-	mergedMetadata, err := mergeMetadata(metadataJSON, string(metaJSON))
-	if err != nil {
-		return fmt.Errorf("merging metadata: %w", err)
-	}
-
-	// Update account
-	return s.updateAccount(ctx, tx, accountAddr, mergedMetadata, dateStr)
 }
 
-// updateAccountFromDeleteMetadata updates account from DELETE_METADATA log
-func (s *SQLiteLogStore) updateAccountFromDeleteMetadata(ctx context.Context, tx *sql.Tx, deletedMetadata *ledgerpb.DeletedMetadata, dateStr string) error {
-	if deletedMetadata.TargetType != ledgerpb.MetaTargetTypeAccount {
-		return nil // Only handle ACCOUNT type
-	}
+// accumulateMetadataFromDeleteMetadata accumulates metadata deletions from DELETE_METADATA log
+func accumulateMetadataFromDeleteMetadata(
+	accountMetadataDeletes map[string][]string,
+	transactionMetadataDeletes map[uint64][]string,
+	deletedMetadata *ledgerpb.DeletedMetadata,
+) {
+	if deletedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
+		accountAddr := deletedMetadata.GetAccountId()
+		if accountAddr == "" {
+			return
+		}
 
-	accountAddr := deletedMetadata.GetAccountId()
-	if accountAddr == "" {
-		return nil
-	}
+		// Accumulate deletion for batch processing
+		accountMetadataDeletes[accountAddr] = append(accountMetadataDeletes[accountAddr], deletedMetadata.Key)
+	} else if deletedMetadata.TargetType == ledgerpb.MetaTargetTypeTransaction {
+		transactionID := deletedMetadata.GetTransactionId()
+		if transactionID == 0 {
+			return
+		}
 
-	// Get current metadata
-	var currentMetadata sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT metadata FROM accounts WHERE address = ?`, accountAddr).Scan(&currentMetadata)
-	if err == sql.ErrNoRows {
-		return nil // Account doesn't exist, nothing to do
+		// Accumulate deletion for batch processing
+		transactionMetadataDeletes[transactionID] = append(transactionMetadataDeletes[transactionID], deletedMetadata.Key)
 	}
-	if err != nil {
-		return fmt.Errorf("getting account metadata: %w", err)
-	}
-
-	metadataJSON := "{}"
-	if currentMetadata.Valid {
-		metadataJSON = currentMetadata.String
-	}
-
-	// Parse metadata
-	var metadata map[string]interface{}
-	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
-		return fmt.Errorf("unmarshaling metadata: %w", err)
-	}
-
-	// Remove key
-	delete(metadata, deletedMetadata.Key)
-
-	// Marshal back
-	updatedMetadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("marshaling metadata: %w", err)
-	}
-
-	// Update account
-	return s.updateAccount(ctx, tx, accountAddr, string(updatedMetadataJSON), dateStr)
 }
+
+// ============================================================================
+// LogWriter Implementation
+// ============================================================================
 
 // InsertLogs inserts logs into the SQLite database (implements LogWriter)
 func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
@@ -491,6 +637,13 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 	// Accumulate balance differences for all logs
 	balanceDiffs := make(map[string]map[string]*big.Int)
 
+	// Accumulate metadata operations for batch processing
+	accountMetadataBatch := make(map[string]map[string]interface{})
+	transactionMetadataBatch := make(map[uint64]map[string]interface{})
+	accountMetadataDeletes := make(map[string][]string)
+	transactionMetadataDeletes := make(map[uint64][]string)
+	accountsToCreate := make(map[string]string) // account -> dateStr
+
 	for _, log := range logs {
 		// Validate log data
 		if log.Data == nil {
@@ -504,6 +657,7 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 		}
 
 		// Format date as RFC3339 string (SQLite stores dates as TEXT)
+		// This timestamp will be used to update first_usage for accounts involved in the transaction
 		var dateStr string
 		if log.Date != nil {
 			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
@@ -551,10 +705,14 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 			if payload.CreatedTransaction != nil && payload.CreatedTransaction.Transaction != nil {
 				// Accumulate balance differences
 				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
-				// Update accounts
-				if err := s.updateAccountsFromTransaction(ctx, tx, payload.CreatedTransaction, dateStr); err != nil {
-					return fmt.Errorf("updating accounts from transaction: %w", err)
-				}
+				// Accumulate account and metadata updates for batch processing
+				accumulateAccountsFromTransaction(
+					accountsToCreate,
+					accountMetadataBatch,
+					transactionMetadataBatch,
+					payload.CreatedTransaction,
+					dateStr,
+				)
 			}
 		case *ledgerpb.LogPayload_RevertedTransaction:
 			if payload.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction != nil {
@@ -572,24 +730,32 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 				}
 				// Accumulate balance differences (reversed)
 				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
-				// Update accounts
-				if err := s.updateAccountsFromRevertedTransaction(ctx, tx, payload.RevertedTransaction, dateStr); err != nil {
-					return fmt.Errorf("updating accounts from reverted transaction: %w", err)
-				}
+				// Accumulate account updates for batch processing
+				accumulateAccountsFromRevertedTransaction(
+					accountsToCreate,
+					payload.RevertedTransaction,
+					dateStr,
+				)
 			}
 		case *ledgerpb.LogPayload_SavedMetadata:
 			if payload.SavedMetadata != nil {
-				// Update account metadata
-				if err := s.updateAccountFromSetMetadata(ctx, tx, payload.SavedMetadata, dateStr); err != nil {
-					return fmt.Errorf("updating account from set metadata: %w", err)
-				}
+				// Accumulate metadata updates for batch processing
+				accumulateMetadataFromSetMetadata(
+					accountMetadataBatch,
+					transactionMetadataBatch,
+					accountsToCreate,
+					payload.SavedMetadata,
+					dateStr,
+				)
 			}
 		case *ledgerpb.LogPayload_DeletedMetadata:
 			if payload.DeletedMetadata != nil {
-				// Update account metadata
-				if err := s.updateAccountFromDeleteMetadata(ctx, tx, payload.DeletedMetadata, dateStr); err != nil {
-					return fmt.Errorf("updating account from delete metadata: %w", err)
-				}
+				// Accumulate metadata deletions for batch processing
+				accumulateMetadataFromDeleteMetadata(
+					accountMetadataDeletes,
+					transactionMetadataDeletes,
+					payload.DeletedMetadata,
+				)
 			}
 		}
 	}
@@ -597,6 +763,48 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 	// Apply all accumulated balance differences in one batch
 	if err := s.applyBalanceDiffs(ctx, tx, balanceDiffs); err != nil {
 		return fmt.Errorf("applying balance differences: %w", err)
+	}
+
+	// Batch create/update all accounts
+	// Group accounts by date to batch them efficiently
+	if len(accountsToCreate) > 0 {
+		accountsByDate := make(map[string][]string)
+		for accountAddr, dateStr := range accountsToCreate {
+			accountsByDate[dateStr] = append(accountsByDate[dateStr], accountAddr)
+		}
+		for dateStr, accountAddrs := range accountsByDate {
+			if err := s.batchUpdateAccounts(ctx, tx, accountAddrs, dateStr); err != nil {
+				return fmt.Errorf("batch updating accounts: %w", err)
+			}
+		}
+	}
+
+	// Batch upsert all account metadata
+	if len(accountMetadataBatch) > 0 {
+		if err := s.batchUpsertAccountMetadata(ctx, tx, accountMetadataBatch); err != nil {
+			return fmt.Errorf("batch upserting account metadata: %w", err)
+		}
+	}
+
+	// Batch upsert all transaction metadata
+	if len(transactionMetadataBatch) > 0 {
+		if err := s.batchUpsertTransactionMetadata(ctx, tx, transactionMetadataBatch); err != nil {
+			return fmt.Errorf("batch upserting transaction metadata: %w", err)
+		}
+	}
+
+	// Batch delete all account metadata keys
+	if len(accountMetadataDeletes) > 0 {
+		if err := s.batchDeleteAccountMetadataKeys(ctx, tx, accountMetadataDeletes); err != nil {
+			return fmt.Errorf("batch deleting account metadata keys: %w", err)
+		}
+	}
+
+	// Batch delete all transaction metadata keys
+	if len(transactionMetadataDeletes) > 0 {
+		if err := s.batchDeleteTransactionMetadataKeys(ctx, tx, transactionMetadataDeletes); err != nil {
+			return fmt.Errorf("batch deleting transaction metadata keys: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -607,42 +815,23 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 	return nil
 }
 
-// GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
-func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, data, date, idempotency_key, idempotency_hash
-		FROM logs
-		WHERE idempotency_key = ?
-	`, idempotencyKey)
-
-	log, err := s.scanLog(row)
+// GetLastLogID returns the highest log id in the logs table (implements LogWriter)
+func (s *SQLiteLogStore) GetLastLogID(ctx context.Context) (uint64, error) {
+	var maxID sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM logs`).Scan(&maxID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("getting log by idempotency key: %w", err)
+		return 0, fmt.Errorf("querying max id: %w", err)
 	}
-	return log, nil
+	if !maxID.Valid {
+		// No logs yet, return 0
+		return 0, nil
+	}
+	return uint64(maxID.Int64), nil
 }
 
-// GetLastLog retrieves the last log by ID (implements LogReader)
-func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, data, date, idempotency_key, idempotency_hash
-		FROM logs
-		ORDER BY id DESC
-		LIMIT 1
-	`)
-
-	log, err := s.scanLog(row)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("getting last log: %w", err)
-	}
-	return log, nil
-}
+// ============================================================================
+// LogReader Implementation
+// ============================================================================
 
 // scanLog scans a row into a protobuf Log struct
 func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledgerpb.Log, error) {
@@ -689,12 +878,6 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledgerpb.Log, error) {
 	}
 
 	return log, nil
-}
-
-// sqliteLogCursor implements Cursor[*ledgerpb.Log] for SQLite
-type sqliteLogCursor struct {
-	rows  *sql.Rows
-	store *SQLiteLogStore
 }
 
 func (c *sqliteLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
@@ -796,19 +979,46 @@ func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64, to uint64)
 	}, nil
 }
 
-// GetLastLogID returns the highest log id in the logs table (implements LogWriter)
-func (s *SQLiteLogStore) GetLastLogID(ctx context.Context) (uint64, error) {
-	var maxID sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM logs`).Scan(&maxID)
+// GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
+func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, data, date, idempotency_key, idempotency_hash
+		FROM logs
+		WHERE idempotency_key = ?
+	`, idempotencyKey)
+
+	log, err := s.scanLog(row)
 	if err != nil {
-		return 0, fmt.Errorf("querying max id: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting log by idempotency key: %w", err)
 	}
-	if !maxID.Valid {
-		// No logs yet, return 0
-		return 0, nil
-	}
-	return uint64(maxID.Int64), nil
+	return log, nil
 }
+
+// GetLastLog retrieves the last log by ID (implements LogReader)
+func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, data, date, idempotency_key, idempotency_hash
+		FROM logs
+		ORDER BY id DESC
+		LIMIT 1
+	`)
+
+	log, err := s.scanLog(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting last log: %w", err)
+	}
+	return log, nil
+}
+
+// ============================================================================
+// BalancesStore Implementation
+// ============================================================================
 
 // GetBalances retrieves balances from the balances table (implements BalancesStore)
 func (s *SQLiteLogStore) GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
@@ -878,7 +1088,11 @@ func (s *SQLiteLogStore) GetBalances(ctx context.Context, balanceQuery map[strin
 	return result, nil
 }
 
-// GetAccountMetadata retrieves account metadata for multiple accounts from the accounts table (implements AccountStore)
+// ============================================================================
+// AccountStore Implementation
+// ============================================================================
+
+// GetAccountMetadata retrieves account metadata for multiple accounts from account_metadata table (implements AccountStore)
 func (s *SQLiteLogStore) GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
@@ -887,20 +1101,23 @@ func (s *SQLiteLogStore) GetAccountMetadata(ctx context.Context, accounts []stri
 		return result, nil
 	}
 
+	// Initialize with empty metadata for all requested accounts
+	for _, account := range accounts {
+		result[account] = make(metadata.Metadata)
+	}
+
 	// Build placeholders for IN clause
 	placeholders := make([]string, len(accounts))
 	args := make([]interface{}, len(accounts))
 	for i, account := range accounts {
 		placeholders[i] = "?"
 		args[i] = account
-		// Initialize with empty metadata for all requested accounts
-		result[account] = make(metadata.Metadata)
 	}
 
 	query := fmt.Sprintf(`
-		SELECT address, metadata
-		FROM accounts
-		WHERE address IN (%s)
+		SELECT account_address, key, value
+		FROM account_metadata
+		WHERE account_address IN (%s)
 	`, strings.Join(placeholders, ", "))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -911,21 +1128,35 @@ func (s *SQLiteLogStore) GetAccountMetadata(ctx context.Context, accounts []stri
 
 	for rows.Next() {
 		var address string
-		var metadataJSON string
+		var key string
+		var valueJSON string
 
-		if err := rows.Scan(&address, &metadataJSON); err != nil {
+		if err := rows.Scan(&address, &key, &valueJSON); err != nil {
 			return nil, fmt.Errorf("scanning account metadata row: %w", err)
 		}
 
-		// Parse metadata
-		accountMetadata := make(metadata.Metadata)
-		if metadataJSON != "" && metadataJSON != "{}" {
-			if err := json.Unmarshal([]byte(metadataJSON), &accountMetadata); err != nil {
-				return nil, fmt.Errorf("unmarshaling metadata for account %s: %w", address, err)
-			}
+		// Parse value JSON
+		var value interface{}
+		if err := json.Unmarshal([]byte(valueJSON), &value); err != nil {
+			return nil, fmt.Errorf("unmarshaling metadata value for account %s key %s: %w", address, key, err)
 		}
 
-		result[address] = accountMetadata
+		// Ensure the account exists in result map
+		if _, exists := result[address]; !exists {
+			result[address] = make(metadata.Metadata)
+		}
+		// Convert value to string if it's a string, otherwise convert to string via JSON
+		var valueStr string
+		if strVal, ok := value.(string); ok {
+			valueStr = strVal
+		} else {
+			valueJSON, err := json.Marshal(value)
+			if err != nil {
+				return nil, fmt.Errorf("marshaling metadata value for account %s key %s: %w", address, key, err)
+			}
+			valueStr = string(valueJSON)
+		}
+		result[address][key] = valueStr
 	}
 
 	if err := rows.Err(); err != nil {

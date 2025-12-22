@@ -204,7 +204,6 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 				})
 				return ledgerpb.NewLog(payload).
 					WithID(1).
-					WithSequence(1).
 					WithDate(now)
 			}(),
 
@@ -220,7 +219,6 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 				})
 				return ledgerpb.NewLog(payload).
 					WithID(2).
-					WithSequence(2).
 					WithDate(now.Add(time.Second))
 			}(),
 
@@ -233,7 +231,6 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 				})
 				return ledgerpb.NewLog(payload).
 					WithID(3).
-					WithSequence(3).
 					WithDate(now.Add(2 * time.Second))
 			}(),
 		}

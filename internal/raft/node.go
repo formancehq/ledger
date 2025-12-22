@@ -35,6 +35,7 @@ type Node[State any, F FSM[State]] struct {
 	stopped   chan struct{}
 	ctx       context.Context
 	cancel    func()
+	proposeCh chan []byte
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -75,6 +76,7 @@ func NewNode[State any, F FSM[State]](
 		storage:   storage,
 		transport: transport,
 		config:    cfg,
+		proposeCh: make(chan []byte, 100),
 	}, nil
 }
 
@@ -85,11 +87,6 @@ func (node *Node[State, F]) Inner() F {
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, any, error) {
-	// Serialize the command to binary format
-	cmdData, err := cmd.MarshalBinary()
-	if err != nil {
-		return 0, nil, err
-	}
 
 	// Create a future for this application using command ID as key
 	future := &applyFuture{
@@ -102,13 +99,16 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 	node.futures[cmd.ID] = future
 	node.mu.Unlock()
 
+	cmdData, err := cmd.MarshalBinary()
+	if err != nil {
+		return 0, nil, fmt.Errorf("marshaling command: %w", err)
+	}
+
 	// Propose the command
-	if err := node.rawNode.Propose(cmdData); err != nil {
-		// Clean up the future
-		node.mu.Lock()
-		delete(node.futures, cmd.ID)
-		node.mu.Unlock()
-		return 0, nil, err
+	select {
+	case node.proposeCh <- cmdData:
+	default:
+		return 0, nil, fmt.Errorf("propose channel full")
 	}
 
 	// Wait for the future to complete with timeout
@@ -202,6 +202,24 @@ func (node *Node[State, F]) readyLoop() {
 			if err := node.rawNode.Step(msg); err != nil {
 				panic(err)
 			}
+		case cmd := <-node.proposeCh:
+			if err := node.rawNode.Propose(cmd); err != nil {
+				panic(err)
+			}
+
+			//	// todo: try to drain more
+			//	until := time.After(10 * time.Millisecond)
+			//l:
+			//	for {
+			//		select {
+			//		case <-until:
+			//			break l
+			//		case cmd := <-node.proposeCh:
+			//			if err := node.rawNode.Propose(cmd); err != nil {
+			//				panic(err)
+			//			}
+			//		}
+			//	}
 		}
 
 		if node.rawNode.HasReady() {

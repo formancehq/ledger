@@ -878,16 +878,15 @@ components:
       type: object
       required:
         - ledgerInfo
-        - lastSequence
+        - lastLogIDce
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
-          description: Ledger information
-        lastSequence:
+        lastLogID:
           type: integer
           format: int64
           minimum: 0
-          description: Last global sequence number
+          description: Last global id number
 
     NodeInfo:
       type: object

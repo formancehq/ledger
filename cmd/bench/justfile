@@ -1,3 +1,3 @@
 run:
-    go run . --ledger.url http://127.0.0.1:9000 --ledger.name ledger0 --parallelism 3 --script scripts/any_unbounded_to_any.js
+    go run . --ledger.url http://127.0.0.1:9000 --ledger.name ledger0 --parallelism 6 --script scripts/any_unbounded_to_any.js
     go tool pprof -http=:8080 cpu.prof

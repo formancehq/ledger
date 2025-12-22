@@ -28,8 +28,8 @@ type FSM struct {
 func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider func(uint64) service.LogReader, ledgerInfo *ledgerpb.LedgerInfo) *FSM {
 	return &FSM{
 		state: ledgerpb.LedgerState{
-			LedgerInfo:   ledgerInfo,
-			LastSequence: 0,
+			LedgerInfo: ledgerInfo,
+			LastLogID:  0,
 		},
 		logger: logger.WithFields(map[string]any{
 			"service": "ledgerpb.fsm",
@@ -46,8 +46,8 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 	defer f.mu.RUnlock()
 
 	return ledgerpb.LedgerState{
-		LedgerInfo:   f.state.LedgerInfo,
-		LastSequence: f.state.LastSequence,
+		LedgerInfo: f.state.LedgerInfo,
+		LastLogID:  f.state.LastLogID,
 	}
 }
 
@@ -59,21 +59,12 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 		return nil, err
 	}
 
-	// insertCmd.Log is *ledgerpb.Log (from InsertLogCommand)
-	log := insertCmd.Log
-	if log == nil {
-		return nil, fmt.Errorf("log is nil")
-	}
-
 	f.mu.Lock()
-	f.state.LastSequence++
-	log.Id = f.state.LastSequence
+	f.state.LastLogID++
+	insertCmd.Log.Id = f.state.LastLogID
 	f.mu.Unlock()
 
-	f.logger.
-		WithFields(map[string]any{"id": log.Id}).
-		Infof("Log stored in memory and persisted to store via FSM")
-	return log, nil
+	return insertCmd.Log, nil
 }
 
 func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raft.ApplyResult, error) {
@@ -101,6 +92,9 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 		}
 	}
 	if len(logs) > 0 {
+		f.logger.
+			WithFields(map[string]any{"count": len(logs)}).
+			Infof("Log stored in memory and persisted to store via FSM")
 		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
 			return nil, err
 		}
@@ -115,7 +109,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 
 	snapshotData := map[string]interface{}{
 		"ledgerInfo":   f.state.LedgerInfo,
-		"lastSequence": f.state.LastSequence,
+		"lastLogID": f.state.LastLogID,
 	}
 
 	// Marshal to JSON
@@ -139,21 +133,18 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	f.state.LedgerInfo = snapshotData.LedgerInfo
 	f.mu.Unlock()
 
-	// Compare snapshot's lastSequence with the log store's lastLogID
-	storeLastSequence, err := f.logWriter.GetLastLogID(ctx)
+	storeLastLogID, err := f.logWriter.GetLastLogID(ctx)
 	if err != nil {
 		panic(fmt.Errorf("getting last log ID from log store: %w", err))
 	}
 
-	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
-	if storeLastSequence < snapshotData.LastSequence {
+	if storeLastLogID < snapshotData.LastLogID {
 		f.logger.WithFields(map[string]any{
-			"snapshotSequence": snapshotData.LastSequence,
-			"storeSequence":    storeLastSequence,
+			"snapshotLogID": snapshotData.LastLogID,
+			"storeLogID":    storeLastLogID,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
-		// Read all logs from the reader starting from the sequence after the snapshot
-		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, storeLastSequence, snapshotData.LastSequence) // 0 = no limit
+		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, storeLastLogID, snapshotData.LastLogID) // 0 = no limit
 		if err != nil {
 			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
 		}
@@ -188,24 +179,22 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 				"logsWritten": len(logsToWrite),
 			}).Infof("Caught up logs from reader to writer")
 
-			// Update lastSequence to match the store's last log ID
 			f.mu.Lock()
-			f.state.LastSequence = logsToWrite[len(logsToWrite)-1].Id
+			f.state.LastLogID = logsToWrite[len(logsToWrite)-1].Id
 			f.mu.Unlock()
 		}
 	} else {
-		// Snapshot is up to date or ahead, use snapshot's sequence
 		f.mu.Lock()
-		f.state.LastSequence = snapshotData.LastSequence
+		f.state.LastLogID = snapshotData.LastLogID
 		f.mu.Unlock()
 	}
 
 	f.mu.RLock()
-	lastSequence := f.state.LastSequence
+	lastLogID := f.state.LastLogID
 	f.mu.RUnlock()
 
 	f.logger.WithFields(map[string]any{
-		"ledger":        f.state.LedgerInfo.Name,
-		"storeSequence": lastSequence,
+		"ledger":     f.state.LedgerInfo.Name,
+		"storeLogID": lastLogID,
 	}).Infof("Ledger FSM restored from snapshot")
 }

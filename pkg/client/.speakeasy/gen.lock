@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: ae1cab00722c4195aad147104812a149
+  docChecksum: bc4c5aad2a68a3c037425c44dfa3af13
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.19
-  configChecksum: 37037d55d686ecfd3e7203af6cdf29a3
+  releaseVersion: 0.11.20
+  configChecksum: 088132b6150cbbca9515f08880a57b74
 features:
   go:
     additionalDependencies: 0.1.0
@@ -362,7 +362,7 @@ examples:
           ledgerName: "<value>"
       responses:
         "200":
-          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastSequence": 317198}}}
+          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2024-12-22T17:41:17.836Z"}}}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
