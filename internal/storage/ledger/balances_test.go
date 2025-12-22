@@ -413,18 +413,18 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("$or with partial address and exact address", func(t *testing.T) {
 		t.Parallel()
 
-		// Query: accounts matching "users::" OR exact address "world"
+		// Query: accounts matching "users:" (2 segments) OR exact address "world"
 		// Expected: users:1, users:2, world (NOT xxx - it doesn't match either condition)
 		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(now.Add(time.Minute)),
 			Builder: query.Or(
-				query.Match("address", "users::"),
+				query.Match("address", "users:"),
 				query.Match("address", "world"),
 			),
 		})
 		require.NoError(t, err)
 		// Should return aggregated volumes for users:1, users:2, and world
-		// Note: xxx is NOT included as it doesn't match "users::" or "world"
+		// Note: xxx is NOT included as it doesn't match "users:" or "world"
 		// For EUR: only world has EUR Output (sending to xxx), xxx has EUR Input but is excluded
 		RequireEqual(t, ledger.AggregatedVolumes{
 			Aggregated: ledger.VolumesByAssets{
@@ -449,14 +449,14 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("$not with partial address", func(t *testing.T) {
 		t.Parallel()
 
-		// Query: accounts NOT matching "users::"
+		// Query: accounts NOT matching "users:" (2 segments)
 		// Expected: world, xxx
 		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(now.Add(time.Minute)),
-			Builder: query.Not(query.Match("address", "users::")),
+			Builder: query.Not(query.Match("address", "users:")),
 		})
 		require.NoError(t, err)
-		// Should return aggregated volumes for world and xxx (not matching users::)
+		// Should return aggregated volumes for world and xxx (not matching users:)
 		RequireEqual(t, ledger.AggregatedVolumes{
 			Aggregated: ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
