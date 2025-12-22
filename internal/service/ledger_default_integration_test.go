@@ -248,7 +248,6 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		})
 		txLog := ledgerpb.NewLog(payload).
 			WithID(1).
-			WithSequence(1).
 			WithDate(now)
 
 		err := store.InsertLogs(ctx, txLog)
@@ -291,6 +290,6 @@ func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) e
 	return m.store.InsertLogs(ctx, logs...)
 }
 
-func (m *mockLogWriter) GetLastSequenceID(ctx context.Context) (uint64, error) {
-	return m.store.GetLastSequenceID(ctx)
+func (m *mockLogWriter) GetLastLogID(ctx context.Context) (uint64, error) {
+	return m.store.GetLastLogID(ctx)
 }

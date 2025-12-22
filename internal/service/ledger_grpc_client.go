@@ -108,9 +108,9 @@ func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerName string, w Expo
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
 func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	req := &ledgerpb.StreamLogsRequest{
-		Ledger:       g.name,
-		FromSequence: from,
-		ToSequence:   to, // 0 means no limit
+		Ledger: g.name,
+		FromId: from,
+		ToId:   to, // 0 means no limit
 	}
 
 	stream, err := g.client.StreamLogs(ctx, req)

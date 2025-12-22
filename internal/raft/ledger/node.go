@@ -152,9 +152,9 @@ func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	return nil
 }
 
-// GetLastSequenceID returns the highest sequence number from the underlying log store (implements LogWriter)
-func (node *Node) GetLastSequenceID(ctx context.Context) (uint64, error) {
-	return node.logStore.GetLastSequenceID(ctx)
+// GetLastLogID returns the highest log id from the underlying log store (implements LogWriter)
+func (node *Node) GetLastLogID(ctx context.Context) (uint64, error) {
+	return node.logStore.GetLastLogID(ctx)
 }
 
 func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {

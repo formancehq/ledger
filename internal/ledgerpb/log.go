@@ -40,13 +40,9 @@ func (l *Log) WithIdempotencyKey(key string) *Log {
 	return l
 }
 
-// WithSequence sets the sequence number
+// WithSequence is deprecated, use WithID instead
 func (l *Log) WithSequence(sequence uint64) *Log {
-	if l == nil {
-		l = &Log{}
-	}
-	l.Sequence = sequence
-	return l
+	return l.WithID(sequence)
 }
 
 // WithID sets the ID of the log
@@ -68,7 +64,7 @@ func ChainLog(l *Log, previous *Log) *Log {
 		Date:            l.Date,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
-		Sequence:        l.Sequence,
+		Id:              l.Id,
 	}
 	if previous != nil && previous.Id != 0 {
 		ret.Id = previous.Id + 1
@@ -87,7 +83,7 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 		IdempotencyKey  string          `json:"idempotencyKey"`
 		IdempotencyHash string          `json:"idempotencyHash"`
 		ID              *uint64         `json:"id"`
-		Sequence        uint64          `json:"sequence"`
+		Sequence        uint64          `json:"sequence"` // Deprecated: kept for backward compatibility
 	}
 	rawLog := auxLog{}
 	if err := json.Unmarshal(data, &rawLog); err != nil {
@@ -101,8 +97,10 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 	l.IdempotencyHash = rawLog.IdempotencyHash
 	if rawLog.ID != nil {
 		l.Id = *rawLog.ID
+	} else if rawLog.Sequence != 0 {
+		// Backward compatibility: use Sequence as Id if ID is not set
+		l.Id = rawLog.Sequence
 	}
-	l.Sequence = rawLog.Sequence
 
 	// Parse LogPayload from JSON using the type from rawLog
 	if len(rawLog.Data) > 0 {
@@ -127,7 +125,7 @@ func (l *Log) MarshalJSON() ([]byte, error) {
 		IdempotencyKey  string      `json:"idempotencyKey,omitempty"`
 		IdempotencyHash string      `json:"idempotencyHash,omitempty"`
 		ID              *uint64     `json:"id,omitempty"`
-		Sequence        uint64      `json:"sequence,omitempty"`
+		Sequence        uint64      `json:"sequence,omitempty"` // Deprecated: kept for backward compatibility, same as id
 	}
 
 	aux := auxLog{
@@ -135,7 +133,7 @@ func (l *Log) MarshalJSON() ([]byte, error) {
 		Data:            l.Data,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
-		Sequence:        l.Sequence,
+		Sequence:        l.Id, // Backward compatibility: emit Sequence as Id
 	}
 
 	if l.Date != nil {

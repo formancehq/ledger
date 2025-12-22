@@ -49,7 +49,7 @@ type LedgerServiceClient interface {
 	DeleteAccountMetadata(ctx context.Context, in *DeleteAccountMetadataRequest, opts ...grpc.CallOption) (*DeleteAccountMetadataResponse, error)
 	// DeleteTransactionMetadata deletes metadata for a transaction
 	DeleteTransactionMetadata(ctx context.Context, in *DeleteTransactionMetadataRequest, opts ...grpc.CallOption) (*DeleteTransactionMetadataResponse, error)
-	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
+	// StreamLogs streams logs from a ledger, optionally starting from a log ID
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
 }
 
@@ -170,7 +170,7 @@ type LedgerServiceServer interface {
 	DeleteAccountMetadata(context.Context, *DeleteAccountMetadataRequest) (*DeleteAccountMetadataResponse, error)
 	// DeleteTransactionMetadata deletes metadata for a transaction
 	DeleteTransactionMetadata(context.Context, *DeleteTransactionMetadataRequest) (*DeleteTransactionMetadataResponse, error)
-	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
+	// StreamLogs streams logs from a ledger, optionally starting from a log ID
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
 	mustEmbedUnimplementedLedgerServiceServer()
 }

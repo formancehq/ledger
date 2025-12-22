@@ -385,9 +385,9 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 				conn := fsm.multiplexedTransport.GetPeerConnection(NodeIDFromLedgerNodeID(peerID))
 				client := ledgerpb.NewLedgerServiceClient(conn)
 				streamLogs, err := client.StreamLogs(ctx, &ledgerpb.StreamLogsRequest{
-					Ledger:       ledgerInfo.GetName(),
-					FromSequence: from,
-					ToSequence:   to,
+					Ledger: ledgerInfo.GetName(),
+					FromId: from,
+					ToId:   to,
 				})
 				if err != nil {
 					return nil, err

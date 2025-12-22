@@ -44,12 +44,12 @@ func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], ma
 // LogWriter handles log writing operations
 type LogWriter interface {
 	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
-	GetLastSequenceID(ctx context.Context) (uint64, error)
+	GetLastLogID(ctx context.Context) (uint64, error)
 }
 
 // LogReader handles log reading operations
 type LogReader interface {
-	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional sequence number to start from (0 = from beginning), to: optional sequence number to stop at (0 = until end, inclusive)
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
 }
 
 type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)

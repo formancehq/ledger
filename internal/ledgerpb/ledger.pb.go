@@ -2175,8 +2175,8 @@ func (x *DeleteTransactionMetadataResponse) GetLog() *Log {
 type StreamLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	FromSequence  uint64                 `protobuf:"varint,2,opt,name=from_sequence,json=fromSequence,proto3" json:"from_sequence,omitempty"` // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
-	ToSequence    uint64                 `protobuf:"varint,3,opt,name=to_sequence,json=toSequence,proto3" json:"to_sequence,omitempty"`       // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
+	FromId        uint64                 `protobuf:"varint,2,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"` // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
+	ToId          uint64                 `protobuf:"varint,3,opt,name=to_id,json=toId,proto3" json:"to_id,omitempty"`       // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2218,16 +2218,16 @@ func (x *StreamLogsRequest) GetLedger() string {
 	return ""
 }
 
-func (x *StreamLogsRequest) GetFromSequence() uint64 {
+func (x *StreamLogsRequest) GetFromId() uint64 {
 	if x != nil {
-		return x.FromSequence
+		return x.FromId
 	}
 	return 0
 }
 
-func (x *StreamLogsRequest) GetToSequence() uint64 {
+func (x *StreamLogsRequest) GetToId() uint64 {
 	if x != nil {
-		return x.ToSequence
+		return x.ToId
 	}
 	return 0
 }
@@ -2282,8 +2282,7 @@ type Log struct {
 	Date            *Timestamp             `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
 	IdempotencyKey  string                 `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	IdempotencyHash string                 `protobuf:"bytes,4,opt,name=idempotency_hash,json=idempotencyHash,proto3" json:"idempotency_hash,omitempty"`
-	Id              uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`             // Optional log ID
-	Sequence        uint64                 `protobuf:"varint,6,opt,name=sequence,proto3" json:"sequence,omitempty"` // Global sequence number
+	Id              uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"` // Optional log ID
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2349,13 +2348,6 @@ func (x *Log) GetIdempotencyHash() string {
 func (x *Log) GetId() uint64 {
 	if x != nil {
 		return x.Id
-	}
-	return 0
-}
-
-func (x *Log) GetSequence() uint64 {
-	if x != nil {
-		return x.Sequence
 	}
 	return 0
 }
@@ -3257,21 +3249,19 @@ const file_ledger_proto_rawDesc = "" +
 	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
 	"parameters\"B\n" +
 	"!DeleteTransactionMetadataResponse\x12\x1d\n" +
-	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"q\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"Y\n" +
 	"\x11StreamLogsRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rfrom_sequence\x18\x02 \x01(\x04R\ffromSequence\x12\x1f\n" +
-	"\vto_sequence\x18\x03 \x01(\x04R\n" +
-	"toSequence\"3\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x17\n" +
+	"\afrom_id\x18\x02 \x01(\x04R\x06fromId\x12\x13\n" +
+	"\x05to_id\x18\x03 \x01(\x04R\x04toId\"3\n" +
 	"\x12StreamLogsResponse\x12\x1d\n" +
-	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"\xd4\x01\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"\xb8\x01\n" +
 	"\x03Log\x12&\n" +
 	"\x04data\x18\x01 \x01(\v2\x12.ledger.LogPayloadR\x04data\x12%\n" +
 	"\x04date\x18\x02 \x01(\v2\x11.ledger.TimestampR\x04date\x12'\n" +
 	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\x12)\n" +
 	"\x10idempotency_hash\x18\x04 \x01(\tR\x0fidempotencyHash\x12\x0e\n" +
-	"\x02id\x18\x05 \x01(\x04R\x02id\x12\x1a\n" +
-	"\bsequence\x18\x06 \x01(\x04R\bsequence\"\xbe\x02\n" +
+	"\x02id\x18\x05 \x01(\x04R\x02id\"\xbe\x02\n" +
 	"\n" +
 	"LogPayload\x12M\n" +
 	"\x13created_transaction\x18\x01 \x01(\v2\x1a.ledger.CreatedTransactionH\x00R\x12createdTransaction\x12P\n" +

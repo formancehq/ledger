@@ -102,9 +102,9 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		// Verify we got all logs for this ledger
 		require.Equal(t, len(testLogs), len(logs))
 
-		// Verify logs are in ascending order by sequence
+		// Verify logs are in ascending order by id
 		for i := 0; i < len(logs)-1; i++ {
-			require.LessOrEqual(t, logs[i].Sequence, logs[i+1].Sequence)
+			require.LessOrEqual(t, logs[i].Id, logs[i+1].Id)
 		}
 	})
 

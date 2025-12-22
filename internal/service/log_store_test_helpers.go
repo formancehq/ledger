@@ -35,7 +35,6 @@ func createTestLogs(t *testing.T, ledgerName string) []*ledgerpb.Log {
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(1).
-				WithSequence(1).
 				WithIdempotencyKey("idempotency-key-1").
 				WithDate(now)
 		}(),
@@ -52,7 +51,6 @@ func createTestLogs(t *testing.T, ledgerName string) []*ledgerpb.Log {
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(2).
-				WithSequence(2).
 				WithIdempotencyKey("idempotency-key-2").
 				WithDate(now.Add(time.Second))
 		}(),
@@ -68,7 +66,6 @@ func createTestLogs(t *testing.T, ledgerName string) []*ledgerpb.Log {
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(3).
-				WithSequence(3).
 				WithDate(now.Add(2 * time.Second))
 		}(),
 
@@ -81,7 +78,6 @@ func createTestLogs(t *testing.T, ledgerName string) []*ledgerpb.Log {
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(4).
-				WithSequence(4).
 				WithDate(now.Add(3 * time.Second))
 		}(),
 
@@ -103,7 +99,6 @@ func createTestLogs(t *testing.T, ledgerName string) []*ledgerpb.Log {
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(5).
-				WithSequence(5).
 				WithDate(now.Add(4 * time.Second))
 		}(),
 	}

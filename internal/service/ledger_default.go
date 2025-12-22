@@ -340,9 +340,8 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// Create protobuf Log
 	log := &ledgerpb.Log{
-		Id:       nextLogID,
-		Sequence: 0, // Will be set by the store
-		Data:     logPayload,
+		Id:   nextLogID,
+		Data: logPayload,
 	}
 
 	// Set date
@@ -480,10 +479,9 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName stri
 	// Create protobuf Log
 	now := time.Now()
 	log := &ledgerpb.Log{
-		Id:       nextLogID,
-		Sequence: 0, // Will be set by the store
-		Data:     logPayload,
-		Date:     ledgerpb.NewTimestamp(now),
+		Id:   nextLogID,
+		Data: logPayload,
+		Date: ledgerpb.NewTimestamp(now),
 	}
 
 	if parameters.IdempotencyKey != "" {

@@ -67,11 +67,11 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 
 	f.mu.Lock()
 	f.state.LastSequence++
-	log.Sequence = f.state.LastSequence
+	log.Id = f.state.LastSequence
 	f.mu.Unlock()
 
 	f.logger.
-		WithFields(map[string]any{"sequence": log.Sequence}).
+		WithFields(map[string]any{"id": log.Id}).
 		Infof("Log stored in memory and persisted to store via FSM")
 	return log, nil
 }
@@ -139,10 +139,10 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	f.state.LedgerInfo = snapshotData.LedgerInfo
 	f.mu.Unlock()
 
-	// Compare snapshot's lastSequence with the log store's lastSequenceID
-	storeLastSequence, err := f.logWriter.GetLastSequenceID(ctx)
+	// Compare snapshot's lastSequence with the log store's lastLogID
+	storeLastSequence, err := f.logWriter.GetLastLogID(ctx)
 	if err != nil {
-		panic(fmt.Errorf("getting last sequence ID from log store: %w", err))
+		panic(fmt.Errorf("getting last log ID from log store: %w", err))
 	}
 
 	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
@@ -188,9 +188,9 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 				"logsWritten": len(logsToWrite),
 			}).Infof("Caught up logs from reader to writer")
 
-			// Update lastSequence to match the store's last sequence
+			// Update lastSequence to match the store's last log ID
 			f.mu.Lock()
-			f.state.LastSequence = logsToWrite[len(logsToWrite)-1].Sequence
+			f.state.LastSequence = logsToWrite[len(logsToWrite)-1].Id
 			f.mu.Unlock()
 		}
 	} else {

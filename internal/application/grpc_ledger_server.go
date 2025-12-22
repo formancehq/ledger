@@ -84,7 +84,7 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest,
 		return err
 	}
 
-	cursor, err := ledgerNode.GetAllLogs(ctx, req.FromSequence, req.ToSequence)
+	cursor, err := ledgerNode.GetAllLogs(ctx, req.FromId, req.ToId)
 	if err != nil {
 		return err
 	}
