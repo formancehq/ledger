@@ -21,7 +21,6 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(contentTypeMiddleware)
 	r.Use(loggingMiddleware(logger))
 
 	// Create bulker factory
@@ -59,19 +58,21 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 			r.Handle("/threadcreate", pprof.Handler("threadcreate"))
 		})
 
-		// Register known routes (specific routes first)
-		r.Post("/snapshot", server.handleSnapshot)
-		r.Get("/health", server.handleHealth)
-		r.Get("/cluster/state", server.handleClusterState)
+		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
+			// Register known routes (specific routes first)
+			r.Post("/snapshot", server.handleSnapshot)
+			r.Get("/health", server.handleHealth)
+			r.Get("/cluster/state", server.handleClusterState)
 
-		r.Post("/{ledgerName}", server.handleCreateLedger)                                    // POST /{ledgerName}
-		r.Get("/{ledgerName}", server.handleGetLedger)                                        // GET /{ledgerName}
-		r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                    // GET /{ledgerName}/raft/state
-		r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                  // POST /{ledgerName}/transactions
-		r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata) // POST /{ledgerName}/accounts/{address}/metadata
-		r.Post("/{ledgerName}/bulk", server.handleBulk)                                       // POST /{ledgerName}/bulk
-		r.Post("/{ledgerName}/_bulk", server.handleBulk)                                      // For compat
-		r.Get("/", server.handleListAllLedgers)                                               // GET / - must be last
+			r.Post("/{ledgerName}", server.handleCreateLedger)                                    // POST /{ledgerName}
+			r.Get("/{ledgerName}", server.handleGetLedger)                                        // GET /{ledgerName}
+			r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                    // GET /{ledgerName}/raft/state
+			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                  // POST /{ledgerName}/transactions
+			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata) // POST /{ledgerName}/accounts/{address}/metadata
+			r.Post("/{ledgerName}/bulk", server.handleBulk)                                       // POST /{ledgerName}/bulk
+			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                      // For compat
+			r.Get("/", server.handleListAllLedgers)                                               // GET / - must be last
+		})
 	}
 
 	// Register routes without prefix (backward compatibility)
