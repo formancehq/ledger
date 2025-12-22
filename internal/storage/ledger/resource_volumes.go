@@ -96,9 +96,14 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			dateFilterColumn = "insertion_date"
 		}
 
-		// Optimization: when filtering on address segments, first identify eligible accounts
-		// then INNER JOIN with moves. This is more efficient than LATERAL JOIN + filtering after.
-		if needAddressSegments {
+		// Optimization: when filtering ONLY on address segments (no other filter types),
+		// first identify eligible accounts then INNER JOIN with moves.
+		// This is more efficient than LATERAL JOIN + filtering after.
+		// IMPORTANT: Do NOT use this optimization when other filters (like metadata) are present,
+		// because they might be in a $or clause with the address filter, and pre-filtering
+		// on addresses would exclude accounts that match the other filters but not the address.
+		useAddressOptimization := needAddressSegments && !query.useFilter("metadata")
+		if useAddressOptimization {
 			// Build eligible accounts subquery with address filters pre-applied
 			eligibleAccounts := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
@@ -167,6 +172,19 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 			if query.UseOOT() {
 				selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", query.OOT)
+			}
+
+			// When we have partial address filters with other filters (like metadata),
+			// we need to join with accounts to get the address_array for filtering
+			if needAddressSegments {
+				subQuery := store.newScopedSelect().
+					TableExpr(store.GetPrefixedRelationName("accounts")).
+					Column("address_array").
+					Where("accounts.address = moves.accounts_address")
+
+				selectVolumes = selectVolumes.
+					ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
+					Join(`join lateral (?) accounts on true`, subQuery)
 			}
 
 			if query.useFilter("metadata") {

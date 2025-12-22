@@ -1006,3 +1006,95 @@ func TestUpdateVolumes(t *testing.T) {
 		}
 	})
 }
+
+func TestVolumesWithOrQueryPartialAddressAndMetadata(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Setup: create accounts foo, bar, quux with transactions
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "foo", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "bar", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "quux", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	// Add metadata: foo and quux have foo_meta, bar has bar_meta
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"foo":  {"foo_meta": "thing"},
+		"bar":  {"bar_meta": "thing"},
+		"quux": {"foo_meta": "thing"},
+	}))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial address and metadata exists", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having metadata "foo_meta"
+		// Expected: foo and quux (both have foo_meta)
+		// The partial address "test::" matches nothing, but foo and quux have foo_meta
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Exists("metadata", "foo_meta"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return foo and quux (both have foo_meta metadata)
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("$or with complex query - NOT address AND metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: (NOT address="foo" AND metadata foo_meta exists) OR address="doesntexist::"
+		// Expected: quux (has foo_meta but is not foo)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.And(
+							query.Not(query.Match("address", "foo")),
+							query.Exists("metadata", "foo_meta"),
+						),
+						query.Match("address", "doesntexist::"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return quux (has foo_meta and is not foo)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "quux", volumes.Data[0].Account)
+	})
+
+	t.Run("$or without PIT - partial address and metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// Same query without PIT
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Exists("metadata", "foo_meta"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return foo and quux (both have foo_meta metadata)
+		require.Len(t, volumes.Data, 2)
+	})
+}

@@ -381,4 +381,32 @@ func TestBalancesAggregates(t *testing.T) {
 			},
 		}, *ret)
 	})
+
+	t.Run("$or with partial address and metadata exists", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having metadata "category"
+		// Expected: users:1 and users:2 (both have category metadata)
+		// The partial address "test::" matches nothing, but users:1 and users:2 have category
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Or(
+				query.Match("address", "test::"),
+				query.Exists("metadata", "category"),
+			),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes for users:1 and users:2 (both have category metadata)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
+	})
 }
