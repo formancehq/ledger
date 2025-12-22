@@ -352,4 +352,33 @@ func TestBalancesAggregates(t *testing.T) {
 			},
 		}, *ret)
 	})
+
+	t.Run("filter using PIT and metadata without partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// This test reproduces the bug where the 'moves' table alias is missing
+		// when using PIT with metadata filter but WITHOUT partial address filter.
+		// The query references moves.accounts_address but the table has no alias.
+		// Account "world" has metadata {world: "bar"} and is always the source (no inputs, only outputs).
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT:     pointer.For(now.Add(time.Minute)),
+			Builder: query.Match("metadata[world]", "bar"),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: new(big.Int),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  new(big.Int),
+					Output: smallInt,
+				},
+			},
+		}, *ret)
+	})
 }
