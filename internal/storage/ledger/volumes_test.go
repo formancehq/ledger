@@ -704,6 +704,24 @@ func TestVolumesAggregate(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 1)
 	})
+
+	t.Run("filter using PIT and metadata without partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// This test reproduces the bug where the 'moves' table alias is missing
+		// when using PIT/OOT with metadata filter but WITHOUT partial address filter.
+		// The query references moves.accounts_address but the table has no alias.
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("metadata[foo]", "bar"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+	})
 }
 
 func TestVolumesWithPartialAddressAndPIT(t *testing.T) {

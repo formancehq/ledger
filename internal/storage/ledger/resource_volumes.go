@@ -157,7 +157,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 				ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 				ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-				ModelTableExpr(store.GetPrefixedRelationName("moves")).
+				ModelTableExpr(store.GetPrefixedRelationName("moves") + " moves").
 				GroupExpr("accounts_address, asset").
 				Order("accounts_address", "asset")
 
