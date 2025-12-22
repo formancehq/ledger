@@ -409,4 +409,66 @@ func TestBalancesAggregates(t *testing.T) {
 			},
 		}, *ret)
 	})
+
+	t.Run("$or with partial address and exact address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "users::" OR exact address "world"
+		// Expected: users:1, users:2, xxx, world
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Or(
+				query.Match("address", "users::"),
+				query.Match("address", "world"),
+			),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes including users:1, users:2, xxx (users::) and world
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  smallInt,
+					Output: smallInt,
+				},
+			},
+		}, *ret)
+	})
+
+	t.Run("$not with partial address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts NOT matching "users::"
+		// Expected: world, xxx
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Not(query.Match("address", "users::")),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes for world and xxx (not matching users::)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: new(big.Int),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  smallInt,
+					Output: smallInt,
+				},
+			},
+		}, *ret)
+	})
 }

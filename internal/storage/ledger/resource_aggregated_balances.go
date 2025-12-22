@@ -65,13 +65,20 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 			}
 		}
 
-		// Optimization: when filtering ONLY on address segments (no other filter types),
+		// Optimization: when filtering on a SINGLE partial address (no other filter types),
 		// first identify eligible accounts then INNER JOIN with moves.
 		// This is more efficient than LATERAL JOIN + filtering after.
-		// IMPORTANT: Do NOT use this optimization when other filters (like metadata) are present,
-		// because they might be in a $or clause with the address filter, and pre-filtering
-		// on addresses would exclude accounts that match the other filters but not the address.
-		useAddressOptimization := needAddressSegments && !query.useFilter("metadata")
+		//
+		// IMPORTANT: Only use this optimization when there is exactly ONE partial address filter
+		// and NO other filters (metadata). This is because:
+		// - $or(partial, other) would exclude accounts matching "other" but not the partial address
+		// - $not(partial) would exclude all accounts after pre-filtering
+		// - Multiple address filters might be in $or and need different handling
+		//
+		// Note: PIT/OOT (endTime) filters are OK as they are global time filters, not $or-able filters.
+		addressFilters := query.filters["address"]
+		hasSinglePartialAddress := len(addressFilters) == 1 && isPartialAddress(addressFilters[0])
+		useAddressOptimization := hasSinglePartialAddress && !query.useFilter("metadata")
 		if useAddressOptimization {
 			// Build eligible accounts subquery with address filters pre-applied
 			eligibleAccounts := store.newScopedSelect().
