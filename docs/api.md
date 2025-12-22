@@ -336,19 +336,19 @@ service BucketService {
 ```protobuf
 message StreamLogsRequest {
   string bucket = 1;
-  uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
-  uint64 to_sequence = 3;   // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
+  uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
+  uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
 }
 ```
 
 **Parameters**:
-- `from_sequence`: Starting sequence number (0 = from beginning)
-- `to_sequence`: Ending sequence number (0 = until end, inclusive)
+- `from_id`: Starting log ID (0 = from beginning)
+- `to_id`: Ending log ID (0 = until end, inclusive)
 
 **Use Cases**:
-- **Full log streaming**: `from_sequence=0, to_sequence=0` - Stream all logs
-- **Range queries**: `from_sequence=100, to_sequence=200` - Stream logs from sequence 100 to 200
-- **Catch-up from snapshot**: `from_sequence=snapshotSequence, to_sequence=targetSequence` - Stream logs needed for catch-up
+- **Full log streaming**: `from_id=0, to_id=0` - Stream all logs
+- **Range queries**: `from_id=100, to_id=200` - Stream logs from log ID 100 to 200
+- **Catch-up from snapshot**: `from_id=snapshotId, to_id=targetId` - Stream logs needed for catch-up
 
 #### RaftTransportService
 

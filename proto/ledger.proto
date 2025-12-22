@@ -130,7 +130,7 @@ service LedgerService {
   rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (DeleteAccountMetadataResponse);
   // DeleteTransactionMetadata deletes metadata for a transaction
   rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (DeleteTransactionMetadataResponse);
-  // StreamLogs streams logs from a ledger, optionally starting from a sequence number
+  // StreamLogs streams logs from a ledger, optionally starting from a log ID
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
 
@@ -252,8 +252,8 @@ message DeleteTransactionMetadataResponse {
 
 message StreamLogsRequest {
   string ledger = 1;
-  uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
-  uint64 to_sequence = 3;   // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
+  uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
+  uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
 }
 
 message StreamLogsResponse {
@@ -266,7 +266,6 @@ message Log {
   string idempotency_key = 3;
   string idempotency_hash = 4;
   uint64 id = 5;                            // Optional log ID
-  uint64 sequence = 6;                      // Global sequence number
 }
 
 message LogPayload {

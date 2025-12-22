@@ -187,9 +187,9 @@ During catch-up, the system uses range queries to efficiently stream only the ne
 - **Inclusive**: Both `from` and `to` are inclusive boundaries
 
 **Implementation**:
-- SQLite: `WHERE sequence >= ? AND sequence <= ?`
-- ClickHouse: `WHERE sequence >= ? AND sequence <= ?`
-- gRPC: `StreamLogs` with `from_sequence` and `to_sequence` parameters
+- SQLite: `WHERE id >= ? AND id <= ?`
+- ClickHouse: `WHERE id >= ? AND id <= ?`
+- gRPC: `StreamLogs` with `from_id` and `to_id` parameters
 
 ## Batching des Commandes
 
