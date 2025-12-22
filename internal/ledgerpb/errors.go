@@ -1,4 +1,4 @@
-package ledger
+package ledgerpb
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ var (
 	ErrNoLeader = errors.New("no leader")
 )
 
-type NotFoundError struct{
+type NotFoundError struct {
 	msg string
 }
 
@@ -25,3 +25,4 @@ func (e *NotFoundError) Is(err error) bool {
 func NewNotFoundError(f string, args ...any) *NotFoundError {
 	return &NotFoundError{msg: fmt.Sprintf(f, args...)}
 }
+

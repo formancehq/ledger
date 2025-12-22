@@ -2,12 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -30,7 +26,7 @@ func (g *SystemGRPCClient) Snapshot(ctx context.Context) error {
 	return err
 }
 
-func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, md map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error) {
+func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, md map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
 	cfg, err := structpb.NewStruct(config)
 	if err != nil {
 		return nil, err
@@ -63,36 +59,20 @@ func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string
 		return nil, err
 	}
 
-	// Convert protobuf Struct to json.RawMessage
-	configJSON, err := json.Marshal(ledgerResp.Config.AsMap())
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert metadata
-	var ledgerMetadata metadata.Metadata
+	// Convert CreateLedgerResponse to LedgerInfo
+	var metadata map[string]string
 	if ledgerResp.Metadata != nil {
-		mdMap := ledgerResp.Metadata.AsMap()
-		ledgerMetadata = make(map[string]string)
-		for k, v := range mdMap {
-			if str, ok := v.(string); ok {
-				ledgerMetadata[k] = str
-			}
-		}
+		metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
 	}
-
-	result := &ledger.LedgerInfo{
-		ID:        ledgerResp.Id,
-		Name:      ledgerResp.Name,
-		Driver:    ledgerResp.Driver,
-		Config:    configJSON,
-		Metadata:  ledgerMetadata,
-		CreatedAt: time.New(ledgerResp.CreatedAt.AsTime()),
-	}
-	if ledgerResp.SnapshotThreshold > 0 {
-		result.SnapshotThreshold = ledgerResp.SnapshotThreshold
-	}
-	return result, nil
+	return &ledgerpb.LedgerInfo{
+		Id:                ledgerResp.Id,
+		Name:              ledgerResp.Name,
+		Driver:            ledgerResp.Driver,
+		Config:            ledgerResp.Config,
+		Metadata:          metadata,
+		CreatedAt:         ledgerResp.CreatedAt,
+		SnapshotThreshold: ledgerResp.SnapshotThreshold,
+	}, nil
 }
 
 func (g *SystemGRPCClient) DeleteLedger(ctx context.Context, name string) error {
@@ -104,98 +84,61 @@ func (g *SystemGRPCClient) ResolveLedger(ctx context.Context, ledgerName string)
 	resp, err := g.client.ResolveLedger(ctx, &ResolveLedgerRequest{LedgerName: ledgerName})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			return "", 0, ledger.NewNotFoundError("%s", err)
+			return "", 0, ledgerpb.NewNotFoundError("%s", err)
 		}
 		return "", 0, err
 	}
 	return resp.LedgerName, resp.LedgerId, nil
 }
 
-func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo {
+func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo {
 	resp, err := g.client.GetAllLedgersInfo(ctx, &GetAllLedgersRequest{})
 	if err != nil {
 		// Return empty map on error - this is a limitation of the interface
 		// In practice, this should not happen as GetAllLedgersInfo is typically called locally
-		return make(map[string]ledger.LedgerInfo)
+		return make(map[string]*ledgerpb.LedgerInfo)
 	}
 
-	// Convert []*CreateLedgerResponse to map[string]ledger.LedgerInfo
-	result := make(map[string]ledger.LedgerInfo, len(resp.Ledgers))
+	// Convert []*CreateLedgerResponse to map[string]*ledgerpb.LedgerInfo
+	result := make(map[string]*ledgerpb.LedgerInfo, len(resp.Ledgers))
 	for _, ledgerResp := range resp.Ledgers {
-		// Convert protobuf Struct to json.RawMessage
-		configJSON, err := json.Marshal(ledgerResp.Config.AsMap())
-		if err != nil {
-			// Skip this ledger if config conversion fails
-			continue
-		}
-
-		// Convert metadata
-		var ledgerMetadata metadata.Metadata
+		var metadata map[string]string
 		if ledgerResp.Metadata != nil {
-			mdMap := ledgerResp.Metadata.AsMap()
-			ledgerMetadata = make(map[string]string)
-			for k, v := range mdMap {
-				if str, ok := v.(string); ok {
-					ledgerMetadata[k] = str
-				}
-			}
+			metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
 		}
-
-		ledgerInfo := ledger.LedgerInfo{
-			ID:        ledgerResp.Id,
-			Name:      ledgerResp.Name,
-			Driver:    ledgerResp.Driver,
-			Config:    configJSON,
-			Metadata:  ledgerMetadata,
-			CreatedAt: time.New(ledgerResp.CreatedAt.AsTime()),
+		result[ledgerResp.Name] = &ledgerpb.LedgerInfo{
+			Id:                ledgerResp.Id,
+			Name:              ledgerResp.Name,
+			Driver:            ledgerResp.Driver,
+			Config:            ledgerResp.Config,
+			Metadata:          metadata,
+			CreatedAt:         ledgerResp.CreatedAt,
+			SnapshotThreshold: ledgerResp.SnapshotThreshold,
 		}
-		if ledgerResp.SnapshotThreshold > 0 {
-			ledgerInfo.SnapshotThreshold = ledgerResp.SnapshotThreshold
-		}
-
-		result[ledgerInfo.Name] = ledgerInfo
 	}
 
 	return result
 }
 
-func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	resp, err := g.client.GetLedgerInfo(ctx, &GetLedgerByNameRequest{Name: name})
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert protobuf Struct to json.RawMessage
-	configJSON, err := json.Marshal(resp.Config.AsMap())
-	if err != nil {
-		return nil, fmt.Errorf("marshaling ledger config: %w", err)
-	}
-
-	// Convert metadata
-	var ledgerMetadata metadata.Metadata
+	var metadata map[string]string
 	if resp.Metadata != nil {
-		mdMap := resp.Metadata.AsMap()
-		ledgerMetadata = make(map[string]string)
-		for k, v := range mdMap {
-			if str, ok := v.(string); ok {
-				ledgerMetadata[k] = str
-			}
-		}
+		metadata = ledgerpb.StructToMetadata(resp.Metadata)
 	}
-
-	ledgerInfo := ledger.LedgerInfo{
-		ID:        resp.Id,
-		Name:      resp.Name,
-		Driver:    resp.Driver,
-		Config:    configJSON,
-		Metadata:  ledgerMetadata,
-		CreatedAt: time.New(resp.CreatedAt.AsTime()),
-	}
-	if resp.SnapshotThreshold > 0 {
-		ledgerInfo.SnapshotThreshold = resp.SnapshotThreshold
-	}
-
-	return &ledgerInfo, nil
+	return &ledgerpb.LedgerInfo{
+		Id:                resp.Id,
+		Name:              resp.Name,
+		Driver:            resp.Driver,
+		Config:            resp.Config,
+		Metadata:          metadata,
+		CreatedAt:         resp.CreatedAt,
+		SnapshotThreshold: resp.SnapshotThreshold,
+	}, nil
 }
 
 var _ System = (*SystemGRPCClient)(nil)

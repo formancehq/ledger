@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
@@ -53,22 +53,22 @@ func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessa
 
 // Node represents a Raft group for a specific ledger
 type Node struct {
-	*raft.Node[ledger.LedgerState, *FSM]
+	*raft.Node[ledgerpb.LedgerState, *FSM]
 	config        raft.NodeConfig
 	logger        logging.Logger
 	defaultLedger *service.DefaultLedger
-	ledgerInfo    ledger.LedgerInfo
+	ledgerInfo    *ledgerpb.LedgerInfo
 	logStore      service.LogStore // Underlying log store for direct access
 }
 
-func (node *Node) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
+func (node *Node) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
 	return node.logStore.GetAllLogs(ctx, from, to)
 }
 
 // NewNode creates a new Raft group for a ledger
 func NewNode(
 	ctx context.Context,
-	ledgerInfo ledger.LedgerInfo,
+	ledgerInfo *ledgerpb.LedgerInfo,
 	transport raft.NodeTransport,
 	cfg raft.NodeConfig,
 	logger logging.Logger,
@@ -77,13 +77,24 @@ func NewNode(
 ) (*Node, error) {
 
 	// Create Raft storage for this ledger
-	storage, err := raft.NewWALStorage(cfg.DataDir, logger.WithFields(map[string]any{"ledger": ledgerInfo.Name}))
+	storage, err := raft.NewWALStorage(cfg.DataDir, logger.WithFields(map[string]any{"ledger": ledgerInfo.GetName()}))
 	if err != nil {
-		return nil, fmt.Errorf("creating storage for ledger %s: %w", ledgerInfo.Name, err)
+		return nil, fmt.Errorf("creating storage for ledger %s: %w", ledgerInfo.GetName(), err)
+	}
+
+	// Convert Config from *structpb.Struct to json.RawMessage
+	var configJSON json.RawMessage
+	if ledgerInfo.Config != nil {
+		configMap := ledgerInfo.Config.AsMap()
+		var err error
+		configJSON, err = json.Marshal(configMap)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling ledger config: %w", err)
+		}
 	}
 
 	// Create application log store for this ledger based on ledger driver
-	appLogStore, err := CreateLogStore(ctx, ledgerInfo.Driver, ledgerInfo.Config, logger, ledgerInfo.Name, ledgerInfo.ID, extraDataDir)
+	appLogStore, err := CreateLogStore(ctx, ledgerInfo.Driver, configJSON, logger, ledgerInfo.GetName(), ledgerInfo.GetId(), extraDataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +127,7 @@ func NewNode(
 }
 
 // InsertLogs writes logs via Raft (implements LogWriter)
-func (node *Node) InsertLogs(ctx context.Context, logs ...ledger.Log) error {
+func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
@@ -146,31 +157,31 @@ func (node *Node) GetLastSequenceID(ctx context.Context) (uint64, error) {
 	return node.logStore.GetLastSequenceID(ctx)
 }
 
-func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {
 	return node.defaultLedger.CreateTransaction(ctx, ledgerName, parameters)
 }
 
-func (node *Node) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (node *Node) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.RevertedTransaction, error) {
 	return node.defaultLedger.RevertTransaction(ctx, ledgerName, parameters)
 }
 
-func (node *Node) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveTransactionMetadata]) (*ledger.Log, error) {
+func (node *Node) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return node.defaultLedger.SaveTransactionMetadata(ctx, ledgerName, parameters)
 }
 
-func (node *Node) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveAccountMetadata]) (*ledger.Log, error) {
+func (node *Node) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return node.defaultLedger.SaveAccountMetadata(ctx, ledgerName, parameters)
 }
 
-func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return node.defaultLedger.DeleteTransactionMetadata(ctx, ledgerName, parameters)
 }
 
-func (node *Node) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteAccountMetadata]) (*ledger.Log, error) {
+func (node *Node) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return node.defaultLedger.DeleteAccountMetadata(ctx, ledgerName, parameters)
 }
 
-func (node *Node) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
+func (node *Node) Import(ctx context.Context, ledgerName string, stream chan *ledgerpb.Log) error {
 	return node.defaultLedger.Import(ctx, ledgerName, stream)
 }
 
@@ -178,7 +189,7 @@ func (node *Node) Export(ctx context.Context, ledgerName string, w service.Expor
 	return node.defaultLedger.Export(ctx, ledgerName, w)
 }
 
-func (node *Node) Info() ledger.LedgerInfo {
+func (node *Node) Info() *ledgerpb.LedgerInfo {
 	return node.ledgerInfo
 }
 

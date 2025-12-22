@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
@@ -448,7 +448,7 @@ func (node *Node[State, F]) GetLeader() uint64 {
 }
 
 // GetClusterState returns the current state of the Raft cluster
-func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.ClusterState[State], error) {
+func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState[State], error) {
 	status := node.rawNode.Status()
 
 	// Get leader
@@ -468,7 +468,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 	}
 
 	// Build nodes list from progress
-	nodes := make([]ledger.NodeInfo, 0)
+	nodes := make([]ledgerpb.NodeInfo, 0)
 	for id := range status.Progress {
 		suffrage := "Voter"
 
@@ -480,7 +480,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 		//	address = rawNode.transport.GetPeerAddress(id)
 		//}
 
-		nodes = append(nodes, ledger.NodeInfo{
+		nodes = append(nodes, ledgerpb.NodeInfo{
 			ID:       uint(id),
 			Address:  address,
 			Suffrage: suffrage,
@@ -488,7 +488,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 	}
 
 	// Build progress information map
-	progress := make(map[uint64]ledger.ProgressInfo)
+	progress := make(map[uint64]ledgerpb.ProgressInfo)
 	for id, prog := range status.Progress {
 		// Convert StateType to string
 		stateStr := "Unknown"
@@ -501,7 +501,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 			stateStr = "Snapshot"
 		}
 
-		progress[uint64(id)] = ledger.ProgressInfo{
+		progress[id] = ledgerpb.ProgressInfo{
 			Match:           prog.Match,
 			Next:            prog.Next,
 			State:           stateStr,
@@ -525,10 +525,10 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 	}
 
 	// Build complete Raft status
-	raftStatus := &ledger.RaftStatus{
+	raftStatus := &ledgerpb.RaftStatus{
 		State:     stateStr,
 		Term:      hardState.Term,
-		Leader:    uint64(leaderID),
+		Leader:    leaderID,
 		Applied:   status.Applied,
 		Commit:    hardState.Commit,
 		LastIndex: lastIndex,
@@ -536,7 +536,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 		Progress:  progress,
 	}
 
-	return &ledger.ClusterState[State]{
+	return &ledgerpb.ClusterState[State]{
 		State:      stateStr,
 		Leader:     uint(leaderID),
 		Nodes:      nodes,

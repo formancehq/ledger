@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,26 +20,19 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Decode request body directly into service.CreateTransaction
-	var input service.CreateTransaction
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	// Decode request body into protobuf CreateTransactionRequest
+	req := &ledgerpb.CreateTransactionRequestPayload{}
+	err := json.NewDecoder(r.Body).Decode(req)
+	if err != nil {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
-	// Validation is done in the service layer (postings or script required, but not both)
-
-	// Extract dryRun from query parameter
-	dryRun := r.URL.Query().Get("dryRun") == "true"
-
-	// Extract idempotencyKey from header
-	idempotencyKey := r.Header.Get("Idempotency-Key")
-
-	// Build service.Parameters[service.CreateTransaction]
-	params := service.Parameters[service.CreateTransaction]{
-		DryRun:         dryRun,
-		IdempotencyKey: idempotencyKey,
-		Input:          input,
+	// Build service.Parameters[*ledgerpb.CreateTransactionRequest]
+	params := service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+		DryRun:         r.URL.Query().Get("dryRun") == "true",
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		Input:          req,
 	}
 
 	ledgerCluster, err := s.cluster.GetLedgerCluster(r.Context(), ledgerName)

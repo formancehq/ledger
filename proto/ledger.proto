@@ -3,38 +3,44 @@ syntax = "proto3";
 package ledger;
 
 import "google/protobuf/struct.proto";
-import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/ledgerpb";
+
+message Timestamp {
+  uint64 data = 1;
+}
+
+// Metadata represents account or transaction metadata as a map of string key-value pairs
+message Metadata {
+  map<string, string> entries = 1;
+}
 
 // Posting represents a single posting in a transaction
 message Posting {
   string source = 1;
   string destination = 2;
-  string amount = 3;                        // big.Int as string
+  BigInt amount = 3;
   string asset = 4;
 }
 
 // Transaction represents a transaction
 message Transaction {
   repeated Posting postings = 1;
-  google.protobuf.Struct metadata = 2;
-  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
   string reference = 4;
   uint64 id = 5;
   bool reverted = 6;
-  google.protobuf.Timestamp inserted_at = 7;      // Optional
-  google.protobuf.Timestamp updated_at = 8;       // Optional
-  google.protobuf.Timestamp reverted_at = 9;      // Optional
-  PostCommitVolumes post_commit_volumes = 10;     // Optional
-  PostCommitVolumes post_commit_effective_volumes = 11; // Optional
+  Timestamp inserted_at = 7;      // Optional
+  Timestamp updated_at = 8;       // Optional
+  Timestamp reverted_at = 9;      // Optional
 }
 
 // TransactionData represents transaction data without ID and timestamps
 message TransactionData {
   repeated Posting postings = 1;
-  google.protobuf.Struct metadata = 2;
-  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
   string reference = 4;
 }
 
@@ -81,12 +87,10 @@ message AggregatedVolumes {
 // Account represents an account in the ledger
 message Account {
   string address = 1;
-  google.protobuf.Struct metadata = 2;
-  google.protobuf.Timestamp first_usage = 3;
-  google.protobuf.Timestamp insertion_date = 4;
-  google.protobuf.Timestamp updated_at = 5;
-  VolumesByAssets volumes = 6;              // Optional
-  VolumesByAssets effective_volumes = 7;    // Optional
+  map<string, string> metadata = 2;
+  Timestamp first_usage = 3;
+  Timestamp insertion_date = 4;
+  Timestamp updated_at = 5;
 }
 
 // AccountsVolumes represents volumes for a specific account and asset
@@ -104,8 +108,8 @@ message Move {
   string account = 3;
   string amount = 4;                        // big.Int as string
   string asset = 5;
-  google.protobuf.Timestamp insertion_date = 6;
-  google.protobuf.Timestamp effective_date = 7;
+  Timestamp insertion_date = 6;
+  Timestamp effective_date = 7;
   Volumes post_commit_volumes = 8;          // Optional
   Volumes post_commit_effective_volumes = 9; // Optional
 }
@@ -116,8 +120,16 @@ service LedgerService {
   rpc Snapshot(LedgerSnapshotRequest) returns (LedgerSnapshotResponse);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+  // RevertTransaction reverts a transaction
+  rpc RevertTransaction(RevertTransactionRequest) returns (RevertTransactionResponse);
   // SaveAccountMetadata saves metadata for an account
   rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (SaveAccountMetadataResponse);
+  // SaveTransactionMetadata saves metadata for a transaction
+  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (SaveTransactionMetadataResponse);
+  // DeleteAccountMetadata deletes metadata for an account
+  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (DeleteAccountMetadataResponse);
+  // DeleteTransactionMetadata deletes metadata for a transaction
+  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (DeleteTransactionMetadataResponse);
   // StreamLogs streams logs from a ledger, optionally starting from a sequence number
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
@@ -130,38 +142,111 @@ message LedgerSnapshotResponse {
   string message = 1;
 }
 
+message BigInt {
+  bytes data = 1;
+}
+
 message Script {
   string plain = 1;
   map<string, string> vars = 2;
 }
 
-message CreateTransactionRequest {
-  string ledger = 1;
-  map<string, google.protobuf.Struct> account_metadata = 2;
-  google.protobuf.Timestamp timestamp = 3;
-  google.protobuf.Struct metadata = 4;
-  string reference = 5;
-  repeated Posting postings = 6;
+message Parameters {
+  string ledger = 2;
   bool dry_run = 7;
   string idempotency_key = 8;
+}
+
+message CreateTransactionRequestPayload {
+  map<string, Metadata> account_metadata = 2;
+  map<string, string> metadata = 4;
+  Timestamp timestamp = 3;
+  string reference = 5;
+  repeated Posting postings = 6;
   Script script = 9;
   string runtime = 10;
 }
 
+message CreateTransactionRequest {
+  CreateTransactionRequestPayload payload = 1;
+  Parameters parameters = 2;
+}
+
 message CreateTransactionResponse {
   Transaction transaction = 1;
-  map<string, google.protobuf.Struct> account_metadata = 2;
+  map<string, Metadata> account_metadata = 2;
+}
+
+message SaveAccountMetadataRequestPayload {
+  string address = 9;
+  map<string, string> metadata = 3;
 }
 
 message SaveAccountMetadataRequest {
-  string ledger = 1;
-  string address = 2;
-  google.protobuf.Struct metadata = 3;
-  bool dry_run = 4;
-  string idempotency_key = 5;
+  SaveAccountMetadataRequestPayload payload = 1;
+  Parameters parameters = 2;
 }
 
 message SaveAccountMetadataResponse {
+  Log log = 1;
+}
+
+message RevertTransactionRequestPayload {
+  uint64 transaction_id = 2;
+  bool force = 3;
+  bool at_effective_date = 4;
+  map<string, string> metadata = 5;
+}
+
+message RevertTransactionRequest {
+  RevertTransactionRequestPayload payload = 1;
+  Parameters parameters = 3;
+}
+
+message RevertTransactionResponse {
+  Log log = 1;
+  RevertedTransaction reverted_transaction = 2;
+}
+
+message SaveTransactionMetadataRequestPayload {
+  uint64 transaction_id = 2;
+  map<string, string> metadata = 3;
+}
+
+message SaveTransactionMetadataRequest {
+  SaveTransactionMetadataRequestPayload payload = 1;
+  Parameters parameters = 2;
+}
+
+message SaveTransactionMetadataResponse {
+  Log log = 1;
+}
+
+message DeleteAccountMetadataRequestPayload {
+  string address = 2;
+  string key = 3;
+}
+
+message DeleteAccountMetadataRequest {
+  DeleteAccountMetadataRequestPayload payload = 1;
+  Parameters parameters = 2;
+}
+
+message DeleteAccountMetadataResponse {
+  Log log = 1;
+}
+
+message DeleteTransactionMetadataRequestPayload {
+  uint64 transaction_id = 2;
+  string key = 3;
+}
+
+message DeleteTransactionMetadataRequest {
+  DeleteTransactionMetadataRequestPayload payload = 1;
+  Parameters parameters = 2;
+}
+
+message DeleteTransactionMetadataResponse {
   Log log = 1;
 }
 
@@ -176,13 +261,12 @@ message StreamLogsResponse {
 }
 
 message Log {
-  int32 type = 1;                           // LogType enum value
-  LogPayload data = 2;
-  google.protobuf.Timestamp date = 3;
-  string idempotency_key = 4;
-  string idempotency_hash = 5;
-  uint64 id = 6;                            // Optional log ID
-  uint64 sequence = 7;                      // Global sequence number
+  LogPayload data = 1;
+  Timestamp date = 2;
+  string idempotency_key = 3;
+  string idempotency_hash = 4;
+  uint64 id = 5;                            // Optional log ID
+  uint64 sequence = 6;                      // Global sequence number
 }
 
 message LogPayload {
@@ -196,7 +280,7 @@ message LogPayload {
 
 message CreatedTransaction {
   Transaction transaction = 1;
-  map<string, google.protobuf.Struct> account_metadata = 2;
+  map<string, Metadata> account_metadata = 2;
 }
 
 message RevertedTransaction {
@@ -210,7 +294,7 @@ message SavedMetadata {
     string account_id = 2;                  // Account address (for ACCOUNT type)
     uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
   }
-  google.protobuf.Struct metadata = 4;
+  map<string, string> metadata = 4;
 }
 
 message DeletedMetadata {
@@ -220,5 +304,39 @@ message DeletedMetadata {
     uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
   }
   string key = 4;                           // Metadata key to delete
+}
+
+// TransactionResume represents a simplified transaction for memento purposes
+// Excludes postCommitVolumes and postCommitEffectiveVolumes fields
+message TransactionResume {
+  repeated Posting postings = 1;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+  uint64 id = 5;                            // Optional, 0 means nil
+  bool reverted = 6;
+}
+
+// CreatedTransactionMemento represents the memento structure for CreatedTransaction
+message CreatedTransactionMemento {
+  TransactionResume transaction = 1;
+  map<string, Metadata> account_metadata = 2;
+}
+
+// RevertedTransactionMemento represents the memento structure for RevertedTransaction
+message RevertedTransactionMemento {
+  uint64 reverted_transaction_id = 1;      // Optional, 0 means nil
+  TransactionResume revert_transaction = 2;
+}
+
+// LedgerInfo represents information about a ledger
+message LedgerInfo {
+  uint64 id = 1;                            // Sequential ledger ID
+  string name = 2;                          // Ledger name/ID
+  string driver = 3;                        // Driver name (e.g., "sqlite", "s3", etc.)
+  google.protobuf.Struct config = 4;       // Driver-specific configuration
+  map<string, string> metadata = 5;      // Optional metadata
+  Timestamp created_at = 6; // Creation timestamp
+  uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 

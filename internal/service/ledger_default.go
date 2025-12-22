@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/numscript"
 )
 
@@ -40,7 +40,7 @@ func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStor
 // If it exists and the hash matches, returns the existing log.
 // If it exists but the hash doesn't match, returns ErrIdempotencyKeyConflict.
 // If it doesn't exist, returns nil, nil.
-func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey string, input interface{}) (*ledger.Log, error) {
+func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey string, input interface{}) (*ledgerpb.Log, error) {
 	if idempotencyKey == "" {
 		return nil, nil
 	}
@@ -55,7 +55,7 @@ func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey str
 
 	// Log already exists with this idempotency key
 	// Verify that the idempotency hash matches
-	expectedHash := ledger.ComputeIdempotencyHash(input)
+	expectedHash := ledgerpb.ComputeIdempotencyHash(input)
 	if existingLog.IdempotencyHash != expectedHash {
 		return nil, ErrIdempotencyKeyConflict
 	}
@@ -86,10 +86,10 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 			}
 
 			var counter uint64
-			if lastLog != nil && lastLog.ID != nil {
+			if lastLog != nil && lastLog.Id != 0 {
 				// Initialize counter to last log ID + 1
-				counter = *lastLog.ID + 1
-				l.logger.WithFields(map[string]any{"ledger": ledgerName, "lastLogID": *lastLog.ID, "nextLogID": counter}).Infof("Initialized log ID counter from last log")
+				counter = lastLog.Id + 1
+				l.logger.WithFields(map[string]any{"ledger": ledgerName, "lastLogID": lastLog.Id, "nextLogID": counter}).Infof("Initialized log ID counter from last log")
 			} else {
 				// No logs yet, start at 1
 				counter = 1
@@ -113,7 +113,7 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 }
 
 // CreateTransaction creates a new transaction
-func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {
 
 	l.logger.
 		WithFields(map[string]any{"ledger": ledgerName}).
@@ -122,7 +122,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	input := parameters.Input
 
 	// Validate that we have either postings or script, but not both
-	hasPostings := len(input.Postings) > 0
+	hasPostings := input.Postings != nil && len(input.Postings) > 0
 	hasScript := input.Script != nil && input.Script.Plain != ""
 
 	if hasPostings && hasScript {
@@ -140,16 +140,23 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 	if existingLog != nil {
 		// Same transaction, return the existing log
-		createdTx, ok := existingLog.Data.(*ledger.CreatedTransaction)
+		// Extract CreatedTransaction from protobuf LogPayload
+		if existingLog.Data == nil || existingLog.Data.Payload == nil {
+			return nil, nil, ErrIdempotencyKeyConflict
+		}
+
+		createdTxPayload, ok := existingLog.Data.Payload.(*ledgerpb.LogPayload_CreatedTransaction)
 		if !ok {
 			return nil, nil, ErrIdempotencyKeyConflict
 		}
-		// Assign log ID to transaction
-		if existingLog.ID != nil {
-			createdTx.Transaction = createdTx.Transaction.WithID(*existingLog.ID)
+
+		createdTx := createdTxPayload.CreatedTransaction
+		// Update transaction ID if needed
+		if existingLog.Id != 0 && createdTx.Transaction != nil {
+			createdTx.Transaction.Id = existingLog.Id
 		}
 
-		l.logger.Infof("Returning existing transaction with ID %d", *existingLog.ID)
+		l.logger.Infof("Returning existing transaction with ID %d", existingLog.Id)
 		return existingLog, createdTx, nil
 	}
 
@@ -157,41 +164,35 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		// If script is provided, compile and execute it to generate postings
 		scriptMetadata        metadata.Metadata
 		scriptAccountMetadata map[string]metadata.Metadata
+		postings              []*ledgerpb.Posting
 	)
 	if hasScript {
-		postings, metadata, accountMetadata, err := l.executeNumscript(ctx, ledgerName, input.Script)
+		script := input.Script
+		var err error
+		postings, scriptMetadata, scriptAccountMetadata, err = l.executeNumscript(ctx, ledgerName, script)
 		if err != nil {
 			return nil, nil, fmt.Errorf("executing numscript: %w", err)
 		}
-		input.Postings = postings
-		scriptMetadata = metadata
-		scriptAccountMetadata = accountMetadata
 	} else {
+		postings = input.Postings
 		// Group postings by source account and asset to check balances
 		// Build balance query: map[account] = [assets]
-		balanceQuery := make(map[string][]string)
+		balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
 		requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
 
-		for _, posting := range input.Postings {
-			if posting.Source == ledger.WORLD {
+		for _, posting := range postings {
+			if posting == nil {
+				continue
+			}
+			if posting.Source == "world" {
 				continue // WORLD account has infinite funds
 			}
 
-			// Add account and asset to query
+			// Track assets for balance query
 			if balanceQuery[posting.Source] == nil {
-				balanceQuery[posting.Source] = make([]string, 0)
+				balanceQuery[posting.Source] = make(map[string]bool)
 			}
-			// Check if asset is already in the list
-			assetExists := false
-			for _, asset := range balanceQuery[posting.Source] {
-				if asset == posting.Asset {
-					assetExists = true
-					break
-				}
-			}
-			if !assetExists {
-				balanceQuery[posting.Source] = append(balanceQuery[posting.Source], posting.Asset)
-			}
+			balanceQuery[posting.Source][posting.Asset] = true
 
 			// Track required funds
 			if requiredFunds[posting.Source] == nil {
@@ -200,36 +201,41 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			if requiredFunds[posting.Source][posting.Asset] == nil {
 				requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
 			}
-			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount)
+			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount.Value())
+		}
 
-			// Lock and check sufficient funds for all source accounts
-			balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
-			if err != nil {
-				// GetBalance failed in LockBalances, return the error
-				// Locks are already released in LockBalances on error
-				return nil, nil, err
+		// Convert balanceQuery to the format expected by LockBalances
+		balanceQueryList := make(map[string][]string)
+		for account, assets := range balanceQuery {
+			assetList := make([]string, 0, len(assets))
+			for asset := range assets {
+				assetList = append(assetList, asset)
+			}
+			balanceQueryList[account] = assetList
+		}
+
+		// Lock and check sufficient funds for all source accounts
+		balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQueryList)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+
+		// Check if accounts have sufficient funds
+		for account, assets := range requiredFunds {
+			accountBalances, ok := balances[account]
+			if !ok {
+				accountBalances = make(map[string]*big.Int)
 			}
 
-			// Ensure locks are released when we're done
-			// TODO: lock all balances at once
-			defer release()
-
-			// Check if accounts have sufficient funds
-			for account, assets := range requiredFunds {
-				accountBalances, ok := balances[account]
+			for asset, requiredAmount := range assets {
+				balance, ok := accountBalances[asset]
 				if !ok {
-					accountBalances = make(map[string]*big.Int)
+					balance = big.NewInt(0)
 				}
 
-				for asset, requiredAmount := range assets {
-					balance, ok := accountBalances[asset]
-					if !ok {
-						balance = big.NewInt(0)
-					}
-
-					if balance.Cmp(requiredAmount) < 0 {
-						return nil, nil, ErrInsufficientFunds
-					}
+				if balance.Cmp(requiredAmount) < 0 {
+					return nil, nil, ErrInsufficientFunds
 				}
 			}
 		}
@@ -242,15 +248,19 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	// Determine timestamp: use provided timestamp or current time if not provided
-	timestamp := input.Timestamp
+	var timestamp *time.Time
+	if input.Timestamp != nil {
+		t := input.Timestamp.AsTime()
+		timestamp = &t
+	}
 	now := time.Now()
 	if timestamp == nil {
 		timestamp = &now
 	}
 
 	// Create transaction (metadata will be set later after merging with script metadata)
-	tx := ledger.NewTransaction().
-		WithPostings(input.Postings...).
+	tx := ledgerpb.NewTransaction().
+		WithPostings(postings...).
 		WithTimestamp(*timestamp).
 		WithInsertedAt(now).
 		WithUpdatedAt(now)
@@ -260,7 +270,10 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	// Merge script metadata with input metadata
-	finalMetadata := input.Metadata
+	var finalMetadata metadata.Metadata
+	if input.Metadata != nil {
+		finalMetadata = input.Metadata
+	}
 	if scriptMetadata != nil {
 		if finalMetadata == nil {
 			finalMetadata = make(metadata.Metadata)
@@ -275,7 +288,12 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	// Merge script account metadata with input account metadata
-	finalAccountMetadata := input.AccountMetadata
+	finalAccountMetadata := make(map[string]metadata.Metadata)
+	for addr, md := range input.AccountMetadata {
+		if md != nil && md.Entries != nil {
+			finalAccountMetadata[addr] = md.Entries
+		}
+	}
 	if scriptAccountMetadata != nil {
 		if finalAccountMetadata == nil {
 			finalAccountMetadata = make(map[string]metadata.Metadata)
@@ -299,24 +317,40 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	// Update transaction with final metadata
 	tx = tx.WithMetadata(finalMetadata)
 
-	// Create CreatedTransaction payload
-	createdTx := &ledger.CreatedTransaction{
-		Transaction:     tx,
-		AccountMetadata: ledger.AccountMetadata(finalAccountMetadata),
+	// Convert account metadata to protobuf
+	accountMetadataProto := make(map[string]*ledgerpb.Metadata)
+	for addr, md := range finalAccountMetadata {
+		if len(md) > 0 {
+			accountMetadataProto[addr] = &ledgerpb.Metadata{Entries: md}
+		}
 	}
 
-	// Create log with ID from counter
-	log := ledger.NewLog(createdTx).
-		WithDate(*timestamp).
-		WithID(nextLogID)
+	// Create CreatedTransaction payload in protobuf
+	createdTx := &ledgerpb.CreatedTransaction{
+		Transaction:     tx,
+		AccountMetadata: accountMetadataProto,
+	}
 
-	// Assign log ID to transaction
-	createdTx.Transaction = createdTx.Transaction.WithID(nextLogID)
+	// Create log payload
+	logPayload := &ledgerpb.LogPayload{
+		Payload: &ledgerpb.LogPayload_CreatedTransaction{
+			CreatedTransaction: createdTx,
+		},
+	}
+
+	// Create protobuf Log
+	log := &ledgerpb.Log{
+		Id:       nextLogID,
+		Sequence: 0, // Will be set by the store
+		Data:     logPayload,
+	}
+
+	// Set date
+	log.Date = ledgerpb.NewTimestamp(*timestamp)
 
 	if parameters.IdempotencyKey != "" {
-		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
-		idempotencyHash := ledger.ComputeIdempotencyHash(input)
-		log.IdempotencyHash = idempotencyHash
+		log.IdempotencyKey = parameters.IdempotencyKey
+		log.IdempotencyHash = ledgerpb.ComputeIdempotencyHash(input)
 	}
 
 	// If not dry run, write the log via LogWriter (which will use Raft)
@@ -329,11 +363,11 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		l.logger.Infof("Logs written successfully")
 	}
 
-	return &log, createdTx, nil
+	return log, createdTx, nil
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
-func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string, script *TransactionScript) (ledger.Postings, metadata.Metadata, map[string]metadata.Metadata, error) {
+func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
 	if script == nil || script.Plain == "" {
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
@@ -361,11 +395,11 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 		return nil, nil, nil, fmt.Errorf("failed to execute numscript: %w", err)
 	}
 
-	// Convert result postings to ledger.Postings
-	postings := make(ledger.Postings, 0, len(result.Postings))
+	// Convert result postings to []*ledgerpb.Posting
+	postings := make([]*ledgerpb.Posting, 0, len(result.Postings))
 	for _, p := range result.Postings {
 		// numscript.Posting.Amount is already a *big.Int
-		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, p.Amount))
+		postings = append(postings, ledgerpb.NewPosting(p.Source, p.Destination, p.Asset, p.Amount))
 	}
 
 	// Convert numscript metadata to our metadata format
@@ -390,29 +424,29 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 }
 
 // RevertTransaction is not implemented yet
-func (l *DefaultLedger) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (l *DefaultLedger) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.RevertedTransaction, error) {
 	return nil, nil, ErrNotFound
 }
 
 // SaveTransactionMetadata is not implemented yet
-func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return nil, ErrNotFound
 }
 
 // SaveAccountMetadata saves metadata for an account
-func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	input := parameters.Input
 
 	// Validate input
 	if input.Address == "" {
 		return nil, fmt.Errorf("account address is required")
 	}
-	if len(input.Metadata) == 0 {
+	if input.Metadata == nil {
 		return nil, fmt.Errorf("metadata is required")
 	}
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
-	existingLog, err := l.checkIdempotency(ctx, parameters.IdempotencyKey, input)
+	existingLog, err := l.checkIdempotency(ctx, parameters.IdempotencyKey, parameters.Input)
 	if err != nil {
 		return nil, err
 	}
@@ -427,23 +461,34 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName stri
 		return nil, fmt.Errorf("getting next log ID: %w", err)
 	}
 
-	// Create SavedMetadata payload
-	savedMetadata := &ledger.SavedMetadata{
+	// Create SavedMetadata payload in protobuf
+	savedMetadata := &ledgerpb.SavedMetadata{
 		TargetType: "ACCOUNT",
-		TargetID:   input.Address,
-		Metadata:   input.Metadata,
+		TargetId: &ledgerpb.SavedMetadata_AccountId{
+			AccountId: input.Address,
+		},
+		Metadata: input.Metadata,
 	}
 
-	// Create log with ID from counter
+	// Create log payload
+	logPayload := &ledgerpb.LogPayload{
+		Payload: &ledgerpb.LogPayload_SavedMetadata{
+			SavedMetadata: savedMetadata,
+		},
+	}
+
+	// Create protobuf Log
 	now := time.Now()
-	log := ledger.NewLog(savedMetadata).
-		WithDate(now).
-		WithID(nextLogID)
+	log := &ledgerpb.Log{
+		Id:       nextLogID,
+		Sequence: 0, // Will be set by the store
+		Data:     logPayload,
+		Date:     ledgerpb.NewTimestamp(now),
+	}
 
 	if parameters.IdempotencyKey != "" {
-		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
-		idempotencyHash := ledger.ComputeIdempotencyHash(input)
-		log.IdempotencyHash = idempotencyHash
+		log.IdempotencyKey = parameters.IdempotencyKey
+		log.IdempotencyHash = ledgerpb.ComputeIdempotencyHash(input)
 	}
 
 	// If not dry run, write the log via LogWriter (which will use Raft)
@@ -455,27 +500,31 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName stri
 		l.logger.WithFields(map[string]any{"account": input.Address, "count": 1}).Debugf("Account metadata log written successfully")
 	}
 
-	return &log, nil
+	return log, nil
 }
 
 // DeleteTransactionMetadata is not implemented yet
-func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return nil, ErrNotFound
 }
 
 // DeleteAccountMetadata is not implemented yet
-func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return nil, ErrNotFound
 }
 
 // Import is not implemented yet
-func (l *DefaultLedger) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
+func (l *DefaultLedger) Import(ctx context.Context, ledgerName string, stream chan *ledgerpb.Log) error {
 	return ErrNotFound
 }
 
 // Export is not implemented yet
 func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return ErrNotFound
+}
+
+func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
+	return l.logStore.GetAllLogs(ctx, from, to)
 }
 
 type numscriptStoreAdapter struct {
@@ -520,7 +569,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numsc
 	}
 
 	// Get metadata from the log store
-	metadataMap, err := s.logStore.GetAccountMetadata(ctx, s.ledgerName, accounts)
+	metadataMap, err := s.logStore.GetAccountMetadata(ctx, accounts)
 	if err != nil {
 		return nil, err
 	}

@@ -89,6 +89,7 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 4. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
 5. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
 6. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
+7. **No type aliases** : Never use type aliases (e.g., `type X = Y`). Always use the original type directly. This improves code clarity and avoids confusion about which type is actually being used.
 
    **Example**:
    ```go

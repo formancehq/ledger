@@ -1,15 +1,8 @@
-package ledger
+package ledgerpb
 
 import (
 	"database/sql/driver"
 	"encoding/json"
-)
-
-const (
-	SetMetadataLogType         LogType = iota // "SET_METADATA"
-	NewTransactionLogType                     // "NEW_TRANSACTION"
-	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
-	DeleteMetadataLogType
 )
 
 type LogType int16
@@ -67,3 +60,32 @@ func LogTypeFromString(logType string) LogType {
 
 	panic("invalid log type")
 }
+
+
+// GetLogType extracts the log type from a LogPayload
+func GetLogType(payload *LogPayload) LogType {
+	if payload == nil {
+		return 0
+	}
+	switch payload.Payload.(type) {
+	case *LogPayload_CreatedTransaction:
+		return NewTransactionLogType
+	case *LogPayload_RevertedTransaction:
+		return RevertedTransactionLogType
+	case *LogPayload_SavedMetadata:
+		return SetMetadataLogType
+	case *LogPayload_DeletedMetadata:
+		return DeleteMetadataLogType
+	default:
+		return 0
+	}
+}
+
+// GetLogTypeFromLog extracts the log type from a Log
+func GetLogTypeFromLog(log *Log) LogType {
+	if log == nil || log.Data == nil {
+		return 0
+	}
+	return GetLogType(log.Data)
+}
+

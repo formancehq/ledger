@@ -2,9 +2,8 @@ package ledger
 
 import (
 	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -14,14 +13,9 @@ const (
 )
 
 // NewInsertLogCommand creates a new InsertLogCommand
-func NewInsertLogCommand(log ledger.Log) (*raft.Command, error) {
-	logProto, err := service.LogToProto(log)
-	if err != nil {
-		return nil, err
-	}
-
+func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
 	cmdProto := &InsertLogCommand{
-		Log: logProto, // logProto is *ledgerpb.Log, which matches InsertLogCommand.Log type
+		Log: log, // log is *ledgerpb.Log, which matches InsertLogCommand.Log type
 	}
 
 	data, err := proto.Marshal(cmdProto)

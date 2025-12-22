@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -17,23 +17,23 @@ import (
 // FSM represents the finite state machine for a ledger Raft group
 // It manages a single ledger
 type FSM struct {
-	mu                sync.RWMutex       // Protects access to state
-	state             ledger.LedgerState // FSM state
+	mu                sync.RWMutex         // Protects access to state
+	state             ledgerpb.LedgerState // FSM state
 	logger            logging.Logger
 	logWriter         service.LogWriter
 	logReaderProvider func(uint64) service.LogReader // LogReader to catch up logs from leader via gRPC
 }
 
 // newFSM creates a new ledger FSM
-func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider func(uint64) service.LogReader, ledgerInfo ledger.LedgerInfo) *FSM {
+func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider func(uint64) service.LogReader, ledgerInfo *ledgerpb.LedgerInfo) *FSM {
 	return &FSM{
-		state: ledger.LedgerState{
+		state: ledgerpb.LedgerState{
 			LedgerInfo:   ledgerInfo,
 			LastSequence: 0,
 		},
 		logger: logger.WithFields(map[string]any{
-			"service": "ledger.fsm",
-			"ledger":  ledgerInfo.Name,
+			"service": "ledgerpb.fsm",
+			"ledger":  ledgerInfo.GetName(),
 		}),
 		logWriter:         logStore,
 		logReaderProvider: logReaderProvider,
@@ -41,30 +41,28 @@ func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider
 }
 
 // GetState returns a copy of the FSM state
-func (f *FSM) GetState() ledger.LedgerState {
+func (f *FSM) GetState() ledgerpb.LedgerState {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	return ledger.LedgerState{
+	return ledgerpb.LedgerState{
 		LedgerInfo:   f.state.LedgerInfo,
 		LastSequence: f.state.LastSequence,
 	}
 }
 
 // processInsertLog handles the insert log command by storing the log in memory and persisting it to the store
-func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
+func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 		return nil, err
 	}
 
-	// Convert protobuf Log to ledger.Log
 	// insertCmd.Log is *ledgerpb.Log (from InsertLogCommand)
-	log, err := service.LogFromProto(insertCmd.Log)
-	if err != nil {
-		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to convert log from proto")
-		return nil, err
+	log := insertCmd.Log
+	if log == nil {
+		return nil, fmt.Errorf("log is nil")
 	}
 
 	f.mu.Lock()
@@ -75,13 +73,13 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	f.logger.
 		WithFields(map[string]any{"sequence": log.Sequence}).
 		Infof("Log stored in memory and persisted to store via FSM")
-	return &log, nil
+	return log, nil
 }
 
 func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raft.ApplyResult, error) {
 	// Assume the majority of commands are logs insertion while allocating
 	ret := make([]raft.ApplyResult, 0, len(commands))
-	logs := make([]ledger.Log, 0, len(commands))
+	logs := make([]*ledgerpb.Log, 0, len(commands))
 	for _, command := range commands {
 		switch command.Type {
 		case CommandTypeInsertLog:
@@ -95,7 +93,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 			ret = append(ret, raft.ApplyResult{
 				Result: log,
 			})
-			logs = append(logs, *log)
+			logs = append(logs, log)
 		default:
 			ret = append(ret, raft.ApplyResult{
 				Error: fmt.Errorf("unknown command type: %s", command.Type),
@@ -131,7 +129,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 
 // RestoreSnapshot restores the ledger FSM from a snapshot
 func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) {
-	var snapshotData ledger.LedgerState
+	var snapshotData ledgerpb.LedgerState
 
 	if err := json.Unmarshal(snapshot.Data, &snapshotData); err != nil {
 		panic(err)
@@ -165,7 +163,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 
 		var (
 			// todo: flush regularly
-			logsToWrite []ledger.Log
+			logsToWrite []*ledgerpb.Log
 		)
 
 		// Collect all logs that need to be written

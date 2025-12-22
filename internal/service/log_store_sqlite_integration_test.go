@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,9 +66,9 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.NotNil(t, lastLog)
 		// The last log should be the one with the highest ID
 		if len(testLogs) > 0 {
-			expectedID := testLogs[len(testLogs)-1].ID
-			if expectedID != nil {
-				require.Equal(t, *expectedID, *lastLog.ID)
+			expectedID := testLogs[len(testLogs)-1].Id
+			if expectedID != 0 {
+				require.Equal(t, expectedID, lastLog.Id)
 			}
 		}
 	})
@@ -88,7 +88,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		t.Cleanup(func() { _ = cursor.Close() })
 
 		// Read all logs and filter by ledger
-		var logs []ledger.Log
+		var logs []*ledgerpb.Log
 		for {
 			log, err := cursor.Next(ctx)
 			if err == io.EOF {
@@ -146,7 +146,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test GetAccountMetadata for multiple accounts
-		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"bank", "user", "world", "non-existing"})
+		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"bank", "user", "world", "non-existing"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 
@@ -173,7 +173,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.Empty(t, nonExistingMetadata)
 
 		// Test with empty array
-		emptyMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{})
+		emptyMetadata, err := store.GetAccountMetadata(ctx, []string{})
 		require.NoError(t, err)
 		require.NotNil(t, emptyMetadata)
 		require.Empty(t, emptyMetadata)
@@ -185,55 +185,64 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		now := libtime.New(time.Now())
 
 		// Create logs with account metadata
-		logs := []ledger.Log{
+		logs := []*ledgerpb.Log{
 			// Transaction with account metadata
-			ledger.NewLog(&ledger.CreatedTransaction{
-				Transaction: ledger.NewTransaction().
-					WithPostings(
-						ledger.NewPosting("world", "test-account", "USD", big.NewInt(100)),
-					).
-					WithID(1).
-					WithTimestamp(now),
-				AccountMetadata: ledger.AccountMetadata{
-					"test-account": metadata.Metadata{
-						"key1": "value1",
-						"key2": "value2",
+			func() *ledgerpb.Log {
+				payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
+						WithPostings(
+							ledgerpb.NewPosting("world", "test-account", "USD", big.NewInt(100)),
+						).
+						WithID(1).
+						WithTimestamp(now),
+					AccountMetadata: map[string]*ledgerpb.Metadata{
+						"test-account": {Entries: metadata.Metadata{
+							"key1": "value1",
+							"key2": "value2",
+						}},
 					},
-				},
-			}).
-				WithID(1).
-				WithSequence(1).
-				WithDate(now),
+				})
+				return ledgerpb.NewLog(payload).
+					WithID(1).
+					WithSequence(1).
+					WithDate(now)
+			}(),
 
 			// SET_METADATA for the same account
-			ledger.NewLog(&ledger.SavedMetadata{
-				TargetType: "ACCOUNT",
-				TargetID:   "test-account",
-				Metadata: metadata.Metadata{
-					"key3": "value3",
-					"key2": "updated_value2", // This should override key2
-				},
-			}).
-				WithID(2).
-				WithSequence(2).
-				WithDate(now.Add(time.Second)),
+			func() *ledgerpb.Log {
+				payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
+					TargetType: "ACCOUNT",
+					TargetId:   &ledgerpb.SavedMetadata_AccountId{AccountId: "test-account"},
+					Metadata: metadata.Metadata{
+						"key3": "value3",
+						"key2": "updated_value2", // This should override key2
+					},
+				})
+				return ledgerpb.NewLog(payload).
+					WithID(2).
+					WithSequence(2).
+					WithDate(now.Add(time.Second))
+			}(),
 
 			// DELETE_METADATA for the same account
-			ledger.NewLog(&ledger.DeletedMetadata{
-				TargetType: "ACCOUNT",
-				TargetID:   "test-account",
-				Key:        "key1",
-			}).
-				WithID(3).
-				WithSequence(3).
-				WithDate(now.Add(2 * time.Second)),
+			func() *ledgerpb.Log {
+				payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
+					TargetType: "ACCOUNT",
+					TargetId:   &ledgerpb.DeletedMetadata_AccountId{AccountId: "test-account"},
+					Key:        "key1",
+				})
+				return ledgerpb.NewLog(payload).
+					WithID(3).
+					WithSequence(3).
+					WithDate(now.Add(2 * time.Second))
+			}(),
 		}
 
 		err := store.InsertLogs(ctx, logs...)
 		require.NoError(t, err)
 
 		// Get account metadata and verify
-		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"test-account"})
+		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"test-account"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 

@@ -6,12 +6,12 @@ import (
 	"sort"
 	"sync"
 
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 // LockedBalancesStore provides locking for concurrent access to volumes
 type LockedBalancesStore interface {
-	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error)
+	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, func(), error)
 }
 
 // DefaultLockedBalancesStore is a default implementation of LockedBalancesStore
@@ -38,7 +38,7 @@ func NewDefaultLockedBalancesStore(balancesStore BalancesStore) *DefaultLockedBa
 }
 
 // LockBalances locks the requested account:asset combinations and returns balances with a release function
-func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
+func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, func(), error) {
 	// Extract all account:asset combinations from the query
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
@@ -65,7 +65,7 @@ func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQu
 		// Release all locks on error
 		s.releaseLocks(lockedKeys)
 		// Return empty balances, a no-op release function, and the error
-		return ledger.Balances{}, func() {}, err
+		return ledgerpb.Balances{}, func() {}, err
 	}
 
 	// Return balances and a release function

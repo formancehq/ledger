@@ -3,7 +3,7 @@ syntax = "proto3";
 package fsm_commands;
 
 import "google/protobuf/struct.proto";
-import "google/protobuf/timestamp.proto";
+import "ledger.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/system";
 
@@ -28,7 +28,7 @@ message LedgerInfo {
   string driver = 3;                        // Driver name (e.g., "sqlite", "s3", etc.)
   google.protobuf.Struct config = 4;       // Driver-specific configuration
   google.protobuf.Struct metadata = 5;      // Optional metadata
-  google.protobuf.Timestamp created_at = 6; // Creation timestamp
+  ledger.Timestamp created_at = 6; // Creation timestamp
   uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
@@ -47,6 +47,6 @@ message BucketInfo {
   string name = 2;
   string driver = 3;
   google.protobuf.Struct config = 4;
-  google.protobuf.Timestamp created_at = 5;
+  ledger.Timestamp created_at = 5;
   uint64 snapshot_threshold = 6;
 }

@@ -1,8 +1,4 @@
-package ledger
-
-import (
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-)
+package ledgerpb
 
 // RaftStatus represents the complete Raft status information
 type RaftStatus struct {
@@ -60,12 +56,12 @@ type NodeInfo struct {
 }
 
 type SystemState struct {
-	NextLedgerID uint64                          // Next sequential ledger ID
-	Ledgers      map[string]*ledgerpb.LedgerInfo // Map of ledger name -> ledger info
+	NextLedgerID uint64                 // Next sequential ledger ID
+	Ledgers      map[string]*LedgerInfo // Map of ledger name -> ledger info
 }
 
 // LedgerState represents the state of the ledger FSM
 type LedgerState struct {
-	LedgerInfo   *ledgerpb.LedgerInfo `json:"ledgerInfo"`
-	LastSequence uint64               `json:"lastSequence"`
+	LedgerInfo   *LedgerInfo `json:"ledgerInfo"`
+	LastSequence uint64      `json:"lastSequence"`
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,32 +32,32 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
 
 		// Save account metadata
-		metadata := metadata.Metadata{
+		md := metadata.Metadata{
 			"account_type": "asset",
 			"label":        "Test Account",
 		}
 
-		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun: false,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: metadata,
+				Metadata: md,
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log)
-		require.NotNil(t, log.ID)
+		require.NotZero(t, log.Id)
 
 		// Verify the log was created correctly
-		require.Equal(t, ledger.SetMetadataLogType, log.Type)
-		savedMetadata, ok := log.Data.(*ledger.SavedMetadata)
-		require.True(t, ok)
+		require.Equal(t, ledgerpb.SetMetadataLogType, ledgerpb.GetLogTypeFromLog(log))
+		savedMetadata := log.Data.GetSavedMetadata()
+		require.NotNil(t, savedMetadata)
 		require.Equal(t, "ACCOUNT", savedMetadata.TargetType)
-		require.Equal(t, "test-account", savedMetadata.TargetID)
-		require.Equal(t, metadata, savedMetadata.Metadata)
+		require.Equal(t, "test-account", savedMetadata.GetAccountId())
+		require.EqualValues(t, md, savedMetadata.Metadata)
 
 		// Verify metadata was stored in the accounts table
-		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"test-account"})
+		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"test-account"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 
@@ -77,37 +77,37 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
 
 		// Save account metadata with idempotency key
-		metadata := metadata.Metadata{
+		md := metadata.Metadata{
 			"key": "value",
 		}
 
 		idempotencyKey := "test-idempotency-key"
 
-		log1, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		log1, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: metadata,
+				Metadata: md,
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log1)
 
 		// Try to save again with the same idempotency key
-		log2, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		log2, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: metadata,
+				Metadata: md,
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log2)
 
 		// Should return the same log
-		require.Equal(t, log1.ID, log2.ID)
+		require.Equal(t, log1.Id, log2.Id)
 	})
 
 	t.Run("SaveAccountMetadata_WithIdempotencyKeyConflict", func(t *testing.T) {
@@ -122,28 +122,30 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		idempotencyKey := "test-idempotency-key-conflict"
 
 		// Save account metadata with idempotency key
-		log1, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		md1 := metadata.Metadata{
+			"key1": "value1",
+		}
+		log1, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
-			Input: SaveAccountMetadata{
-				Address: "test-account",
-				Metadata: metadata.Metadata{
-					"key1": "value1",
-				},
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
+				Address:  "test-account",
+				Metadata: md1,
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log1)
 
 		// Try to save again with the same idempotency key but different metadata
-		log2, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		md2 := metadata.Metadata{
+			"key2": "value2",
+		}
+		log2, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
-			Input: SaveAccountMetadata{
-				Address: "test-account",
-				Metadata: metadata.Metadata{
-					"key2": "value2",
-				},
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
+				Address:  "test-account",
+				Metadata: md2,
 			},
 		})
 		require.Error(t, err)
@@ -161,15 +163,15 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
 
 		// Save account metadata in dry run mode
-		metadata := metadata.Metadata{
+		md := metadata.Metadata{
 			"key": "value",
 		}
 
-		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun: true,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: metadata,
+				Metadata: md,
 			},
 		})
 		require.NoError(t, err)
@@ -179,7 +181,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		lastLog, err := store.GetLastLog(ctx)
 		require.NoError(t, err)
 		if lastLog != nil {
-			require.NotEqual(t, log.ID, lastLog.ID)
+			require.NotEqual(t, log.Id, lastLog.Id)
 		}
 	})
 
@@ -193,11 +195,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
 
 		// Test empty address
-		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		md1 := metadata.Metadata{"key": "value"}
+		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun: false,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "",
-				Metadata: metadata.Metadata{"key": "value"},
+				Metadata: md1,
 			},
 		})
 		require.Error(t, err)
@@ -205,11 +208,11 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.Contains(t, err.Error(), "account address is required")
 
 		// Test empty metadata
-		log, err = ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		log, err = ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun: false,
-			Input: SaveAccountMetadata{
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: metadata.Metadata{},
+				Metadata: nil,
 			},
 		})
 		require.Error(t, err)
@@ -228,20 +231,22 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 		// First, create a transaction with account metadata
 		now := libtime.New(time.Now())
-		txLog := ledger.NewLog(&ledger.CreatedTransaction{
-			Transaction: ledger.NewTransaction().
+		md := metadata.Metadata{
+			"key1": "value1",
+			"key2": "value2",
+		}
+		payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
+			Transaction: ledgerpb.NewTransaction().
 				WithPostings(
-					ledger.NewPosting("world", "test-account", "USD", big.NewInt(100)),
+					ledgerpb.NewPosting("world", "test-account", "USD", big.NewInt(100)),
 				).
 				WithID(1).
 				WithTimestamp(now),
-			AccountMetadata: ledger.AccountMetadata{
-				"test-account": metadata.Metadata{
-					"key1": "value1",
-					"key2": "value2",
-				},
+			AccountMetadata: map[string]*ledgerpb.Metadata{
+				"test-account": {Entries: md},
 			},
-		}).
+		})
+		txLog := ledgerpb.NewLog(payload).
 			WithID(1).
 			WithSequence(1).
 			WithDate(now)
@@ -250,21 +255,22 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		// Then, save additional metadata
-		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[SaveAccountMetadata]{
+		md2 := metadata.Metadata{
+			"key3": "value3",
+			"key2": "updated_value2", // This should override key2
+		}
+		log, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			DryRun: false,
-			Input: SaveAccountMetadata{
-				Address: "test-account",
-				Metadata: metadata.Metadata{
-					"key3": "value3",
-					"key2": "updated_value2", // This should override key2
-				},
+			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
+				Address:  "test-account",
+				Metadata: md2,
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log)
 
 		// Verify metadata was merged correctly
-		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"test-account"})
+		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"test-account"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 
@@ -281,11 +287,10 @@ type mockLogWriter struct {
 	store LogStore
 }
 
-func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...ledger.Log) error {
+func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	return m.store.InsertLogs(ctx, logs...)
 }
 
 func (m *mockLogWriter) GetLastSequenceID(ctx context.Context) (uint64, error) {
 	return m.store.GetLastSequenceID(ctx)
 }
-

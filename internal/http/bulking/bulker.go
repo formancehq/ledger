@@ -13,17 +13,17 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
 
 type Bulker struct {
-	ledgerCluster   service.LedgerCluster
-	ledgerName      string
-	parallelism     int
-	tracer          trace.Tracer
+	ledgerCluster service.LedgerCluster
+	ledgerName    string
+	parallelism   int
+	tracer        trace.Tracer
 }
 
 func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
@@ -133,20 +133,20 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, createTransactionResult, err := b.ledgerCluster.CreateTransaction(ctx, b.ledgerName, service.Parameters[service.CreateTransaction]{
+		log, createTransactionResult, err := b.ledgerCluster.CreateTransaction(ctx, b.ledgerName, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
-			Input:          *rs,
+			Input:          rs,
 		})
 		if err != nil {
 			return nil, 0, err
 		}
 
-		return createTransactionResult.Transaction, *log.ID, nil
+		return createTransactionResult.Transaction, log.Id, nil
 
 	case ActionAddMetadata:
 		req := data.Data.(AddMetadataRequest)
-		var log *ledger.Log
+		var log *ledgerpb.Log
 		var err error
 
 		switch req.TargetType {
@@ -156,10 +156,10 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledgerCluster.SaveAccountMetadata(ctx, b.ledgerName, service.Parameters[service.SaveAccountMetadata]{
+			log, err = b.ledgerCluster.SaveAccountMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: service.SaveAccountMetadata{
+				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 					Address:  address,
 					Metadata: req.Metadata,
 				},
@@ -170,12 +170,12 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledgerCluster.SaveTransactionMetadata(ctx, b.ledgerName, service.Parameters[service.SaveTransactionMetadata]{
+			log, err = b.ledgerCluster.SaveTransactionMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: service.SaveTransactionMetadata{
-					TransactionID: transactionID,
-					Metadata:     req.Metadata,
+				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
+					TransactionId: transactionID,
+					Metadata:      req.Metadata,
 				},
 			})
 		default:
@@ -185,16 +185,16 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			return nil, 0, err
 		}
 
-		return nil, *log.ID, nil
+		return nil, log.Id, nil
 
 	case ActionRevertTransaction:
 		req := data.Data.(RevertTransactionRequest)
 
-		log, _, err := b.ledgerCluster.RevertTransaction(ctx, b.ledgerName, service.Parameters[service.RevertTransaction]{
+		log, _, err := b.ledgerCluster.RevertTransaction(ctx, b.ledgerName, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
-			Input: service.RevertTransaction{
-				TransactionID:   req.ID,
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId:   req.ID,
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
 				Metadata:        req.Metadata,
@@ -204,11 +204,11 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			return nil, 0, err
 		}
 
-		return nil, *log.ID, nil
+		return nil, log.Id, nil
 
 	case ActionDeleteMetadata:
 		req := data.Data.(DeleteMetadataRequest)
-		var log *ledger.Log
+		var log *ledgerpb.Log
 		var err error
 
 		switch req.TargetType {
@@ -218,10 +218,10 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledgerCluster.DeleteAccountMetadata(ctx, b.ledgerName, service.Parameters[service.DeleteAccountMetadata]{
+			log, err = b.ledgerCluster.DeleteAccountMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: service.DeleteAccountMetadata{
+				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 					Address: address,
 					Key:     req.Key,
 				},
@@ -232,11 +232,11 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledgerCluster.DeleteTransactionMetadata(ctx, b.ledgerName, service.Parameters[service.DeleteTransactionMetadata]{
+			log, err = b.ledgerCluster.DeleteTransactionMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: service.DeleteTransactionMetadata{
-					TransactionID: transactionID,
+				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+					TransactionId: transactionID,
 					Key:           req.Key,
 				},
 			})
@@ -247,7 +247,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			return nil, 0, err
 		}
 
-		return nil, *log.ID, nil
+		return nil, log.Id, nil
 
 	default:
 		return nil, 0, fmt.Errorf("unsupported action: %s", data.Action)
@@ -318,4 +318,3 @@ func NewDefaultBulkerFactory(options ...BulkerOption) *DefaultBulkerFactory {
 }
 
 var _ BulkerFactory = (*DefaultBulkerFactory)(nil)
-

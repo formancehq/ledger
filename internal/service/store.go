@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/v3/metadata"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"google.golang.org/grpc"
 )
 
@@ -43,23 +43,19 @@ func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], ma
 
 // LogWriter handles log writing operations
 type LogWriter interface {
-	InsertLogs(ctx context.Context, logs ...ledger.Log) error
+	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
 	GetLastSequenceID(ctx context.Context) (uint64, error)
 }
 
 // LogReader handles log reading operations
 type LogReader interface {
-	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) // from: optional sequence number to start from (0 = from beginning), to: optional sequence number to stop at (0 = until end, inclusive)
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional sequence number to start from (0 = from beginning), to: optional sequence number to stop at (0 = until end, inclusive)
 }
 
-type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
+type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
 
-func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
+func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	return fn(ctx, from, to)
-}
-
-func NewLogReaderFn(fn LogReaderFn) LogReader {
-	return fn
 }
 
 // LogStore embeds both LogWriter and LogReader, plus additional methods
@@ -69,8 +65,8 @@ type LogStore interface {
 	AccountStore
 	LogWriter
 	LogReader
-	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error)
-	GetLastLog(ctx context.Context) (*ledger.Log, error)
+	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error)
+	GetLastLog(ctx context.Context) (*ledgerpb.Log, error)
 }
 
 // Store embeds LogWriter and LogReader
@@ -81,9 +77,9 @@ type Store interface {
 
 // BalancesStore handles balance/volume queries
 type BalancesStore interface {
-	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error)
+	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 }
 
 type AccountStore interface {
-	GetAccountMetadata(ctx context.Context, ledgerName string, accounts []string) (map[string]metadata.Metadata, error)
+	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 }

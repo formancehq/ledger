@@ -7,8 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 const (
@@ -78,8 +77,8 @@ type BulkElementResult struct {
 }
 
 type AddMetadataRequest struct {
-	TargetType string          `json:"targetType"`
-	TargetID   json.RawMessage `json:"targetId"`
+	TargetType string            `json:"targetType"`
+	TargetID   json.RawMessage   `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
@@ -97,8 +96,8 @@ type DeleteMetadataRequest struct {
 }
 
 type TransactionRequest struct {
-	Postings        ledger.Postings              `json:"postings,omitempty"`
-	Script          *service.TransactionScript    `json:"script,omitempty"`
+	Postings        []*ledgerpb.Posting          `json:"postings,omitempty"`
+	Script          *ledgerpb.Script             `json:"script,omitempty"`
 	Timestamp       *time.Time                   `json:"timestamp,omitempty"`
 	Reference       string                       `json:"reference,omitempty"`
 	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
@@ -106,15 +105,28 @@ type TransactionRequest struct {
 	Runtime         string                       `json:"runtime,omitempty"`
 }
 
-func (req TransactionRequest) ToCore() (*service.CreateTransaction, error) {
-	return &service.CreateTransaction{
+func (req TransactionRequest) ToCore() (*ledgerpb.CreateTransactionRequestPayload, error) {
+	// Convert account metadata to protobuf
+	accountMetadata := make(map[string]*ledgerpb.Metadata)
+	for addr, md := range req.AccountMetadata {
+		if len(md) > 0 {
+			accountMetadata[addr] = &ledgerpb.Metadata{Entries: md}
+		}
+	}
+
+	// Convert timestamp
+	var timestamp *ledgerpb.Timestamp
+	if req.Timestamp != nil && !req.Timestamp.IsZero() {
+		timestamp = ledgerpb.NewTimestamp(*req.Timestamp)
+	}
+
+	return &ledgerpb.CreateTransactionRequestPayload{
 		Postings:        req.Postings,
 		Script:          req.Script,
-		Timestamp:       req.Timestamp,
+		Timestamp:       timestamp,
 		Reference:       req.Reference,
 		Metadata:        req.Metadata,
-		AccountMetadata: req.AccountMetadata,
+		AccountMetadata: accountMetadata,
 		Runtime:         req.Runtime,
 	}, nil
 }
-

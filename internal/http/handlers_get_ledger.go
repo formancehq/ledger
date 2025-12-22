@@ -24,6 +24,6 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Return ledger info
 	api.Ok(w, LedgerResponse{
-		LedgerInfo: *ledgerInfo,
+		LedgerInfo: ledgerInfo,
 	})
 }

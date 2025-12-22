@@ -3,7 +3,7 @@ syntax = "proto3";
 package ledger;
 
 import "google/protobuf/struct.proto";
-import "google/protobuf/timestamp.proto";
+import "ledger.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
 
@@ -55,7 +55,7 @@ message CreateLedgerResponse {
   google.protobuf.Struct config = 3;
   string driver = 4;
   google.protobuf.Struct metadata = 5;
-  google.protobuf.Timestamp created_at = 6;
+  Timestamp created_at = 6;
   uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (0 means use global config)
 }
 
@@ -94,6 +94,6 @@ message GetLedgerByNameResponse {
   google.protobuf.Struct config = 3;
   string driver = 4;
   google.protobuf.Struct metadata = 5;
-  google.protobuf.Timestamp created_at = 6;
+  Timestamp created_at = 6;
   uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (0 means use global config)
 }

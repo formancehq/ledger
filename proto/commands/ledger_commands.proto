@@ -3,7 +3,7 @@ syntax = "proto3";
 package bucket_commands;
 
 import "google/protobuf/struct.proto";
-import "proto/ledger.proto";
+import "ledger.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/ledger";
 

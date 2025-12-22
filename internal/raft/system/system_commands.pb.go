@@ -2,15 +2,15 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.27.5
-// source: proto/commands/system_commands.proto
+// source: commands/system_commands.proto
 
 package system
 
 import (
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -37,7 +37,7 @@ type CreateLedgerCommand struct {
 
 func (x *CreateLedgerCommand) Reset() {
 	*x = CreateLedgerCommand{}
-	mi := &file_proto_commands_system_commands_proto_msgTypes[0]
+	mi := &file_commands_system_commands_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49,7 +49,7 @@ func (x *CreateLedgerCommand) String() string {
 func (*CreateLedgerCommand) ProtoMessage() {}
 
 func (x *CreateLedgerCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_system_commands_proto_msgTypes[0]
+	mi := &file_commands_system_commands_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,7 +62,7 @@ func (x *CreateLedgerCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateLedgerCommand.ProtoReflect.Descriptor instead.
 func (*CreateLedgerCommand) Descriptor() ([]byte, []int) {
-	return file_proto_commands_system_commands_proto_rawDescGZIP(), []int{0}
+	return file_commands_system_commands_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateLedgerCommand) GetName() string {
@@ -110,7 +110,7 @@ type DeleteLedgerCommand struct {
 
 func (x *DeleteLedgerCommand) Reset() {
 	*x = DeleteLedgerCommand{}
-	mi := &file_proto_commands_system_commands_proto_msgTypes[1]
+	mi := &file_commands_system_commands_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -122,7 +122,7 @@ func (x *DeleteLedgerCommand) String() string {
 func (*DeleteLedgerCommand) ProtoMessage() {}
 
 func (x *DeleteLedgerCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_system_commands_proto_msgTypes[1]
+	mi := &file_commands_system_commands_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -135,7 +135,7 @@ func (x *DeleteLedgerCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteLedgerCommand.ProtoReflect.Descriptor instead.
 func (*DeleteLedgerCommand) Descriptor() ([]byte, []int) {
-	return file_proto_commands_system_commands_proto_rawDescGZIP(), []int{1}
+	return file_commands_system_commands_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *DeleteLedgerCommand) GetName() string {
@@ -153,7 +153,7 @@ type LedgerInfo struct {
 	Driver            string                 `protobuf:"bytes,3,opt,name=driver,proto3" json:"driver,omitempty"`                                                 // Driver name (e.g., "sqlite", "s3", etc.)
 	Config            *structpb.Struct       `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`                                                 // Driver-specific configuration
 	Metadata          *structpb.Struct       `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`                                             // Optional metadata
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                          // Creation timestamp
+	CreatedAt         *ledgerpb.Timestamp    `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                          // Creation timestamp
 	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -161,7 +161,7 @@ type LedgerInfo struct {
 
 func (x *LedgerInfo) Reset() {
 	*x = LedgerInfo{}
-	mi := &file_proto_commands_system_commands_proto_msgTypes[2]
+	mi := &file_commands_system_commands_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -173,7 +173,7 @@ func (x *LedgerInfo) String() string {
 func (*LedgerInfo) ProtoMessage() {}
 
 func (x *LedgerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_system_commands_proto_msgTypes[2]
+	mi := &file_commands_system_commands_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -186,7 +186,7 @@ func (x *LedgerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerInfo.ProtoReflect.Descriptor instead.
 func (*LedgerInfo) Descriptor() ([]byte, []int) {
-	return file_proto_commands_system_commands_proto_rawDescGZIP(), []int{2}
+	return file_commands_system_commands_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *LedgerInfo) GetId() uint64 {
@@ -224,7 +224,7 @@ func (x *LedgerInfo) GetMetadata() *structpb.Struct {
 	return nil
 }
 
-func (x *LedgerInfo) GetCreatedAt() *timestamppb.Timestamp {
+func (x *LedgerInfo) GetCreatedAt() *ledgerpb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
@@ -252,7 +252,7 @@ type SystemFSMSnapshot struct {
 
 func (x *SystemFSMSnapshot) Reset() {
 	*x = SystemFSMSnapshot{}
-	mi := &file_proto_commands_system_commands_proto_msgTypes[3]
+	mi := &file_commands_system_commands_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -264,7 +264,7 @@ func (x *SystemFSMSnapshot) String() string {
 func (*SystemFSMSnapshot) ProtoMessage() {}
 
 func (x *SystemFSMSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_system_commands_proto_msgTypes[3]
+	mi := &file_commands_system_commands_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -277,7 +277,7 @@ func (x *SystemFSMSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemFSMSnapshot.ProtoReflect.Descriptor instead.
 func (*SystemFSMSnapshot) Descriptor() ([]byte, []int) {
-	return file_proto_commands_system_commands_proto_rawDescGZIP(), []int{3}
+	return file_commands_system_commands_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SystemFSMSnapshot) GetLedgers() map[string]*LedgerInfo {
@@ -315,7 +315,7 @@ type BucketInfo struct {
 	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Driver            string                 `protobuf:"bytes,3,opt,name=driver,proto3" json:"driver,omitempty"`
 	Config            *structpb.Struct       `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt         *ledgerpb.Timestamp    `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	SnapshotThreshold uint64                 `protobuf:"varint,6,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -323,7 +323,7 @@ type BucketInfo struct {
 
 func (x *BucketInfo) Reset() {
 	*x = BucketInfo{}
-	mi := &file_proto_commands_system_commands_proto_msgTypes[4]
+	mi := &file_commands_system_commands_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -335,7 +335,7 @@ func (x *BucketInfo) String() string {
 func (*BucketInfo) ProtoMessage() {}
 
 func (x *BucketInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_system_commands_proto_msgTypes[4]
+	mi := &file_commands_system_commands_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -348,7 +348,7 @@ func (x *BucketInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BucketInfo.ProtoReflect.Descriptor instead.
 func (*BucketInfo) Descriptor() ([]byte, []int) {
-	return file_proto_commands_system_commands_proto_rawDescGZIP(), []int{4}
+	return file_commands_system_commands_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BucketInfo) GetId() uint64 {
@@ -379,7 +379,7 @@ func (x *BucketInfo) GetConfig() *structpb.Struct {
 	return nil
 }
 
-func (x *BucketInfo) GetCreatedAt() *timestamppb.Timestamp {
+func (x *BucketInfo) GetCreatedAt() *ledgerpb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
@@ -393,11 +393,11 @@ func (x *BucketInfo) GetSnapshotThreshold() uint64 {
 	return 0
 }
 
-var File_proto_commands_system_commands_proto protoreflect.FileDescriptor
+var File_commands_system_commands_proto protoreflect.FileDescriptor
 
-const file_proto_commands_system_commands_proto_rawDesc = "" +
+const file_commands_system_commands_proto_rawDesc = "" +
 	"\n" +
-	"$proto/commands/system_commands.proto\x12\ffsm_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x01\n" +
+	"\x1ecommands/system_commands.proto\x12\ffsm_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\fledger.proto\"\xd6\x01\n" +
 	"\x13CreateLedgerCommand\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06driver\x18\x02 \x01(\tR\x06driver\x12/\n" +
@@ -405,16 +405,16 @@ const file_proto_commands_system_commands_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12-\n" +
 	"\x12snapshot_threshold\x18\x05 \x01(\x04R\x11snapshotThreshold\")\n" +
 	"\x13DeleteLedgerCommand\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x98\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x8f\x02\n" +
 	"\n" +
 	"LedgerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
 	"\x06driver\x18\x03 \x01(\tR\x06driver\x12/\n" +
 	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x123\n" +
-	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x129\n" +
+	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x120\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
+	"created_at\x18\x06 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
 	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\"\x9b\x03\n" +
 	"\x11SystemFSMSnapshot\x12F\n" +
 	"\aledgers\x18\x01 \x03(\v2,.fsm_commands.SystemFSMSnapshot.LedgersEntryR\aledgers\x12$\n" +
@@ -426,51 +426,51 @@ const file_proto_commands_system_commands_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x18.fsm_commands.LedgerInfoR\x05value:\x028\x01\x1aT\n" +
 	"\fBucketsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.fsm_commands.BucketInfoR\x05value:\x028\x01\"\xe3\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x18.fsm_commands.BucketInfoR\x05value:\x028\x01\"\xda\x01\n" +
 	"\n" +
 	"BucketInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
 	"\x06driver\x18\x03 \x01(\tR\x06driver\x12/\n" +
-	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x129\n" +
+	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x120\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
+	"created_at\x18\x05 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
 	"\x12snapshot_threshold\x18\x06 \x01(\x04R\x11snapshotThresholdB:Z8github.com/formancehq/ledger-v3-poc/internal/raft/systemb\x06proto3"
 
 var (
-	file_proto_commands_system_commands_proto_rawDescOnce sync.Once
-	file_proto_commands_system_commands_proto_rawDescData []byte
+	file_commands_system_commands_proto_rawDescOnce sync.Once
+	file_commands_system_commands_proto_rawDescData []byte
 )
 
-func file_proto_commands_system_commands_proto_rawDescGZIP() []byte {
-	file_proto_commands_system_commands_proto_rawDescOnce.Do(func() {
-		file_proto_commands_system_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_commands_system_commands_proto_rawDesc), len(file_proto_commands_system_commands_proto_rawDesc)))
+func file_commands_system_commands_proto_rawDescGZIP() []byte {
+	file_commands_system_commands_proto_rawDescOnce.Do(func() {
+		file_commands_system_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_commands_system_commands_proto_rawDesc), len(file_commands_system_commands_proto_rawDesc)))
 	})
-	return file_proto_commands_system_commands_proto_rawDescData
+	return file_commands_system_commands_proto_rawDescData
 }
 
-var file_proto_commands_system_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_proto_commands_system_commands_proto_goTypes = []any{
-	(*CreateLedgerCommand)(nil),   // 0: fsm_commands.CreateLedgerCommand
-	(*DeleteLedgerCommand)(nil),   // 1: fsm_commands.DeleteLedgerCommand
-	(*LedgerInfo)(nil),            // 2: fsm_commands.LedgerInfo
-	(*SystemFSMSnapshot)(nil),     // 3: fsm_commands.SystemFSMSnapshot
-	(*BucketInfo)(nil),            // 4: fsm_commands.BucketInfo
-	nil,                           // 5: fsm_commands.SystemFSMSnapshot.LedgersEntry
-	nil,                           // 6: fsm_commands.SystemFSMSnapshot.BucketsEntry
-	(*structpb.Struct)(nil),       // 7: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+var file_commands_system_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_commands_system_commands_proto_goTypes = []any{
+	(*CreateLedgerCommand)(nil), // 0: fsm_commands.CreateLedgerCommand
+	(*DeleteLedgerCommand)(nil), // 1: fsm_commands.DeleteLedgerCommand
+	(*LedgerInfo)(nil),          // 2: fsm_commands.LedgerInfo
+	(*SystemFSMSnapshot)(nil),   // 3: fsm_commands.SystemFSMSnapshot
+	(*BucketInfo)(nil),          // 4: fsm_commands.BucketInfo
+	nil,                         // 5: fsm_commands.SystemFSMSnapshot.LedgersEntry
+	nil,                         // 6: fsm_commands.SystemFSMSnapshot.BucketsEntry
+	(*structpb.Struct)(nil),     // 7: google.protobuf.Struct
+	(*ledgerpb.Timestamp)(nil),  // 8: ledger.Timestamp
 }
-var file_proto_commands_system_commands_proto_depIdxs = []int32{
+var file_commands_system_commands_proto_depIdxs = []int32{
 	7,  // 0: fsm_commands.CreateLedgerCommand.config:type_name -> google.protobuf.Struct
 	7,  // 1: fsm_commands.CreateLedgerCommand.metadata:type_name -> google.protobuf.Struct
 	7,  // 2: fsm_commands.LedgerInfo.config:type_name -> google.protobuf.Struct
 	7,  // 3: fsm_commands.LedgerInfo.metadata:type_name -> google.protobuf.Struct
-	8,  // 4: fsm_commands.LedgerInfo.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 4: fsm_commands.LedgerInfo.created_at:type_name -> ledger.Timestamp
 	5,  // 5: fsm_commands.SystemFSMSnapshot.ledgers:type_name -> fsm_commands.SystemFSMSnapshot.LedgersEntry
 	6,  // 6: fsm_commands.SystemFSMSnapshot.buckets:type_name -> fsm_commands.SystemFSMSnapshot.BucketsEntry
 	7,  // 7: fsm_commands.BucketInfo.config:type_name -> google.protobuf.Struct
-	8,  // 8: fsm_commands.BucketInfo.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 8: fsm_commands.BucketInfo.created_at:type_name -> ledger.Timestamp
 	2,  // 9: fsm_commands.SystemFSMSnapshot.LedgersEntry.value:type_name -> fsm_commands.LedgerInfo
 	4,  // 10: fsm_commands.SystemFSMSnapshot.BucketsEntry.value:type_name -> fsm_commands.BucketInfo
 	11, // [11:11] is the sub-list for method output_type
@@ -480,26 +480,26 @@ var file_proto_commands_system_commands_proto_depIdxs = []int32{
 	0,  // [0:11] is the sub-list for field type_name
 }
 
-func init() { file_proto_commands_system_commands_proto_init() }
-func file_proto_commands_system_commands_proto_init() {
-	if File_proto_commands_system_commands_proto != nil {
+func init() { file_commands_system_commands_proto_init() }
+func file_commands_system_commands_proto_init() {
+	if File_commands_system_commands_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_commands_system_commands_proto_rawDesc), len(file_proto_commands_system_commands_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_commands_system_commands_proto_rawDesc), len(file_commands_system_commands_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_proto_commands_system_commands_proto_goTypes,
-		DependencyIndexes: file_proto_commands_system_commands_proto_depIdxs,
-		MessageInfos:      file_proto_commands_system_commands_proto_msgTypes,
+		GoTypes:           file_commands_system_commands_proto_goTypes,
+		DependencyIndexes: file_commands_system_commands_proto_depIdxs,
+		MessageInfos:      file_commands_system_commands_proto_msgTypes,
 	}.Build()
-	File_proto_commands_system_commands_proto = out.File
-	file_proto_commands_system_commands_proto_goTypes = nil
-	file_proto_commands_system_commands_proto_depIdxs = nil
+	File_commands_system_commands_proto = out.File
+	file_commands_system_commands_proto_goTypes = nil
+	file_commands_system_commands_proto_depIdxs = nil
 }

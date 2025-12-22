@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.27.5
-// source: proto/ledger.proto
+// source: ledger.proto
 
 package ledgerpb
 
@@ -19,10 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_Snapshot_FullMethodName            = "/ledger.LedgerService/Snapshot"
-	LedgerService_CreateTransaction_FullMethodName   = "/ledger.LedgerService/CreateTransaction"
-	LedgerService_SaveAccountMetadata_FullMethodName = "/ledger.LedgerService/SaveAccountMetadata"
-	LedgerService_StreamLogs_FullMethodName          = "/ledger.LedgerService/StreamLogs"
+	LedgerService_Snapshot_FullMethodName                  = "/ledger.LedgerService/Snapshot"
+	LedgerService_CreateTransaction_FullMethodName         = "/ledger.LedgerService/CreateTransaction"
+	LedgerService_RevertTransaction_FullMethodName         = "/ledger.LedgerService/RevertTransaction"
+	LedgerService_SaveAccountMetadata_FullMethodName       = "/ledger.LedgerService/SaveAccountMetadata"
+	LedgerService_SaveTransactionMetadata_FullMethodName   = "/ledger.LedgerService/SaveTransactionMetadata"
+	LedgerService_DeleteAccountMetadata_FullMethodName     = "/ledger.LedgerService/DeleteAccountMetadata"
+	LedgerService_DeleteTransactionMetadata_FullMethodName = "/ledger.LedgerService/DeleteTransactionMetadata"
+	LedgerService_StreamLogs_FullMethodName                = "/ledger.LedgerService/StreamLogs"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -35,8 +39,16 @@ type LedgerServiceClient interface {
 	Snapshot(ctx context.Context, in *LedgerSnapshotRequest, opts ...grpc.CallOption) (*LedgerSnapshotResponse, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*CreateTransactionResponse, error)
+	// RevertTransaction reverts a transaction
+	RevertTransaction(ctx context.Context, in *RevertTransactionRequest, opts ...grpc.CallOption) (*RevertTransactionResponse, error)
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(ctx context.Context, in *SaveAccountMetadataRequest, opts ...grpc.CallOption) (*SaveAccountMetadataResponse, error)
+	// SaveTransactionMetadata saves metadata for a transaction
+	SaveTransactionMetadata(ctx context.Context, in *SaveTransactionMetadataRequest, opts ...grpc.CallOption) (*SaveTransactionMetadataResponse, error)
+	// DeleteAccountMetadata deletes metadata for an account
+	DeleteAccountMetadata(ctx context.Context, in *DeleteAccountMetadataRequest, opts ...grpc.CallOption) (*DeleteAccountMetadataResponse, error)
+	// DeleteTransactionMetadata deletes metadata for a transaction
+	DeleteTransactionMetadata(ctx context.Context, in *DeleteTransactionMetadataRequest, opts ...grpc.CallOption) (*DeleteTransactionMetadataResponse, error)
 	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
 }
@@ -69,10 +81,50 @@ func (c *ledgerServiceClient) CreateTransaction(ctx context.Context, in *CreateT
 	return out, nil
 }
 
+func (c *ledgerServiceClient) RevertTransaction(ctx context.Context, in *RevertTransactionRequest, opts ...grpc.CallOption) (*RevertTransactionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevertTransactionResponse)
+	err := c.cc.Invoke(ctx, LedgerService_RevertTransaction_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *ledgerServiceClient) SaveAccountMetadata(ctx context.Context, in *SaveAccountMetadataRequest, opts ...grpc.CallOption) (*SaveAccountMetadataResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SaveAccountMetadataResponse)
 	err := c.cc.Invoke(ctx, LedgerService_SaveAccountMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) SaveTransactionMetadata(ctx context.Context, in *SaveTransactionMetadataRequest, opts ...grpc.CallOption) (*SaveTransactionMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SaveTransactionMetadataResponse)
+	err := c.cc.Invoke(ctx, LedgerService_SaveTransactionMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) DeleteAccountMetadata(ctx context.Context, in *DeleteAccountMetadataRequest, opts ...grpc.CallOption) (*DeleteAccountMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAccountMetadataResponse)
+	err := c.cc.Invoke(ctx, LedgerService_DeleteAccountMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) DeleteTransactionMetadata(ctx context.Context, in *DeleteTransactionMetadataRequest, opts ...grpc.CallOption) (*DeleteTransactionMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteTransactionMetadataResponse)
+	err := c.cc.Invoke(ctx, LedgerService_DeleteTransactionMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +160,16 @@ type LedgerServiceServer interface {
 	Snapshot(context.Context, *LedgerSnapshotRequest) (*LedgerSnapshotResponse, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error)
+	// RevertTransaction reverts a transaction
+	RevertTransaction(context.Context, *RevertTransactionRequest) (*RevertTransactionResponse, error)
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(context.Context, *SaveAccountMetadataRequest) (*SaveAccountMetadataResponse, error)
+	// SaveTransactionMetadata saves metadata for a transaction
+	SaveTransactionMetadata(context.Context, *SaveTransactionMetadataRequest) (*SaveTransactionMetadataResponse, error)
+	// DeleteAccountMetadata deletes metadata for an account
+	DeleteAccountMetadata(context.Context, *DeleteAccountMetadataRequest) (*DeleteAccountMetadataResponse, error)
+	// DeleteTransactionMetadata deletes metadata for a transaction
+	DeleteTransactionMetadata(context.Context, *DeleteTransactionMetadataRequest) (*DeleteTransactionMetadataResponse, error)
 	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
 	mustEmbedUnimplementedLedgerServiceServer()
@@ -128,8 +188,20 @@ func (UnimplementedLedgerServiceServer) Snapshot(context.Context, *LedgerSnapsho
 func (UnimplementedLedgerServiceServer) CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTransaction not implemented")
 }
+func (UnimplementedLedgerServiceServer) RevertTransaction(context.Context, *RevertTransactionRequest) (*RevertTransactionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevertTransaction not implemented")
+}
 func (UnimplementedLedgerServiceServer) SaveAccountMetadata(context.Context, *SaveAccountMetadataRequest) (*SaveAccountMetadataResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SaveAccountMetadata not implemented")
+}
+func (UnimplementedLedgerServiceServer) SaveTransactionMetadata(context.Context, *SaveTransactionMetadataRequest) (*SaveTransactionMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SaveTransactionMetadata not implemented")
+}
+func (UnimplementedLedgerServiceServer) DeleteAccountMetadata(context.Context, *DeleteAccountMetadataRequest) (*DeleteAccountMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteAccountMetadata not implemented")
+}
+func (UnimplementedLedgerServiceServer) DeleteTransactionMetadata(context.Context, *DeleteTransactionMetadataRequest) (*DeleteTransactionMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteTransactionMetadata not implemented")
 }
 func (UnimplementedLedgerServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
@@ -191,6 +263,24 @@ func _LedgerService_CreateTransaction_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_RevertTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevertTransactionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).RevertTransaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_RevertTransaction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).RevertTransaction(ctx, req.(*RevertTransactionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LedgerService_SaveAccountMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SaveAccountMetadataRequest)
 	if err := dec(in); err != nil {
@@ -205,6 +295,60 @@ func _LedgerService_SaveAccountMetadata_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LedgerServiceServer).SaveAccountMetadata(ctx, req.(*SaveAccountMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_SaveTransactionMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveTransactionMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).SaveTransactionMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_SaveTransactionMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).SaveTransactionMetadata(ctx, req.(*SaveTransactionMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_DeleteAccountMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAccountMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).DeleteAccountMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_DeleteAccountMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).DeleteAccountMetadata(ctx, req.(*DeleteAccountMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_DeleteTransactionMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteTransactionMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).DeleteTransactionMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_DeleteTransactionMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).DeleteTransactionMetadata(ctx, req.(*DeleteTransactionMetadataRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -236,8 +380,24 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _LedgerService_CreateTransaction_Handler,
 		},
 		{
+			MethodName: "RevertTransaction",
+			Handler:    _LedgerService_RevertTransaction_Handler,
+		},
+		{
 			MethodName: "SaveAccountMetadata",
 			Handler:    _LedgerService_SaveAccountMetadata_Handler,
+		},
+		{
+			MethodName: "SaveTransactionMetadata",
+			Handler:    _LedgerService_SaveTransactionMetadata_Handler,
+		},
+		{
+			MethodName: "DeleteAccountMetadata",
+			Handler:    _LedgerService_DeleteAccountMetadata_Handler,
+		},
+		{
+			MethodName: "DeleteTransactionMetadata",
+			Handler:    _LedgerService_DeleteTransactionMetadata_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -247,5 +407,5 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/ledger.proto",
+	Metadata: "ledger.proto",
 }

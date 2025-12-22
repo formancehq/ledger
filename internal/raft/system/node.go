@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 )
 
 type Node struct {
-	*raft.Node[ledger.SystemState, *FSM]
+	*raft.Node[ledgerpb.SystemState, *FSM]
 	raftConfig           Config
 	logger               logging.Logger
 	multiplexedTransport *multiplexedTransport
@@ -71,7 +70,7 @@ func (node *Node) Start(ctx context.Context) error {
 }
 
 // CreateLedger creates a new ledger via a FSM command
-func (node *Node) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error) {
+func (node *Node) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
 	// Create the command
 	cmd, err := NewCreateLedgerCommand(name, driver, config, metadata, snapshotThreshold)
 	if err != nil {
@@ -108,7 +107,9 @@ l:
 		WithFields(map[string]any{"name": name, "driver": driver, "commandID": cmd.ID}).
 		Infof("Ledger created on leader")
 
-	return ret.(*ledger.LedgerInfo), nil
+	// ledgerInfo is already *ledgerpb.LedgerInfo
+	ledgerInfo := ret.(*ledgerpb.LedgerInfo)
+	return ledgerInfo, nil
 }
 
 // GetLedgerNode returns the ledger node for a given name
@@ -116,17 +117,22 @@ func (node *Node) GetLedgerNode(ctx context.Context, name string) (*ledgerraft.N
 	return node.Inner().GetLedger(name)
 }
 
-func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	ledgerNode, err := node.Inner().GetLedger(name)
 	if err != nil {
-		return nil, ledger.NewNotFoundError("Ledger not found: %s", name)
+		return nil, ledgerpb.NewNotFoundError("Ledger not found: %s", name)
 	}
-	return pointer.For(ledgerNode.Info()), nil
+	return ledgerNode.Info(), nil
 }
 
 // GetAllLedgersInfo returns all ledgers
-func (node *Node) GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo {
-	return node.Inner().GetAllLedgers()
+func (node *Node) GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo {
+	allLedgers := node.Inner().GetAllLedgers()
+	result := make(map[string]*ledgerpb.LedgerInfo, len(allLedgers))
+	for name, info := range allLedgers {
+		result[name] = info
+	}
+	return result
 }
 
 // DeleteLedger deletes a ledger via a FSM command
@@ -151,9 +157,9 @@ func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint6
 	allLedgers := node.Inner().GetAllLedgers()
 	ledgerInfo, ok := allLedgers[name]
 	if !ok {
-		return "", 0, ledger.NewNotFoundError("Ledger not found: %s", name)
+		return "", 0, ledgerpb.NewNotFoundError("Ledger not found: %s", name)
 	}
-	return ledgerInfo.Name, ledgerInfo.ID, nil
+	return ledgerInfo.GetName(), ledgerInfo.GetId(), nil
 }
 
 func (node *Node) ResolveLedgerLeader(ctx context.Context, name string) (uint64, error) {

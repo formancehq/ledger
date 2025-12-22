@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.27.5
-// source: proto/commands/ledger_commands.proto
+// source: commands/ledger_commands.proto
 
 package ledger
 
@@ -34,7 +34,7 @@ type CreateLedgerCommand struct {
 
 func (x *CreateLedgerCommand) Reset() {
 	*x = CreateLedgerCommand{}
-	mi := &file_proto_commands_ledger_commands_proto_msgTypes[0]
+	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *CreateLedgerCommand) String() string {
 func (*CreateLedgerCommand) ProtoMessage() {}
 
 func (x *CreateLedgerCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_ledger_commands_proto_msgTypes[0]
+	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *CreateLedgerCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateLedgerCommand.ProtoReflect.Descriptor instead.
 func (*CreateLedgerCommand) Descriptor() ([]byte, []int) {
-	return file_proto_commands_ledger_commands_proto_rawDescGZIP(), []int{0}
+	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateLedgerCommand) GetName() string {
@@ -86,7 +86,7 @@ type InsertLogCommand struct {
 
 func (x *InsertLogCommand) Reset() {
 	*x = InsertLogCommand{}
-	mi := &file_proto_commands_ledger_commands_proto_msgTypes[1]
+	mi := &file_commands_ledger_commands_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +98,7 @@ func (x *InsertLogCommand) String() string {
 func (*InsertLogCommand) ProtoMessage() {}
 
 func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_ledger_commands_proto_msgTypes[1]
+	mi := &file_commands_ledger_commands_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,7 +111,7 @@ func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertLogCommand.ProtoReflect.Descriptor instead.
 func (*InsertLogCommand) Descriptor() ([]byte, []int) {
-	return file_proto_commands_ledger_commands_proto_rawDescGZIP(), []int{1}
+	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *InsertLogCommand) GetLog() *ledgerpb.Log {
@@ -121,11 +121,11 @@ func (x *InsertLogCommand) GetLog() *ledgerpb.Log {
 	return nil
 }
 
-var File_proto_commands_ledger_commands_proto protoreflect.FileDescriptor
+var File_commands_ledger_commands_proto protoreflect.FileDescriptor
 
-const file_proto_commands_ledger_commands_proto_rawDesc = "" +
+const file_commands_ledger_commands_proto_rawDesc = "" +
 	"\n" +
-	"$proto/commands/ledger_commands.proto\x12\x0fbucket_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\x12proto/ledger.proto\"^\n" +
+	"\x1ecommands/ledger_commands.proto\x12\x0fbucket_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\fledger.proto\"^\n" +
 	"\x13CreateLedgerCommand\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x123\n" +
 	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\"1\n" +
@@ -133,25 +133,25 @@ const file_proto_commands_ledger_commands_proto_rawDesc = "" +
 	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03logB:Z8github.com/formancehq/ledger-v3-poc/internal/raft/ledgerb\x06proto3"
 
 var (
-	file_proto_commands_ledger_commands_proto_rawDescOnce sync.Once
-	file_proto_commands_ledger_commands_proto_rawDescData []byte
+	file_commands_ledger_commands_proto_rawDescOnce sync.Once
+	file_commands_ledger_commands_proto_rawDescData []byte
 )
 
-func file_proto_commands_ledger_commands_proto_rawDescGZIP() []byte {
-	file_proto_commands_ledger_commands_proto_rawDescOnce.Do(func() {
-		file_proto_commands_ledger_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_commands_ledger_commands_proto_rawDesc), len(file_proto_commands_ledger_commands_proto_rawDesc)))
+func file_commands_ledger_commands_proto_rawDescGZIP() []byte {
+	file_commands_ledger_commands_proto_rawDescOnce.Do(func() {
+		file_commands_ledger_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_commands_ledger_commands_proto_rawDesc), len(file_commands_ledger_commands_proto_rawDesc)))
 	})
-	return file_proto_commands_ledger_commands_proto_rawDescData
+	return file_commands_ledger_commands_proto_rawDescData
 }
 
-var file_proto_commands_ledger_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_proto_commands_ledger_commands_proto_goTypes = []any{
+var file_commands_ledger_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_commands_ledger_commands_proto_goTypes = []any{
 	(*CreateLedgerCommand)(nil), // 0: bucket_commands.CreateLedgerCommand
 	(*InsertLogCommand)(nil),    // 1: bucket_commands.InsertLogCommand
 	(*structpb.Struct)(nil),     // 2: google.protobuf.Struct
 	(*ledgerpb.Log)(nil),        // 3: ledger.Log
 }
-var file_proto_commands_ledger_commands_proto_depIdxs = []int32{
+var file_commands_ledger_commands_proto_depIdxs = []int32{
 	2, // 0: bucket_commands.CreateLedgerCommand.metadata:type_name -> google.protobuf.Struct
 	3, // 1: bucket_commands.InsertLogCommand.log:type_name -> ledger.Log
 	2, // [2:2] is the sub-list for method output_type
@@ -161,26 +161,26 @@ var file_proto_commands_ledger_commands_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_proto_commands_ledger_commands_proto_init() }
-func file_proto_commands_ledger_commands_proto_init() {
-	if File_proto_commands_ledger_commands_proto != nil {
+func init() { file_commands_ledger_commands_proto_init() }
+func file_commands_ledger_commands_proto_init() {
+	if File_commands_ledger_commands_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_commands_ledger_commands_proto_rawDesc), len(file_proto_commands_ledger_commands_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_commands_ledger_commands_proto_rawDesc), len(file_commands_ledger_commands_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_proto_commands_ledger_commands_proto_goTypes,
-		DependencyIndexes: file_proto_commands_ledger_commands_proto_depIdxs,
-		MessageInfos:      file_proto_commands_ledger_commands_proto_msgTypes,
+		GoTypes:           file_commands_ledger_commands_proto_goTypes,
+		DependencyIndexes: file_commands_ledger_commands_proto_depIdxs,
+		MessageInfos:      file_commands_ledger_commands_proto_msgTypes,
 	}.Build()
-	File_proto_commands_ledger_commands_proto = out.File
-	file_proto_commands_ledger_commands_proto_goTypes = nil
-	file_proto_commands_ledger_commands_proto_depIdxs = nil
+	File_commands_ledger_commands_proto = out.File
+	file_commands_ledger_commands_proto_goTypes = nil
+	file_commands_ledger_commands_proto_depIdxs = nil
 }

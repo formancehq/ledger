@@ -2,20 +2,26 @@ package application
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func convertMetadataToStruct(md map[string]string) *structpb.Struct {
+	if len(md) == 0 {
+		return nil
+	}
+	s, _ := ledgerpb.MetadataToStruct(md)
+	return s
+}
 
 type SystemServiceServerImpl struct {
 	service.UnimplementedSystemServiceServer
@@ -73,40 +79,14 @@ func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *serv
 		return nil, fmt.Errorf("creating ledger: %w", err)
 	}
 
-	// Convert json.RawMessage to map[string]interface{} for protobuf conversion
-	var configMap map[string]interface{}
-	if err := json.Unmarshal(ledgerInfo.Config, &configMap); err != nil {
-		return nil, fmt.Errorf("unmarshaling ledger config: %w", err)
-	}
-
-	cfg, err := structpb.NewStruct(configMap)
-	if err != nil {
-		return nil, fmt.Errorf("converting ledger config to protobuf Struct: %w", err)
-	}
-
-	// Convert metadata
-	var mdStruct *structpb.Struct
-	if len(ledgerInfo.Metadata) > 0 {
-		mdMap := make(map[string]interface{})
-		for k, v := range ledgerInfo.Metadata {
-			mdMap[k] = v
-		}
-		mdStruct, err = structpb.NewStruct(mdMap)
-		if err != nil {
-			return nil, fmt.Errorf("converting ledger metadata to protobuf Struct: %w", err)
-		}
-	}
-
 	resp := &service.CreateLedgerResponse{
-		Id:        ledgerInfo.ID,
-		Name:      ledgerInfo.Name,
-		Config:    cfg,
-		Driver:    ledgerInfo.Driver,
-		Metadata:  mdStruct,
-		CreatedAt: timestamppb.New(ledgerInfo.CreatedAt.Time),
-	}
-	if ledgerInfo.SnapshotThreshold > 0 {
-		resp.SnapshotThreshold = ledgerInfo.SnapshotThreshold
+		Id:                ledgerInfo.Id,
+		Name:              ledgerInfo.Name,
+		Config:            ledgerInfo.Config,
+		Driver:            ledgerInfo.Driver,
+		Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
+		CreatedAt:         ledgerInfo.CreatedAt,
+		SnapshotThreshold: ledgerInfo.SnapshotThreshold,
 	}
 	return resp, nil
 }
@@ -146,7 +126,7 @@ func (impl *SystemServiceServerImpl) ResolveLedger(ctx context.Context, req *ser
 
 	ledgerName, ledgerID, err := impl.systemNode.ResolveLedger(ctx, req.LedgerName)
 	if err != nil {
-		if errors.Is(err, &ledger.NotFoundError{}) {
+		if errors.Is(err, &ledgerpb.NotFoundError{}) {
 			return nil, status.New(codes.NotFound, err.Error()).Err()
 		}
 		return nil, fmt.Errorf("resolving ledger '%s': %w", req.LedgerName, err)
@@ -163,45 +143,17 @@ func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, req 
 
 	ledgers := impl.systemNode.GetAllLedgersInfo(ctx)
 
-	// Convert map[string]ledger.LedgerInfo to []CreateLedgerResponse
+	// Convert map[string]*ledgerpb.LedgerInfo to []CreateLedgerResponse
 	ledgersList := make([]*service.CreateLedgerResponse, 0, len(ledgers))
 	for _, ledgerInfo := range ledgers {
-		// Convert json.RawMessage to map[string]interface{} for protobuf conversion
-		var configMap map[string]interface{}
-		if len(ledgerInfo.Config) > 0 {
-			if err := json.Unmarshal(ledgerInfo.Config, &configMap); err != nil {
-				return nil, fmt.Errorf("unmarshaling ledger config for '%s': %w", ledgerInfo.Name, err)
-			}
-		}
-
-		cfg, err := structpb.NewStruct(configMap)
-		if err != nil {
-			return nil, fmt.Errorf("converting ledger config to protobuf Struct for '%s': %w", ledgerInfo.Name, err)
-		}
-
-		// Convert metadata
-		var mdStruct *structpb.Struct
-		if len(ledgerInfo.Metadata) > 0 {
-			mdMap := make(map[string]interface{})
-			for k, v := range ledgerInfo.Metadata {
-				mdMap[k] = v
-			}
-			mdStruct, err = structpb.NewStruct(mdMap)
-			if err != nil {
-				return nil, fmt.Errorf("converting ledger metadata to protobuf Struct for '%s': %w", ledgerInfo.Name, err)
-			}
-		}
-
 		ledgerResp := &service.CreateLedgerResponse{
-			Id:        ledgerInfo.ID,
-			Name:      ledgerInfo.Name,
-			Config:    cfg,
-			Driver:    ledgerInfo.Driver,
-			Metadata:  mdStruct,
-			CreatedAt: timestamppb.New(ledgerInfo.CreatedAt.Time),
-		}
-		if ledgerInfo.SnapshotThreshold > 0 {
-			ledgerResp.SnapshotThreshold = ledgerInfo.SnapshotThreshold
+			Id:                ledgerInfo.Id,
+			Name:              ledgerInfo.Name,
+			Config:            ledgerInfo.Config,
+			Driver:            ledgerInfo.Driver,
+			Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
+			CreatedAt:         ledgerInfo.CreatedAt,
+			SnapshotThreshold: ledgerInfo.SnapshotThreshold,
 		}
 
 		ledgersList = append(ledgersList, ledgerResp)
@@ -224,42 +176,14 @@ func (impl *SystemServiceServerImpl) GetLedgerInfo(ctx context.Context, req *ser
 		return nil, fmt.Errorf("getting ledger '%s': %w", req.Name, err)
 	}
 
-	// Convert json.RawMessage to map[string]interface{} for protobuf conversion
-	var configMap map[string]interface{}
-	if len(ledgerInfo.Config) > 0 {
-		if err := json.Unmarshal(ledgerInfo.Config, &configMap); err != nil {
-			return nil, fmt.Errorf("unmarshaling ledger config: %w", err)
-		}
-	}
-
-	cfg, err := structpb.NewStruct(configMap)
-	if err != nil {
-		return nil, fmt.Errorf("converting ledger config to protobuf Struct: %w", err)
-	}
-
-	// Convert metadata
-	var mdStruct *structpb.Struct
-	if len(ledgerInfo.Metadata) > 0 {
-		mdMap := make(map[string]interface{})
-		for k, v := range ledgerInfo.Metadata {
-			mdMap[k] = v
-		}
-		mdStruct, err = structpb.NewStruct(mdMap)
-		if err != nil {
-			return nil, fmt.Errorf("converting ledger metadata to protobuf Struct: %w", err)
-		}
-	}
-
 	resp := &service.GetLedgerByNameResponse{
-		Id:        ledgerInfo.ID,
-		Name:      ledgerInfo.Name,
-		Config:    cfg,
-		Driver:    ledgerInfo.Driver,
-		Metadata:  mdStruct,
-		CreatedAt: timestamppb.New(ledgerInfo.CreatedAt.Time),
-	}
-	if ledgerInfo.SnapshotThreshold > 0 {
-		resp.SnapshotThreshold = ledgerInfo.SnapshotThreshold
+		Id:                ledgerInfo.Id,
+		Name:              ledgerInfo.Name,
+		Config:            ledgerInfo.Config,
+		Driver:            ledgerInfo.Driver,
+		Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
+		CreatedAt:         ledgerInfo.CreatedAt,
+		SnapshotThreshold: ledgerInfo.SnapshotThreshold,
 	}
 
 	return resp, nil

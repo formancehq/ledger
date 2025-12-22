@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -141,7 +140,7 @@ func (adapter *systemNodeAdapter) getMainCluster() (service.System, error) {
 		return adapter.systemNode, nil
 	}
 	if adapter.systemNode.GetLeader() == 0 {
-		return nil, ledger.ErrNoLeader
+		return nil, ledgerpb.ErrNoLeader
 	}
 
 	grpcConn := adapter.connectionPool.GetConnection(adapter.systemNode.GetLeader())
@@ -154,7 +153,7 @@ func (adapter *systemNodeAdapter) IsHealthy() bool {
 	return adapter.systemNode.IsHealthy()
 }
 
-func (adapter *systemNodeAdapter) GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo {
+func (adapter *systemNodeAdapter) GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo {
 	mainCluster, err := adapter.getMainCluster()
 	if err != nil {
 		// todo: return error
@@ -163,7 +162,7 @@ func (adapter *systemNodeAdapter) GetAllLedgersInfo(ctx context.Context) map[str
 	return mainCluster.GetAllLedgersInfo(ctx)
 }
 
-func (adapter *systemNodeAdapter) GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+func (adapter *systemNodeAdapter) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	mainCluster, err := adapter.getMainCluster()
 	if err != nil {
 		return nil, err
@@ -171,13 +170,13 @@ func (adapter *systemNodeAdapter) GetLedgerInfo(ctx context.Context, name string
 	return mainCluster.GetLedgerInfo(ctx, name)
 }
 
-func (adapter *systemNodeAdapter) GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.SystemState], error) {
+func (adapter *systemNodeAdapter) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState[ledgerpb.SystemState], error) {
 	return adapter.systemNode.GetClusterState(ctx)
 }
 
 func (adapter *systemNodeAdapter) GetLedgerCluster(ctx context.Context, name string) (service.LedgerCluster, error) {
 	ledgerNode, err := adapter.systemNode.GetLedgerNode(ctx, name)
-	if err != nil && !errors.Is(err, &ledger.NotFoundError{}) {
+	if err != nil && !errors.Is(err, &ledgerpb.NotFoundError{}) {
 		return nil, fmt.Errorf("resolving local ledger node: %w", err)
 	}
 
@@ -221,7 +220,7 @@ func (adapter *systemNodeAdapter) ResolveLedger(ctx context.Context, ledgerName 
 	return ledgerNameResolved, ledgerID, nil
 }
 
-func (adapter *systemNodeAdapter) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error) {
+func (adapter *systemNodeAdapter) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
 	cluster, err := adapter.getMainCluster()
 	if err != nil {
 		return nil, err
@@ -269,31 +268,31 @@ func (l ledgerClusterRouter) GetLeader() uint64 {
 	return l.localNode.GetLeader()
 }
 
-func (l ledgerClusterRouter) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (l ledgerClusterRouter) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {
 	return l.ledgerCluster.CreateTransaction(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (l ledgerClusterRouter) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.RevertedTransaction, error) {
 	return l.ledgerCluster.RevertTransaction(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveTransactionMetadata]) (*ledger.Log, error) {
+func (l ledgerClusterRouter) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return l.ledgerCluster.SaveTransactionMetadata(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveAccountMetadata]) (*ledger.Log, error) {
+func (l ledgerClusterRouter) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return l.ledgerCluster.SaveAccountMetadata(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (l ledgerClusterRouter) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return l.ledgerCluster.DeleteTransactionMetadata(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteAccountMetadata]) (*ledger.Log, error) {
+func (l ledgerClusterRouter) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	return l.ledgerCluster.DeleteAccountMetadata(ctx, ledgerName, parameters)
 }
 
-func (l ledgerClusterRouter) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
+func (l ledgerClusterRouter) Import(ctx context.Context, ledgerName string, stream chan *ledgerpb.Log) error {
 	return l.ledgerCluster.Import(ctx, ledgerName, stream)
 }
 
@@ -301,11 +300,11 @@ func (l ledgerClusterRouter) Export(ctx context.Context, ledgerName string, w se
 	return l.ledgerCluster.Export(ctx, ledgerName, w)
 }
 
-func (l ledgerClusterRouter) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
+func (l ledgerClusterRouter) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
 	return l.ledgerCluster.GetAllLogs(ctx, from, to)
 }
 
-func (l ledgerClusterRouter) GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.LedgerState], error) {
+func (l ledgerClusterRouter) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState[ledgerpb.LedgerState], error) {
 	return l.localNode.GetClusterState(ctx)
 }
 

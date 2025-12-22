@@ -2,16 +2,12 @@ package system
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
@@ -19,7 +15,6 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // State represents the state of the system FSM
@@ -54,17 +49,17 @@ func newFSM(
 }
 
 // GetState returns a copy of the FSM state
-func (fsm *FSM) GetState() ledger.SystemState {
+func (fsm *FSM) GetState() ledgerpb.SystemState {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
 	// Create a copy of the ledgers map
-	ledgersCopy := make(map[string]ledger.LedgerInfo, len(fsm.state.Ledgers))
+	ledgersCopy := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers))
 	for k, v := range fsm.state.Ledgers {
 		ledgersCopy[k] = v.Info()
 	}
 
-	return ledger.SystemState{
+	return ledgerpb.SystemState{
 		NextLedgerID: fsm.state.NextLedgerID,
 		Ledgers:      ledgersCopy,
 	}
@@ -75,7 +70,7 @@ func (fsm *FSM) GetState() ledger.SystemState {
 // Ledgers and logs are now managed by ledger Raft groups.
 
 // handleCreateLedger handles the create ledger command
-func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledger.LedgerInfo, error) {
+func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledgerpb.LedgerInfo, error) {
 	var createCmd CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
@@ -105,44 +100,32 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 	fsm.state.NextLedgerID++
 	fsm.mu.Unlock()
 
-	// Convert config to json.RawMessage
-	configJSON, err := json.Marshal(configMap)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling config to JSON: %w", err)
-	}
+	// Convert timestamp
+	createdAt := ledgerpb.NewTimestamp(cmd.Date)
 
-	// Convert metadata
-	var md metadata.Metadata
+	// Create ledger info using protobuf types directly
+	var metadata map[string]string
 	if createCmd.Metadata != nil {
-		mdMap := createCmd.Metadata.AsMap()
-		md = make(metadata.Metadata)
-		for k, v := range mdMap {
-			if str, ok := v.(string); ok {
-				md[k] = str
-			}
-		}
+		metadata = ledgerpb.StructToMetadata(createCmd.Metadata)
 	}
-
-	// Create ledger info using the command date
-	ledgerInfo := ledger.LedgerInfo{
-		ID:        ledgerID,
+	ledgerInfo := &ledgerpb.LedgerInfo{
+		Id:        ledgerID,
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
-		Config:    configJSON,
-		CreatedAt: cmd.Date,
-		Metadata:  md,
+		Config:    createCmd.Config,
+		Metadata:  metadata,
+		CreatedAt: createdAt,
 	}
 	if createCmd.SnapshotThreshold > 0 {
 		ledgerInfo.SnapshotThreshold = createCmd.SnapshotThreshold
 	}
 
-	err = fsm.startLedgerRaftGroupFromFSM(ctx, ledgerInfo)
-	if err != nil {
+	if err := fsm.startLedgerRaftGroupFromFSM(ctx, ledgerInfo); err != nil {
 		return nil, err
 	}
 
 	fsm.logger.Infof("Ledger created")
-	return &ledgerInfo, nil
+	return ledgerInfo, nil
 }
 
 // handleDeleteLedger handles the delete ledger command
@@ -197,18 +180,18 @@ func (fsm *FSM) GetLedger(name string) (*ledgerraft.Node, error) {
 
 	ledgerNode, ok := fsm.state.Ledgers[name]
 	if !ok {
-		return nil, ledger.NewNotFoundError("ledger %s does not exist", name)
+		return nil, ledgerpb.NewNotFoundError("ledger %s does not exist", name)
 	}
 	return ledgerNode, nil
 }
 
 // GetAllLedgers returns all ledgers
-func (fsm *FSM) GetAllLedgers() map[string]ledger.LedgerInfo {
+func (fsm *FSM) GetAllLedgers() map[string]*ledgerpb.LedgerInfo {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
 	// Return a copy to avoid external modifications
-	result := make(map[string]ledger.LedgerInfo, len(fsm.state.Ledgers))
+	result := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers))
 	for k, v := range fsm.state.Ledgers {
 		result[k] = v.Info()
 	}
@@ -220,53 +203,22 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	// Convert ledgers to protobuf format
+	// Ledgers are already in protobuf format
 	ledgersProto := make(map[string]*LedgerInfo, len(fsm.state.Ledgers))
 	for name, node := range fsm.state.Ledgers {
 		ledgerInfo := node.Info()
-
-		// Convert json.RawMessage to map[string]interface{} then to protobuf Struct
-		var configStruct *structpb.Struct
-		if len(ledgerInfo.Config) > 0 {
-			var configMap map[string]interface{}
-			if err := json.Unmarshal(ledgerInfo.Config, &configMap); err != nil {
-				return nil, fmt.Errorf("unmarshaling ledger config: %w", err)
-			}
-			var err error
-			configStruct, err = structpb.NewStruct(configMap)
-			if err != nil {
-				return nil, fmt.Errorf("converting ledger config to protobuf struct: %w", err)
-			}
-		}
-
-		// Convert metadata
-		var metadataStruct *structpb.Struct
+		// Convert from ledgerpb.LedgerInfo to system.LedgerInfo (both are protobuf but different packages)
+		var metadata *structpb.Struct
 		if len(ledgerInfo.Metadata) > 0 {
-			// Convert metadata.Metadata (map[string]string) to map[string]interface{}
-			metadataMap := make(map[string]interface{})
-			for k, v := range ledgerInfo.Metadata {
-				metadataMap[k] = v
-			}
-			var err error
-			metadataStruct, err = structpb.NewStruct(metadataMap)
-			if err != nil {
-				return nil, fmt.Errorf("converting ledger metadata to protobuf struct: %w", err)
-			}
+			metadata, _ = ledgerpb.MetadataToStruct(ledgerInfo.Metadata)
 		}
-
-		// Convert timestamp
-		var createdAt *timestamppb.Timestamp
-		if !ledgerInfo.CreatedAt.IsZero() {
-			createdAt = timestamppb.New(ledgerInfo.CreatedAt.Time)
-		}
-
 		ledgersProto[name] = &LedgerInfo{
-			Id:                ledgerInfo.ID,
+			Id:                ledgerInfo.Id,
 			Name:              ledgerInfo.Name,
 			Driver:            ledgerInfo.Driver,
-			Config:            configStruct,
-			Metadata:          metadataStruct,
-			CreatedAt:         createdAt,
+			Config:            ledgerInfo.Config,
+			Metadata:          metadata,
+			CreatedAt:         ledgerInfo.CreatedAt,
 			SnapshotThreshold: ledgerInfo.SnapshotThreshold,
 		}
 	}
@@ -308,45 +260,20 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.S
 		panic(fmt.Errorf("unmarshaling snapshot data: %w", err))
 	}
 
-	// Convert protobuf ledgers to ledger.LedgerInfo
-	ledgers := make(map[string]ledger.LedgerInfo, len(snapshotProto.Ledgers))
+	// Convert system.LedgerInfo (from snapshot) to ledgerpb.LedgerInfo
+	ledgers := make(map[string]*ledgerpb.LedgerInfo, len(snapshotProto.Ledgers))
 	for name, ledgerProto := range snapshotProto.Ledgers {
-		// Convert config Struct to json.RawMessage
-		var configJSON json.RawMessage
-		if ledgerProto.Config != nil {
-			configMap := ledgerProto.Config.AsMap()
-			var err error
-			configJSON, err = json.Marshal(configMap)
-			if err != nil {
-				panic(fmt.Errorf("marshaling ledger config: %w", err))
-			}
-		}
-
-		// Convert metadata
-		var md metadata.Metadata
+		var metadata map[string]string
 		if ledgerProto.Metadata != nil {
-			mdMap := ledgerProto.Metadata.AsMap()
-			md = make(metadata.Metadata)
-			for k, v := range mdMap {
-				if str, ok := v.(string); ok {
-					md[k] = str
-				}
-			}
+			metadata = ledgerpb.StructToMetadata(ledgerProto.Metadata)
 		}
-
-		// Convert timestamp
-		var createdAt time.Time
-		if ledgerProto.CreatedAt != nil {
-			createdAt = time.New(ledgerProto.CreatedAt.AsTime())
-		}
-
-		ledgers[name] = ledger.LedgerInfo{
-			ID:                ledgerProto.Id,
+		ledgers[name] = &ledgerpb.LedgerInfo{
+			Id:                ledgerProto.Id,
 			Name:              ledgerProto.Name,
 			Driver:            ledgerProto.Driver,
-			Config:            configJSON,
-			Metadata:          md,
-			CreatedAt:         createdAt,
+			Config:            ledgerProto.Config,
+			Metadata:          metadata,
+			CreatedAt:         ledgerProto.CreatedAt,
 			SnapshotThreshold: ledgerProto.SnapshotThreshold,
 		}
 	}
@@ -400,13 +327,13 @@ func (fsm *FSM) Stop(ctx context.Context) error {
 
 	for _, group := range fsm.state.Ledgers {
 		fsm.logger.
-			WithFields(map[string]any{"ledger": group.Info().Name}).
+			WithFields(map[string]any{"ledger": group.Info().GetName()}).
 			Infof("Stopping ledger Raft group...")
 		if err := group.Stop(ctx); err != nil {
 			return fmt.Errorf("stopping ledger Raft group: %w", err)
 		}
 		fsm.logger.
-			WithFields(map[string]any{"ledger": group.Info().Name}).
+			WithFields(map[string]any{"ledger": group.Info().GetName()}).
 			Infof("Ledger Raft group stopped")
 	}
 
@@ -414,10 +341,10 @@ func (fsm *FSM) Stop(ctx context.Context) error {
 }
 
 // startLedgerRaftGroupFromFSM starts a Raft group for a ledger using information from the FSM
-func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledger.LedgerInfo) error {
+func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *ledgerpb.LedgerInfo) error {
 
 	logger := fsm.logger.WithFields(map[string]any{
-		"ledger": ledgerInfo.Name,
+		"ledger": ledgerInfo.GetName(),
 	})
 
 	logger.Infof("Creating ledger Raft group...")
@@ -432,7 +359,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 	group, err := ledgerraft.NewNode(
 		ctx,
 		ledgerInfo,
-		fsm.multiplexedTransport.NewLedgerTransport(ledgerInfo.ID),
+		fsm.multiplexedTransport.NewLedgerTransport(ledgerInfo.GetId()),
 		raft.NodeConfig{
 			NodeID: nodeIDFromLedgerAndRootNodeID(fsm.raftConfig.NodeID, ledgerInfo),
 			Peers: collectionutils.Map(fsm.raftConfig.Peers, func(from raft.Peer) raft.Peer {
@@ -453,12 +380,12 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 		logger,
 		fsm.raftConfig.ExtraDataDir,
 		func(peerID uint64) service.LogReader {
-			return service.NewLogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
+			return service.LogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
 
 				conn := fsm.multiplexedTransport.GetPeerConnection(NodeIDFromLedgerNodeID(peerID))
 				client := ledgerpb.NewLedgerServiceClient(conn)
 				streamLogs, err := client.StreamLogs(ctx, &ledgerpb.StreamLogsRequest{
-					Ledger:       ledgerInfo.Name,
+					Ledger:       ledgerInfo.GetName(),
 					FromSequence: from,
 					ToSequence:   to,
 				})
@@ -466,8 +393,8 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 					return nil, err
 				}
 
-				return service.NewGRPCStreamCursor(streamLogs, func(res ledgerpb.StreamLogsResponse) (ledger.Log, error) {
-					return service.LogFromLedgerProto(res.Log)
+				return service.NewGRPCStreamCursor(streamLogs, func(res ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
+					return res.Log, nil
 				}), nil
 			})
 		},
@@ -489,6 +416,6 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 	return nil
 }
 
-func nodeIDFromLedgerAndRootNodeID(rootNodeID uint64, ledgerInfo ledger.LedgerInfo) uint64 {
-	return (ledgerInfo.ID << 16) | rootNodeID
+func nodeIDFromLedgerAndRootNodeID(rootNodeID uint64, ledgerInfo *ledgerpb.LedgerInfo) uint64 {
+	return (ledgerInfo.GetId() << 16) | rootNodeID
 }

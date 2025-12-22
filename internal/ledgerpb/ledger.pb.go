@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.27.5
-// source: proto/ledger.proto
+// source: ledger.proto
 
 package ledgerpb
 
@@ -10,7 +10,6 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -23,12 +22,101 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Timestamp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          uint64                 `protobuf:"varint,1,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Timestamp) Reset() {
+	*x = Timestamp{}
+	mi := &file_ledger_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Timestamp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Timestamp) ProtoMessage() {}
+
+func (x *Timestamp) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Timestamp.ProtoReflect.Descriptor instead.
+func (*Timestamp) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Timestamp) GetData() uint64 {
+	if x != nil {
+		return x.Data
+	}
+	return 0
+}
+
+// Metadata represents account or transaction metadata as a map of string key-value pairs
+type Metadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       map[string]string      `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Metadata) Reset() {
+	*x = Metadata{}
+	mi := &file_ledger_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Metadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Metadata) ProtoMessage() {}
+
+func (x *Metadata) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Metadata.ProtoReflect.Descriptor instead.
+func (*Metadata) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Metadata) GetEntries() map[string]string {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
 // Posting represents a single posting in a transaction
 type Posting struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
 	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Amount        string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"` // big.Int as string
+	Amount        *BigInt                `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
 	Asset         string                 `protobuf:"bytes,4,opt,name=asset,proto3" json:"asset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -36,7 +124,7 @@ type Posting struct {
 
 func (x *Posting) Reset() {
 	*x = Posting{}
-	mi := &file_proto_ledger_proto_msgTypes[0]
+	mi := &file_ledger_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +136,7 @@ func (x *Posting) String() string {
 func (*Posting) ProtoMessage() {}
 
 func (x *Posting) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[0]
+	mi := &file_ledger_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +149,7 @@ func (x *Posting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Posting.ProtoReflect.Descriptor instead.
 func (*Posting) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{0}
+	return file_ledger_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Posting) GetSource() string {
@@ -78,11 +166,11 @@ func (x *Posting) GetDestination() string {
 	return ""
 }
 
-func (x *Posting) GetAmount() string {
+func (x *Posting) GetAmount() *BigInt {
 	if x != nil {
 		return x.Amount
 	}
-	return ""
+	return nil
 }
 
 func (x *Posting) GetAsset() string {
@@ -94,25 +182,23 @@ func (x *Posting) GetAsset() string {
 
 // Transaction represents a transaction
 type Transaction struct {
-	state                      protoimpl.MessageState `protogen:"open.v1"`
-	Postings                   []*Posting             `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata                   *structpb.Struct       `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Timestamp                  *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference                  string                 `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Id                         uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`
-	Reverted                   bool                   `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
-	InsertedAt                 *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`                                                      // Optional
-	UpdatedAt                  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`                                                         // Optional
-	RevertedAt                 *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=reverted_at,json=revertedAt,proto3" json:"reverted_at,omitempty"`                                                      // Optional
-	PostCommitVolumes          *PostCommitVolumes     `protobuf:"bytes,10,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`                              // Optional
-	PostCommitEffectiveVolumes *PostCommitVolumes     `protobuf:"bytes,11,opt,name=post_commit_effective_volumes,json=postCommitEffectiveVolumes,proto3" json:"post_commit_effective_volumes,omitempty"` // Optional
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Postings      []*Posting             `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp     *Timestamp             `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference     string                 `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	Id            uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`
+	Reverted      bool                   `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
+	InsertedAt    *Timestamp             `protobuf:"bytes,7,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"` // Optional
+	UpdatedAt     *Timestamp             `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`    // Optional
+	RevertedAt    *Timestamp             `protobuf:"bytes,9,opt,name=reverted_at,json=revertedAt,proto3" json:"reverted_at,omitempty"` // Optional
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Transaction) Reset() {
 	*x = Transaction{}
-	mi := &file_proto_ledger_proto_msgTypes[1]
+	mi := &file_ledger_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -124,7 +210,7 @@ func (x *Transaction) String() string {
 func (*Transaction) ProtoMessage() {}
 
 func (x *Transaction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[1]
+	mi := &file_ledger_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -137,7 +223,7 @@ func (x *Transaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
 func (*Transaction) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{1}
+	return file_ledger_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Transaction) GetPostings() []*Posting {
@@ -147,14 +233,14 @@ func (x *Transaction) GetPostings() []*Posting {
 	return nil
 }
 
-func (x *Transaction) GetMetadata() *structpb.Struct {
+func (x *Transaction) GetMetadata() map[string]string {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *Transaction) GetTimestamp() *timestamppb.Timestamp {
+func (x *Transaction) GetTimestamp() *Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -182,37 +268,23 @@ func (x *Transaction) GetReverted() bool {
 	return false
 }
 
-func (x *Transaction) GetInsertedAt() *timestamppb.Timestamp {
+func (x *Transaction) GetInsertedAt() *Timestamp {
 	if x != nil {
 		return x.InsertedAt
 	}
 	return nil
 }
 
-func (x *Transaction) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *Transaction) GetUpdatedAt() *Timestamp {
 	if x != nil {
 		return x.UpdatedAt
 	}
 	return nil
 }
 
-func (x *Transaction) GetRevertedAt() *timestamppb.Timestamp {
+func (x *Transaction) GetRevertedAt() *Timestamp {
 	if x != nil {
 		return x.RevertedAt
-	}
-	return nil
-}
-
-func (x *Transaction) GetPostCommitVolumes() *PostCommitVolumes {
-	if x != nil {
-		return x.PostCommitVolumes
-	}
-	return nil
-}
-
-func (x *Transaction) GetPostCommitEffectiveVolumes() *PostCommitVolumes {
-	if x != nil {
-		return x.PostCommitEffectiveVolumes
 	}
 	return nil
 }
@@ -221,8 +293,8 @@ func (x *Transaction) GetPostCommitEffectiveVolumes() *PostCommitVolumes {
 type TransactionData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Postings      []*Posting             `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp     *Timestamp             `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Reference     string                 `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -230,7 +302,7 @@ type TransactionData struct {
 
 func (x *TransactionData) Reset() {
 	*x = TransactionData{}
-	mi := &file_proto_ledger_proto_msgTypes[2]
+	mi := &file_ledger_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +314,7 @@ func (x *TransactionData) String() string {
 func (*TransactionData) ProtoMessage() {}
 
 func (x *TransactionData) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[2]
+	mi := &file_ledger_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +327,7 @@ func (x *TransactionData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionData.ProtoReflect.Descriptor instead.
 func (*TransactionData) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{2}
+	return file_ledger_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *TransactionData) GetPostings() []*Posting {
@@ -265,14 +337,14 @@ func (x *TransactionData) GetPostings() []*Posting {
 	return nil
 }
 
-func (x *TransactionData) GetMetadata() *structpb.Struct {
+func (x *TransactionData) GetMetadata() map[string]string {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *TransactionData) GetTimestamp() *timestamppb.Timestamp {
+func (x *TransactionData) GetTimestamp() *Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -296,7 +368,7 @@ type Transactions struct {
 
 func (x *Transactions) Reset() {
 	*x = Transactions{}
-	mi := &file_proto_ledger_proto_msgTypes[3]
+	mi := &file_ledger_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -308,7 +380,7 @@ func (x *Transactions) String() string {
 func (*Transactions) ProtoMessage() {}
 
 func (x *Transactions) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[3]
+	mi := &file_ledger_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -321,7 +393,7 @@ func (x *Transactions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transactions.ProtoReflect.Descriptor instead.
 func (*Transactions) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{3}
+	return file_ledger_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Transactions) GetTransactions() []*TransactionData {
@@ -342,7 +414,7 @@ type Volumes struct {
 
 func (x *Volumes) Reset() {
 	*x = Volumes{}
-	mi := &file_proto_ledger_proto_msgTypes[4]
+	mi := &file_ledger_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -354,7 +426,7 @@ func (x *Volumes) String() string {
 func (*Volumes) ProtoMessage() {}
 
 func (x *Volumes) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[4]
+	mi := &file_ledger_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -367,7 +439,7 @@ func (x *Volumes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Volumes.ProtoReflect.Descriptor instead.
 func (*Volumes) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{4}
+	return file_ledger_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Volumes) GetInput() string {
@@ -396,7 +468,7 @@ type VolumesWithBalance struct {
 
 func (x *VolumesWithBalance) Reset() {
 	*x = VolumesWithBalance{}
-	mi := &file_proto_ledger_proto_msgTypes[5]
+	mi := &file_ledger_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -408,7 +480,7 @@ func (x *VolumesWithBalance) String() string {
 func (*VolumesWithBalance) ProtoMessage() {}
 
 func (x *VolumesWithBalance) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[5]
+	mi := &file_ledger_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -421,7 +493,7 @@ func (x *VolumesWithBalance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumesWithBalance.ProtoReflect.Descriptor instead.
 func (*VolumesWithBalance) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{5}
+	return file_ledger_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *VolumesWithBalance) GetInput() string {
@@ -455,7 +527,7 @@ type VolumesByAssets struct {
 
 func (x *VolumesByAssets) Reset() {
 	*x = VolumesByAssets{}
-	mi := &file_proto_ledger_proto_msgTypes[6]
+	mi := &file_ledger_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -467,7 +539,7 @@ func (x *VolumesByAssets) String() string {
 func (*VolumesByAssets) ProtoMessage() {}
 
 func (x *VolumesByAssets) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[6]
+	mi := &file_ledger_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -480,7 +552,7 @@ func (x *VolumesByAssets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumesByAssets.ProtoReflect.Descriptor instead.
 func (*VolumesByAssets) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{6}
+	return file_ledger_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *VolumesByAssets) GetVolumes() map[string]*Volumes {
@@ -500,7 +572,7 @@ type PostCommitVolumes struct {
 
 func (x *PostCommitVolumes) Reset() {
 	*x = PostCommitVolumes{}
-	mi := &file_proto_ledger_proto_msgTypes[7]
+	mi := &file_ledger_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -512,7 +584,7 @@ func (x *PostCommitVolumes) String() string {
 func (*PostCommitVolumes) ProtoMessage() {}
 
 func (x *PostCommitVolumes) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[7]
+	mi := &file_ledger_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -525,7 +597,7 @@ func (x *PostCommitVolumes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostCommitVolumes.ProtoReflect.Descriptor instead.
 func (*PostCommitVolumes) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{7}
+	return file_ledger_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PostCommitVolumes) GetVolumesByAccount() map[string]*VolumesByAssets {
@@ -547,7 +619,7 @@ type VolumesWithBalanceByAssetByAccount struct {
 
 func (x *VolumesWithBalanceByAssetByAccount) Reset() {
 	*x = VolumesWithBalanceByAssetByAccount{}
-	mi := &file_proto_ledger_proto_msgTypes[8]
+	mi := &file_ledger_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +631,7 @@ func (x *VolumesWithBalanceByAssetByAccount) String() string {
 func (*VolumesWithBalanceByAssetByAccount) ProtoMessage() {}
 
 func (x *VolumesWithBalanceByAssetByAccount) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[8]
+	mi := &file_ledger_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +644,7 @@ func (x *VolumesWithBalanceByAssetByAccount) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use VolumesWithBalanceByAssetByAccount.ProtoReflect.Descriptor instead.
 func (*VolumesWithBalanceByAssetByAccount) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{8}
+	return file_ledger_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *VolumesWithBalanceByAssetByAccount) GetAccount() string {
@@ -606,7 +678,7 @@ type AggregatedVolumes struct {
 
 func (x *AggregatedVolumes) Reset() {
 	*x = AggregatedVolumes{}
-	mi := &file_proto_ledger_proto_msgTypes[9]
+	mi := &file_ledger_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -618,7 +690,7 @@ func (x *AggregatedVolumes) String() string {
 func (*AggregatedVolumes) ProtoMessage() {}
 
 func (x *AggregatedVolumes) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[9]
+	mi := &file_ledger_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -631,7 +703,7 @@ func (x *AggregatedVolumes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregatedVolumes.ProtoReflect.Descriptor instead.
 func (*AggregatedVolumes) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{9}
+	return file_ledger_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *AggregatedVolumes) GetAggregated() *VolumesByAssets {
@@ -643,21 +715,19 @@ func (x *AggregatedVolumes) GetAggregated() *VolumesByAssets {
 
 // Account represents an account in the ledger
 type Account struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Address          string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Metadata         *structpb.Struct       `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	FirstUsage       *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=first_usage,json=firstUsage,proto3" json:"first_usage,omitempty"`
-	InsertionDate    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=insertion_date,json=insertionDate,proto3" json:"insertion_date,omitempty"`
-	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Volumes          *VolumesByAssets       `protobuf:"bytes,6,opt,name=volumes,proto3" json:"volumes,omitempty"`                                           // Optional
-	EffectiveVolumes *VolumesByAssets       `protobuf:"bytes,7,opt,name=effective_volumes,json=effectiveVolumes,proto3" json:"effective_volumes,omitempty"` // Optional
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	FirstUsage    *Timestamp             `protobuf:"bytes,3,opt,name=first_usage,json=firstUsage,proto3" json:"first_usage,omitempty"`
+	InsertionDate *Timestamp             `protobuf:"bytes,4,opt,name=insertion_date,json=insertionDate,proto3" json:"insertion_date,omitempty"`
+	UpdatedAt     *Timestamp             `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Account) Reset() {
 	*x = Account{}
-	mi := &file_proto_ledger_proto_msgTypes[10]
+	mi := &file_ledger_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -669,7 +739,7 @@ func (x *Account) String() string {
 func (*Account) ProtoMessage() {}
 
 func (x *Account) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[10]
+	mi := &file_ledger_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -682,7 +752,7 @@ func (x *Account) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Account.ProtoReflect.Descriptor instead.
 func (*Account) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{10}
+	return file_ledger_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Account) GetAddress() string {
@@ -692,44 +762,30 @@ func (x *Account) GetAddress() string {
 	return ""
 }
 
-func (x *Account) GetMetadata() *structpb.Struct {
+func (x *Account) GetMetadata() map[string]string {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *Account) GetFirstUsage() *timestamppb.Timestamp {
+func (x *Account) GetFirstUsage() *Timestamp {
 	if x != nil {
 		return x.FirstUsage
 	}
 	return nil
 }
 
-func (x *Account) GetInsertionDate() *timestamppb.Timestamp {
+func (x *Account) GetInsertionDate() *Timestamp {
 	if x != nil {
 		return x.InsertionDate
 	}
 	return nil
 }
 
-func (x *Account) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *Account) GetUpdatedAt() *Timestamp {
 	if x != nil {
 		return x.UpdatedAt
-	}
-	return nil
-}
-
-func (x *Account) GetVolumes() *VolumesByAssets {
-	if x != nil {
-		return x.Volumes
-	}
-	return nil
-}
-
-func (x *Account) GetEffectiveVolumes() *VolumesByAssets {
-	if x != nil {
-		return x.EffectiveVolumes
 	}
 	return nil
 }
@@ -747,7 +803,7 @@ type AccountsVolumes struct {
 
 func (x *AccountsVolumes) Reset() {
 	*x = AccountsVolumes{}
-	mi := &file_proto_ledger_proto_msgTypes[11]
+	mi := &file_ledger_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +815,7 @@ func (x *AccountsVolumes) String() string {
 func (*AccountsVolumes) ProtoMessage() {}
 
 func (x *AccountsVolumes) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[11]
+	mi := &file_ledger_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +828,7 @@ func (x *AccountsVolumes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountsVolumes.ProtoReflect.Descriptor instead.
 func (*AccountsVolumes) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{11}
+	return file_ledger_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AccountsVolumes) GetAccount() string {
@@ -811,8 +867,8 @@ type Move struct {
 	Account                    string                 `protobuf:"bytes,3,opt,name=account,proto3" json:"account,omitempty"`
 	Amount                     string                 `protobuf:"bytes,4,opt,name=amount,proto3" json:"amount,omitempty"` // big.Int as string
 	Asset                      string                 `protobuf:"bytes,5,opt,name=asset,proto3" json:"asset,omitempty"`
-	InsertionDate              *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=insertion_date,json=insertionDate,proto3" json:"insertion_date,omitempty"`
-	EffectiveDate              *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=effective_date,json=effectiveDate,proto3" json:"effective_date,omitempty"`
+	InsertionDate              *Timestamp             `protobuf:"bytes,6,opt,name=insertion_date,json=insertionDate,proto3" json:"insertion_date,omitempty"`
+	EffectiveDate              *Timestamp             `protobuf:"bytes,7,opt,name=effective_date,json=effectiveDate,proto3" json:"effective_date,omitempty"`
 	PostCommitVolumes          *Volumes               `protobuf:"bytes,8,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`                              // Optional
 	PostCommitEffectiveVolumes *Volumes               `protobuf:"bytes,9,opt,name=post_commit_effective_volumes,json=postCommitEffectiveVolumes,proto3" json:"post_commit_effective_volumes,omitempty"` // Optional
 	unknownFields              protoimpl.UnknownFields
@@ -821,7 +877,7 @@ type Move struct {
 
 func (x *Move) Reset() {
 	*x = Move{}
-	mi := &file_proto_ledger_proto_msgTypes[12]
+	mi := &file_ledger_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +889,7 @@ func (x *Move) String() string {
 func (*Move) ProtoMessage() {}
 
 func (x *Move) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[12]
+	mi := &file_ledger_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +902,7 @@ func (x *Move) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Move.ProtoReflect.Descriptor instead.
 func (*Move) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{12}
+	return file_ledger_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Move) GetTransactionId() uint64 {
@@ -884,14 +940,14 @@ func (x *Move) GetAsset() string {
 	return ""
 }
 
-func (x *Move) GetInsertionDate() *timestamppb.Timestamp {
+func (x *Move) GetInsertionDate() *Timestamp {
 	if x != nil {
 		return x.InsertionDate
 	}
 	return nil
 }
 
-func (x *Move) GetEffectiveDate() *timestamppb.Timestamp {
+func (x *Move) GetEffectiveDate() *Timestamp {
 	if x != nil {
 		return x.EffectiveDate
 	}
@@ -921,7 +977,7 @@ type LedgerSnapshotRequest struct {
 
 func (x *LedgerSnapshotRequest) Reset() {
 	*x = LedgerSnapshotRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[13]
+	mi := &file_ledger_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -933,7 +989,7 @@ func (x *LedgerSnapshotRequest) String() string {
 func (*LedgerSnapshotRequest) ProtoMessage() {}
 
 func (x *LedgerSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[13]
+	mi := &file_ledger_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -946,7 +1002,7 @@ func (x *LedgerSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*LedgerSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{13}
+	return file_ledger_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LedgerSnapshotRequest) GetLedger() string {
@@ -965,7 +1021,7 @@ type LedgerSnapshotResponse struct {
 
 func (x *LedgerSnapshotResponse) Reset() {
 	*x = LedgerSnapshotResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[14]
+	mi := &file_ledger_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1033,7 @@ func (x *LedgerSnapshotResponse) String() string {
 func (*LedgerSnapshotResponse) ProtoMessage() {}
 
 func (x *LedgerSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[14]
+	mi := &file_ledger_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1046,7 @@ func (x *LedgerSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*LedgerSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{14}
+	return file_ledger_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *LedgerSnapshotResponse) GetMessage() string {
@@ -998,6 +1054,50 @@ func (x *LedgerSnapshotResponse) GetMessage() string {
 		return x.Message
 	}
 	return ""
+}
+
+type BigInt struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BigInt) Reset() {
+	*x = BigInt{}
+	mi := &file_ledger_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BigInt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BigInt) ProtoMessage() {}
+
+func (x *BigInt) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BigInt.ProtoReflect.Descriptor instead.
+func (*BigInt) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BigInt) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
 }
 
 type Script struct {
@@ -1010,7 +1110,7 @@ type Script struct {
 
 func (x *Script) Reset() {
 	*x = Script{}
-	mi := &file_proto_ledger_proto_msgTypes[15]
+	mi := &file_ledger_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1022,7 +1122,7 @@ func (x *Script) String() string {
 func (*Script) ProtoMessage() {}
 
 func (x *Script) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[15]
+	mi := &file_ledger_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1035,7 +1135,7 @@ func (x *Script) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Script.ProtoReflect.Descriptor instead.
 func (*Script) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{15}
+	return file_ledger_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Script) GetPlain() string {
@@ -1052,25 +1152,169 @@ func (x *Script) GetVars() map[string]string {
 	return nil
 }
 
-type CreateTransactionRequest struct {
-	state           protoimpl.MessageState      `protogen:"open.v1"`
-	Ledger          string                      `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	AccountMetadata map[string]*structpb.Struct `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Timestamp       *timestamppb.Timestamp      `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Metadata        *structpb.Struct            `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Reference       string                      `protobuf:"bytes,5,opt,name=reference,proto3" json:"reference,omitempty"`
-	Postings        []*Posting                  `protobuf:"bytes,6,rep,name=postings,proto3" json:"postings,omitempty"`
-	DryRun          bool                        `protobuf:"varint,7,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
-	IdempotencyKey  string                      `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	Script          *Script                     `protobuf:"bytes,9,opt,name=script,proto3" json:"script,omitempty"`
-	Runtime         string                      `protobuf:"bytes,10,opt,name=runtime,proto3" json:"runtime,omitempty"`
+type Parameters struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Ledger         string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	DryRun         bool                   `protobuf:"varint,7,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Parameters) Reset() {
+	*x = Parameters{}
+	mi := &file_ledger_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Parameters) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Parameters) ProtoMessage() {}
+
+func (x *Parameters) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Parameters.ProtoReflect.Descriptor instead.
+func (*Parameters) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *Parameters) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *Parameters) GetDryRun() bool {
+	if x != nil {
+		return x.DryRun
+	}
+	return false
+}
+
+func (x *Parameters) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type CreateTransactionRequestPayload struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	AccountMetadata map[string]*Metadata   `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Metadata        map[string]string      `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp       *Timestamp             `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference       string                 `protobuf:"bytes,5,opt,name=reference,proto3" json:"reference,omitempty"`
+	Postings        []*Posting             `protobuf:"bytes,6,rep,name=postings,proto3" json:"postings,omitempty"`
+	Script          *Script                `protobuf:"bytes,9,opt,name=script,proto3" json:"script,omitempty"`
+	Runtime         string                 `protobuf:"bytes,10,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
+func (x *CreateTransactionRequestPayload) Reset() {
+	*x = CreateTransactionRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTransactionRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTransactionRequestPayload) ProtoMessage() {}
+
+func (x *CreateTransactionRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTransactionRequestPayload.ProtoReflect.Descriptor instead.
+func (*CreateTransactionRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CreateTransactionRequestPayload) GetAccountMetadata() map[string]*Metadata {
+	if x != nil {
+		return x.AccountMetadata
+	}
+	return nil
+}
+
+func (x *CreateTransactionRequestPayload) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *CreateTransactionRequestPayload) GetTimestamp() *Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *CreateTransactionRequestPayload) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *CreateTransactionRequestPayload) GetPostings() []*Posting {
+	if x != nil {
+		return x.Postings
+	}
+	return nil
+}
+
+func (x *CreateTransactionRequestPayload) GetScript() *Script {
+	if x != nil {
+		return x.Script
+	}
+	return nil
+}
+
+func (x *CreateTransactionRequestPayload) GetRuntime() string {
+	if x != nil {
+		return x.Runtime
+	}
+	return ""
+}
+
+type CreateTransactionRequest struct {
+	state         protoimpl.MessageState           `protogen:"open.v1"`
+	Payload       *CreateTransactionRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                      `protobuf:"bytes,2,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
 func (x *CreateTransactionRequest) Reset() {
 	*x = CreateTransactionRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[16]
+	mi := &file_ledger_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1082,7 +1326,7 @@ func (x *CreateTransactionRequest) String() string {
 func (*CreateTransactionRequest) ProtoMessage() {}
 
 func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[16]
+	mi := &file_ledger_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1095,90 +1339,34 @@ func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionRequest.ProtoReflect.Descriptor instead.
 func (*CreateTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{16}
+	return file_ledger_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *CreateTransactionRequest) GetLedger() string {
+func (x *CreateTransactionRequest) GetPayload() *CreateTransactionRequestPayload {
 	if x != nil {
-		return x.Ledger
-	}
-	return ""
-}
-
-func (x *CreateTransactionRequest) GetAccountMetadata() map[string]*structpb.Struct {
-	if x != nil {
-		return x.AccountMetadata
+		return x.Payload
 	}
 	return nil
 }
 
-func (x *CreateTransactionRequest) GetTimestamp() *timestamppb.Timestamp {
+func (x *CreateTransactionRequest) GetParameters() *Parameters {
 	if x != nil {
-		return x.Timestamp
+		return x.Parameters
 	}
 	return nil
-}
-
-func (x *CreateTransactionRequest) GetMetadata() *structpb.Struct {
-	if x != nil {
-		return x.Metadata
-	}
-	return nil
-}
-
-func (x *CreateTransactionRequest) GetReference() string {
-	if x != nil {
-		return x.Reference
-	}
-	return ""
-}
-
-func (x *CreateTransactionRequest) GetPostings() []*Posting {
-	if x != nil {
-		return x.Postings
-	}
-	return nil
-}
-
-func (x *CreateTransactionRequest) GetDryRun() bool {
-	if x != nil {
-		return x.DryRun
-	}
-	return false
-}
-
-func (x *CreateTransactionRequest) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
-}
-
-func (x *CreateTransactionRequest) GetScript() *Script {
-	if x != nil {
-		return x.Script
-	}
-	return nil
-}
-
-func (x *CreateTransactionRequest) GetRuntime() string {
-	if x != nil {
-		return x.Runtime
-	}
-	return ""
 }
 
 type CreateTransactionResponse struct {
-	state           protoimpl.MessageState      `protogen:"open.v1"`
-	Transaction     *Transaction                `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata map[string]*structpb.Struct `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Transaction     *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata map[string]*Metadata   `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreateTransactionResponse) Reset() {
 	*x = CreateTransactionResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[17]
+	mi := &file_ledger_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1190,7 +1378,7 @@ func (x *CreateTransactionResponse) String() string {
 func (*CreateTransactionResponse) ProtoMessage() {}
 
 func (x *CreateTransactionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[17]
+	mi := &file_ledger_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1203,7 +1391,7 @@ func (x *CreateTransactionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionResponse.ProtoReflect.Descriptor instead.
 func (*CreateTransactionResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{17}
+	return file_ledger_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CreateTransactionResponse) GetTransaction() *Transaction {
@@ -1213,27 +1401,76 @@ func (x *CreateTransactionResponse) GetTransaction() *Transaction {
 	return nil
 }
 
-func (x *CreateTransactionResponse) GetAccountMetadata() map[string]*structpb.Struct {
+func (x *CreateTransactionResponse) GetAccountMetadata() map[string]*Metadata {
 	if x != nil {
 		return x.AccountMetadata
 	}
 	return nil
 }
 
+type SaveAccountMetadataRequestPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,9,opt,name=address,proto3" json:"address,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveAccountMetadataRequestPayload) Reset() {
+	*x = SaveAccountMetadataRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveAccountMetadataRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveAccountMetadataRequestPayload) ProtoMessage() {}
+
+func (x *SaveAccountMetadataRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveAccountMetadataRequestPayload.ProtoReflect.Descriptor instead.
+func (*SaveAccountMetadataRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *SaveAccountMetadataRequestPayload) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *SaveAccountMetadataRequestPayload) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
 type SaveAccountMetadataRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Address        string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
-	Metadata       *structpb.Struct       `protobuf:"bytes,3,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	DryRun         bool                   `protobuf:"varint,4,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState             `protogen:"open.v1"`
+	Payload       *SaveAccountMetadataRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                        `protobuf:"bytes,2,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SaveAccountMetadataRequest) Reset() {
 	*x = SaveAccountMetadataRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[18]
+	mi := &file_ledger_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1245,7 +1482,7 @@ func (x *SaveAccountMetadataRequest) String() string {
 func (*SaveAccountMetadataRequest) ProtoMessage() {}
 
 func (x *SaveAccountMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[18]
+	mi := &file_ledger_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1258,42 +1495,21 @@ func (x *SaveAccountMetadataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveAccountMetadataRequest.ProtoReflect.Descriptor instead.
 func (*SaveAccountMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{18}
+	return file_ledger_proto_rawDescGZIP(), []int{24}
 }
 
-func (x *SaveAccountMetadataRequest) GetLedger() string {
+func (x *SaveAccountMetadataRequest) GetPayload() *SaveAccountMetadataRequestPayload {
 	if x != nil {
-		return x.Ledger
-	}
-	return ""
-}
-
-func (x *SaveAccountMetadataRequest) GetAddress() string {
-	if x != nil {
-		return x.Address
-	}
-	return ""
-}
-
-func (x *SaveAccountMetadataRequest) GetMetadata() *structpb.Struct {
-	if x != nil {
-		return x.Metadata
+		return x.Payload
 	}
 	return nil
 }
 
-func (x *SaveAccountMetadataRequest) GetDryRun() bool {
+func (x *SaveAccountMetadataRequest) GetParameters() *Parameters {
 	if x != nil {
-		return x.DryRun
+		return x.Parameters
 	}
-	return false
-}
-
-func (x *SaveAccountMetadataRequest) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
+	return nil
 }
 
 type SaveAccountMetadataResponse struct {
@@ -1305,7 +1521,7 @@ type SaveAccountMetadataResponse struct {
 
 func (x *SaveAccountMetadataResponse) Reset() {
 	*x = SaveAccountMetadataResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[19]
+	mi := &file_ledger_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1317,7 +1533,7 @@ func (x *SaveAccountMetadataResponse) String() string {
 func (*SaveAccountMetadataResponse) ProtoMessage() {}
 
 func (x *SaveAccountMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[19]
+	mi := &file_ledger_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1330,10 +1546,626 @@ func (x *SaveAccountMetadataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveAccountMetadataResponse.ProtoReflect.Descriptor instead.
 func (*SaveAccountMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{19}
+	return file_ledger_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SaveAccountMetadataResponse) GetLog() *Log {
+	if x != nil {
+		return x.Log
+	}
+	return nil
+}
+
+type RevertTransactionRequestPayload struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId   uint64                 `protobuf:"varint,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Force           bool                   `protobuf:"varint,3,opt,name=force,proto3" json:"force,omitempty"`
+	AtEffectiveDate bool                   `protobuf:"varint,4,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
+	Metadata        map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *RevertTransactionRequestPayload) Reset() {
+	*x = RevertTransactionRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevertTransactionRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevertTransactionRequestPayload) ProtoMessage() {}
+
+func (x *RevertTransactionRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevertTransactionRequestPayload.ProtoReflect.Descriptor instead.
+func (*RevertTransactionRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *RevertTransactionRequestPayload) GetTransactionId() uint64 {
+	if x != nil {
+		return x.TransactionId
+	}
+	return 0
+}
+
+func (x *RevertTransactionRequestPayload) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
+func (x *RevertTransactionRequestPayload) GetAtEffectiveDate() bool {
+	if x != nil {
+		return x.AtEffectiveDate
+	}
+	return false
+}
+
+func (x *RevertTransactionRequestPayload) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type RevertTransactionRequest struct {
+	state         protoimpl.MessageState           `protogen:"open.v1"`
+	Payload       *RevertTransactionRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                      `protobuf:"bytes,3,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevertTransactionRequest) Reset() {
+	*x = RevertTransactionRequest{}
+	mi := &file_ledger_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevertTransactionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevertTransactionRequest) ProtoMessage() {}
+
+func (x *RevertTransactionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevertTransactionRequest.ProtoReflect.Descriptor instead.
+func (*RevertTransactionRequest) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *RevertTransactionRequest) GetPayload() *RevertTransactionRequestPayload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *RevertTransactionRequest) GetParameters() *Parameters {
+	if x != nil {
+		return x.Parameters
+	}
+	return nil
+}
+
+type RevertTransactionResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Log                 *Log                   `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	RevertedTransaction *RevertedTransaction   `protobuf:"bytes,2,opt,name=reverted_transaction,json=revertedTransaction,proto3" json:"reverted_transaction,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RevertTransactionResponse) Reset() {
+	*x = RevertTransactionResponse{}
+	mi := &file_ledger_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevertTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevertTransactionResponse) ProtoMessage() {}
+
+func (x *RevertTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevertTransactionResponse.ProtoReflect.Descriptor instead.
+func (*RevertTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *RevertTransactionResponse) GetLog() *Log {
+	if x != nil {
+		return x.Log
+	}
+	return nil
+}
+
+func (x *RevertTransactionResponse) GetRevertedTransaction() *RevertedTransaction {
+	if x != nil {
+		return x.RevertedTransaction
+	}
+	return nil
+}
+
+type SaveTransactionMetadataRequestPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId uint64                 `protobuf:"varint,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveTransactionMetadataRequestPayload) Reset() {
+	*x = SaveTransactionMetadataRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveTransactionMetadataRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveTransactionMetadataRequestPayload) ProtoMessage() {}
+
+func (x *SaveTransactionMetadataRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveTransactionMetadataRequestPayload.ProtoReflect.Descriptor instead.
+func (*SaveTransactionMetadataRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SaveTransactionMetadataRequestPayload) GetTransactionId() uint64 {
+	if x != nil {
+		return x.TransactionId
+	}
+	return 0
+}
+
+func (x *SaveTransactionMetadataRequestPayload) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type SaveTransactionMetadataRequest struct {
+	state         protoimpl.MessageState                 `protogen:"open.v1"`
+	Payload       *SaveTransactionMetadataRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                            `protobuf:"bytes,2,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveTransactionMetadataRequest) Reset() {
+	*x = SaveTransactionMetadataRequest{}
+	mi := &file_ledger_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveTransactionMetadataRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveTransactionMetadataRequest) ProtoMessage() {}
+
+func (x *SaveTransactionMetadataRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveTransactionMetadataRequest.ProtoReflect.Descriptor instead.
+func (*SaveTransactionMetadataRequest) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SaveTransactionMetadataRequest) GetPayload() *SaveTransactionMetadataRequestPayload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *SaveTransactionMetadataRequest) GetParameters() *Parameters {
+	if x != nil {
+		return x.Parameters
+	}
+	return nil
+}
+
+type SaveTransactionMetadataResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Log           *Log                   `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveTransactionMetadataResponse) Reset() {
+	*x = SaveTransactionMetadataResponse{}
+	mi := &file_ledger_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveTransactionMetadataResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveTransactionMetadataResponse) ProtoMessage() {}
+
+func (x *SaveTransactionMetadataResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveTransactionMetadataResponse.ProtoReflect.Descriptor instead.
+func (*SaveTransactionMetadataResponse) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *SaveTransactionMetadataResponse) GetLog() *Log {
+	if x != nil {
+		return x.Log
+	}
+	return nil
+}
+
+type DeleteAccountMetadataRequestPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAccountMetadataRequestPayload) Reset() {
+	*x = DeleteAccountMetadataRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAccountMetadataRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAccountMetadataRequestPayload) ProtoMessage() {}
+
+func (x *DeleteAccountMetadataRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAccountMetadataRequestPayload.ProtoReflect.Descriptor instead.
+func (*DeleteAccountMetadataRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *DeleteAccountMetadataRequestPayload) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *DeleteAccountMetadataRequestPayload) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type DeleteAccountMetadataRequest struct {
+	state         protoimpl.MessageState               `protogen:"open.v1"`
+	Payload       *DeleteAccountMetadataRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                          `protobuf:"bytes,2,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAccountMetadataRequest) Reset() {
+	*x = DeleteAccountMetadataRequest{}
+	mi := &file_ledger_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAccountMetadataRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAccountMetadataRequest) ProtoMessage() {}
+
+func (x *DeleteAccountMetadataRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAccountMetadataRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAccountMetadataRequest) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *DeleteAccountMetadataRequest) GetPayload() *DeleteAccountMetadataRequestPayload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *DeleteAccountMetadataRequest) GetParameters() *Parameters {
+	if x != nil {
+		return x.Parameters
+	}
+	return nil
+}
+
+type DeleteAccountMetadataResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Log           *Log                   `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAccountMetadataResponse) Reset() {
+	*x = DeleteAccountMetadataResponse{}
+	mi := &file_ledger_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAccountMetadataResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAccountMetadataResponse) ProtoMessage() {}
+
+func (x *DeleteAccountMetadataResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAccountMetadataResponse.ProtoReflect.Descriptor instead.
+func (*DeleteAccountMetadataResponse) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *DeleteAccountMetadataResponse) GetLog() *Log {
+	if x != nil {
+		return x.Log
+	}
+	return nil
+}
+
+type DeleteTransactionMetadataRequestPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId uint64                 `protobuf:"varint,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTransactionMetadataRequestPayload) Reset() {
+	*x = DeleteTransactionMetadataRequestPayload{}
+	mi := &file_ledger_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTransactionMetadataRequestPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTransactionMetadataRequestPayload) ProtoMessage() {}
+
+func (x *DeleteTransactionMetadataRequestPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTransactionMetadataRequestPayload.ProtoReflect.Descriptor instead.
+func (*DeleteTransactionMetadataRequestPayload) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *DeleteTransactionMetadataRequestPayload) GetTransactionId() uint64 {
+	if x != nil {
+		return x.TransactionId
+	}
+	return 0
+}
+
+func (x *DeleteTransactionMetadataRequestPayload) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type DeleteTransactionMetadataRequest struct {
+	state         protoimpl.MessageState                   `protogen:"open.v1"`
+	Payload       *DeleteTransactionMetadataRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Parameters    *Parameters                              `protobuf:"bytes,2,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTransactionMetadataRequest) Reset() {
+	*x = DeleteTransactionMetadataRequest{}
+	mi := &file_ledger_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTransactionMetadataRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTransactionMetadataRequest) ProtoMessage() {}
+
+func (x *DeleteTransactionMetadataRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTransactionMetadataRequest.ProtoReflect.Descriptor instead.
+func (*DeleteTransactionMetadataRequest) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *DeleteTransactionMetadataRequest) GetPayload() *DeleteTransactionMetadataRequestPayload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *DeleteTransactionMetadataRequest) GetParameters() *Parameters {
+	if x != nil {
+		return x.Parameters
+	}
+	return nil
+}
+
+type DeleteTransactionMetadataResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Log           *Log                   `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTransactionMetadataResponse) Reset() {
+	*x = DeleteTransactionMetadataResponse{}
+	mi := &file_ledger_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTransactionMetadataResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTransactionMetadataResponse) ProtoMessage() {}
+
+func (x *DeleteTransactionMetadataResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTransactionMetadataResponse.ProtoReflect.Descriptor instead.
+func (*DeleteTransactionMetadataResponse) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *DeleteTransactionMetadataResponse) GetLog() *Log {
 	if x != nil {
 		return x.Log
 	}
@@ -1351,7 +2183,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[20]
+	mi := &file_ledger_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +2195,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[20]
+	mi := &file_ledger_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +2208,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{20}
+	return file_ledger_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *StreamLogsRequest) GetLedger() string {
@@ -1409,7 +2241,7 @@ type StreamLogsResponse struct {
 
 func (x *StreamLogsResponse) Reset() {
 	*x = StreamLogsResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[21]
+	mi := &file_ledger_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1421,7 +2253,7 @@ func (x *StreamLogsResponse) String() string {
 func (*StreamLogsResponse) ProtoMessage() {}
 
 func (x *StreamLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[21]
+	mi := &file_ledger_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1434,7 +2266,7 @@ func (x *StreamLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsResponse.ProtoReflect.Descriptor instead.
 func (*StreamLogsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{21}
+	return file_ledger_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *StreamLogsResponse) GetLog() *Log {
@@ -1446,20 +2278,19 @@ func (x *StreamLogsResponse) GetLog() *Log {
 
 type Log struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	Type            int32                  `protobuf:"varint,1,opt,name=type,proto3" json:"type,omitempty"` // LogType enum value
-	Data            *LogPayload            `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	Date            *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
-	IdempotencyKey  string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	IdempotencyHash string                 `protobuf:"bytes,5,opt,name=idempotency_hash,json=idempotencyHash,proto3" json:"idempotency_hash,omitempty"`
-	Id              uint64                 `protobuf:"varint,6,opt,name=id,proto3" json:"id,omitempty"`             // Optional log ID
-	Sequence        uint64                 `protobuf:"varint,7,opt,name=sequence,proto3" json:"sequence,omitempty"` // Global sequence number
+	Data            *LogPayload            `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	Date            *Timestamp             `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
+	IdempotencyKey  string                 `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	IdempotencyHash string                 `protobuf:"bytes,4,opt,name=idempotency_hash,json=idempotencyHash,proto3" json:"idempotency_hash,omitempty"`
+	Id              uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`             // Optional log ID
+	Sequence        uint64                 `protobuf:"varint,6,opt,name=sequence,proto3" json:"sequence,omitempty"` // Global sequence number
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Log) Reset() {
 	*x = Log{}
-	mi := &file_proto_ledger_proto_msgTypes[22]
+	mi := &file_ledger_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1471,7 +2302,7 @@ func (x *Log) String() string {
 func (*Log) ProtoMessage() {}
 
 func (x *Log) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[22]
+	mi := &file_ledger_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1484,14 +2315,7 @@ func (x *Log) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log.ProtoReflect.Descriptor instead.
 func (*Log) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *Log) GetType() int32 {
-	if x != nil {
-		return x.Type
-	}
-	return 0
+	return file_ledger_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *Log) GetData() *LogPayload {
@@ -1501,7 +2325,7 @@ func (x *Log) GetData() *LogPayload {
 	return nil
 }
 
-func (x *Log) GetDate() *timestamppb.Timestamp {
+func (x *Log) GetDate() *Timestamp {
 	if x != nil {
 		return x.Date
 	}
@@ -1551,7 +2375,7 @@ type LogPayload struct {
 
 func (x *LogPayload) Reset() {
 	*x = LogPayload{}
-	mi := &file_proto_ledger_proto_msgTypes[23]
+	mi := &file_ledger_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1563,7 +2387,7 @@ func (x *LogPayload) String() string {
 func (*LogPayload) ProtoMessage() {}
 
 func (x *LogPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[23]
+	mi := &file_ledger_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1576,7 +2400,7 @@ func (x *LogPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogPayload.ProtoReflect.Descriptor instead.
 func (*LogPayload) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{23}
+	return file_ledger_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *LogPayload) GetPayload() isLogPayload_Payload {
@@ -1651,16 +2475,16 @@ func (*LogPayload_SavedMetadata) isLogPayload_Payload() {}
 func (*LogPayload_DeletedMetadata) isLogPayload_Payload() {}
 
 type CreatedTransaction struct {
-	state           protoimpl.MessageState      `protogen:"open.v1"`
-	Transaction     *Transaction                `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata map[string]*structpb.Struct `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Transaction     *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata map[string]*Metadata   `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreatedTransaction) Reset() {
 	*x = CreatedTransaction{}
-	mi := &file_proto_ledger_proto_msgTypes[24]
+	mi := &file_ledger_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1672,7 +2496,7 @@ func (x *CreatedTransaction) String() string {
 func (*CreatedTransaction) ProtoMessage() {}
 
 func (x *CreatedTransaction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[24]
+	mi := &file_ledger_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1685,7 +2509,7 @@ func (x *CreatedTransaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedTransaction.ProtoReflect.Descriptor instead.
 func (*CreatedTransaction) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{24}
+	return file_ledger_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CreatedTransaction) GetTransaction() *Transaction {
@@ -1695,7 +2519,7 @@ func (x *CreatedTransaction) GetTransaction() *Transaction {
 	return nil
 }
 
-func (x *CreatedTransaction) GetAccountMetadata() map[string]*structpb.Struct {
+func (x *CreatedTransaction) GetAccountMetadata() map[string]*Metadata {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -1712,7 +2536,7 @@ type RevertedTransaction struct {
 
 func (x *RevertedTransaction) Reset() {
 	*x = RevertedTransaction{}
-	mi := &file_proto_ledger_proto_msgTypes[25]
+	mi := &file_ledger_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1724,7 +2548,7 @@ func (x *RevertedTransaction) String() string {
 func (*RevertedTransaction) ProtoMessage() {}
 
 func (x *RevertedTransaction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[25]
+	mi := &file_ledger_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1737,7 +2561,7 @@ func (x *RevertedTransaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertedTransaction.ProtoReflect.Descriptor instead.
 func (*RevertedTransaction) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{25}
+	return file_ledger_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *RevertedTransaction) GetRevertedTransaction() *Transaction {
@@ -1762,14 +2586,14 @@ type SavedMetadata struct {
 	//	*SavedMetadata_AccountId
 	//	*SavedMetadata_TransactionId
 	TargetId      isSavedMetadata_TargetId `protobuf_oneof:"target_id"`
-	Metadata      *structpb.Struct         `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Metadata      map[string]string        `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SavedMetadata) Reset() {
 	*x = SavedMetadata{}
-	mi := &file_proto_ledger_proto_msgTypes[26]
+	mi := &file_ledger_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1781,7 +2605,7 @@ func (x *SavedMetadata) String() string {
 func (*SavedMetadata) ProtoMessage() {}
 
 func (x *SavedMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[26]
+	mi := &file_ledger_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1794,7 +2618,7 @@ func (x *SavedMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SavedMetadata.ProtoReflect.Descriptor instead.
 func (*SavedMetadata) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{26}
+	return file_ledger_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SavedMetadata) GetTargetType() string {
@@ -1829,7 +2653,7 @@ func (x *SavedMetadata) GetTransactionId() uint64 {
 	return 0
 }
 
-func (x *SavedMetadata) GetMetadata() *structpb.Struct {
+func (x *SavedMetadata) GetMetadata() map[string]string {
 	if x != nil {
 		return x.Metadata
 	}
@@ -1867,7 +2691,7 @@ type DeletedMetadata struct {
 
 func (x *DeletedMetadata) Reset() {
 	*x = DeletedMetadata{}
-	mi := &file_proto_ledger_proto_msgTypes[27]
+	mi := &file_ledger_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1879,7 +2703,7 @@ func (x *DeletedMetadata) String() string {
 func (*DeletedMetadata) ProtoMessage() {}
 
 func (x *DeletedMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[27]
+	mi := &file_ledger_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1892,7 +2716,7 @@ func (x *DeletedMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedMetadata.ProtoReflect.Descriptor instead.
 func (*DeletedMetadata) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{27}
+	return file_ledger_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DeletedMetadata) GetTargetType() string {
@@ -1950,37 +2774,332 @@ func (*DeletedMetadata_AccountId) isDeletedMetadata_TargetId() {}
 
 func (*DeletedMetadata_TransactionId) isDeletedMetadata_TargetId() {}
 
-var File_proto_ledger_proto protoreflect.FileDescriptor
+// TransactionResume represents a simplified transaction for memento purposes
+// Excludes postCommitVolumes and postCommitEffectiveVolumes fields
+type TransactionResume struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Postings      []*Posting             `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp     *Timestamp             `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference     string                 `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	Id            uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"` // Optional, 0 means nil
+	Reverted      bool                   `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_proto_ledger_proto_rawDesc = "" +
+func (x *TransactionResume) Reset() {
+	*x = TransactionResume{}
+	mi := &file_ledger_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionResume) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionResume) ProtoMessage() {}
+
+func (x *TransactionResume) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionResume.ProtoReflect.Descriptor instead.
+func (*TransactionResume) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *TransactionResume) GetPostings() []*Posting {
+	if x != nil {
+		return x.Postings
+	}
+	return nil
+}
+
+func (x *TransactionResume) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *TransactionResume) GetTimestamp() *Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *TransactionResume) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *TransactionResume) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *TransactionResume) GetReverted() bool {
+	if x != nil {
+		return x.Reverted
+	}
+	return false
+}
+
+// CreatedTransactionMemento represents the memento structure for CreatedTransaction
+type CreatedTransactionMemento struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Transaction     *TransactionResume     `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata map[string]*Metadata   `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CreatedTransactionMemento) Reset() {
+	*x = CreatedTransactionMemento{}
+	mi := &file_ledger_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatedTransactionMemento) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatedTransactionMemento) ProtoMessage() {}
+
+func (x *CreatedTransactionMemento) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatedTransactionMemento.ProtoReflect.Descriptor instead.
+func (*CreatedTransactionMemento) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *CreatedTransactionMemento) GetTransaction() *TransactionResume {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
+func (x *CreatedTransactionMemento) GetAccountMetadata() map[string]*Metadata {
+	if x != nil {
+		return x.AccountMetadata
+	}
+	return nil
+}
+
+// RevertedTransactionMemento represents the memento structure for RevertedTransaction
+type RevertedTransactionMemento struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	RevertedTransactionId uint64                 `protobuf:"varint,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"` // Optional, 0 means nil
+	RevertTransaction     *TransactionResume     `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *RevertedTransactionMemento) Reset() {
+	*x = RevertedTransactionMemento{}
+	mi := &file_ledger_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevertedTransactionMemento) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevertedTransactionMemento) ProtoMessage() {}
+
+func (x *RevertedTransactionMemento) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevertedTransactionMemento.ProtoReflect.Descriptor instead.
+func (*RevertedTransactionMemento) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RevertedTransactionMemento) GetRevertedTransactionId() uint64 {
+	if x != nil {
+		return x.RevertedTransactionId
+	}
+	return 0
+}
+
+func (x *RevertedTransactionMemento) GetRevertTransaction() *TransactionResume {
+	if x != nil {
+		return x.RevertTransaction
+	}
+	return nil
+}
+
+// LedgerInfo represents information about a ledger
+type LedgerInfo struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                      // Sequential ledger ID
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                                                                   // Ledger name/ID
+	Driver            string                 `protobuf:"bytes,3,opt,name=driver,proto3" json:"driver,omitempty"`                                                                               // Driver name (e.g., "sqlite", "s3", etc.)
+	Config            *structpb.Struct       `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`                                                                               // Driver-specific configuration
+	Metadata          map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional metadata
+	CreatedAt         *Timestamp             `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                                                        // Creation timestamp
+	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`                               // Number of logs before triggering a snapshot (optional, uses global config if 0)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *LedgerInfo) Reset() {
+	*x = LedgerInfo{}
+	mi := &file_ledger_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerInfo) ProtoMessage() {}
+
+func (x *LedgerInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_ledger_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerInfo.ProtoReflect.Descriptor instead.
+func (*LedgerInfo) Descriptor() ([]byte, []int) {
+	return file_ledger_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *LedgerInfo) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *LedgerInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LedgerInfo) GetDriver() string {
+	if x != nil {
+		return x.Driver
+	}
+	return ""
+}
+
+func (x *LedgerInfo) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *LedgerInfo) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *LedgerInfo) GetCreatedAt() *Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *LedgerInfo) GetSnapshotThreshold() uint64 {
+	if x != nil {
+		return x.SnapshotThreshold
+	}
+	return 0
+}
+
+var File_ledger_proto protoreflect.FileDescriptor
+
+const file_ledger_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/ledger.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"q\n" +
+	"\fledger.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\"\x1f\n" +
+	"\tTimestamp\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\x04R\x04data\"\x7f\n" +
+	"\bMetadata\x127\n" +
+	"\aentries\x18\x01 \x03(\v2\x1d.ledger.Metadata.EntriesEntryR\aentries\x1a:\n" +
+	"\fEntriesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +
 	"\aPosting\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
-	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x16\n" +
-	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x14\n" +
-	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xd1\x04\n" +
+	"\vdestination\x18\x02 \x01(\tR\vdestination\x12&\n" +
+	"\x06amount\x18\x03 \x01(\v2\x0e.ledger.BigIntR\x06amount\x12\x14\n" +
+	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xcb\x03\n" +
 	"\vTransaction\x12+\n" +
-	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x123\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1c\n" +
+	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x12=\n" +
+	"\bmetadata\x18\x02 \x03(\v2!.ledger.Transaction.MetadataEntryR\bmetadata\x12/\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.ledger.TimestampR\ttimestamp\x12\x1c\n" +
 	"\treference\x18\x04 \x01(\tR\treference\x12\x0e\n" +
 	"\x02id\x18\x05 \x01(\x04R\x02id\x12\x1a\n" +
-	"\breverted\x18\x06 \x01(\bR\breverted\x12;\n" +
-	"\vinserted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"insertedAt\x129\n" +
+	"\breverted\x18\x06 \x01(\bR\breverted\x122\n" +
+	"\vinserted_at\x18\a \x01(\v2\x11.ledger.TimestampR\n" +
+	"insertedAt\x120\n" +
 	"\n" +
-	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12;\n" +
-	"\vreverted_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"revertedAt\x12I\n" +
-	"\x13post_commit_volumes\x18\n" +
-	" \x01(\v2\x19.ledger.PostCommitVolumesR\x11postCommitVolumes\x12\\\n" +
-	"\x1dpost_commit_effective_volumes\x18\v \x01(\v2\x19.ledger.PostCommitVolumesR\x1apostCommitEffectiveVolumes\"\xcb\x01\n" +
+	"updated_at\x18\b \x01(\v2\x11.ledger.TimestampR\tupdatedAt\x122\n" +
+	"\vreverted_at\x18\t \x01(\v2\x11.ledger.TimestampR\n" +
+	"revertedAt\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8d\x02\n" +
 	"\x0fTransactionData\x12+\n" +
-	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x123\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1c\n" +
-	"\treference\x18\x04 \x01(\tR\treference\"K\n" +
+	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x12A\n" +
+	"\bmetadata\x18\x02 \x03(\v2%.ledger.TransactionData.MetadataEntryR\bmetadata\x12/\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.ledger.TimestampR\ttimestamp\x12\x1c\n" +
+	"\treference\x18\x04 \x01(\tR\treference\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"K\n" +
 	"\fTransactions\x12;\n" +
 	"\ftransactions\x18\x01 \x03(\v2\x17.ledger.TransactionDataR\ftransactions\"7\n" +
 	"\aVolumes\x12\x14\n" +
@@ -2007,70 +3126,137 @@ const file_proto_ledger_proto_rawDesc = "" +
 	"\x11AggregatedVolumes\x127\n" +
 	"\n" +
 	"aggregated\x18\x01 \x01(\v2\x17.ledger.VolumesByAssetsR\n" +
-	"aggregated\"\x8c\x03\n" +
+	"aggregated\"\xbb\x02\n" +
 	"\aAccount\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x123\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12;\n" +
-	"\vfirst_usage\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"firstUsage\x12A\n" +
-	"\x0einsertion_date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\rinsertionDate\x129\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x129\n" +
+	"\bmetadata\x18\x02 \x03(\v2\x1d.ledger.Account.MetadataEntryR\bmetadata\x122\n" +
+	"\vfirst_usage\x18\x03 \x01(\v2\x11.ledger.TimestampR\n" +
+	"firstUsage\x128\n" +
+	"\x0einsertion_date\x18\x04 \x01(\v2\x11.ledger.TimestampR\rinsertionDate\x120\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x121\n" +
-	"\avolumes\x18\x06 \x01(\v2\x17.ledger.VolumesByAssetsR\avolumes\x12D\n" +
-	"\x11effective_volumes\x18\a \x01(\v2\x17.ledger.VolumesByAssetsR\x10effectiveVolumes\"o\n" +
+	"updated_at\x18\x05 \x01(\v2\x11.ledger.TimestampR\tupdatedAt\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"o\n" +
 	"\x0fAccountsVolumes\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x14\n" +
 	"\x05asset\x18\x02 \x01(\tR\x05asset\x12\x14\n" +
 	"\x05input\x18\x03 \x01(\tR\x05input\x12\x16\n" +
-	"\x06output\x18\x04 \x01(\tR\x06output\"\xad\x03\n" +
+	"\x06output\x18\x04 \x01(\tR\x06output\"\x9b\x03\n" +
 	"\x04Move\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x1b\n" +
 	"\tis_source\x18\x02 \x01(\bR\bisSource\x12\x18\n" +
 	"\aaccount\x18\x03 \x01(\tR\aaccount\x12\x16\n" +
 	"\x06amount\x18\x04 \x01(\tR\x06amount\x12\x14\n" +
-	"\x05asset\x18\x05 \x01(\tR\x05asset\x12A\n" +
-	"\x0einsertion_date\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rinsertionDate\x12A\n" +
-	"\x0eeffective_date\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\reffectiveDate\x12?\n" +
+	"\x05asset\x18\x05 \x01(\tR\x05asset\x128\n" +
+	"\x0einsertion_date\x18\x06 \x01(\v2\x11.ledger.TimestampR\rinsertionDate\x128\n" +
+	"\x0eeffective_date\x18\a \x01(\v2\x11.ledger.TimestampR\reffectiveDate\x12?\n" +
 	"\x13post_commit_volumes\x18\b \x01(\v2\x0f.ledger.VolumesR\x11postCommitVolumes\x12R\n" +
 	"\x1dpost_commit_effective_volumes\x18\t \x01(\v2\x0f.ledger.VolumesR\x1apostCommitEffectiveVolumes\"/\n" +
 	"\x15LedgerSnapshotRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"2\n" +
 	"\x16LedgerSnapshotResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\x85\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\x1c\n" +
+	"\x06BigInt\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"\x85\x01\n" +
 	"\x06Script\x12\x14\n" +
 	"\x05plain\x18\x01 \x01(\tR\x05plain\x12,\n" +
 	"\x04vars\x18\x02 \x03(\v2\x18.ledger.Script.VarsEntryR\x04vars\x1a7\n" +
 	"\tVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaf\x04\n" +
-	"\x18CreateTransactionRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12`\n" +
-	"\x10account_metadata\x18\x02 \x03(\v25.ledger.CreateTransactionRequest.AccountMetadataEntryR\x0faccountMetadata\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12\x1c\n" +
-	"\treference\x18\x05 \x01(\tR\treference\x12+\n" +
-	"\bpostings\x18\x06 \x03(\v2\x0f.ledger.PostingR\bpostings\x12\x17\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"f\n" +
+	"\n" +
+	"Parameters\x12\x16\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12\x17\n" +
 	"\adry_run\x18\a \x01(\bR\x06dryRun\x12'\n" +
-	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\x12&\n" +
+	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\"\xae\x04\n" +
+	"\x1fCreateTransactionRequestPayload\x12g\n" +
+	"\x10account_metadata\x18\x02 \x03(\v2<.ledger.CreateTransactionRequestPayload.AccountMetadataEntryR\x0faccountMetadata\x12Q\n" +
+	"\bmetadata\x18\x04 \x03(\v25.ledger.CreateTransactionRequestPayload.MetadataEntryR\bmetadata\x12/\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.ledger.TimestampR\ttimestamp\x12\x1c\n" +
+	"\treference\x18\x05 \x01(\tR\treference\x12+\n" +
+	"\bpostings\x18\x06 \x03(\v2\x0f.ledger.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\t \x01(\v2\x0e.ledger.ScriptR\x06script\x12\x18\n" +
 	"\aruntime\x18\n" +
-	" \x01(\tR\aruntime\x1a[\n" +
+	" \x01(\tR\aruntime\x1aT\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\x92\x02\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
+	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x18CreateTransactionRequest\x12A\n" +
+	"\apayload\x18\x01 \x01(\v2'.ledger.CreateTransactionRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\"\x8b\x02\n" +
 	"\x19CreateTransactionResponse\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.ledger.TransactionR\vtransaction\x12a\n" +
-	"\x10account_metadata\x18\x02 \x03(\v26.ledger.CreateTransactionResponse.AccountMetadataEntryR\x0faccountMetadata\x1a[\n" +
+	"\x10account_metadata\x18\x02 \x03(\v26.ledger.CreateTransactionResponse.AccountMetadataEntryR\x0faccountMetadata\x1aT\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xc5\x01\n" +
-	"\x1aSaveAccountMetadataRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\x123\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12\x17\n" +
-	"\adry_run\x18\x04 \x01(\bR\x06dryRun\x12'\n" +
-	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\"<\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
+	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\xcf\x01\n" +
+	"!SaveAccountMetadataRequestPayload\x12\x18\n" +
+	"\aaddress\x18\t \x01(\tR\aaddress\x12S\n" +
+	"\bmetadata\x18\x03 \x03(\v27.ledger.SaveAccountMetadataRequestPayload.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x95\x01\n" +
+	"\x1aSaveAccountMetadataRequest\x12C\n" +
+	"\apayload\x18\x01 \x01(\v2).ledger.SaveAccountMetadataRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\"<\n" +
 	"\x1bSaveAccountMetadataResponse\x12\x1d\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"\x9a\x02\n" +
+	"\x1fRevertTransactionRequestPayload\x12%\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\x12\x14\n" +
+	"\x05force\x18\x03 \x01(\bR\x05force\x12*\n" +
+	"\x11at_effective_date\x18\x04 \x01(\bR\x0fatEffectiveDate\x12Q\n" +
+	"\bmetadata\x18\x05 \x03(\v25.ledger.RevertTransactionRequestPayload.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x18RevertTransactionRequest\x12A\n" +
+	"\apayload\x18\x01 \x01(\v2'.ledger.RevertTransactionRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x03 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\"\x8a\x01\n" +
+	"\x19RevertTransactionResponse\x12\x1d\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\x12N\n" +
+	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.ledger.RevertedTransactionR\x13revertedTransaction\"\xe4\x01\n" +
+	"%SaveTransactionMetadataRequestPayload\x12%\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\x12W\n" +
+	"\bmetadata\x18\x03 \x03(\v2;.ledger.SaveTransactionMetadataRequestPayload.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x01\n" +
+	"\x1eSaveTransactionMetadataRequest\x12G\n" +
+	"\apayload\x18\x01 \x01(\v2-.ledger.SaveTransactionMetadataRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\"@\n" +
+	"\x1fSaveTransactionMetadataResponse\x12\x1d\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"Q\n" +
+	"#DeleteAccountMetadataRequestPayload\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\"\x99\x01\n" +
+	"\x1cDeleteAccountMetadataRequest\x12E\n" +
+	"\apayload\x18\x01 \x01(\v2+.ledger.DeleteAccountMetadataRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\">\n" +
+	"\x1dDeleteAccountMetadataResponse\x12\x1d\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"b\n" +
+	"'DeleteTransactionMetadataRequestPayload\x12%\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\"\xa1\x01\n" +
+	" DeleteTransactionMetadataRequest\x12I\n" +
+	"\apayload\x18\x01 \x01(\v2/.ledger.DeleteTransactionMetadataRequestPayloadR\apayload\x122\n" +
+	"\n" +
+	"parameters\x18\x02 \x01(\v2\x12.ledger.ParametersR\n" +
+	"parameters\"B\n" +
+	"!DeleteTransactionMetadataResponse\x12\x1d\n" +
 	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"q\n" +
 	"\x11StreamLogsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
@@ -2078,38 +3264,40 @@ const file_proto_ledger_proto_rawDesc = "" +
 	"\vto_sequence\x18\x03 \x01(\x04R\n" +
 	"toSequence\"3\n" +
 	"\x12StreamLogsResponse\x12\x1d\n" +
-	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"\xf1\x01\n" +
-	"\x03Log\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\x05R\x04type\x12&\n" +
-	"\x04data\x18\x02 \x01(\v2\x12.ledger.LogPayloadR\x04data\x12.\n" +
-	"\x04date\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04date\x12'\n" +
-	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12)\n" +
-	"\x10idempotency_hash\x18\x05 \x01(\tR\x0fidempotencyHash\x12\x0e\n" +
-	"\x02id\x18\x06 \x01(\x04R\x02id\x12\x1a\n" +
-	"\bsequence\x18\a \x01(\x04R\bsequence\"\xbe\x02\n" +
+	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03log\"\xd4\x01\n" +
+	"\x03Log\x12&\n" +
+	"\x04data\x18\x01 \x01(\v2\x12.ledger.LogPayloadR\x04data\x12%\n" +
+	"\x04date\x18\x02 \x01(\v2\x11.ledger.TimestampR\x04date\x12'\n" +
+	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\x12)\n" +
+	"\x10idempotency_hash\x18\x04 \x01(\tR\x0fidempotencyHash\x12\x0e\n" +
+	"\x02id\x18\x05 \x01(\x04R\x02id\x12\x1a\n" +
+	"\bsequence\x18\x06 \x01(\x04R\bsequence\"\xbe\x02\n" +
 	"\n" +
 	"LogPayload\x12M\n" +
 	"\x13created_transaction\x18\x01 \x01(\v2\x1a.ledger.CreatedTransactionH\x00R\x12createdTransaction\x12P\n" +
 	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.ledger.RevertedTransactionH\x00R\x13revertedTransaction\x12>\n" +
 	"\x0esaved_metadata\x18\x03 \x01(\v2\x15.ledger.SavedMetadataH\x00R\rsavedMetadata\x12D\n" +
 	"\x10deleted_metadata\x18\x04 \x01(\v2\x17.ledger.DeletedMetadataH\x00R\x0fdeletedMetadataB\t\n" +
-	"\apayload\"\x84\x02\n" +
+	"\apayload\"\xfd\x01\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.ledger.TransactionR\vtransaction\x12Z\n" +
-	"\x10account_metadata\x18\x02 \x03(\v2/.ledger.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x1a[\n" +
+	"\x10account_metadata\x18\x02 \x03(\v2/.ledger.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x1aT\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xa1\x01\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
+	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\xa1\x01\n" +
 	"\x13RevertedTransaction\x12F\n" +
 	"\x14reverted_transaction\x18\x01 \x01(\v2\x13.ledger.TransactionR\x13revertedTransaction\x12B\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x13.ledger.TransactionR\x11revertTransaction\"\xbc\x01\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x13.ledger.TransactionR\x11revertTransaction\"\x85\x02\n" +
 	"\rSavedMetadata\x12\x1f\n" +
 	"\vtarget_type\x18\x01 \x01(\tR\n" +
 	"targetType\x12\x1f\n" +
 	"\n" +
 	"account_id\x18\x02 \x01(\tH\x00R\taccountId\x12'\n" +
-	"\x0etransaction_id\x18\x03 \x01(\x04H\x00R\rtransactionId\x123\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadataB\v\n" +
+	"\x0etransaction_id\x18\x03 \x01(\x04H\x00R\rtransactionId\x12?\n" +
+	"\bmetadata\x18\x04 \x03(\v2#.ledger.SavedMetadata.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\v\n" +
 	"\ttarget_id\"\x9b\x01\n" +
 	"\x0fDeletedMetadata\x12\x1f\n" +
 	"\vtarget_type\x18\x01 \x01(\tR\n" +
@@ -2118,150 +3306,254 @@ const file_proto_ledger_proto_rawDesc = "" +
 	"account_id\x18\x02 \x01(\tH\x00R\taccountId\x12'\n" +
 	"\x0etransaction_id\x18\x03 \x01(\x04H\x00R\rtransactionId\x12\x10\n" +
 	"\x03key\x18\x04 \x01(\tR\x03keyB\v\n" +
-	"\ttarget_id2\xdb\x02\n" +
+	"\ttarget_id\"\xbd\x02\n" +
+	"\x11TransactionResume\x12+\n" +
+	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x12C\n" +
+	"\bmetadata\x18\x02 \x03(\v2'.ledger.TransactionResume.MetadataEntryR\bmetadata\x12/\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.ledger.TimestampR\ttimestamp\x12\x1c\n" +
+	"\treference\x18\x04 \x01(\tR\treference\x12\x0e\n" +
+	"\x02id\x18\x05 \x01(\x04R\x02id\x12\x1a\n" +
+	"\breverted\x18\x06 \x01(\bR\breverted\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x02\n" +
+	"\x19CreatedTransactionMemento\x12;\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x19.ledger.TransactionResumeR\vtransaction\x12a\n" +
+	"\x10account_metadata\x18\x02 \x03(\v26.ledger.CreatedTransactionMemento.AccountMetadataEntryR\x0faccountMetadata\x1aT\n" +
+	"\x14AccountMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
+	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\x9e\x01\n" +
+	"\x1aRevertedTransactionMemento\x126\n" +
+	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12H\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x19.ledger.TransactionResumeR\x11revertTransaction\"\xd5\x02\n" +
+	"\n" +
+	"LedgerInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06driver\x18\x03 \x01(\tR\x06driver\x12/\n" +
+	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x12<\n" +
+	"\bmetadata\x18\x05 \x03(\v2 .ledger.LedgerInfo.MetadataEntryR\bmetadata\x120\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xf9\x05\n" +
 	"\rLedgerService\x12I\n" +
 	"\bSnapshot\x12\x1d.ledger.LedgerSnapshotRequest\x1a\x1e.ledger.LedgerSnapshotResponse\x12X\n" +
-	"\x11CreateTransaction\x12 .ledger.CreateTransactionRequest\x1a!.ledger.CreateTransactionResponse\x12^\n" +
-	"\x13SaveAccountMetadata\x12\".ledger.SaveAccountMetadataRequest\x1a#.ledger.SaveAccountMetadataResponse\x12E\n" +
+	"\x11CreateTransaction\x12 .ledger.CreateTransactionRequest\x1a!.ledger.CreateTransactionResponse\x12X\n" +
+	"\x11RevertTransaction\x12 .ledger.RevertTransactionRequest\x1a!.ledger.RevertTransactionResponse\x12^\n" +
+	"\x13SaveAccountMetadata\x12\".ledger.SaveAccountMetadataRequest\x1a#.ledger.SaveAccountMetadataResponse\x12j\n" +
+	"\x17SaveTransactionMetadata\x12&.ledger.SaveTransactionMetadataRequest\x1a'.ledger.SaveTransactionMetadataResponse\x12d\n" +
+	"\x15DeleteAccountMetadata\x12$.ledger.DeleteAccountMetadataRequest\x1a%.ledger.DeleteAccountMetadataResponse\x12p\n" +
+	"\x19DeleteTransactionMetadata\x12(.ledger.DeleteTransactionMetadataRequest\x1a).ledger.DeleteTransactionMetadataResponse\x12E\n" +
 	"\n" +
 	"StreamLogs\x12\x19.ledger.StreamLogsRequest\x1a\x1a.ledger.StreamLogsResponse0\x01B7Z5github.com/formancehq/ledger-v3-poc/internal/ledgerpbb\x06proto3"
 
 var (
-	file_proto_ledger_proto_rawDescOnce sync.Once
-	file_proto_ledger_proto_rawDescData []byte
+	file_ledger_proto_rawDescOnce sync.Once
+	file_ledger_proto_rawDescData []byte
 )
 
-func file_proto_ledger_proto_rawDescGZIP() []byte {
-	file_proto_ledger_proto_rawDescOnce.Do(func() {
-		file_proto_ledger_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_ledger_proto_rawDesc), len(file_proto_ledger_proto_rawDesc)))
+func file_ledger_proto_rawDescGZIP() []byte {
+	file_ledger_proto_rawDescOnce.Do(func() {
+		file_ledger_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ledger_proto_rawDesc), len(file_ledger_proto_rawDesc)))
 	})
-	return file_proto_ledger_proto_rawDescData
+	return file_ledger_proto_rawDescData
 }
 
-var file_proto_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
-var file_proto_ledger_proto_goTypes = []any{
-	(*Posting)(nil),                            // 0: ledger.Posting
-	(*Transaction)(nil),                        // 1: ledger.Transaction
-	(*TransactionData)(nil),                    // 2: ledger.TransactionData
-	(*Transactions)(nil),                       // 3: ledger.Transactions
-	(*Volumes)(nil),                            // 4: ledger.Volumes
-	(*VolumesWithBalance)(nil),                 // 5: ledger.VolumesWithBalance
-	(*VolumesByAssets)(nil),                    // 6: ledger.VolumesByAssets
-	(*PostCommitVolumes)(nil),                  // 7: ledger.PostCommitVolumes
-	(*VolumesWithBalanceByAssetByAccount)(nil), // 8: ledger.VolumesWithBalanceByAssetByAccount
-	(*AggregatedVolumes)(nil),                  // 9: ledger.AggregatedVolumes
-	(*Account)(nil),                            // 10: ledger.Account
-	(*AccountsVolumes)(nil),                    // 11: ledger.AccountsVolumes
-	(*Move)(nil),                               // 12: ledger.Move
-	(*LedgerSnapshotRequest)(nil),              // 13: ledger.LedgerSnapshotRequest
-	(*LedgerSnapshotResponse)(nil),             // 14: ledger.LedgerSnapshotResponse
-	(*Script)(nil),                             // 15: ledger.Script
-	(*CreateTransactionRequest)(nil),           // 16: ledger.CreateTransactionRequest
-	(*CreateTransactionResponse)(nil),          // 17: ledger.CreateTransactionResponse
-	(*SaveAccountMetadataRequest)(nil),         // 18: ledger.SaveAccountMetadataRequest
-	(*SaveAccountMetadataResponse)(nil),        // 19: ledger.SaveAccountMetadataResponse
-	(*StreamLogsRequest)(nil),                  // 20: ledger.StreamLogsRequest
-	(*StreamLogsResponse)(nil),                 // 21: ledger.StreamLogsResponse
-	(*Log)(nil),                                // 22: ledger.Log
-	(*LogPayload)(nil),                         // 23: ledger.LogPayload
-	(*CreatedTransaction)(nil),                 // 24: ledger.CreatedTransaction
-	(*RevertedTransaction)(nil),                // 25: ledger.RevertedTransaction
-	(*SavedMetadata)(nil),                      // 26: ledger.SavedMetadata
-	(*DeletedMetadata)(nil),                    // 27: ledger.DeletedMetadata
-	nil,                                        // 28: ledger.VolumesByAssets.VolumesEntry
-	nil,                                        // 29: ledger.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                        // 30: ledger.Script.VarsEntry
-	nil,                                        // 31: ledger.CreateTransactionRequest.AccountMetadataEntry
-	nil,                                        // 32: ledger.CreateTransactionResponse.AccountMetadataEntry
-	nil,                                        // 33: ledger.CreatedTransaction.AccountMetadataEntry
-	(*structpb.Struct)(nil),                    // 34: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),              // 35: google.protobuf.Timestamp
+var file_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
+var file_ledger_proto_goTypes = []any{
+	(*Timestamp)(nil),                               // 0: ledger.Timestamp
+	(*Metadata)(nil),                                // 1: ledger.Metadata
+	(*Posting)(nil),                                 // 2: ledger.Posting
+	(*Transaction)(nil),                             // 3: ledger.Transaction
+	(*TransactionData)(nil),                         // 4: ledger.TransactionData
+	(*Transactions)(nil),                            // 5: ledger.Transactions
+	(*Volumes)(nil),                                 // 6: ledger.Volumes
+	(*VolumesWithBalance)(nil),                      // 7: ledger.VolumesWithBalance
+	(*VolumesByAssets)(nil),                         // 8: ledger.VolumesByAssets
+	(*PostCommitVolumes)(nil),                       // 9: ledger.PostCommitVolumes
+	(*VolumesWithBalanceByAssetByAccount)(nil),      // 10: ledger.VolumesWithBalanceByAssetByAccount
+	(*AggregatedVolumes)(nil),                       // 11: ledger.AggregatedVolumes
+	(*Account)(nil),                                 // 12: ledger.Account
+	(*AccountsVolumes)(nil),                         // 13: ledger.AccountsVolumes
+	(*Move)(nil),                                    // 14: ledger.Move
+	(*LedgerSnapshotRequest)(nil),                   // 15: ledger.LedgerSnapshotRequest
+	(*LedgerSnapshotResponse)(nil),                  // 16: ledger.LedgerSnapshotResponse
+	(*BigInt)(nil),                                  // 17: ledger.BigInt
+	(*Script)(nil),                                  // 18: ledger.Script
+	(*Parameters)(nil),                              // 19: ledger.Parameters
+	(*CreateTransactionRequestPayload)(nil),         // 20: ledger.CreateTransactionRequestPayload
+	(*CreateTransactionRequest)(nil),                // 21: ledger.CreateTransactionRequest
+	(*CreateTransactionResponse)(nil),               // 22: ledger.CreateTransactionResponse
+	(*SaveAccountMetadataRequestPayload)(nil),       // 23: ledger.SaveAccountMetadataRequestPayload
+	(*SaveAccountMetadataRequest)(nil),              // 24: ledger.SaveAccountMetadataRequest
+	(*SaveAccountMetadataResponse)(nil),             // 25: ledger.SaveAccountMetadataResponse
+	(*RevertTransactionRequestPayload)(nil),         // 26: ledger.RevertTransactionRequestPayload
+	(*RevertTransactionRequest)(nil),                // 27: ledger.RevertTransactionRequest
+	(*RevertTransactionResponse)(nil),               // 28: ledger.RevertTransactionResponse
+	(*SaveTransactionMetadataRequestPayload)(nil),   // 29: ledger.SaveTransactionMetadataRequestPayload
+	(*SaveTransactionMetadataRequest)(nil),          // 30: ledger.SaveTransactionMetadataRequest
+	(*SaveTransactionMetadataResponse)(nil),         // 31: ledger.SaveTransactionMetadataResponse
+	(*DeleteAccountMetadataRequestPayload)(nil),     // 32: ledger.DeleteAccountMetadataRequestPayload
+	(*DeleteAccountMetadataRequest)(nil),            // 33: ledger.DeleteAccountMetadataRequest
+	(*DeleteAccountMetadataResponse)(nil),           // 34: ledger.DeleteAccountMetadataResponse
+	(*DeleteTransactionMetadataRequestPayload)(nil), // 35: ledger.DeleteTransactionMetadataRequestPayload
+	(*DeleteTransactionMetadataRequest)(nil),        // 36: ledger.DeleteTransactionMetadataRequest
+	(*DeleteTransactionMetadataResponse)(nil),       // 37: ledger.DeleteTransactionMetadataResponse
+	(*StreamLogsRequest)(nil),                       // 38: ledger.StreamLogsRequest
+	(*StreamLogsResponse)(nil),                      // 39: ledger.StreamLogsResponse
+	(*Log)(nil),                                     // 40: ledger.Log
+	(*LogPayload)(nil),                              // 41: ledger.LogPayload
+	(*CreatedTransaction)(nil),                      // 42: ledger.CreatedTransaction
+	(*RevertedTransaction)(nil),                     // 43: ledger.RevertedTransaction
+	(*SavedMetadata)(nil),                           // 44: ledger.SavedMetadata
+	(*DeletedMetadata)(nil),                         // 45: ledger.DeletedMetadata
+	(*TransactionResume)(nil),                       // 46: ledger.TransactionResume
+	(*CreatedTransactionMemento)(nil),               // 47: ledger.CreatedTransactionMemento
+	(*RevertedTransactionMemento)(nil),              // 48: ledger.RevertedTransactionMemento
+	(*LedgerInfo)(nil),                              // 49: ledger.LedgerInfo
+	nil,                                             // 50: ledger.Metadata.EntriesEntry
+	nil,                                             // 51: ledger.Transaction.MetadataEntry
+	nil,                                             // 52: ledger.TransactionData.MetadataEntry
+	nil,                                             // 53: ledger.VolumesByAssets.VolumesEntry
+	nil,                                             // 54: ledger.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                             // 55: ledger.Account.MetadataEntry
+	nil,                                             // 56: ledger.Script.VarsEntry
+	nil,                                             // 57: ledger.CreateTransactionRequestPayload.AccountMetadataEntry
+	nil,                                             // 58: ledger.CreateTransactionRequestPayload.MetadataEntry
+	nil,                                             // 59: ledger.CreateTransactionResponse.AccountMetadataEntry
+	nil,                                             // 60: ledger.SaveAccountMetadataRequestPayload.MetadataEntry
+	nil,                                             // 61: ledger.RevertTransactionRequestPayload.MetadataEntry
+	nil,                                             // 62: ledger.SaveTransactionMetadataRequestPayload.MetadataEntry
+	nil,                                             // 63: ledger.CreatedTransaction.AccountMetadataEntry
+	nil,                                             // 64: ledger.SavedMetadata.MetadataEntry
+	nil,                                             // 65: ledger.TransactionResume.MetadataEntry
+	nil,                                             // 66: ledger.CreatedTransactionMemento.AccountMetadataEntry
+	nil,                                             // 67: ledger.LedgerInfo.MetadataEntry
+	(*structpb.Struct)(nil),                         // 68: google.protobuf.Struct
 }
-var file_proto_ledger_proto_depIdxs = []int32{
-	0,  // 0: ledger.Transaction.postings:type_name -> ledger.Posting
-	34, // 1: ledger.Transaction.metadata:type_name -> google.protobuf.Struct
-	35, // 2: ledger.Transaction.timestamp:type_name -> google.protobuf.Timestamp
-	35, // 3: ledger.Transaction.inserted_at:type_name -> google.protobuf.Timestamp
-	35, // 4: ledger.Transaction.updated_at:type_name -> google.protobuf.Timestamp
-	35, // 5: ledger.Transaction.reverted_at:type_name -> google.protobuf.Timestamp
-	7,  // 6: ledger.Transaction.post_commit_volumes:type_name -> ledger.PostCommitVolumes
-	7,  // 7: ledger.Transaction.post_commit_effective_volumes:type_name -> ledger.PostCommitVolumes
-	0,  // 8: ledger.TransactionData.postings:type_name -> ledger.Posting
-	34, // 9: ledger.TransactionData.metadata:type_name -> google.protobuf.Struct
-	35, // 10: ledger.TransactionData.timestamp:type_name -> google.protobuf.Timestamp
-	2,  // 11: ledger.Transactions.transactions:type_name -> ledger.TransactionData
-	28, // 12: ledger.VolumesByAssets.volumes:type_name -> ledger.VolumesByAssets.VolumesEntry
-	29, // 13: ledger.PostCommitVolumes.volumes_by_account:type_name -> ledger.PostCommitVolumes.VolumesByAccountEntry
-	5,  // 14: ledger.VolumesWithBalanceByAssetByAccount.volumes_with_balance:type_name -> ledger.VolumesWithBalance
-	6,  // 15: ledger.AggregatedVolumes.aggregated:type_name -> ledger.VolumesByAssets
-	34, // 16: ledger.Account.metadata:type_name -> google.protobuf.Struct
-	35, // 17: ledger.Account.first_usage:type_name -> google.protobuf.Timestamp
-	35, // 18: ledger.Account.insertion_date:type_name -> google.protobuf.Timestamp
-	35, // 19: ledger.Account.updated_at:type_name -> google.protobuf.Timestamp
-	6,  // 20: ledger.Account.volumes:type_name -> ledger.VolumesByAssets
-	6,  // 21: ledger.Account.effective_volumes:type_name -> ledger.VolumesByAssets
-	35, // 22: ledger.Move.insertion_date:type_name -> google.protobuf.Timestamp
-	35, // 23: ledger.Move.effective_date:type_name -> google.protobuf.Timestamp
-	4,  // 24: ledger.Move.post_commit_volumes:type_name -> ledger.Volumes
-	4,  // 25: ledger.Move.post_commit_effective_volumes:type_name -> ledger.Volumes
-	30, // 26: ledger.Script.vars:type_name -> ledger.Script.VarsEntry
-	31, // 27: ledger.CreateTransactionRequest.account_metadata:type_name -> ledger.CreateTransactionRequest.AccountMetadataEntry
-	35, // 28: ledger.CreateTransactionRequest.timestamp:type_name -> google.protobuf.Timestamp
-	34, // 29: ledger.CreateTransactionRequest.metadata:type_name -> google.protobuf.Struct
-	0,  // 30: ledger.CreateTransactionRequest.postings:type_name -> ledger.Posting
-	15, // 31: ledger.CreateTransactionRequest.script:type_name -> ledger.Script
-	1,  // 32: ledger.CreateTransactionResponse.transaction:type_name -> ledger.Transaction
-	32, // 33: ledger.CreateTransactionResponse.account_metadata:type_name -> ledger.CreateTransactionResponse.AccountMetadataEntry
-	34, // 34: ledger.SaveAccountMetadataRequest.metadata:type_name -> google.protobuf.Struct
-	22, // 35: ledger.SaveAccountMetadataResponse.log:type_name -> ledger.Log
-	22, // 36: ledger.StreamLogsResponse.log:type_name -> ledger.Log
-	23, // 37: ledger.Log.data:type_name -> ledger.LogPayload
-	35, // 38: ledger.Log.date:type_name -> google.protobuf.Timestamp
-	24, // 39: ledger.LogPayload.created_transaction:type_name -> ledger.CreatedTransaction
-	25, // 40: ledger.LogPayload.reverted_transaction:type_name -> ledger.RevertedTransaction
-	26, // 41: ledger.LogPayload.saved_metadata:type_name -> ledger.SavedMetadata
-	27, // 42: ledger.LogPayload.deleted_metadata:type_name -> ledger.DeletedMetadata
-	1,  // 43: ledger.CreatedTransaction.transaction:type_name -> ledger.Transaction
-	33, // 44: ledger.CreatedTransaction.account_metadata:type_name -> ledger.CreatedTransaction.AccountMetadataEntry
-	1,  // 45: ledger.RevertedTransaction.reverted_transaction:type_name -> ledger.Transaction
-	1,  // 46: ledger.RevertedTransaction.revert_transaction:type_name -> ledger.Transaction
-	34, // 47: ledger.SavedMetadata.metadata:type_name -> google.protobuf.Struct
-	4,  // 48: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
-	6,  // 49: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
-	34, // 50: ledger.CreateTransactionRequest.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	34, // 51: ledger.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	34, // 52: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	13, // 53: ledger.LedgerService.Snapshot:input_type -> ledger.LedgerSnapshotRequest
-	16, // 54: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
-	18, // 55: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
-	20, // 56: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
-	14, // 57: ledger.LedgerService.Snapshot:output_type -> ledger.LedgerSnapshotResponse
-	17, // 58: ledger.LedgerService.CreateTransaction:output_type -> ledger.CreateTransactionResponse
-	19, // 59: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.SaveAccountMetadataResponse
-	21, // 60: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
-	57, // [57:61] is the sub-list for method output_type
-	53, // [53:57] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+var file_ledger_proto_depIdxs = []int32{
+	50, // 0: ledger.Metadata.entries:type_name -> ledger.Metadata.EntriesEntry
+	17, // 1: ledger.Posting.amount:type_name -> ledger.BigInt
+	2,  // 2: ledger.Transaction.postings:type_name -> ledger.Posting
+	51, // 3: ledger.Transaction.metadata:type_name -> ledger.Transaction.MetadataEntry
+	0,  // 4: ledger.Transaction.timestamp:type_name -> ledger.Timestamp
+	0,  // 5: ledger.Transaction.inserted_at:type_name -> ledger.Timestamp
+	0,  // 6: ledger.Transaction.updated_at:type_name -> ledger.Timestamp
+	0,  // 7: ledger.Transaction.reverted_at:type_name -> ledger.Timestamp
+	2,  // 8: ledger.TransactionData.postings:type_name -> ledger.Posting
+	52, // 9: ledger.TransactionData.metadata:type_name -> ledger.TransactionData.MetadataEntry
+	0,  // 10: ledger.TransactionData.timestamp:type_name -> ledger.Timestamp
+	4,  // 11: ledger.Transactions.transactions:type_name -> ledger.TransactionData
+	53, // 12: ledger.VolumesByAssets.volumes:type_name -> ledger.VolumesByAssets.VolumesEntry
+	54, // 13: ledger.PostCommitVolumes.volumes_by_account:type_name -> ledger.PostCommitVolumes.VolumesByAccountEntry
+	7,  // 14: ledger.VolumesWithBalanceByAssetByAccount.volumes_with_balance:type_name -> ledger.VolumesWithBalance
+	8,  // 15: ledger.AggregatedVolumes.aggregated:type_name -> ledger.VolumesByAssets
+	55, // 16: ledger.Account.metadata:type_name -> ledger.Account.MetadataEntry
+	0,  // 17: ledger.Account.first_usage:type_name -> ledger.Timestamp
+	0,  // 18: ledger.Account.insertion_date:type_name -> ledger.Timestamp
+	0,  // 19: ledger.Account.updated_at:type_name -> ledger.Timestamp
+	0,  // 20: ledger.Move.insertion_date:type_name -> ledger.Timestamp
+	0,  // 21: ledger.Move.effective_date:type_name -> ledger.Timestamp
+	6,  // 22: ledger.Move.post_commit_volumes:type_name -> ledger.Volumes
+	6,  // 23: ledger.Move.post_commit_effective_volumes:type_name -> ledger.Volumes
+	56, // 24: ledger.Script.vars:type_name -> ledger.Script.VarsEntry
+	57, // 25: ledger.CreateTransactionRequestPayload.account_metadata:type_name -> ledger.CreateTransactionRequestPayload.AccountMetadataEntry
+	58, // 26: ledger.CreateTransactionRequestPayload.metadata:type_name -> ledger.CreateTransactionRequestPayload.MetadataEntry
+	0,  // 27: ledger.CreateTransactionRequestPayload.timestamp:type_name -> ledger.Timestamp
+	2,  // 28: ledger.CreateTransactionRequestPayload.postings:type_name -> ledger.Posting
+	18, // 29: ledger.CreateTransactionRequestPayload.script:type_name -> ledger.Script
+	20, // 30: ledger.CreateTransactionRequest.payload:type_name -> ledger.CreateTransactionRequestPayload
+	19, // 31: ledger.CreateTransactionRequest.parameters:type_name -> ledger.Parameters
+	3,  // 32: ledger.CreateTransactionResponse.transaction:type_name -> ledger.Transaction
+	59, // 33: ledger.CreateTransactionResponse.account_metadata:type_name -> ledger.CreateTransactionResponse.AccountMetadataEntry
+	60, // 34: ledger.SaveAccountMetadataRequestPayload.metadata:type_name -> ledger.SaveAccountMetadataRequestPayload.MetadataEntry
+	23, // 35: ledger.SaveAccountMetadataRequest.payload:type_name -> ledger.SaveAccountMetadataRequestPayload
+	19, // 36: ledger.SaveAccountMetadataRequest.parameters:type_name -> ledger.Parameters
+	40, // 37: ledger.SaveAccountMetadataResponse.log:type_name -> ledger.Log
+	61, // 38: ledger.RevertTransactionRequestPayload.metadata:type_name -> ledger.RevertTransactionRequestPayload.MetadataEntry
+	26, // 39: ledger.RevertTransactionRequest.payload:type_name -> ledger.RevertTransactionRequestPayload
+	19, // 40: ledger.RevertTransactionRequest.parameters:type_name -> ledger.Parameters
+	40, // 41: ledger.RevertTransactionResponse.log:type_name -> ledger.Log
+	43, // 42: ledger.RevertTransactionResponse.reverted_transaction:type_name -> ledger.RevertedTransaction
+	62, // 43: ledger.SaveTransactionMetadataRequestPayload.metadata:type_name -> ledger.SaveTransactionMetadataRequestPayload.MetadataEntry
+	29, // 44: ledger.SaveTransactionMetadataRequest.payload:type_name -> ledger.SaveTransactionMetadataRequestPayload
+	19, // 45: ledger.SaveTransactionMetadataRequest.parameters:type_name -> ledger.Parameters
+	40, // 46: ledger.SaveTransactionMetadataResponse.log:type_name -> ledger.Log
+	32, // 47: ledger.DeleteAccountMetadataRequest.payload:type_name -> ledger.DeleteAccountMetadataRequestPayload
+	19, // 48: ledger.DeleteAccountMetadataRequest.parameters:type_name -> ledger.Parameters
+	40, // 49: ledger.DeleteAccountMetadataResponse.log:type_name -> ledger.Log
+	35, // 50: ledger.DeleteTransactionMetadataRequest.payload:type_name -> ledger.DeleteTransactionMetadataRequestPayload
+	19, // 51: ledger.DeleteTransactionMetadataRequest.parameters:type_name -> ledger.Parameters
+	40, // 52: ledger.DeleteTransactionMetadataResponse.log:type_name -> ledger.Log
+	40, // 53: ledger.StreamLogsResponse.log:type_name -> ledger.Log
+	41, // 54: ledger.Log.data:type_name -> ledger.LogPayload
+	0,  // 55: ledger.Log.date:type_name -> ledger.Timestamp
+	42, // 56: ledger.LogPayload.created_transaction:type_name -> ledger.CreatedTransaction
+	43, // 57: ledger.LogPayload.reverted_transaction:type_name -> ledger.RevertedTransaction
+	44, // 58: ledger.LogPayload.saved_metadata:type_name -> ledger.SavedMetadata
+	45, // 59: ledger.LogPayload.deleted_metadata:type_name -> ledger.DeletedMetadata
+	3,  // 60: ledger.CreatedTransaction.transaction:type_name -> ledger.Transaction
+	63, // 61: ledger.CreatedTransaction.account_metadata:type_name -> ledger.CreatedTransaction.AccountMetadataEntry
+	3,  // 62: ledger.RevertedTransaction.reverted_transaction:type_name -> ledger.Transaction
+	3,  // 63: ledger.RevertedTransaction.revert_transaction:type_name -> ledger.Transaction
+	64, // 64: ledger.SavedMetadata.metadata:type_name -> ledger.SavedMetadata.MetadataEntry
+	2,  // 65: ledger.TransactionResume.postings:type_name -> ledger.Posting
+	65, // 66: ledger.TransactionResume.metadata:type_name -> ledger.TransactionResume.MetadataEntry
+	0,  // 67: ledger.TransactionResume.timestamp:type_name -> ledger.Timestamp
+	46, // 68: ledger.CreatedTransactionMemento.transaction:type_name -> ledger.TransactionResume
+	66, // 69: ledger.CreatedTransactionMemento.account_metadata:type_name -> ledger.CreatedTransactionMemento.AccountMetadataEntry
+	46, // 70: ledger.RevertedTransactionMemento.revert_transaction:type_name -> ledger.TransactionResume
+	68, // 71: ledger.LedgerInfo.config:type_name -> google.protobuf.Struct
+	67, // 72: ledger.LedgerInfo.metadata:type_name -> ledger.LedgerInfo.MetadataEntry
+	0,  // 73: ledger.LedgerInfo.created_at:type_name -> ledger.Timestamp
+	6,  // 74: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
+	8,  // 75: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
+	1,  // 76: ledger.CreateTransactionRequestPayload.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 77: ledger.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 78: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 79: ledger.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	15, // 80: ledger.LedgerService.Snapshot:input_type -> ledger.LedgerSnapshotRequest
+	21, // 81: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
+	27, // 82: ledger.LedgerService.RevertTransaction:input_type -> ledger.RevertTransactionRequest
+	24, // 83: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
+	30, // 84: ledger.LedgerService.SaveTransactionMetadata:input_type -> ledger.SaveTransactionMetadataRequest
+	33, // 85: ledger.LedgerService.DeleteAccountMetadata:input_type -> ledger.DeleteAccountMetadataRequest
+	36, // 86: ledger.LedgerService.DeleteTransactionMetadata:input_type -> ledger.DeleteTransactionMetadataRequest
+	38, // 87: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
+	16, // 88: ledger.LedgerService.Snapshot:output_type -> ledger.LedgerSnapshotResponse
+	22, // 89: ledger.LedgerService.CreateTransaction:output_type -> ledger.CreateTransactionResponse
+	28, // 90: ledger.LedgerService.RevertTransaction:output_type -> ledger.RevertTransactionResponse
+	25, // 91: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.SaveAccountMetadataResponse
+	31, // 92: ledger.LedgerService.SaveTransactionMetadata:output_type -> ledger.SaveTransactionMetadataResponse
+	34, // 93: ledger.LedgerService.DeleteAccountMetadata:output_type -> ledger.DeleteAccountMetadataResponse
+	37, // 94: ledger.LedgerService.DeleteTransactionMetadata:output_type -> ledger.DeleteTransactionMetadataResponse
+	39, // 95: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
+	88, // [88:96] is the sub-list for method output_type
+	80, // [80:88] is the sub-list for method input_type
+	80, // [80:80] is the sub-list for extension type_name
+	80, // [80:80] is the sub-list for extension extendee
+	0,  // [0:80] is the sub-list for field type_name
 }
 
-func init() { file_proto_ledger_proto_init() }
-func file_proto_ledger_proto_init() {
-	if File_proto_ledger_proto != nil {
+func init() { file_ledger_proto_init() }
+func file_ledger_proto_init() {
+	if File_ledger_proto != nil {
 		return
 	}
-	file_proto_ledger_proto_msgTypes[23].OneofWrappers = []any{
+	file_ledger_proto_msgTypes[41].OneofWrappers = []any{
 		(*LogPayload_CreatedTransaction)(nil),
 		(*LogPayload_RevertedTransaction)(nil),
 		(*LogPayload_SavedMetadata)(nil),
 		(*LogPayload_DeletedMetadata)(nil),
 	}
-	file_proto_ledger_proto_msgTypes[26].OneofWrappers = []any{
+	file_ledger_proto_msgTypes[44].OneofWrappers = []any{
 		(*SavedMetadata_AccountId)(nil),
 		(*SavedMetadata_TransactionId)(nil),
 	}
-	file_proto_ledger_proto_msgTypes[27].OneofWrappers = []any{
+	file_ledger_proto_msgTypes[45].OneofWrappers = []any{
 		(*DeletedMetadata_AccountId)(nil),
 		(*DeletedMetadata_TransactionId)(nil),
 	}
@@ -2269,17 +3561,17 @@ func file_proto_ledger_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_ledger_proto_rawDesc), len(file_proto_ledger_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ledger_proto_rawDesc), len(file_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_ledger_proto_goTypes,
-		DependencyIndexes: file_proto_ledger_proto_depIdxs,
-		MessageInfos:      file_proto_ledger_proto_msgTypes,
+		GoTypes:           file_ledger_proto_goTypes,
+		DependencyIndexes: file_ledger_proto_depIdxs,
+		MessageInfos:      file_ledger_proto_msgTypes,
 	}.Build()
-	File_proto_ledger_proto = out.File
-	file_proto_ledger_proto_goTypes = nil
-	file_proto_ledger_proto_depIdxs = nil
+	File_ledger_proto = out.File
+	file_ledger_proto_goTypes = nil
+	file_ledger_proto_depIdxs = nil
 }

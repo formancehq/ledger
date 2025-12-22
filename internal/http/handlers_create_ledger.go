@@ -54,6 +54,6 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Return the ledger info
 	api.Created(w, LedgerResponse{
-		LedgerInfo: *ledgerInfo,
+		LedgerInfo: ledgerInfo,
 	})
 }

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.27.5
-// source: proto/commands/commands.proto
+// source: commands/commands.proto
 
 package raft
 
@@ -35,7 +35,7 @@ type CommandProto struct {
 
 func (x *CommandProto) Reset() {
 	*x = CommandProto{}
-	mi := &file_proto_commands_commands_proto_msgTypes[0]
+	mi := &file_commands_commands_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +47,7 @@ func (x *CommandProto) String() string {
 func (*CommandProto) ProtoMessage() {}
 
 func (x *CommandProto) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_commands_commands_proto_msgTypes[0]
+	mi := &file_commands_commands_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +60,7 @@ func (x *CommandProto) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandProto.ProtoReflect.Descriptor instead.
 func (*CommandProto) Descriptor() ([]byte, []int) {
-	return file_proto_commands_commands_proto_rawDescGZIP(), []int{0}
+	return file_commands_commands_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CommandProto) GetId() uint64 {
@@ -91,11 +91,11 @@ func (x *CommandProto) GetDate() *timestamppb.Timestamp {
 	return nil
 }
 
-var File_proto_commands_commands_proto protoreflect.FileDescriptor
+var File_commands_commands_proto protoreflect.FileDescriptor
 
-const file_proto_commands_commands_proto_rawDesc = "" +
+const file_commands_commands_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/commands/commands.proto\x12\bcommands\x1a\x1fgoogle/protobuf/timestamp.proto\"v\n" +
+	"\x17commands/commands.proto\x12\bcommands\x1a\x1fgoogle/protobuf/timestamp.proto\"v\n" +
 	"\fCommandProto\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x12\n" +
@@ -103,23 +103,23 @@ const file_proto_commands_commands_proto_rawDesc = "" +
 	"\x04date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04dateB3Z1github.com/formancehq/ledger-v3-poc/internal/raftb\x06proto3"
 
 var (
-	file_proto_commands_commands_proto_rawDescOnce sync.Once
-	file_proto_commands_commands_proto_rawDescData []byte
+	file_commands_commands_proto_rawDescOnce sync.Once
+	file_commands_commands_proto_rawDescData []byte
 )
 
-func file_proto_commands_commands_proto_rawDescGZIP() []byte {
-	file_proto_commands_commands_proto_rawDescOnce.Do(func() {
-		file_proto_commands_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_commands_commands_proto_rawDesc), len(file_proto_commands_commands_proto_rawDesc)))
+func file_commands_commands_proto_rawDescGZIP() []byte {
+	file_commands_commands_proto_rawDescOnce.Do(func() {
+		file_commands_commands_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_commands_commands_proto_rawDesc), len(file_commands_commands_proto_rawDesc)))
 	})
-	return file_proto_commands_commands_proto_rawDescData
+	return file_commands_commands_proto_rawDescData
 }
 
-var file_proto_commands_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_proto_commands_commands_proto_goTypes = []any{
+var file_commands_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_commands_commands_proto_goTypes = []any{
 	(*CommandProto)(nil),          // 0: commands.CommandProto
 	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
 }
-var file_proto_commands_commands_proto_depIdxs = []int32{
+var file_commands_commands_proto_depIdxs = []int32{
 	1, // 0: commands.CommandProto.date:type_name -> google.protobuf.Timestamp
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
@@ -128,26 +128,26 @@ var file_proto_commands_commands_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_proto_commands_commands_proto_init() }
-func file_proto_commands_commands_proto_init() {
-	if File_proto_commands_commands_proto != nil {
+func init() { file_commands_commands_proto_init() }
+func file_commands_commands_proto_init() {
+	if File_commands_commands_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_commands_commands_proto_rawDesc), len(file_proto_commands_commands_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_commands_commands_proto_rawDesc), len(file_commands_commands_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_proto_commands_commands_proto_goTypes,
-		DependencyIndexes: file_proto_commands_commands_proto_depIdxs,
-		MessageInfos:      file_proto_commands_commands_proto_msgTypes,
+		GoTypes:           file_commands_commands_proto_goTypes,
+		DependencyIndexes: file_commands_commands_proto_depIdxs,
+		MessageInfos:      file_commands_commands_proto_msgTypes,
 	}.Build()
-	File_proto_commands_commands_proto = out.File
-	file_proto_commands_commands_proto_goTypes = nil
-	file_proto_commands_commands_proto_depIdxs = nil
+	File_commands_commands_proto = out.File
+	file_commands_commands_proto_goTypes = nil
+	file_commands_commands_proto_depIdxs = nil
 }

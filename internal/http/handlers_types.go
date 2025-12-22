@@ -1,10 +1,10 @@
 package http
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 // LedgerResponse represents a ledger
 type LedgerResponse struct {
-	ledger.LedgerInfo
+	*ledgerpb.LedgerInfo
 }

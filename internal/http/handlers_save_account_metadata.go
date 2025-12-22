@@ -7,9 +7,10 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // handleSaveAccountMetadata handles POST /{ledgerName}/accounts/{address}/metadata to save account metadata
@@ -27,31 +28,24 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Decode request body into metadata
-	var inputMetadata map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&inputMetadata); err != nil {
+	var inputMetadataStruct *structpb.Struct
+	if err := json.NewDecoder(r.Body).Decode(&inputMetadataStruct); err != nil {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
-	// Convert map[string]interface{} to metadata.Metadata
-	accountMetadata := make(metadata.Metadata)
-	for k, v := range inputMetadata {
-		accountMetadata[k] = fmt.Sprintf("%v", v)
+	var inputMetadata map[string]string
+	if inputMetadataStruct != nil {
+		inputMetadata = ledgerpb.StructToMetadata(inputMetadataStruct)
 	}
 
-	// Extract dryRun from query parameter
-	dryRun := r.URL.Query().Get("dryRun") == "true"
-
-	// Extract idempotencyKey from header
-	idempotencyKey := r.Header.Get("Idempotency-Key")
-
-	// Build service.Parameters[service.SaveAccountMetadata]
-	params := service.Parameters[service.SaveAccountMetadata]{
-		DryRun:         dryRun,
-		IdempotencyKey: idempotencyKey,
-		Input: service.SaveAccountMetadata{
+	// Build service.Parameters[*ledgerpb.SaveAccountMetadataRequest]
+	params := service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+		DryRun:         r.URL.Query().Get("dryRun") == "true",
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 			Address:  address,
-			Metadata: accountMetadata,
+			Metadata: inputMetadata,
 		},
 	}
 
