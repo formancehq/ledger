@@ -96,21 +96,17 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			dateFilterColumn = "insertion_date"
 		}
 
-		// Optimization: when filtering on a SINGLE partial address (no other filter types),
-		// first identify eligible accounts then INNER JOIN with moves.
-		// This is more efficient than LATERAL JOIN + filtering after.
+		// Optimization: when filtering on partial addresses, first identify eligible accounts
+		// then INNER JOIN with moves. This is more efficient than LATERAL JOIN + filtering after.
 		//
-		// IMPORTANT: Only use this optimization when there is exactly ONE partial address filter
-		// and NO other filters (metadata, balance, exact addresses). This is because:
+		// IMPORTANT: Only use this optimization when the query does NOT contain $or or $not operators.
+		// These operators make pre-filtering unsafe because:
 		// - $or(partial, other) would exclude accounts matching "other" but not the partial address
 		// - $not(partial) would exclude all accounts after pre-filtering
-		// - Multiple address filters might be in $or and need different handling
 		//
-		// Note: PIT/OOT (endTime) filters are OK as they are global time filters, not $or-able filters.
-		addressFilters := query.filters["address"]
-		hasSinglePartialAddress := len(addressFilters) == 1 && isPartialAddress(addressFilters[0])
-		hasOtherFilters := query.useFilter("metadata") || query.useFilter(`balance(\[.*])?`)
-		useAddressOptimization := hasSinglePartialAddress && !hasOtherFilters
+		// The hasComplexQuery flag is set by analyzing the generated WHERE clause for these patterns.
+		// PIT/OOT (endTime) filters are OK as they are global time filters, not $or-able filters.
+		useAddressOptimization := needAddressSegments && !query.hasComplexQuery
 		if useAddressOptimization {
 			// Build eligible accounts subquery with address filters pre-applied
 			eligibleAccounts := store.newScopedSelect().

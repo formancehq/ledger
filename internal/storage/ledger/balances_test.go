@@ -414,7 +414,7 @@ func TestBalancesAggregates(t *testing.T) {
 		t.Parallel()
 
 		// Query: accounts matching "users::" OR exact address "world"
-		// Expected: users:1, users:2, xxx, world
+		// Expected: users:1, users:2, world (NOT xxx - it doesn't match either condition)
 		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(now.Add(time.Minute)),
 			Builder: query.Or(
@@ -423,7 +423,9 @@ func TestBalancesAggregates(t *testing.T) {
 			),
 		})
 		require.NoError(t, err)
-		// Should return aggregated volumes including users:1, users:2, xxx (users::) and world
+		// Should return aggregated volumes for users:1, users:2, and world
+		// Note: xxx is NOT included as it doesn't match "users::" or "world"
+		// For EUR: only world has EUR Output (sending to xxx), xxx has EUR Input but is excluded
 		RequireEqual(t, ledger.AggregatedVolumes{
 			Aggregated: ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -437,8 +439,8 @@ func TestBalancesAggregates(t *testing.T) {
 					),
 				},
 				"EUR": ledger.Volumes{
-					Input:  smallInt,
-					Output: smallInt,
+					Input:  new(big.Int), // xxx is NOT included, so no EUR input
+					Output: smallInt,     // world has EUR output
 				},
 			},
 		}, *ret)
