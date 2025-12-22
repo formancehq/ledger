@@ -98,6 +98,56 @@ ingress:
         - ledger.example.com
 ```
 
+### Installation with Per-Pod Ingress (Traefik)
+
+To access each pod individually from outside the cluster using Traefik, the chart automatically reuses the configuration from `ingress.hosts[0]`:
+
+```bash
+helm install ledger-v3-poc ./deployments/chart \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=ledger.example.com \
+  --set ingress.perPod.enabled=true \
+  --set ingress.className=traefik \
+  --set ingress.perPod.annotations."traefik\.ingress\.kubernetes\.io/router\.entrypoints"=web,websecure \
+  --set ingress.perPod.annotations."traefik\.ingress\.kubernetes\.io/router\.tls"=true
+```
+
+This automatically creates:
+- `pod-0.ledger.example.com` → pod 0
+- `pod-1.ledger.example.com` → pod 1
+- `pod-2.ledger.example.com` → pod 2
+
+Or using a values file:
+
+```yaml
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    - host: ledger.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ledger-tls
+      hosts:
+        - ledger.example.com
+  perPod:
+    enabled: true
+    # Automatically uses ingress.hosts[0].host as base (pod-%d.{baseHost})
+    # Automatically reuses ingress.hosts[0].paths and ingress.tls
+    annotations:
+      traefik.ingress.kubernetes.io/router.tls: "true"
+      traefik.ingress.kubernetes.io/router.middlewares: default-headers@kubernetescrd
+```
+
+**Note**: When `ingress.enabled=true` and `ingress.perPod.enabled=true`, the chart:
+- Creates a dedicated Service for each pod (selecting the pod by its StatefulSet pod name)
+- Creates an Ingress resource for each pod pointing to its dedicated service
+- Automatically reuses `ingress.hosts[0]` configuration to create pod hostnames (`pod-{index}.{baseHost}`)
+- Reuses `ingress.hosts[0].paths` and `ingress.tls` configuration automatically
+- Each pod becomes accessible via its own hostname/URL (e.g., `pod-0.ledger.example.com`, `pod-1.ledger.example.com`, etc.)
+
 ## Configuration
 
 The following table lists the configurable parameters and their default values:
@@ -160,6 +210,35 @@ The chart uses the `core` chart's monitoring helpers. Configuration can be set a
 | `service.grpcPort` | gRPC service port (same as bindAddr port) | `8888` |
 | `headlessService.enabled` | Enable headless service for peer discovery | `true` |
 
+#### Accessing Individual Pods
+
+With a StatefulSet and headless service, each pod gets a stable DNS name that allows direct access:
+
+**Format**: `{pod-name}-{index}.{headless-service-name}.{namespace}.svc.cluster.local`
+
+**Example** (with 3 replicas in `default` namespace):
+- Pod 0: `ledger-v3-poc-0.ledger-v3-poc-headless.default.svc.cluster.local`
+- Pod 1: `ledger-v3-poc-1.ledger-v3-poc-headless.default.svc.cluster.local`
+- Pod 2: `ledger-v3-poc-2.ledger-v3-poc-headless.default.svc.cluster.local`
+
+**Ports**:
+- HTTP: `{pod-dns-name}:9000`
+- gRPC/Raft: `{pod-dns-name}:8888`
+
+**Usage examples**:
+```bash
+# Access HTTP endpoint on pod 0
+curl http://ledger-v3-poc-0.ledger-v3-poc-headless.default.svc.cluster.local:9000/health
+
+# Access gRPC endpoint on pod 1
+grpcurl ledger-v3-poc-1.ledger-v3-poc-headless.default.svc.cluster.local:8888 list
+
+# From within the cluster, you can use short names:
+curl http://ledger-v3-poc-0.ledger-v3-poc-headless:9000/health
+```
+
+**Note**: These DNS names are stable and persist across pod restarts, making them ideal for Raft peer discovery and direct pod access.
+
 ### Ingress Configuration
 
 | Parameter | Description | Default |
@@ -169,6 +248,13 @@ The chart uses the `core` chart's monitoring helpers. Configuration can be set a
 | `ingress.annotations` | Ingress annotations | `{}` |
 | `ingress.hosts` | List of host configurations | `[{host: ledger-v3-poc.local, paths: [{path: /, pathType: Prefix}]}]` |
 | `ingress.tls` | TLS configuration | `[]` |
+
+### Per-Pod Ingress Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `ingress.perPod.enabled` | Enable individual ingress for each pod (requires `ingress.enabled=true`) | `false` |
+| `ingress.perPod.annotations` | Ingress annotations (applied to all pod ingresses) | `{}` |
 
 ### Persistence Configuration
 
@@ -395,6 +481,64 @@ kubectl logs ledger-v3-poc-0
 
 ```bash
 kubectl get endpoints ledger-v3-poc
+```
+
+### Check Headless Service DNS
+
+To verify that each pod has a dedicated DNS address:
+
+```bash
+# List all pods
+kubectl get pods -l app.kubernetes.io/name=ledger-v3-poc
+
+# Check DNS resolution from within a pod
+kubectl exec -it ledger-v3-poc-0 -- nslookup ledger-v3-poc-0.ledger-v3-poc-headless.default.svc.cluster.local
+kubectl exec -it ledger-v3-poc-0 -- nslookup ledger-v3-poc-1.ledger-v3-poc-headless.default.svc.cluster.local
+kubectl exec -it ledger-v3-poc-0 -- nslookup ledger-v3-poc-2.ledger-v3-poc-headless.default.svc.cluster.local
+
+# Or use dig if available
+kubectl exec -it ledger-v3-poc-0 -- dig ledger-v3-poc-headless.default.svc.cluster.local SRV
+```
+
+### Test Direct Pod Access
+
+```bash
+# Test HTTP access to a specific pod
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+  curl http://ledger-v3-poc-0.ledger-v3-poc-headless.default.svc.cluster.local:9000/health
+
+# Test from within the cluster
+kubectl exec -it ledger-v3-poc-1 -- wget -q -O- http://ledger-v3-poc-0.ledger-v3-poc-headless:9000/health
+```
+
+### Test External Access to Individual Pods
+
+When `ingress.enabled=true` and `ingress.perPod.enabled=true`, you can access each pod from outside the cluster:
+
+```bash
+# Test access to pod 0 (replace with your actual hostname)
+curl http://pod-0.ledger.example.com/health
+
+# Test access to pod 1
+curl http://pod-1.ledger.example.com/health
+
+# Test access to pod 2
+curl http://pod-2.ledger.example.com/health
+
+# With HTTPS (if TLS is configured)
+curl https://pod-0.ledger.example.com/health
+```
+
+**Verify ingress resources**:
+```bash
+# List all pod-specific ingresses
+kubectl get ingress -l app.kubernetes.io/component=pod-ingress
+
+# Check a specific pod ingress
+kubectl describe ingress ledger-v3-poc-pod-0
+
+# List pod-specific services
+kubectl get svc -l app.kubernetes.io/component=pod-service
 ```
 
 ### Access Pod Shell

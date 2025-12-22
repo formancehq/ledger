@@ -333,7 +333,12 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 	status := node.rawNode.Status()
 	if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
 
-		node.logger.Infof("Creating new snapshot for ledger")
+		node.logger.WithFields(map[string]any{
+			"applied":           status.Applied,
+			"term":              status.Term,
+			"commit":            status.Commit,
+			"snapshotThreshold": node.config.SnapshotThreshold,
+		}).Infof("Creating new snapshot for ledger")
 
 		// Create snapshot: write logs to store and create snapshot data
 		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)

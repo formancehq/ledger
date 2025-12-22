@@ -33,6 +33,12 @@ ingress:
         - path: /
           pathType: Prefix
   #tls: []
+  # Uncomment to enable per-pod ingress (for accessing individual pods from outside)
+  perPod:
+    enabled: true
+  #   annotations:
+  #     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+  #     traefik.ingress.kubernetes.io/router.tls: "true"
 
 extraData:
   enabled: true
