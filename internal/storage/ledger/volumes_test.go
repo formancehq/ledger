@@ -706,6 +706,167 @@ func TestVolumesAggregate(t *testing.T) {
 	})
 }
 
+func TestVolumesWithPartialAddressAndPIT(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	pit := now.Add(2 * time.Minute)
+	oot := now.Add(-2 * time.Minute)
+
+	// Create accounts with complex address patterns similar to production use cases
+	// Pattern: users:<user_id>:products:<product_id>:<status>
+	tx1 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:123:products:abc:available", "USD", big.NewInt(100))).
+		WithTimestamp(now.Add(-3 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	tx2 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:123:products:abc:hold", "USD", big.NewInt(50))).
+		WithTimestamp(now.Add(-2 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx2, nil))
+
+	tx3 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:456:products:def:available", "EUR", big.NewInt(200))).
+		WithTimestamp(now.Add(-1 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx3, nil))
+
+	tx4 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:456:pending-in-transfer", "USD", big.NewInt(75))).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx4, nil))
+
+	tx5 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:789:products:ghi:pending-out", "USD", big.NewInt(25))).
+		WithTimestamp(now.Add(1 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx5, nil))
+
+	t.Run("PIT with 5-segment partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// Filter: users:*:products:*:available (5 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::available"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // users:123:products:abc:available and users:456:products:def:available
+	})
+
+	t.Run("OOT only with partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// OOT = -2 min means effective_date >= -2 min, so tx1 (-3 min) is excluded
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					OOT:     &oot,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 3) // tx2 (hold), tx3 (available), tx5 (pending-out) - tx1 excluded by OOT
+	})
+
+	t.Run("PIT with 3-segment partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// Filter: users:*:pending-in-transfer (3 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users::pending-in-transfer"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1) // users:456:pending-in-transfer
+		require.Equal(t, "users:456:pending-in-transfer", volumes.Data[0].Account)
+	})
+
+	t.Run("PIT + OOT with partial address filter without GroupLvl", func(t *testing.T) {
+		t.Parallel()
+
+		// OOT = -2 min excludes tx1 (users:123:products:abc:available at -3 min)
+		// Only tx3 (users:456:products:def:available at -1 min) matches
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					OOT:     &oot,
+					Builder: query.Match("account", "users::products::available"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1) // Only tx3 - tx1 excluded by OOT
+	})
+
+	t.Run("PIT with multiple OR partial address filters", func(t *testing.T) {
+		t.Parallel()
+
+		// This simulates the production query with multiple address patterns
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "users::products::available"),
+						query.Match("account", "users::products::hold"),
+						query.Match("account", "users::pending-in-transfer"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 4) // 2 available + 1 hold + 1 pending-in-transfer
+	})
+
+	t.Run("PIT with partial address and insertion date", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Opts: ledgercontroller.GetVolumesOptions{
+						UseInsertionDate: true,
+					},
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 4)
+	})
+
+	t.Run("PIT with partial address and GroupLvl 1", func(t *testing.T) {
+		t.Parallel()
+
+		// Should aggregate to "users" level
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Opts: ledgercontroller.GetVolumesOptions{
+						GroupLvl: 1,
+					},
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // Aggregated by asset (USD, EUR) under "users"
+	})
+}
+
 func TestUpdateVolumes(t *testing.T) {
 	t.Parallel()
 
