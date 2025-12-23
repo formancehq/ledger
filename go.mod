@@ -6,7 +6,6 @@ replace github.com/formancehq/ledger/pkg/client => github.com/formancehq/ledger/
 
 require (
 	github.com/alitto/pond v1.9.2
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/dop251/goja v0.0.0-20250630131328-58d95d85e994
 	github.com/formancehq/go-libs/v3 v3.6.0
 	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
@@ -17,6 +16,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/jamiealquiza/tachymeter v2.0.0+incompatible
 	github.com/joho/godotenv v1.5.1
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.3
 	github.com/pterm/pterm v0.12.82
@@ -76,6 +76,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/docker/docker v28.5.2+incompatible // indirect

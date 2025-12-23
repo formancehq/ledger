@@ -29,8 +29,9 @@ var ledgersCreateCmd = &cobra.Command{
 
 func init() {
 	ledgersCreateCmd.Flags().String("name", "", "Ledger name")
-	ledgersCreateCmd.Flags().String("driver", "sqlite", "Storage driver (sqlite, clickhouse)")
+	ledgersCreateCmd.Flags().String("driver", "sqlite-mattn", "Storage driver (sqlite-mattn, sqlite-modern)")
 	ledgersCreateCmd.Flags().String("metadata", "{}", "Metadata as JSON (default: {})")
+	ledgersCreateCmd.Flags().Bool("no-metadata", false, "Skip metadata prompt in wizard")
 	// Name is no longer required - wizard will prompt if not provided
 
 	// Register completions
@@ -57,9 +58,15 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 	// Create SDK instance once
 	sdk := newSDKClient()
 
-	// Run wizard if name not provided
-	if opts.name == "" {
-		if err := runCreateLedgerWizard(ctx, sdk, opts); err != nil {
+	// Check which flags were explicitly provided
+	nameProvided := cmd.Flags().Changed("name")
+	driverProvided := cmd.Flags().Changed("driver")
+	metadataProvided := cmd.Flags().Changed("metadata")
+	noMetadata, _ := cmd.Flags().GetBool("no-metadata")
+
+	// Run wizard only if name is not provided (name is the only required field)
+	if !nameProvided {
+		if err := runCreateLedgerWizard(ctx, sdk, opts, nameProvided, driverProvided, metadataProvided, noMetadata); err != nil {
 			return err
 		}
 	}
@@ -69,7 +76,7 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ledger name is required")
 	}
 	if opts.driver == "" {
-		opts.driver = "sqlite" // Default driver
+		opts.driver = "sqlite-mattn" // Default driver
 	}
 
 	// Create ledger request
@@ -120,12 +127,13 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 }
 
 // runCreateLedgerWizard runs an interactive wizard to collect ledger creation parameters
-func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *createLedgerOptions) error {
+// It only prompts for fields that were not explicitly provided via flags
+func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *createLedgerOptions, nameProvided, driverProvided, metadataProvided, noMetadata bool) error {
 	pterm.DefaultHeader.WithFullWidth().Println("Ledger Creation Wizard")
 	pterm.Println()
 
-	// Step 1: Get ledger name if not provided
-	if opts.name == "" {
+	// Step 1: Get ledger name if not provided via flag
+	if !nameProvided {
 		pterm.Info.Println("Ledger Name")
 		pterm.Println("Enter a unique name for the ledger.")
 		pterm.Println()
@@ -141,14 +149,17 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 		opts.name = name
 		pterm.Success.Printf("Ledger name: %s\n", opts.name)
 		pterm.Println()
+	} else {
+		pterm.Success.Printf("Ledger name: %s (from flag)\n", opts.name)
+		pterm.Println()
 	}
 
-	// Step 2: Get driver if not provided
-	if opts.driver == "" {
-		driverOptions := []string{"sqlite", "clickhouse"}
+	// Step 2: Get driver if not provided via flag
+	if !driverProvided {
+		driverOptions := []string{"sqlite-mattn", "sqlite-modern"}
 		selectedDriver, err := pterm.DefaultInteractiveSelect.
 			WithOptions(driverOptions).
-			WithDefaultOption("sqlite").
+			WithDefaultOption("sqlite-mattn").
 			Show("Select storage driver")
 		if err != nil {
 			return fmt.Errorf("failed to select driver: %w", err)
@@ -156,10 +167,13 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 		opts.driver = selectedDriver
 		pterm.Success.Printf("Selected driver: %s\n", opts.driver)
 		pterm.Println()
+	} else {
+		pterm.Success.Printf("Driver: %s (from flag)\n", opts.driver)
+		pterm.Println()
 	}
 
-	// Step 3: Get metadata if not provided or empty
-	if len(opts.metadata) == 0 {
+	// Step 3: Get metadata if not provided via flag and --no-metadata is not set
+	if !metadataProvided && !noMetadata {
 		pterm.Info.Println("Metadata (Optional)")
 		pterm.Println("Enter metadata as JSON object, or press Enter to skip.")
 		pterm.Println("Example: {\"environment\":\"production\",\"region\":\"us-east-1\"}")
@@ -179,6 +193,12 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 			}
 			opts.metadata = metadata
 		}
+	} else if metadataProvided && len(opts.metadata) > 0 {
+		pterm.Success.Printf("Metadata: provided via flag\n")
+		pterm.Println()
+	} else if noMetadata {
+		pterm.Success.Printf("Metadata: skipped (--no-metadata flag)\n")
+		pterm.Println()
 	}
 
 	pterm.Println()

@@ -254,12 +254,12 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 }
 
-func createSQLiteStore(t *testing.T) *SQLiteLogStore {
+func createSQLiteStore(t *testing.T) *SQLiteMattnLogStore {
 	tmpDir := t.TempDir()
 	dsn := fmt.Sprintf("file:%s/test.db?mode=memory&cache=shared", tmpDir)
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	store, err := NewSQLiteLogStore(ctx, dsn, logger)
+	store, err := NewSQLiteMattnLogStore(ctx, dsn, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	return store

@@ -27,8 +27,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Body == nil {
-		// Use defaults: SQLite driver with empty config
-		req.Driver = "sqlite"
+		// Use defaults: sqlite-mattn driver (github.com/mattn/go-sqlite3) with empty config
+		req.Driver = "sqlite-mattn"
 		req.Config = make(map[string]interface{})
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -39,7 +39,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Use defaults if not provided
 	if req.Driver == "" {
-		req.Driver = "sqlite"
+		req.Driver = "sqlite-mattn" // Default to sqlite-mattn (github.com/mattn/go-sqlite3)
 	}
 	if req.Config == nil {
 		req.Config = make(map[string]interface{})

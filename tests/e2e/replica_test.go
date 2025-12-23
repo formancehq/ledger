@@ -204,7 +204,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger0",
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -236,7 +236,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -291,7 +291,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger1",
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -322,7 +322,7 @@ var _ = Describe("Simple cluster", func() {
 				_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 					LedgerName: ledgerName,
 					CreateLedgerRequest: components.CreateLedgerRequest{
-						Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+						Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 					},
 				})
 				Expect(err).To(Succeed())

@@ -19,20 +19,37 @@ type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logge
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
-	"sqlite": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
+	"sqlite-mattn": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
 		// SQLite DSN is automatically generated based on ledger ID
-		// Config is ignored for SQLite driver
+		// Config is ignored for SQLite Mattn driver
 		// Create database file path: extraDataDir/ledger-{id}.db
 		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
 		dbPath := filepath.Join(extraDataDir, dbFileName)
 
 		// Ensure the directory exists
 		if err := os.MkdirAll(extraDataDir, 0755); err != nil {
-			return nil, fmt.Errorf("creating directory for sqlite database: %w", err)
+			return nil, fmt.Errorf("creating directory for sqlite-mattn database: %w", err)
 		}
 
+		// Use sqlite3 driver (github.com/mattn/go-sqlite3)
+		dsn := dbPath
+		return service.NewSQLiteMattnLogStore(ctx, dsn, logger)
+	},
+	"sqlite-modern": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
+		// SQLite Modern DSN is automatically generated based on ledger ID
+		// Config is ignored for SQLite Modern driver
+		// Create database file path: extraDataDir/ledger-{id}.db
+		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
+		dbPath := filepath.Join(extraDataDir, dbFileName)
+
+		// Ensure the directory exists
+		if err := os.MkdirAll(extraDataDir, 0755); err != nil {
+			return nil, fmt.Errorf("creating directory for sqlite-modern database: %w", err)
+		}
+
+		// Use sqlite driver (modernc.org/sqlite)
 		dsn := fmt.Sprintf("file:%s?mode=rwc", dbPath)
-		return service.NewSQLiteLogStore(ctx, dsn, logger)
+		return service.NewSQLiteModernLogStore(ctx, dsn, logger)
 	},
 }
 

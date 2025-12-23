@@ -2,13 +2,16 @@
 
 services:
   node-1:
-    image: golang:1.25-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.build-image
     working_dir: /app
     environment:
       - NODE_ID=1
       - ADVERTISE_ADDR=node-1:8888
       - PEERS=2/node-2:8888 3/node-3:8888
       - DEBUG=${DEBUG:-false}
+      - CGO_ENABLED=1
     ports:
       - "8888:8888"
       - "9000:9000"
@@ -27,14 +30,16 @@ services:
     command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --data-dir /data/raft --http-port 9000 --snapshot-threshold 100"]
 
   node-2:
-    image: golang:1.25-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.build-image
     working_dir: /app
     environment:
       - NODE_ID=2
       - ADVERTISE_ADDR=node-2:8888
       - PEERS=1/node-1:8888 3/node-3:8888
       - DEBUG=${DEBUG:-false}
-
+      - CGO_ENABLED=1
     ports:
       - "8889:8888"
       - "9001:9000"
@@ -44,8 +49,6 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
-    depends_on:
-      - node-1
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
       interval: 5s
@@ -55,13 +58,16 @@ services:
     command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --data-dir /data/raft --http-port 9000 --snapshot-threshold 100"]
 
   node-3:
-    image: golang:1.25-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.build-image
     working_dir: /app
     environment:
       - NODE_ID=3
       - ADVERTISE_ADDR=node-3:8888
       - PEERS=1/node-1:8888 2/node-2:8888
       - DEBUG=${DEBUG:-false}
+      - CGO_ENABLED=1
     ports:
       - "8890:8888"
       - "9002:9000"
@@ -71,8 +77,6 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
-    depends_on:
-      - node-1
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
       interval: 5s

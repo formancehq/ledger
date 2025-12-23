@@ -131,7 +131,7 @@ var _ = Describe("Account Metadata", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -228,7 +228,7 @@ var _ = Describe("Account Metadata", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
+					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
 				},
 			})
 			Expect(err).To(Succeed())

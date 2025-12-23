@@ -115,7 +115,8 @@ func main() {
 ## CreateLedger
 
 Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
-SQLite will be used by default. Each ledger has its own Raft group for data consistency.
+sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) 
+and sqlite-modern (modernc.org/sqlite). Each ledger has its own Raft group for data consistency.
 
 
 ### Example Usage
@@ -139,7 +140,9 @@ func main() {
     res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
         LedgerName: "<value>",
         CreateLedgerRequest: components.CreateLedgerRequest{
-            Config: &components.SQLiteConfig{},
+            Config: client.Pointer(components.CreateCreateLedgerRequestConfigSQLiteMattnConfig(
+                components.SQLiteMattnConfig{},
+            )),
         },
     })
     if err != nil {

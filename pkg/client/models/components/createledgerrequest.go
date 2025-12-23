@@ -4,15 +4,18 @@ package components
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 )
 
-// CreateLedgerRequestDriver - Storage driver name (defaults to sqlite)
+// CreateLedgerRequestDriver - Storage driver name (defaults to sqlite-mattn).
+// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
 type CreateLedgerRequestDriver string
 
 const (
-	CreateLedgerRequestDriverSqlite CreateLedgerRequestDriver = "sqlite"
+	CreateLedgerRequestDriverSqliteMattn  CreateLedgerRequestDriver = "sqlite-mattn"
+	CreateLedgerRequestDriverSqliteModern CreateLedgerRequestDriver = "sqlite-modern"
 )
 
 func (e CreateLedgerRequestDriver) ToPointer() *CreateLedgerRequestDriver {
@@ -24,7 +27,9 @@ func (e *CreateLedgerRequestDriver) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v {
-	case "sqlite":
+	case "sqlite-mattn":
+		fallthrough
+	case "sqlite-modern":
 		*e = CreateLedgerRequestDriver(v)
 		return nil
 	default:
@@ -32,11 +37,77 @@ func (e *CreateLedgerRequestDriver) UnmarshalJSON(data []byte) error {
 	}
 }
 
+type CreateLedgerRequestConfigType string
+
+const (
+	CreateLedgerRequestConfigTypeSQLiteMattnConfig  CreateLedgerRequestConfigType = "SQLiteMattnConfig"
+	CreateLedgerRequestConfigTypeSQLiteModernConfig CreateLedgerRequestConfigType = "SQLiteModernConfig"
+)
+
+// CreateLedgerRequestConfig - Driver-specific configuration (optional - DSN is auto-generated for both drivers)
+type CreateLedgerRequestConfig struct {
+	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
+	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
+
+	Type CreateLedgerRequestConfigType
+}
+
+func CreateCreateLedgerRequestConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) CreateLedgerRequestConfig {
+	typ := CreateLedgerRequestConfigTypeSQLiteMattnConfig
+
+	return CreateLedgerRequestConfig{
+		SQLiteMattnConfig: &sqLiteMattnConfig,
+		Type:              typ,
+	}
+}
+
+func CreateCreateLedgerRequestConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) CreateLedgerRequestConfig {
+	typ := CreateLedgerRequestConfigTypeSQLiteModernConfig
+
+	return CreateLedgerRequestConfig{
+		SQLiteModernConfig: &sqLiteModernConfig,
+		Type:               typ,
+	}
+}
+
+func (u *CreateLedgerRequestConfig) UnmarshalJSON(data []byte) error {
+
+	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteMattnConfig, "", true, true); err == nil {
+		u.SQLiteMattnConfig = &sqLiteMattnConfig
+		u.Type = CreateLedgerRequestConfigTypeSQLiteMattnConfig
+		return nil
+	}
+
+	var sqLiteModernConfig SQLiteModernConfig = SQLiteModernConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteModernConfig, "", true, true); err == nil {
+		u.SQLiteModernConfig = &sqLiteModernConfig
+		u.Type = CreateLedgerRequestConfigTypeSQLiteModernConfig
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateLedgerRequestConfig", string(data))
+}
+
+func (u CreateLedgerRequestConfig) MarshalJSON() ([]byte, error) {
+	if u.SQLiteMattnConfig != nil {
+		return utils.MarshalJSON(u.SQLiteMattnConfig, "", true)
+	}
+
+	if u.SQLiteModernConfig != nil {
+		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type CreateLedgerRequestConfig: all fields are null")
+}
+
 type CreateLedgerRequest struct {
-	// Storage driver name (defaults to sqlite)
-	Driver *CreateLedgerRequestDriver `default:"sqlite" json:"driver"`
-	// SQLite driver configuration (empty object - DSN is automatically generated)
-	Config *SQLiteConfig `json:"config,omitempty"`
+	// Storage driver name (defaults to sqlite-mattn).
+	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+	//
+	Driver *CreateLedgerRequestDriver `default:"sqlite-mattn" json:"driver"`
+	// Driver-specific configuration (optional - DSN is auto-generated for both drivers)
+	Config *CreateLedgerRequestConfig `json:"config,omitempty"`
 	// Optional metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Number of logs before triggering a snapshot (optional, uses global config if not set)
@@ -61,7 +132,7 @@ func (o *CreateLedgerRequest) GetDriver() *CreateLedgerRequestDriver {
 	return o.Driver
 }
 
-func (o *CreateLedgerRequest) GetConfig() *SQLiteConfig {
+func (o *CreateLedgerRequest) GetConfig() *CreateLedgerRequestConfig {
 	if o == nil {
 		return nil
 	}

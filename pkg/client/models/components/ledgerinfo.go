@@ -4,16 +4,19 @@ package components
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"time"
 )
 
-// Driver - Storage driver name
+// Driver - Storage driver name.
+// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
 type Driver string
 
 const (
-	DriverSqlite Driver = "sqlite"
+	DriverSqliteMattn  Driver = "sqlite-mattn"
+	DriverSqliteModern Driver = "sqlite-modern"
 )
 
 func (e Driver) ToPointer() *Driver {
@@ -25,7 +28,9 @@ func (e *Driver) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v {
-	case "sqlite":
+	case "sqlite-mattn":
+		fallthrough
+	case "sqlite-modern":
 		*e = Driver(v)
 		return nil
 	default:
@@ -33,15 +38,81 @@ func (e *Driver) UnmarshalJSON(data []byte) error {
 	}
 }
 
+type ConfigType string
+
+const (
+	ConfigTypeSQLiteMattnConfig  ConfigType = "SQLiteMattnConfig"
+	ConfigTypeSQLiteModernConfig ConfigType = "SQLiteModernConfig"
+)
+
+// Config - Driver-specific configuration
+type Config struct {
+	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
+	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
+
+	Type ConfigType
+}
+
+func CreateConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) Config {
+	typ := ConfigTypeSQLiteMattnConfig
+
+	return Config{
+		SQLiteMattnConfig: &sqLiteMattnConfig,
+		Type:              typ,
+	}
+}
+
+func CreateConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) Config {
+	typ := ConfigTypeSQLiteModernConfig
+
+	return Config{
+		SQLiteModernConfig: &sqLiteModernConfig,
+		Type:               typ,
+	}
+}
+
+func (u *Config) UnmarshalJSON(data []byte) error {
+
+	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteMattnConfig, "", true, true); err == nil {
+		u.SQLiteMattnConfig = &sqLiteMattnConfig
+		u.Type = ConfigTypeSQLiteMattnConfig
+		return nil
+	}
+
+	var sqLiteModernConfig SQLiteModernConfig = SQLiteModernConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteModernConfig, "", true, true); err == nil {
+		u.SQLiteModernConfig = &sqLiteModernConfig
+		u.Type = ConfigTypeSQLiteModernConfig
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for Config", string(data))
+}
+
+func (u Config) MarshalJSON() ([]byte, error) {
+	if u.SQLiteMattnConfig != nil {
+		return utils.MarshalJSON(u.SQLiteMattnConfig, "", true)
+	}
+
+	if u.SQLiteModernConfig != nil {
+		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type Config: all fields are null")
+}
+
 type LedgerInfo struct {
 	// Sequential ID for the ledger
 	ID int64 `json:"id"`
 	// Name of the ledger
 	Name string `json:"name"`
-	// Storage driver name
+	// Storage driver name.
+	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+	//
 	Driver Driver `json:"driver"`
-	// SQLite driver configuration (empty object - DSN is automatically generated)
-	Config *SQLiteConfig `json:"config,omitempty"`
+	// Driver-specific configuration
+	Config *Config `json:"config,omitempty"`
 	// Metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Creation timestamp (ISO 8601 format)
@@ -84,7 +155,7 @@ func (o *LedgerInfo) GetDriver() Driver {
 	return o.Driver
 }
 
-func (o *LedgerInfo) GetConfig() *SQLiteConfig {
+func (o *LedgerInfo) GetConfig() *Config {
 	if o == nil {
 		return nil
 	}

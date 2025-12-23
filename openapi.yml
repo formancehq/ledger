@@ -85,7 +85,8 @@ paths:
       summary: Create a new ledger
       description: |
         Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
-        SQLite will be used by default. Each ledger has its own Raft group for data consistency.
+        sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) 
+        and sqlite-modern (modernc.org/sqlite). Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
         - Ledgers
@@ -416,12 +417,16 @@ components:
       properties:
         driver:
           type: string
-          enum: [sqlite]
-          default: sqlite
-          description: Storage driver name (defaults to sqlite)
+          enum: [sqlite-mattn, sqlite-modern]
+          default: sqlite-mattn
+          description: |
+            Storage driver name (defaults to sqlite-mattn). 
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
         config:
-          $ref: '#/components/schemas/SQLiteConfig'
-          description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteMattnConfig'
+            - $ref: '#/components/schemas/SQLiteModernConfig'
+          description: Driver-specific configuration (optional - DSN is auto-generated for both drivers)
         metadata:
           type: object
           additionalProperties:
@@ -476,10 +481,14 @@ components:
           description: Name of the ledger
         driver:
           type: string
-          enum: [sqlite]
-          description: Storage driver name
+          enum: [sqlite-mattn, sqlite-modern]
+          description: |
+            Storage driver name. 
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
         config:
-          $ref: '#/components/schemas/SQLiteConfig'
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteMattnConfig'
+            - $ref: '#/components/schemas/SQLiteModernConfig'
           description: Driver-specific configuration
         metadata:
           type: object
@@ -1027,9 +1036,15 @@ components:
           type: boolean
           description: Whether this node is paused
 
-    SQLiteConfig:
+    SQLiteMattnConfig:
       type: object
-      description: SQLite driver configuration (empty object - DSN is automatically generated)
+      description: SQLite Mattn driver configuration (github.com/mattn/go-sqlite3) - empty object, DSN is automatically generated
+      properties: {}
+      example: {}
+
+    SQLiteModernConfig:
+      type: object
+      description: SQLite Modern driver configuration (modernc.org/sqlite) - empty object, DSN is automatically generated
       properties: {}
       example: {}
 
