@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: cd915915d620ff18801c8213529e12b2
+  docChecksum: 241335c472c5037f618344e710e1bf56
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.22
-  configChecksum: afbca0517dd942cc463dbf9034ca8410
+  releaseVersion: 0.11.23
+  configChecksum: 99a6af85bf048b71b5a7769b3776fa25
 features:
   go:
     additionalDependencies: 0.1.0
@@ -61,6 +61,7 @@ generatedFiles:
   - /models/operations/createledger.go
   - /models/operations/createsnapshot.go
   - /models/operations/createtransaction.go
+  - /models/operations/deleteledger.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
   - /models/operations/getledgerraftstate.go
@@ -125,6 +126,8 @@ generatedFiles:
   - docs/models/operations/createsnapshotresponse.md
   - docs/models/operations/createtransactionrequest.md
   - docs/models/operations/createtransactionresponse.md
+  - docs/models/operations/deleteledgerrequest.md
+  - docs/models/operations/deleteledgerresponse.md
   - docs/models/operations/getclusterstateresponse.md
   - docs/models/operations/getledgerraftstaterequest.md
   - docs/models/operations/getledgerraftstateresponse.md
@@ -367,6 +370,18 @@ examples:
       responses:
         "200":
           application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "driver": "sqlite-mattn", "config": {}, "createdAt": "2024-12-22T17:41:17.836Z"}}}}
+        "404":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  deleteLedger:
+    speakeasy-default-delete-ledger:
+      parameters:
+        path:
+          ledgerName: "<value>"
+      responses:
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

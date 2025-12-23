@@ -8,6 +8,7 @@
 * [ListAllLedgers](#listallledgers) - List all ledgers
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a new ledger
+* [DeleteLedger](#deleteledger) - Delete a ledger
 * [GetLedgerRaftState](#getledgerraftstate) - Get ledger Raft cluster state
 
 ## ListAllLedgers
@@ -171,6 +172,60 @@ func main() {
 | Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400, 409                | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
+
+## DeleteLedger
+
+Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster.
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New()
+
+    res, err := s.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
+        LedgerName: "<value>",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                        | Type                                                                             | Required                                                                         | Description                                                                      |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `ctx`                                                                            | [context.Context](https://pkg.go.dev/context#Context)                            | :heavy_check_mark:                                                               | The context to use for the request.                                              |
+| `request`                                                                        | [operations.DeleteLedgerRequest](../../models/operations/deleteledgerrequest.md) | :heavy_check_mark:                                                               | The request object to use for the request.                                       |
+| `opts`                                                                           | [][operations.Option](../../models/operations/option.md)                         | :heavy_minus_sign:                                                               | The options for this request.                                                    |
+
+### Response
+
+**[*operations.DeleteLedgerResponse](../../models/operations/deleteledgerresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

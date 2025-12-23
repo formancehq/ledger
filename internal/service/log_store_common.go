@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"math/big"
+
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 // ============================================================================

@@ -130,6 +130,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a ledger
+      description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster.
+      operationId: deleteLedger
+      tags:
+        - Ledgers
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger to delete
+      responses:
+        '204':
+          description: Ledger deleted successfully
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledgerName}/raft/state:
     get:

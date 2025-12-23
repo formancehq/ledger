@@ -66,6 +66,7 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 
 			r.Post("/{ledgerName}", server.handleCreateLedger)                                    // POST /{ledgerName}
 			r.Get("/{ledgerName}", server.handleGetLedger)                                        // GET /{ledgerName}
+			r.Delete("/{ledgerName}", server.handleDeleteLedger)                                  // DELETE /{ledgerName}
 			r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                    // GET /{ledgerName}/raft/state
 			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                  // POST /{ledgerName}/transactions
 			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata) // POST /{ledgerName}/accounts/{address}/metadata
