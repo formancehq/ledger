@@ -98,34 +98,21 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 		// Optimization: when filtering on partial addresses, first identify eligible accounts
 		// then INNER JOIN with moves. This is more efficient than LATERAL JOIN + filtering after.
-		//
-		// IMPORTANT: Only use this optimization when the query does NOT contain $or or $not operators.
-		// These operators make pre-filtering unsafe because:
-		// - $or(partial, other) would exclude accounts matching "other" but not the partial address
-		// - $not(partial) would exclude all accounts after pre-filtering
-		//
-		// The hasComplexQuery flag is set by analyzing the generated WHERE clause for these patterns.
-		// PIT/OOT (endTime) filters are OK as they are global time filters, not $or-able filters.
-		useAddressOptimization := needAddressSegments && !query.hasComplexQuery
+		useAddressOptimization := needAddressSegments && !query.useFilter("balance(\\[.*])?") && !query.useFilter("metadata")
 		if useAddressOptimization {
 			// Build eligible accounts subquery with address filters pre-applied
 			eligibleAccounts := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address", "address_array")
 
-			// Apply address filters directly on the accounts table
-			// Multiple filters are combined with OR (user wants accounts matching ANY of the patterns)
-			if addressFilters, ok := query.filters["address"]; ok {
-				var orConditions []string
-				for _, addrFilter := range addressFilters {
-					addrStr := addrFilter.(string)
-					if isPartialAddress(addrStr) {
-						orConditions = append(orConditions, "("+filterAccountAddress(addrStr, "address")+")")
-					}
-				}
-				if len(orConditions) > 0 {
-					eligibleAccounts = eligibleAccounts.Where(strings.Join(orConditions, " OR "))
-				}
+			where, args, err := filterInvolvedAccounts(query.Builder, "address")
+			if err != nil {
+				return nil, err
+			}
+			if len(args) > 0 {
+				eligibleAccounts = eligibleAccounts.Where(where, args...)
+			} else {
+				eligibleAccounts = eligibleAccounts.Where(where)
 			}
 
 			selectVolumes = store.newScopedSelect().
@@ -166,7 +153,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 				ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 				ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-				ModelTableExpr(store.GetPrefixedRelationName("moves") + " moves").
+				ModelTableExpr(store.GetPrefixedRelationName("moves")+" moves").
 				GroupExpr("accounts_address, asset").
 				Order("accounts_address", "asset")
 

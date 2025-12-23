@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+	query "github.com/formancehq/go-libs/v2/query"
 	"strings"
 )
 
@@ -39,6 +40,17 @@ func filterAccountAddress(address, key string) string {
 	}
 
 	return strings.Join(parts, " and ")
+}
+
+// Returns a condition that only includes accounts that might possibly be accepted by the query
+func filterInvolvedAccounts(builder query.Builder, addressColumnName string) (string, []any, error) {
+	return builder.Build(query.ContextFn(func(property, operator string, value any) (string, []any, error) {
+		if property == "address" || property == "account" {
+			return filterAccountAddress(value.(string), addressColumnName), nil, nil
+		} else {
+			return "true", nil, nil
+		}
+	}))
 }
 
 func isPartialAddress(address any) bool {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strings"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -65,9 +64,6 @@ type filter struct {
 type repositoryHandlerBuildContext[Opts any] struct {
 	ledgercontroller.ResourceQuery[Opts]
 	filters map[string][]any
-	// hasComplexQuery indicates if the query contains $or or $not operators
-	// which make address optimization unsafe
-	hasComplexQuery bool
 }
 
 func (ctx repositoryHandlerBuildContext[Opts]) useFilter(v string, matchers ...func(value any) bool) bool {
@@ -156,16 +152,6 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	return ret, nil
 }
 
-// hasComplexQueryOperators analyzes the WHERE clause to detect $or or $not operators
-// which make address pre-filtering optimization unsafe
-func hasComplexQueryOperators(where string) bool {
-	// The query builder generates:
-	// - "not (...)" for $not operators
-	// - "(...) or (...)" for $or operators
-	// We check for these patterns in the generated WHERE clause
-	return strings.Contains(where, "not (") || strings.Contains(where, ") or (")
-}
-
 func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	filters, err := r.validateFilters(q.Builder)
@@ -173,25 +159,9 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 		return nil, err
 	}
 
-	// Analyze the WHERE clause to detect complex query operators ($or, $not)
-	// that would make address optimization unsafe
-	var hasComplexQuery bool
-	var where string
-	var args []any
-	if q.Builder != nil {
-		where, args, err = q.Builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-			return r.resourceHandler.resolveFilter(r.store, q, operator, key, value)
-		}))
-		if err != nil {
-			return nil, err
-		}
-		hasComplexQuery = hasComplexQueryOperators(where)
-	}
-
 	dataset, err := r.resourceHandler.buildDataset(r.store, repositoryHandlerBuildContext[OptionsType]{
-		ResourceQuery:   q,
-		filters:         filters,
-		hasComplexQuery: hasComplexQuery,
+		ResourceQuery: q,
+		filters:       filters,
 	})
 	if err != nil {
 		return nil, err
@@ -201,6 +171,13 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 		ModelTableExpr("(?) dataset", dataset)
 
 	if q.Builder != nil {
+		// Convert filters to where clause
+		where, args, err := q.Builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+			return r.resourceHandler.resolveFilter(r.store, q, operator, key, value)
+		}))
+		if err != nil {
+			return nil, err
+		}
 		if len(args) > 0 {
 			dataset = dataset.Where(where, args...)
 		} else {
