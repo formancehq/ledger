@@ -426,15 +426,11 @@ func (s *WALStorage) SetHardState(st raftpb.HardState) {
 	s.mu.Unlock()
 
 	// Save hard state to WAL (with empty entries since we're only updating hard state)
+	// The WAL will persist this and it will be restored on startup via replayWAL()
 	if s.wal != nil {
 		if err := s.wal.Save(st, []raftpb.Entry{}); err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save hard state to WAL")
 		}
-	}
-
-	// Save to disk (outside of lock to avoid blocking)
-	if err := s.saveSnapshotAndHardState(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save hard state to disk")
 	}
 }
 

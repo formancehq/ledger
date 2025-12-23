@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
@@ -450,7 +449,6 @@ var _ = Describe("Simple cluster", func() {
 							if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
 								return fmt.Errorf("leader is nil")
 							}
-							spew.Dump(leaderState)
 							if *clusterState.LedgerClusterStateResponse.Data.Leader != *leaderState.LedgerClusterStateResponse.Data.Leader {
 								return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.LedgerClusterStateResponse.Data.Leader)
 							}
