@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -56,8 +55,8 @@ func NewWALStorage(dataDir string, logger logging.Logger) (*WALStorage, error) {
 		entries:       make([]raftpb.Entry, 0),
 		logger:        logger,
 		dataDir:       dataDir,
-		snapshotFile:  filepath.Join(dataDir, "raft-snapshot.json"),
-		hardStateFile: filepath.Join(dataDir, "raft-hardstate.json"),
+		snapshotFile:  filepath.Join(dataDir, "raft-snapshot.pb"),
+		hardStateFile: filepath.Join(dataDir, "raft-hardstate.pb"),
 		walDir:        filepath.Join(dataDir, "wal"),
 	}
 
@@ -170,7 +169,7 @@ func (s *WALStorage) replayWAL() error {
 func (s *WALStorage) restoreSnapshotAndHardState() error {
 	// Restore HardState
 	if data, err := os.ReadFile(s.hardStateFile); err == nil {
-		if err := json.Unmarshal(data, &s.hardState); err != nil {
+		if err := s.hardState.Unmarshal(data); err != nil {
 			return fmt.Errorf("unmarshaling hardstate: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
@@ -179,7 +178,7 @@ func (s *WALStorage) restoreSnapshotAndHardState() error {
 
 	// Restore Snapshot
 	if data, err := os.ReadFile(s.snapshotFile); err == nil {
-		if err := json.Unmarshal(data, &s.snapshot); err != nil {
+		if err := s.snapshot.Unmarshal(data); err != nil {
 			return fmt.Errorf("unmarshaling snapshot: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
@@ -192,7 +191,7 @@ func (s *WALStorage) restoreSnapshotAndHardState() error {
 // saveSnapshotAndHardState saves snapshot and hard state to disk
 func (s *WALStorage) saveSnapshotAndHardState() error {
 	// Save HardState
-	hardStateData, err := json.Marshal(s.hardState)
+	hardStateData, err := s.hardState.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshaling hardstate: %w", err)
 	}
@@ -201,7 +200,7 @@ func (s *WALStorage) saveSnapshotAndHardState() error {
 	}
 
 	// Save Snapshot
-	snapshotData, err := json.Marshal(s.snapshot)
+	snapshotData, err := s.snapshot.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
@@ -467,7 +466,6 @@ func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte)
 	}
 	snap := s.snapshot
 
-	// Save to disk (outside of lock to avoid blocking)
 	if err := s.saveSnapshotAndHardState(); err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
 	}
