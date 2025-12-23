@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
@@ -63,6 +64,7 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	f.state.LastLogID++
 	insertCmd.Log.Id = f.state.LastLogID
 	f.mu.Unlock()
+	spew.Dump(insertCmd.Log)
 
 	return insertCmd.Log, nil
 }
@@ -108,8 +110,8 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	defer f.mu.RUnlock()
 
 	snapshotData := map[string]interface{}{
-		"ledgerInfo":   f.state.LedgerInfo,
-		"lastLogID": f.state.LastLogID,
+		"ledgerInfo": f.state.LedgerInfo,
+		"lastLogID":  f.state.LastLogID,
 	}
 
 	// Marshal to JSON

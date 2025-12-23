@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -37,11 +38,10 @@ type WALStorage struct {
 	// This is rebuilt from WAL on startup
 	entries []raftpb.Entry
 
-	logger        logging.Logger
-	dataDir       string
-	snapshotFile  string
-	hardStateFile string
-	walDir        string
+	logger    logging.Logger
+	dataDir   string
+	stateFile string
+	walDir    string
 }
 
 // NewWALStorage creates a new WALStorage instance
@@ -52,12 +52,11 @@ func NewWALStorage(dataDir string, logger logging.Logger) (*WALStorage, error) {
 	}
 
 	s := &WALStorage{
-		entries:       make([]raftpb.Entry, 0),
-		logger:        logger,
-		dataDir:       dataDir,
-		snapshotFile:  filepath.Join(dataDir, "raft-snapshot.pb"),
-		hardStateFile: filepath.Join(dataDir, "raft-hardstate.pb"),
-		walDir:        filepath.Join(dataDir, "wal"),
+		entries:   make([]raftpb.Entry, 0),
+		logger:    logger,
+		dataDir:   dataDir,
+		stateFile: filepath.Join(dataDir, "raft-state.pb"),
+		walDir:    filepath.Join(dataDir, "wal"),
 	}
 
 	// Restore snapshot and hard state from disk
@@ -167,48 +166,102 @@ func (s *WALStorage) replayWAL() error {
 
 // restoreSnapshotAndHardState restores snapshot and hard state from disk
 func (s *WALStorage) restoreSnapshotAndHardState() error {
-	// Restore HardState
-	if data, err := os.ReadFile(s.hardStateFile); err == nil {
-		if err := s.hardState.Unmarshal(data); err != nil {
-			return fmt.Errorf("unmarshaling hardstate: %w", err)
+	data, err := os.ReadFile(s.stateFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File doesn't exist yet, start fresh
+			return nil
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading hardstate file: %w", err)
+		return fmt.Errorf("reading state file: %w", err)
 	}
 
-	// Restore Snapshot
-	if data, err := os.ReadFile(s.snapshotFile); err == nil {
-		if err := s.snapshot.Unmarshal(data); err != nil {
-			return fmt.Errorf("unmarshaling snapshot: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading snapshot file: %w", err)
+	return s.restoreFromUnifiedFile(data)
+}
+
+// restoreFromUnifiedFile restores hard state and snapshot from a unified file
+// Format: [hardStateLength (8 bytes)][hardStateData][snapshotLength (8 bytes)][snapshotData]
+func (s *WALStorage) restoreFromUnifiedFile(data []byte) error {
+	if len(data) < 8 {
+		return fmt.Errorf("state file too short")
+	}
+
+	// Read hardState length
+	hardStateLen := binary.BigEndian.Uint64(data[0:8])
+	if len(data) < int(8+hardStateLen+8) {
+		return fmt.Errorf("state file truncated at hardState")
+	}
+
+	// Read hardState
+	hardStateData := data[8 : 8+hardStateLen]
+	if err := s.hardState.Unmarshal(hardStateData); err != nil {
+		return fmt.Errorf("unmarshaling hardstate: %w", err)
+	}
+
+	// Read snapshot length
+	snapshotLen := binary.BigEndian.Uint64(data[8+hardStateLen : 8+hardStateLen+8])
+	if len(data) < int(8+hardStateLen+8+snapshotLen) {
+		return fmt.Errorf("state file truncated at snapshot")
+	}
+
+	// Read snapshot
+	snapshotData := data[8+hardStateLen+8 : 8+hardStateLen+8+snapshotLen]
+	if err := s.snapshot.Unmarshal(snapshotData); err != nil {
+		return fmt.Errorf("unmarshaling snapshot: %w", err)
 	}
 
 	return nil
 }
 
-// saveSnapshotAndHardState saves snapshot and hard state to disk
+// saveSnapshotAndHardState saves snapshot and hard state to disk in a single file
+// Format: [hardStateLength (8 bytes)][hardStateData][snapshotLength (8 bytes)][snapshotData]
 func (s *WALStorage) saveSnapshotAndHardState() error {
-	// Save HardState
+	// Marshal HardState
 	hardStateData, err := s.hardState.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshaling hardstate: %w", err)
 	}
-	if err := os.WriteFile(s.hardStateFile, hardStateData, 0644); err != nil {
-		return fmt.Errorf("writing hardstate file: %w", err)
-	}
 
-	// Save Snapshot
+	// Marshal Snapshot
 	snapshotData, err := s.snapshot.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
-	if err := os.WriteFile(s.snapshotFile, snapshotData, 0644); err != nil {
-		return fmt.Errorf("writing snapshot file: %w", err)
+
+	// Create unified file with length-prefixed format
+	// Format: [hardStateLength (8 bytes)][hardStateData][snapshotLength (8 bytes)][snapshotData]
+	totalSize := 8 + len(hardStateData) + 8 + len(snapshotData)
+	unifiedData := make([]byte, totalSize)
+	offset := 0
+
+	// Write hardState length
+	binary.BigEndian.PutUint64(unifiedData[offset:offset+8], uint64(len(hardStateData)))
+	offset += 8
+
+	// Write hardState data
+	copy(unifiedData[offset:offset+len(hardStateData)], hardStateData)
+	offset += len(hardStateData)
+
+	// Write snapshot length
+	binary.BigEndian.PutUint64(unifiedData[offset:offset+8], uint64(len(snapshotData)))
+	offset += 8
+
+	// Write snapshot data
+	copy(unifiedData[offset:offset+len(snapshotData)], snapshotData)
+
+	stateFile, err := os.Create(s.stateFile)
+	if err != nil {
+		return fmt.Errorf("creating state file: %w", err)
+	}
+	defer func() {
+		_ = stateFile.Close()
+	}()
+
+	// Write unified file
+	if _, err := stateFile.Write(unifiedData); err != nil {
+		return fmt.Errorf("writing state file: %w", err)
 	}
 
-	return nil
+	return stateFile.Sync()
 }
 
 // InitialState returns the saved HardState and ConfState information

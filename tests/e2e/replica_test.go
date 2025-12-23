@@ -396,15 +396,24 @@ var _ = Describe("Simple cluster", func() {
 						err         error
 					)
 					BeforeEach(func() {
-						// Restart the follower
-						By("Starting the follower", func() {
+						Eventually(func(g Gomega) error {
 							leaderState, err = servers[leaderID-1].client.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
 								LedgerName: ledgerName,
 							})
-							Expect(err).To(Succeed())
+							g.Expect(err).To(Succeed())
 
-							spew.Dump(leaderState.LedgerClusterStateResponse.Data.InnerState)
+							if leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID == nil {
+								return fmt.Errorf("last log id is nil")
+							}
+							if *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID != 11 {
+								return fmt.Errorf("all transactions not committed, expected last log id to be 11, got %d", *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID)
+							}
 
+							return nil
+						}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).To(BeNil())
+
+						// Restart the follower
+						By("Starting the follower", func() {
 							Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 						})
 
@@ -441,6 +450,7 @@ var _ = Describe("Simple cluster", func() {
 							if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
 								return fmt.Errorf("leader is nil")
 							}
+							spew.Dump(leaderState)
 							if *clusterState.LedgerClusterStateResponse.Data.Leader != *leaderState.LedgerClusterStateResponse.Data.Leader {
 								return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.LedgerClusterStateResponse.Data.Leader)
 							}
