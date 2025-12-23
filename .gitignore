@@ -44,3 +44,4 @@ performance
 
 # PProf
 cmd/bench/cpu.prof
+cpu.prof

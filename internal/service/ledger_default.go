@@ -359,7 +359,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			return nil, nil, fmt.Errorf("inserting logs: %w", err)
 		}
 
-		l.logger.Infof("Logs written successfully")
+		l.logger.Infof("Log written successfully")
 	}
 
 	return log, createdTx, nil

@@ -184,6 +184,7 @@ func (node *Node[State, F]) readyLoop() {
 	}
 	confState = &initialConfState
 
+	processingTick := time.NewTicker(tickInterval / 10)
 	for {
 		select {
 		case <-ticker.C:
@@ -207,26 +208,26 @@ func (node *Node[State, F]) readyLoop() {
 				panic(err)
 			}
 
-			//	// todo: try to drain more
-			//	until := time.After(10 * time.Millisecond)
-			//l:
-			//	for {
-			//		select {
-			//		case <-until:
-			//			break l
-			//		case cmd := <-node.proposeCh:
-			//			if err := node.rawNode.Propose(cmd); err != nil {
-			//				panic(err)
-			//			}
-			//		}
-			//	}
-		}
-
-		if node.rawNode.HasReady() {
-			leader, confState, err = node.processReady(node.ctx, leader, confState)
-			if err != nil {
-				if !errors.Is(err, context.Canceled) {
-					break
+			// todo: try to drain more
+			until := time.After(20 * time.Millisecond)
+		l:
+			for {
+				select {
+				case <-until:
+					break l
+				case cmd := <-node.proposeCh:
+					if err := node.rawNode.Propose(cmd); err != nil {
+						panic(err)
+					}
+				}
+			}
+		case <-processingTick.C:
+			if node.rawNode.HasReady() {
+				leader, confState, err = node.processReady(node.ctx, leader, confState)
+				if err != nil {
+					if !errors.Is(err, context.Canceled) {
+						break
+					}
 				}
 			}
 		}
