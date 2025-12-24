@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type Node struct {
@@ -17,13 +18,16 @@ type Node struct {
 	raftConfig           Config
 	logger               logging.Logger
 	multiplexedTransport *multiplexedTransport
+	meterProvider        metric.MeterProvider
 }
 
 func NewNode(
 	config Config,
 	logger logging.Logger,
 	transport *raft.GRPCTransport,
+	meterProvider metric.MeterProvider,
 ) (*Node, error) {
+	// meterProvider can be nil if metrics are not enabled
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -40,9 +44,12 @@ func NewNode(
 	}), transport)
 
 	// Create FSM (Finite State Machine)
-	fsm := newFSM(logger, config, multiplexedTransport)
+	fsm := newFSM(logger, config, multiplexedTransport, meterProvider)
 
-	node, err := raft.NewNode(config.NodeConfig, storage, multiplexedTransport.MainTransport(), fsm, logger)
+	// Create meter for system node
+	systemMeter := meterProvider.Meter("ledger-v3-poc.raft.system")
+
+	node, err := raft.NewNode(config.NodeConfig, storage, multiplexedTransport.MainTransport(), fsm, logger, systemMeter)
 	if err != nil {
 		return nil, fmt.Errorf("creating node wrapper: %w", err)
 	}
@@ -60,6 +67,7 @@ func NewNode(
 		logger:               logger,
 		raftConfig:           config,
 		multiplexedTransport: multiplexedTransport,
+		meterProvider:        meterProvider,
 	}, nil
 }
 

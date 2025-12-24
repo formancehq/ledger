@@ -40,47 +40,47 @@ var _ = Describe("Ledger Deletion", func() {
 
 		servers = make([]serviceWithClient, 0, countInstances)
 		for i := range countInstances {
-		raftTmpDir := GinkgoT().TempDir()
-		DeferCleanup(func() {
-			Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
-		})
+			raftTmpDir := GinkgoT().TempDir()
+			DeferCleanup(func() {
+				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
+			})
 
-		server := testservice.New(cmdserver.NewRootCommand,
-			testservice.WithInstruments(
-				testserver.WithNodeID(i+1),
-				testserver.WithHTTPPort(9200+i),
-				testserver.WithDataDir(raftTmpDir),
-				testserver.WithGRPCPort(8200+i),
-				testserver.WithSnapshotThreshold(10),
-				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-				testserver.WithRaftTickInterval(10*time.Millisecond),
-				testserver.WithRaftHeartbeatTick(10),
-				testserver.WithRaftElectionTick(100),
-				testserver.WithPeers(func() []raft.Peer {
-					ret := make([]raft.Peer, 0, countInstances-1)
-					for j := range countInstances {
-						if i == j {
-							continue
+			server := testservice.New(cmdserver.NewRootCommand,
+				testservice.WithInstruments(
+					testserver.WithNodeID(i+1),
+					testserver.WithHTTPPort(9200+i),
+					testserver.WithDataDir(raftTmpDir),
+					testserver.WithGRPCPort(8200+i),
+					testserver.WithSnapshotThreshold(10),
+					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+					testserver.WithRaftTickInterval(10*time.Millisecond),
+					testserver.WithRaftHeartbeatTick(10),
+					testserver.WithRaftElectionTick(100),
+					testserver.WithPeers(func() []raft.Peer {
+						ret := make([]raft.Peer, 0, countInstances-1)
+						for j := range countInstances {
+							if i == j {
+								continue
+							}
+							ret = append(ret, raft.Peer{
+								ID:      uint64(j + 1),
+								Address: fmt.Sprintf("127.0.0.1:%d", 8200+j),
+							})
 						}
-						ret = append(ret, raft.Peer{
-							ID:      uint64(j + 1),
-							Address: fmt.Sprintf("127.0.0.1:%d", 8200+j),
-						})
-					}
 
-					return ret
-				}()...),
-			),
-		)
-		Expect(server.Start(ctx)).To(Succeed())
+						return ret
+					}()...),
+				),
+			)
+			Expect(server.Start(ctx)).To(Succeed())
 
-		servers = append(servers, serviceWithClient{
-			service: server,
-			client: client.New(
-				client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
-			),
-			raftDataDir: raftTmpDir,
-		})
+			servers = append(servers, serviceWithClient{
+				service: server,
+				client: client.New(
+					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
+				),
+				raftDataDir: raftTmpDir,
+			})
 		}
 
 		// Wait for leader election
@@ -171,7 +171,7 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(ledger.GetGetLedgerResponse().Data.DeletedAt).NotTo(BeNil())
 
 			// Verify the ledger appears in the list with includeDeleted=true
-			includeDeleted := true
+			includeDeleted = true
 			ledgersWithDeleted, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{
 				IncludeDeleted: &includeDeleted,
 			})
@@ -287,7 +287,7 @@ var _ = Describe("Ledger Deletion", func() {
 			}
 		})
 
-		FIt("Should successfully delete the ledger even with transactions", func() {
+		It("Should successfully delete the ledger even with transactions", func() {
 			// Delete the ledger (should succeed even with transactions)
 			resp, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
 				LedgerName: ledgerName,

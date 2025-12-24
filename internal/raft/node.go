@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type NodeTransport interface {
@@ -26,6 +27,7 @@ type NodeTransport interface {
 type Node[State any, F FSM[State]] struct {
 	rawNode   *raft.RawNode
 	logger    logging.Logger
+	meter     metric.Meter
 	mu        sync.RWMutex
 	futures   map[uint64]*applyFuture // Map of command ID -> future
 	fsmSyncer *syncer[State, F]
@@ -45,6 +47,7 @@ func NewNode[State any, F FSM[State]](
 	transport NodeTransport,
 	fsm F,
 	logger logging.Logger,
+	meter metric.Meter,
 ) (*Node[State, F], error) {
 
 	// Set defaults if not configured
@@ -71,6 +74,7 @@ func NewNode[State any, F FSM[State]](
 
 	return &Node[State, F]{
 		logger:    logger,
+		meter:     meter,
 		futures:   make(map[uint64]*applyFuture),
 		fsmSyncer: newSyncer[State, F](spool, fsm, logger),
 		storage:   storage,

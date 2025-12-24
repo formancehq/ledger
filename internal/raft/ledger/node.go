@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // logStoreFactory is a function that creates a LogStore from a JSON config
@@ -90,6 +91,7 @@ func NewNode(
 	cfg raft.NodeConfig,
 	logger logging.Logger,
 	recoveryLogReader func(uint64) service.LogReader,
+	meter metric.Meter,
 ) (*Node, error) {
 
 	// Create Raft storage for this ledger
@@ -134,7 +136,7 @@ func NewNode(
 	ret.defaultLedger = service.NewDefaultLedger(ret, lockedVolumesStore, appLogStore, logger)
 
 	logger.Infof("Creating Raft node for ledger %s", ledgerInfo.Name)
-	ret.Node, err = raft.NewNode(cfg, storage, transport, ledgerFSM, logger)
+	ret.Node, err = raft.NewNode(cfg, storage, transport, ledgerFSM, logger, meter)
 	if err != nil {
 		return nil, fmt.Errorf("creating Raft node for ledger %s: %w", ledgerInfo.Name, err)
 	}

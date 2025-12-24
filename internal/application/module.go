@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -18,6 +19,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
 )
 
@@ -26,7 +29,17 @@ func Module() fx.Option {
 		transport.Module(),
 		fx.Provide(
 			raft.NewTransport,
-			system.NewNode,
+			func(
+				params struct {
+					fx.In
+					Config        system.Config
+					Logger        logging.Logger
+					Transport     *raft.GRPCTransport
+					MeterProvider metric.MeterProvider
+				},
+			) (*system.Node, error) {
+				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
+			},
 			func(cfg Config) system.Config {
 				return cfg.RaftConfig
 			},
@@ -54,6 +67,26 @@ func Module() fx.Option {
 			httphandler.NewServer,
 			httphandler.NewHandler,
 		),
+		fx.Decorate(func(
+			params struct {
+				fx.In
+				Handler       http.Handler
+				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+			},
+		) http.Handler {
+			// If InMemoryExporter is available, wrap handler to add metrics endpoint
+			if params.Exporter != nil && params.MeterProvider != nil {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/metrics" {
+						otlpmetrics.NewInMemoryExporterHandler(params.MeterProvider, params.Exporter)(w, r)
+						return
+					}
+					params.Handler.ServeHTTP(w, r)
+				})
+			}
+			return params.Handler
+		}),
 		fx.Invoke(
 			func(grpcServer *grpcserver.Server, transport *raft.GRPCTransport) error {
 				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)

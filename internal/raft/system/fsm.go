@@ -13,6 +13,7 @@ import (
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -31,12 +32,14 @@ type FSM struct {
 	logger               logging.Logger
 	raftConfig           Config
 	multiplexedTransport *multiplexedTransport
+	meterProvider        metric.MeterProvider
 }
 
 func newFSM(
 	logger logging.Logger,
 	raftConfig Config,
 	multiplexedTransport *multiplexedTransport,
+	meterProvider metric.MeterProvider,
 ) *FSM {
 	return &FSM{
 		state: State{
@@ -47,6 +50,7 @@ func newFSM(
 		logger:               logger,
 		raftConfig:           raftConfig,
 		multiplexedTransport: multiplexedTransport,
+		meterProvider:        meterProvider,
 	}
 }
 
@@ -430,6 +434,10 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 
 	logger.Infof("Creating node...")
 	ledgerDataDir := filepath.Join(fsm.raftConfig.DataDir, "ledgers", ledgerInfo.Name)
+
+	// Create meter for this ledger node
+	ledgerMeter := fsm.meterProvider.Meter(fmt.Sprintf("ledger.%s", ledgerInfo.Name), metric.WithInstrumentationVersion("1.0.0"))
+
 	group, err := ledgerraft.NewNode(
 		ctx,
 		ledgerInfo,
@@ -471,6 +479,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 				}), nil
 			})
 		},
+		ledgerMeter,
 	)
 	if err != nil {
 		return fmt.Errorf("creating ledger Raft group: %w", err)
