@@ -435,6 +435,40 @@ generate_percentiles_chart() {
     fi
 }
 
+# Generate ApplyEntries histogram chart
+generate_apply_entries_histogram() {
+    log_info "Generating ApplyEntries histogram chart..."
+    
+    local chart_script="${SCRIPT_DIR}/generate_apply_entries_histogram.py"
+    local chart_output="${RESULTS_DIR}/apply-entries-histogram.png"
+    
+    if [ ! -f "${chart_script}" ]; then
+        log_warning "ApplyEntries histogram chart generation script not found: ${chart_script}"
+        return 1
+    fi
+    
+    # Check if Python is available
+    if ! command -v python3 >/dev/null 2>&1; then
+        log_warning "python3 not found, skipping ApplyEntries histogram chart generation"
+        return 1
+    fi
+    
+    # Check if matplotlib and numpy are available
+    if ! python3 -c "import matplotlib, numpy" >/dev/null 2>&1; then
+        log_warning "matplotlib or numpy not installed, skipping ApplyEntries histogram chart generation"
+        log_info "Install dependencies with: pip install matplotlib numpy"
+        return 1
+    fi
+    
+    if python3 "${chart_script}" "${RESULTS_DIR}" "${chart_output}"; then
+        log_success "ApplyEntries histogram chart generated: ${chart_output}"
+        return 0
+    else
+        log_warning "Failed to generate ApplyEntries histogram chart"
+        return 1
+    fi
+}
+
 # Main execution
 main() {
     log_info "Starting storage comparison benchmark"
@@ -500,6 +534,9 @@ main() {
     
     # Generate percentiles comparison chart
     generate_percentiles_chart
+    
+    # Generate ApplyEntries histogram chart
+    generate_apply_entries_histogram
     
     # Summary
     log_info "=========================================="

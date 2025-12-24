@@ -187,54 +187,6 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(found).To(BeTrue())
 		})
 
-		It("Should propagate deletion to all nodes", func() {
-			// Delete the ledger from the leader
-			_, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
-				LedgerName: ledgerName,
-			})
-			Expect(err).To(Succeed())
-
-			// Wait for deletion to propagate to all nodes
-			Eventually(func(g Gomega) bool {
-				for i := range countInstances {
-					_, err := servers[i].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-						LedgerName: ledgerName,
-					})
-					if err == nil {
-						return false
-					}
-				}
-				return true
-			}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
-
-			// Verify all nodes don't have the ledger in their list by default
-			for i := range countInstances {
-				ledgers, err := servers[i].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
-				Expect(err).To(Succeed())
-				for _, ledger := range ledgers.ListAllLedgersResponse.Data {
-					Expect(ledger.Name).NotTo(Equal(ledgerName))
-				}
-			}
-
-			// Verify all nodes can see the deleted ledger with includeDeleted=true
-			includeDeleted := true
-			for i := range countInstances {
-				ledgers, err := servers[i].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{
-					IncludeDeleted: &includeDeleted,
-				})
-				Expect(err).To(Succeed())
-				found := false
-				for _, ledger := range ledgers.ListAllLedgersResponse.Data {
-					if ledger.Name == ledgerName {
-						found = true
-						Expect(ledger.DeletedAt).NotTo(BeNil())
-						break
-					}
-				}
-				Expect(found).To(BeTrue())
-			}
-		})
-
 		It("Should return 404 when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
 			_, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{

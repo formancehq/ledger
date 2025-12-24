@@ -14,6 +14,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
+      - OTEL_METRICS_KEEP_IN_MEMORY=true
     ports:
       - "8888:8888"
       - "9000:9000"
@@ -44,6 +45,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
+      - OTEL_METRICS_KEEP_IN_MEMORY=true
     ports:
       - "8889:8888"
       - "9001:9000"
@@ -74,6 +76,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
+      - OTEL_METRICS_KEEP_IN_MEMORY=true
     ports:
       - "8890:8888"
       - "9002:9000"

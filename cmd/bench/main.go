@@ -124,6 +124,7 @@ type BenchmarkConfig struct {
 	Duration       time.Duration
 	Iterations     int
 	LedgerName     string
+	LedgerURL      string
 	Logger         logging.Logger
 	CPUProfileURL  string
 	CPUProfileFile string
@@ -417,6 +418,21 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 		// Compute final results
 		result := report.GetResult()
 
+		// Fetch metrics from /metrics endpoint
+		if r.config.LedgerURL != "" {
+			metricsURL := strings.TrimSuffix(r.config.LedgerURL, "/") + "/metrics"
+			metrics, err := fetchMetrics(ctx, metricsURL, getHTTPClient(EnvConfig{LedgerURL: r.config.LedgerURL}))
+			if err != nil {
+				r.config.Logger.Infof("WARN: Failed to fetch metrics from %s: %v", metricsURL, err)
+			} else {
+				if result.InternalMetrics == nil {
+					result.InternalMetrics = make(map[string]any)
+				}
+				result.InternalMetrics["server_metrics"] = metrics
+				r.config.Logger.Infof("Metrics fetched from %s", metricsURL)
+			}
+		}
+
 		if report.Tachymeter.Count > 0 {
 			results[scenario] = result
 			r.config.Logger.Infof("Benchmark %s completed: TPS=%.2f, Avg Latency=%.2fms, Count=%d",
@@ -476,6 +492,36 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 	}
 
 	return results, nil
+}
+
+// fetchMetrics retrieves metrics from the /metrics endpoint
+func fetchMetrics(ctx context.Context, metricsURL string, httpClient *http.Client) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metricsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching metrics: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response body: %w", err)
+	}
+
+	var metrics map[string]any
+	if err := json.Unmarshal(body, &metrics); err != nil {
+		return nil, fmt.Errorf("unmarshaling metrics: %w", err)
+	}
+
+	return metrics, nil
 }
 
 func main() {
@@ -573,6 +619,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		Duration:       duration,
 		Iterations:     iterations,
 		LedgerName:     ledgerName,
+		LedgerURL:      ledgerURL,
 		Logger:         logger,
 		CPUProfileURL:  cpuProfileURL,
 		CPUProfileFile: cpuProfileFile,

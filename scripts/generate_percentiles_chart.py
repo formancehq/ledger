@@ -42,11 +42,22 @@ def extract_percentiles_from_report(report_file):
                     if isinstance(time_metrics, dict):
                         for p_key in percentiles.keys():
                             if p_key in time_metrics:
-                                # Convert string like "54.114709ms" to float (milliseconds)
+                                # Convert string like "54.114709ms" or "1.697426583s" to float (milliseconds)
                                 value_str = time_metrics[p_key]
                                 if isinstance(value_str, str):
-                                    # Remove 'ms' suffix and convert to float
-                                    value_ms = float(value_str.replace('ms', '').strip())
+                                    value_str = value_str.strip()
+                                    # Handle different time units
+                                    if value_str.endswith('ms'):
+                                        value_ms = float(value_str.replace('ms', '').strip())
+                                    elif value_str.endswith('s'):
+                                        value_ms = float(value_str.replace('s', '').strip()) * 1000
+                                    elif value_str.endswith('us'):
+                                        value_ms = float(value_str.replace('us', '').strip()) / 1000
+                                    elif value_str.endswith('ns'):
+                                        value_ms = float(value_str.replace('ns', '').strip()) / 1000000
+                                    else:
+                                        # Try to parse as float (assuming milliseconds)
+                                        value_ms = float(value_str)
                                     percentiles[p_key].append(value_ms)
                                 elif isinstance(value_str, (int, float)):
                                     percentiles[p_key].append(float(value_str))

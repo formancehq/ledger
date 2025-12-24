@@ -126,11 +126,13 @@ func (node *Node) GetLedgerNode(ctx context.Context, name string) (*ledgerraft.N
 }
 
 func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	ledgerNode, err := node.Inner().GetLedger(name)
-	if err != nil {
+	// GetLedger returns an error for deleted ledgers, so we need to check GetAllLedgers
+	allLedgers := node.Inner().GetAllLedgers()
+	ledgerInfo, ok := allLedgers[name]
+	if !ok {
 		return nil, ledgerpb.NewNotFoundError("Ledger not found: %s", name)
 	}
-	return ledgerNode.Info(), nil
+	return ledgerInfo, nil
 }
 
 // GetAllLedgersInfo returns all ledgers

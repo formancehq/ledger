@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -25,19 +26,20 @@ type NodeTransport interface {
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node[State any, F FSM[State]] struct {
-	rawNode   *raft.RawNode
-	logger    logging.Logger
-	meter     metric.Meter
-	mu        sync.RWMutex
-	futures   map[uint64]*applyFuture // Map of command ID -> future
-	fsmSyncer *syncer[State, F]
-	storage   *WALStorage
-	transport NodeTransport
-	config    NodeConfig
-	stopped   chan struct{}
-	ctx       context.Context
-	cancel    func()
-	proposeCh chan []byte
+	rawNode               *raft.RawNode
+	logger                logging.Logger
+	meter                 metric.Meter
+	applyEntriesHistogram metric.Float64Histogram
+	mu                    sync.RWMutex
+	futures               map[uint64]*applyFuture // Map of command ID -> future
+	fsmSyncer             *syncer[State, F]
+	storage               *WALStorage
+	transport             NodeTransport
+	config                NodeConfig
+	stopped               chan struct{}
+	ctx                   context.Context
+	cancel                func()
+	proposeCh             chan []byte
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -72,7 +74,7 @@ func NewNode[State any, F FSM[State]](
 		return nil, fmt.Errorf("creating spool: %w", err)
 	}
 
-	return &Node[State, F]{
+	node := &Node[State, F]{
 		logger:    logger,
 		meter:     meter,
 		futures:   make(map[uint64]*applyFuture),
@@ -81,7 +83,30 @@ func NewNode[State any, F FSM[State]](
 		transport: transport,
 		config:    cfg,
 		proposeCh: make(chan []byte, 100),
-	}, nil
+	}
+
+	// Create histogram metric for ApplyEntries duration
+	// Use explicit bucket boundaries for better granularity on small values
+	// Buckets: fine-grained for small values (< 100ms), coarser for larger values, max 1s
+	if meter != nil {
+		histogram, err := meter.Float64Histogram("raft.apply_entries.duration",
+			metric.WithDescription("Time spent applying entries to FSM"),
+			metric.WithUnit("ms"),
+			metric.WithExplicitBucketBoundaries(
+				// Fine-grained buckets for small values (0-100ms)
+				0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+				12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
+				60, 70, 80, 90, 100,
+				// Medium buckets (100-500ms)
+				125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+			),
+		)
+		if err == nil {
+			node.applyEntriesHistogram = histogram
+		}
+	}
+
+	return node, nil
 }
 
 func (node *Node[State, F]) Inner() F {
@@ -331,7 +356,20 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 	}
 
 	// Apply bucket-specific entries to bucket FSM
+	// Measure time spent in ApplyEntries
+	start := time.Now()
 	results, err := node.fsmSyncer.ApplyEntries(node.ctx, commands...)
+	duration := time.Since(start)
+
+	// Record metric if histogram is available and we have commands
+	if node.applyEntriesHistogram != nil && len(commands) > 0 {
+		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()),
+			metric.WithAttributes(
+				attribute.Int("commands_count", len(commands)),
+			),
+		)
+	}
+
 	if err != nil {
 		return 0, nil, fmt.Errorf("applying entries to FSM: %w", err)
 	}

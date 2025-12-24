@@ -34,8 +34,12 @@ func (r *multiplexedTransport) Start() {
 			ledgerID := ledgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
 				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.String())
-				r.mainReceptionChannels.recv <- incoming.Msg
-				incoming.Rsp <- nil
+				select {
+				case r.mainReceptionChannels.recv <- incoming.Msg:
+					incoming.Rsp <- nil
+				default:
+					incoming.Rsp <- fmt.Errorf("main transport channel full")
+				}
 				continue
 			}
 
@@ -63,7 +67,12 @@ func (r *multiplexedTransport) Start() {
 		case nodeID := <-r.grpcTransport.Unreachable():
 			ledgerID := ledgerIDFromLedgerNodeID(nodeID)
 			if ledgerID == 0 {
-				r.mainReceptionChannels.unreachable <- nodeID
+				select {
+				case r.mainReceptionChannels.unreachable <- nodeID:
+				default:
+					r.logger.Errorf("Main transport channel full, dropping unreachable")
+				}
+
 				continue
 			}
 

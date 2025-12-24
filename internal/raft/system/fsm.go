@@ -148,37 +148,40 @@ func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error 
 	}
 
 	fsm.mu.Lock()
-	group, exists := fsm.state.Ledgers[deleteCmd.Name]
-	if !exists {
-		fsm.mu.Unlock()
-		fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("WARN: Ledger does not exist")
-		return fmt.Errorf("ledger %s does not exist", deleteCmd.Name)
-	}
-
-	// Get ledger info and mark as deleted
-	ledgerInfo := group.Info()
-	if ledgerInfo.DeletedAt != nil {
+	// Check if already deleted first
+	if _, alreadyDeleted := fsm.state.DeletedLedgers[deleteCmd.Name]; alreadyDeleted {
 		fsm.mu.Unlock()
 		fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger already deleted")
 		return nil // Already deleted, no-op
 	}
 
+	group, exists := fsm.state.Ledgers[deleteCmd.Name]
+	if !exists {
+		fsm.mu.Unlock()
+		fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("WARN: Ledger does not exist")
+		return ledgerpb.NewNotFoundError("ledger %s does not exist", deleteCmd.Name)
+	}
+
+	// Get ledger info and mark as deleted
+	originalLedgerInfo := group.Info()
+
+	// Create a copy of ledger info to avoid modifying the original
+	ledgerInfo := proto.Clone(originalLedgerInfo).(*ledgerpb.LedgerInfo)
+
 	// Set deleted_at timestamp
 	ledgerInfo.DeletedAt = ledgerpb.NewTimestamp(cmd.Date)
 
-	// Store deleted ledger info and remove from active ledgers
+	// Store deleted ledger info
 	fsm.state.DeletedLedgers[deleteCmd.Name] = ledgerInfo
-	fsm.mu.Unlock()
 
-	// Stop the Raft group
-	if err := fsm.stopLedgerRaftGroupSoft(ctx, deleteCmd.Name); err != nil {
-		return err
-	}
-
-	// Remove from active ledgers map
-	fsm.mu.Lock()
+	// Remove from active ledgers map before stopping (to prevent race conditions)
 	delete(fsm.state.Ledgers, deleteCmd.Name)
 	fsm.mu.Unlock()
+
+	// Stop the Raft group (after removing from map to prevent new operations)
+	if err := fsm.stopLedgerRaftGroupSoft(ctx, group); err != nil {
+		return err
+	}
 
 	fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger soft-deleted")
 	return nil
@@ -379,22 +382,18 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.S
 }
 
 // stopLedgerRaftGroupSoft stops a Raft group for a ledger (soft delete)
-func (fsm *FSM) stopLedgerRaftGroupSoft(ctx context.Context, ledgerName string) error {
-	fsm.mu.Lock()
-	group, exists := fsm.state.Ledgers[ledgerName]
-	if !exists {
-		fsm.mu.Unlock()
-		fsm.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("WARN: Ledger Raft group does not exist")
+func (fsm *FSM) stopLedgerRaftGroupSoft(ctx context.Context, group *ledgerraft.Node) error {
+	if group == nil {
+		fsm.logger.Infof("WARN: Ledger Raft group is nil")
 		return nil
 	}
-	fsm.mu.Unlock()
 
-	// Stop the group but keep it in the map
+	// Stop the group
 	if err := group.Stop(ctx); err != nil {
 		return fmt.Errorf("stopping ledger Raft group: %w", err)
 	}
 
-	fsm.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Ledger Raft group stopped (soft delete)")
+	fsm.logger.WithFields(map[string]any{"ledger": group.Info().GetName()}).Infof("Ledger Raft group stopped (soft delete)")
 	return nil
 }
 
