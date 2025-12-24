@@ -136,15 +136,6 @@ persistence:
     whenScaled: Retain
     whenDeleted: Retain
 
-# Extra data volume configuration (second volume for additional data)
-extraData:
-  enabled: false
-  mountPath: /data/extra
-  storageClass: "" # Use default storage class if empty
-  accessMode: ReadWriteOnce
-  size: 10Gi
-  annotations: {}
-
 # Resource limits and requests
 resources:
   limits:

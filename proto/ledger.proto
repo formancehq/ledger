@@ -31,9 +31,9 @@ message Transaction {
   string reference = 4;
   uint64 id = 5;
   bool reverted = 6;
-  Timestamp inserted_at = 7;      // Optional
-  Timestamp updated_at = 8;       // Optional
-  Timestamp reverted_at = 9;      // Optional
+  Timestamp inserted_at = 7;
+  Timestamp updated_at = 8;
+  Timestamp reverted_at = 9;
 }
 
 // TransactionData represents transaction data without ID and timestamps
@@ -99,19 +99,6 @@ message AccountsVolumes {
   string asset = 2;
   string input = 3;   // big.Int as string
   string output = 4;  // big.Int as string
-}
-
-// Move represents a move (input or output) for an account
-message Move {
-  uint64 transaction_id = 1;
-  bool is_source = 2;
-  string account = 3;
-  string amount = 4;                        // big.Int as string
-  string asset = 5;
-  Timestamp insertion_date = 6;
-  Timestamp effective_date = 7;
-  Volumes post_commit_volumes = 8;          // Optional
-  Volumes post_commit_effective_volumes = 9; // Optional
 }
 
 // LedgerService provides ledger operations
@@ -337,5 +324,6 @@ message LedgerInfo {
   map<string, string> metadata = 5;      // Optional metadata
   Timestamp created_at = 6; // Creation timestamp
   uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  Timestamp deleted_at = 8;                 // Deletion timestamp (optional, set when ledger is soft-deleted)
 }
 

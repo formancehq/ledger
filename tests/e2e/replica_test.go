@@ -25,9 +25,9 @@ import (
 var _ = Describe("Simple cluster", func() {
 
 	type serviceWithClient struct {
-		service                   *testservice.Service
-		client                    *client.Formance
-		raftDataDir, extraDataDir string
+		service     *testservice.Service
+		client      *client.Formance
+		raftDataDir string
 	}
 
 	var (
@@ -45,11 +45,6 @@ var _ = Describe("Simple cluster", func() {
 			raftTmpDir := GinkgoT().TempDir()
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
-			})
-
-			extraDataTmpDir := GinkgoT().TempDir()
-			DeferCleanup(func() {
-				Expect(os.RemoveAll(extraDataTmpDir)).To(Succeed())
 			})
 
 			server := testservice.New(cmdserver.NewRootCommand,
@@ -77,7 +72,6 @@ var _ = Describe("Simple cluster", func() {
 
 						return ret
 					}()...),
-					testserver.WithExtraDataDir(extraDataTmpDir),
 				),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
@@ -87,8 +81,7 @@ var _ = Describe("Simple cluster", func() {
 				client: client.New(
 					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9000+i)),
 				),
-				raftDataDir:  raftTmpDir,
-				extraDataDir: extraDataTmpDir,
+				raftDataDir: raftTmpDir,
 			})
 		}
 		Eventually(func(g Gomega) bool {
@@ -347,7 +340,7 @@ var _ = Describe("Simple cluster", func() {
 						}
 
 						// Then verify the follower can see the ledger created while it was down
-						ledgers, err := servers[followerID-1].client.Ledgers.ListAllLedgers(ctx)
+						ledgers, err := servers[followerID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 						g.Expect(err).To(Succeed())
 
 						for _, ledger := range ledgers.ListAllLedgersResponse.Data {

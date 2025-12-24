@@ -15,19 +15,19 @@ import (
 )
 
 // logStoreFactory is a function that creates a LogStore from a JSON config
-type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error)
+type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error)
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
-	"sqlite-mattn": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
+	"sqlite-mattn": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
 		// SQLite DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Mattn driver
-		// Create database file path: extraDataDir/ledger-{id}.db
+		// Create database file path: dataDir/ledger-{id}.db
 		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
-		dbPath := filepath.Join(extraDataDir, dbFileName)
+		dbPath := filepath.Join(dataDir, dbFileName)
 
 		// Ensure the directory exists
-		if err := os.MkdirAll(extraDataDir, 0755); err != nil {
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating directory for sqlite-mattn database: %w", err)
 		}
 
@@ -35,15 +35,15 @@ var logStoreFactories = map[string]logStoreFactory{
 		dsn := dbPath
 		return service.NewSQLiteMattnLogStore(ctx, dsn, logger)
 	},
-	"sqlite-modern": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
+	"sqlite-modern": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
 		// SQLite Modern DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Modern driver
-		// Create database file path: extraDataDir/ledger-{id}.db
+		// Create database file path: dataDir/ledger-{id}.db
 		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
-		dbPath := filepath.Join(extraDataDir, dbFileName)
+		dbPath := filepath.Join(dataDir, dbFileName)
 
 		// Ensure the directory exists
-		if err := os.MkdirAll(extraDataDir, 0755); err != nil {
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating directory for sqlite-modern database: %w", err)
 		}
 
@@ -54,13 +54,13 @@ var logStoreFactories = map[string]logStoreFactory{
 }
 
 // CreateLogStore creates a LogStore based on the ledger driver and config
-func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, extraDataDir string) (service.LogStore, error) {
+func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
 	factory, exists := logStoreFactories[driver]
 	if !exists {
 		return nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
 	}
 
-	store, err := factory(ctx, configJSON, logger, ledgerName, ledgerID, extraDataDir)
+	store, err := factory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
 	}
@@ -89,7 +89,6 @@ func NewNode(
 	transport raft.NodeTransport,
 	cfg raft.NodeConfig,
 	logger logging.Logger,
-	extraDataDir string,
 	recoveryLogReader func(uint64) service.LogReader,
 ) (*Node, error) {
 
@@ -111,7 +110,8 @@ func NewNode(
 	}
 
 	// Create application log store for this ledger based on ledger driver
-	appLogStore, err := CreateLogStore(ctx, ledgerInfo.Driver, configJSON, logger, ledgerInfo.GetName(), ledgerInfo.GetId(), extraDataDir)
+	// Use the same dataDir as the Raft storage (ledger data directory)
+	appLogStore, err := CreateLogStore(ctx, ledgerInfo.Driver, configJSON, logger, ledgerInfo.GetName(), ledgerInfo.GetId(), cfg.DataDir)
 	if err != nil {
 		return nil, err
 	}

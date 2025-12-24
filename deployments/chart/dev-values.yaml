@@ -40,14 +40,6 @@ ingress:
   #     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
   #     traefik.ingress.kubernetes.io/router.tls: "true"
 
-extraData:
-  enabled: true
-  mountPath: /data/extra
-  storageClass: "" # Use default storage class if empty
-  accessMode: ReadWriteOnce
-  size: 10Gi
-  annotations: {}
-
 persistence:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete

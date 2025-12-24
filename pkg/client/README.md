@@ -57,6 +57,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -65,7 +66,7 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.ListAllLedgers(ctx)
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -121,6 +122,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
 	"log"
 	"models/operations"
@@ -131,7 +133,7 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.ListAllLedgers(ctx, operations.WithRetries(
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{}, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
 			Backoff: &retry.BackoffStrategy{
@@ -159,6 +161,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
 	"log"
 )
@@ -180,7 +183,7 @@ func main() {
 			}),
 	)
 
-	res, err := s.Ledgers.ListAllLedgers(ctx)
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -215,6 +218,7 @@ import (
 	"context"
 	"errors"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/sdkerrors"
 	"log"
 )
@@ -224,7 +228,7 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.ListAllLedgers(ctx)
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 	if err != nil {
 
 		var e *sdkerrors.ErrorResponse
@@ -264,6 +268,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -274,7 +279,7 @@ func main() {
 		client.WithServerIndex(1),
 	)
 
-	res, err := s.Ledgers.ListAllLedgers(ctx)
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -294,6 +299,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -304,7 +310,7 @@ func main() {
 		client.WithServerURL("http://node-1:9000"),
 	)
 
-	res, err := s.Ledgers.ListAllLedgers(ctx)
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 	if err != nil {
 		log.Fatal(err)
 	}

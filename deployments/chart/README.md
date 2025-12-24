@@ -265,17 +265,6 @@ curl http://ledger-v3-poc-0.ledger-v3-poc-headless:9000/health
 | `persistence.accessMode` | Access mode | `ReadWriteOnce` |
 | `persistence.size` | Volume size | `10Gi` |
 
-### Extra Data Volume Configuration
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `extraData.enabled` | Enable extra data volume | `false` |
-| `extraData.mountPath` | Mount path for extra data volume | `/data/extra` |
-| `extraData.storageClass` | Storage class name (empty = default) | `` |
-| `extraData.accessMode` | Access mode | `ReadWriteOnce` |
-| `extraData.size` | Volume size | `10Gi` |
-| `extraData.annotations` | Volume annotations | `{}` |
-
 ### Resource Configuration
 
 | Parameter | Description | Default |

@@ -112,7 +112,7 @@ l:
 	return ledgerInfo, nil
 }
 
-// GetLedgerNode returns the ledger node for a given name
+// GetLedgerNode returns the ledger node for a given name (only if not deleted)
 func (node *Node) GetLedgerNode(ctx context.Context, name string) (*ledgerraft.Node, error) {
 	return node.Inner().GetLedger(name)
 }
@@ -159,6 +159,12 @@ func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint6
 	if !ok {
 		return "", 0, ledgerpb.NewNotFoundError("Ledger not found: %s", name)
 	}
+
+	// Check if ledger is deleted (soft delete)
+	if ledgerInfo.DeletedAt != nil {
+		return "", 0, ledgerpb.NewNotFoundError("Ledger %s has been deleted", name)
+	}
+
 	return ledgerInfo.GetName(), ledgerInfo.GetId(), nil
 }
 

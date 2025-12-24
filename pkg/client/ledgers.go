@@ -32,8 +32,8 @@ func newLedgers(rootSDK *Formance, sdkConfig config.SDKConfiguration, hooks *hoo
 }
 
 // ListAllLedgers - List all ledgers
-// Returns a list of all ledgers in the cluster
-func (s *Ledgers) ListAllLedgers(ctx context.Context, opts ...operations.Option) (*operations.ListAllLedgersResponse, error) {
+// Returns a list of all ledgers in the cluster. By default, deleted ledgers are excluded. Use the includeDeleted query parameter to include them.
+func (s *Ledgers) ListAllLedgers(ctx context.Context, request operations.ListAllLedgersRequest, opts ...operations.Option) (*operations.ListAllLedgersResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -84,6 +84,10 @@ func (s *Ledgers) ListAllLedgers(ctx context.Context, opts ...operations.Option)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
+
+	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+		return nil, fmt.Errorf("error populating query params: %w", err)
+	}
 
 	for k, v := range o.SetHeaders {
 		req.Header.Set(k, v)
@@ -261,7 +265,7 @@ func (s *Ledgers) ListAllLedgers(ctx context.Context, opts ...operations.Option)
 }
 
 // GetLedger - Get a ledger
-// Retrieves a ledger by its name
+// Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use the includeDeleted query parameter to retrieve deleted ledgers.
 func (s *Ledgers) GetLedger(ctx context.Context, request operations.GetLedgerRequest, opts ...operations.Option) (*operations.GetLedgerResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
@@ -313,6 +317,10 @@ func (s *Ledgers) GetLedger(ctx context.Context, request operations.GetLedgerReq
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
+
+	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
+		return nil, fmt.Errorf("error populating query params: %w", err)
+	}
 
 	for k, v := range o.SetHeaders {
 		req.Header.Set(k, v)

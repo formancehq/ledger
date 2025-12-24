@@ -206,75 +206,10 @@ func NewRunner(config BenchmarkConfig) *Runner {
 func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Result, error) {
 	results := make(map[string]Result)
 
-	// Start CPU profiling collection if enabled
-	cpuProfileData := make(chan []byte)
-
+	// CPU profiling will be started just before transactions and stopped just after
+	cpuProfileData := make(chan []byte, 1)
 	profilingCtx, profilingCancel := context.WithCancel(ctx)
 	defer profilingCancel() // Ensure cleanup
-
-	if r.config.CPUProfileURL != "" {
-		go func() {
-			r.config.Logger.Infof("Starting CPU profiling collection from %s", r.config.CPUProfileURL)
-
-			// Calculate duration for profile collection (use benchmark duration or default to 30s)
-			profileDuration := 30 * time.Second
-			if r.config.Duration > 0 {
-				profileDuration = r.config.Duration
-			} else if r.config.Iterations > 0 {
-				// If using iterations, estimate duration (will be cancelled when benchmark ends)
-				profileDuration = 5 * time.Minute // Long enough for most benchmarks
-			}
-
-			// Start collecting profile immediately for the duration of the benchmark
-			profileURL := fmt.Sprintf("%s?seconds=%d", r.config.CPUProfileURL, int(profileDuration.Seconds()))
-			client := &http.Client{
-				Timeout: profileDuration + 10*time.Second,
-			}
-
-			// Collect profile in background, will be cancelled when context is done
-			done := make(chan struct{})
-			go func() {
-				resp, err := client.Get(profileURL)
-				if err != nil {
-					select {
-					case <-profilingCtx.Done():
-						// Context cancelled, this is expected
-					default:
-						r.config.Logger.Errorf("Failed to collect CPU profile: %v", err)
-					}
-					close(done)
-					return
-				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode != http.StatusOK {
-					r.config.Logger.Errorf("CPU profile endpoint returned status %d", resp.StatusCode)
-					close(done)
-					return
-				}
-
-				data, err := io.ReadAll(resp.Body)
-				if err != nil {
-					r.config.Logger.Errorf("Failed to read CPU profile: %v", err)
-					close(done)
-					return
-				}
-				cpuProfileData <- data
-
-				r.config.Logger.Infof("Collected CPU profile (%d bytes)", len(cpuProfileData))
-				close(done)
-			}()
-
-			// Wait for either context cancellation or profile collection completion
-			select {
-			case <-profilingCtx.Done():
-				// Benchmark ended, cancel the HTTP request if still running
-				// The HTTP client timeout will handle cleanup
-			case <-done:
-				// Profile collection completed
-			}
-		}()
-	}
 
 	// Load scripts
 	var scriptFactories map[string]ActionProviderFactory
@@ -363,6 +298,65 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 			parallelism = 1
 		}
 
+		// Start CPU profiling just before transactions begin for precise results
+		if r.config.CPUProfileURL != "" {
+			r.config.Logger.Infof("Starting CPU profiling collection from %s", r.config.CPUProfileURL)
+
+			// Calculate duration for profile collection (use benchmark duration + buffer)
+			profileDuration := r.config.Duration
+			if profileDuration <= 0 {
+				// If using iterations, estimate duration (will be cancelled when benchmark ends)
+				profileDuration = 5 * time.Minute // Long enough for most benchmarks
+			}
+			// Add a small buffer to ensure we capture everything
+			profileDuration = profileDuration + 2*time.Second
+
+			// Start collecting profile for the duration of the benchmark
+			// Use a longer duration to ensure we capture everything, we'll stop it manually
+			profileURL := fmt.Sprintf("%s?seconds=%d", r.config.CPUProfileURL, int(profileDuration.Seconds()))
+			client := &http.Client{
+				Timeout: profileDuration + 10*time.Second,
+			}
+
+			// Collect profile in background, will be cancelled when context is done
+			profileStarted := make(chan struct{})
+			go func() {
+				// Signal that we're starting the HTTP request
+				close(profileStarted)
+
+				resp, err := client.Get(profileURL)
+				if err != nil {
+					select {
+					case <-profilingCtx.Done():
+						// Context cancelled, this is expected
+					default:
+						r.config.Logger.Errorf("Failed to collect CPU profile: %v", err)
+					}
+					return
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					r.config.Logger.Errorf("CPU profile endpoint returned status %d", resp.StatusCode)
+					return
+				}
+
+				data, err := io.ReadAll(resp.Body)
+				if err != nil {
+					r.config.Logger.Errorf("Failed to read CPU profile: %v", err)
+					return
+				}
+				cpuProfileData <- data
+
+				r.config.Logger.Infof("Collected CPU profile (%d bytes)", len(data))
+			}()
+
+			// Wait a tiny bit to ensure the HTTP request has been initiated
+			// This ensures profiling starts just before transactions
+			<-profileStarted
+			time.Sleep(50 * time.Millisecond)
+		}
+
 		for i := 0; i < parallelism; i++ {
 			wg.Add(1)
 			go func(workerID int) {
@@ -414,6 +408,12 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 		wg.Wait()
 		report.End = time.Now()
 
+		// Stop CPU profiling immediately after transactions complete
+		if r.config.CPUProfileURL != "" {
+			r.config.Logger.Infof("Stopping CPU profiling collection...")
+			profilingCancel() // Cancel context to stop profiling goroutine
+		}
+
 		// Compute final results
 		result := report.GetResult()
 
@@ -454,22 +454,24 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 		r.config.Logger.Infof("Report written to: %s", r.config.ReportFile)
 	}
 
-	// Stop CPU profiling collection
+	// Wait for CPU profile collection to complete and save it
 	if r.config.CPUProfileURL != "" {
-		r.config.Logger.Infof("Stopping CPU profiling collection...")
-		profilingCancel() // Cancel context to stop profiling goroutine
-		cpuProfileData := <-cpuProfileData
-
-		if len(cpuProfileData) > 0 && r.config.CPUProfileFile != "" {
-			if err := os.MkdirAll(filepath.Dir(r.config.CPUProfileFile), 0755); err != nil {
-				r.config.Logger.Errorf("Failed to create CPU profile directory: %v", err)
-			} else {
-				if err := os.WriteFile(r.config.CPUProfileFile, cpuProfileData, 0644); err != nil {
-					r.config.Logger.Errorf("Failed to write CPU profile: %v", err)
+		// Wait for profile data with timeout
+		select {
+		case cpuProfileData := <-cpuProfileData:
+			if len(cpuProfileData) > 0 && r.config.CPUProfileFile != "" {
+				if err := os.MkdirAll(filepath.Dir(r.config.CPUProfileFile), 0755); err != nil {
+					r.config.Logger.Errorf("Failed to create CPU profile directory: %v", err)
 				} else {
-					r.config.Logger.Infof("CPU profile written to: %s (%d bytes)", r.config.CPUProfileFile, len(cpuProfileData))
+					if err := os.WriteFile(r.config.CPUProfileFile, cpuProfileData, 0644); err != nil {
+						r.config.Logger.Errorf("Failed to write CPU profile: %v", err)
+					} else {
+						r.config.Logger.Infof("CPU profile written to: %s (%d bytes)", r.config.CPUProfileFile, len(cpuProfileData))
+					}
 				}
 			}
+		case <-time.After(5 * time.Second):
+			r.config.Logger.Infof("WARN: Timeout waiting for CPU profile collection")
 		}
 	}
 

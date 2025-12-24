@@ -30,6 +30,7 @@ message LedgerInfo {
   google.protobuf.Struct metadata = 5;      // Optional metadata
   ledger.Timestamp created_at = 6; // Creation timestamp
   uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  ledger.Timestamp deleted_at = 8;          // Deletion timestamp (optional, set when ledger is soft-deleted)
 }
 
 // SystemFSMSnapshot represents the snapshot data for the system FSM

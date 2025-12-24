@@ -119,8 +119,8 @@ type LedgerInfo struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// Number of logs before triggering a snapshot (0 means use global config)
 	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
-	// ID of the last log for this ledger
-	LastLogID *int64 `json:"lastLogId,omitempty"`
+	// Deletion timestamp (ISO 8601 format). Set when the ledger is soft-deleted. Null if the ledger is active.
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 }
 
 func (l LedgerInfo) MarshalJSON() ([]byte, error) {
@@ -183,9 +183,9 @@ func (o *LedgerInfo) GetSnapshotThreshold() *int64 {
 	return o.SnapshotThreshold
 }
 
-func (o *LedgerInfo) GetLastLogID() *int64 {
+func (o *LedgerInfo) GetDeletedAt() *time.Time {
 	if o == nil {
 		return nil
 	}
-	return o.LastLogID
+	return o.DeletedAt
 }

@@ -28,10 +28,18 @@ paths:
   /:
     get:
       summary: List all ledgers
-      description: Returns a list of all ledgers in the cluster
+      description: Returns a list of all ledgers in the cluster. By default, deleted ledgers are excluded. Use the includeDeleted query parameter to include them.
       operationId: listAllLedgers
       tags:
         - Ledgers
+      parameters:
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, includes deleted ledgers in the response
       responses:
         '200':
           description: List of ledgers retrieved successfully
@@ -49,7 +57,7 @@ paths:
   /{ledgerName}:
     get:
       summary: Get a ledger
-      description: Retrieves a ledger by its name
+      description: Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use the includeDeleted query parameter to retrieve deleted ledgers.
       operationId: getLedger
       tags:
         - Ledgers
@@ -60,6 +68,13 @@ paths:
           schema:
             type: string
           description: Name of the ledger to retrieve
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, returns the ledger even if it has been deleted
       responses:
         '200':
           description: Ledger retrieved successfully
@@ -447,7 +462,9 @@ components:
       properties:
         driver:
           type: string
-          enum: [sqlite-mattn, sqlite-modern]
+          enum:
+          - sqlite-modern
+          - sqlite-mattn
           default: sqlite-mattn
           description: |
             Storage driver name (defaults to sqlite-mattn). 
@@ -533,11 +550,11 @@ components:
           type: integer
           format: int64
           description: Number of logs before triggering a snapshot (0 means use global config)
-        lastLogId:
-          type: integer
-          format: int64
-          description: ID of the last log for this ledger
+        deletedAt:
+          type: string
+          format: date-time
           nullable: true
+          description: Deletion timestamp (ISO 8601 format). Set when the ledger is soft-deleted. Null if the ledger is active.
 
     CreateTransactionRequest:
       type: object

@@ -39,15 +39,10 @@ test:
 
 # Clean build artifacts
 clean:
-    rm -f ledger-v3-poc ledger-client
-    rm -rf data/
+    rm -rf data/ client bench server
 
-# Clean data directories (removes all node data)
-clean-data:
-    rm -rf data/node-1/*
-    rm -rf data/node-2/*
-    rm -rf data/node-3/*
-    @echo "Data directories cleaned"
+clean-benchmarks-data:
+    rm -rf build
 
 # Start Docker cluster
 docker-up:

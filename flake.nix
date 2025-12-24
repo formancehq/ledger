@@ -103,6 +103,7 @@
             protoc-gen-go-grpc
             yq-go
             kubernetes-helm
+            python313Packages.matplotlib
           ];
           unstablePackages = with pkgs-unstable; [
             golangci-lint

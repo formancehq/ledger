@@ -24,9 +24,9 @@ import (
 
 var _ = Describe("Ledger Deletion", func() {
 	type serviceWithClient struct {
-		service                   *testservice.Service
-		client                    *client.Formance
-		raftDataDir, extraDataDir string
+		service     *testservice.Service
+		client      *client.Formance
+		raftDataDir string
 	}
 
 	var (
@@ -40,54 +40,47 @@ var _ = Describe("Ledger Deletion", func() {
 
 		servers = make([]serviceWithClient, 0, countInstances)
 		for i := range countInstances {
-			raftTmpDir := GinkgoT().TempDir()
-			DeferCleanup(func() {
-				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
-			})
+		raftTmpDir := GinkgoT().TempDir()
+		DeferCleanup(func() {
+			Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
+		})
 
-			extraDataTmpDir := GinkgoT().TempDir()
-			DeferCleanup(func() {
-				Expect(os.RemoveAll(extraDataTmpDir)).To(Succeed())
-			})
-
-			server := testservice.New(cmdserver.NewRootCommand,
-				testservice.WithInstruments(
-					testserver.WithNodeID(i+1),
-					testserver.WithHTTPPort(9200+i),
-					testserver.WithDataDir(raftTmpDir),
-					testserver.WithGRPCPort(8200+i),
-					testserver.WithSnapshotThreshold(10),
-					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-					testserver.WithRaftTickInterval(10*time.Millisecond),
-					testserver.WithRaftHeartbeatTick(10),
-					testserver.WithRaftElectionTick(100),
-					testserver.WithPeers(func() []raft.Peer {
-						ret := make([]raft.Peer, 0, countInstances-1)
-						for j := range countInstances {
-							if i == j {
-								continue
-							}
-							ret = append(ret, raft.Peer{
-								ID:      uint64(j + 1),
-								Address: fmt.Sprintf("127.0.0.1:%d", 8200+j),
-							})
+		server := testservice.New(cmdserver.NewRootCommand,
+			testservice.WithInstruments(
+				testserver.WithNodeID(i+1),
+				testserver.WithHTTPPort(9200+i),
+				testserver.WithDataDir(raftTmpDir),
+				testserver.WithGRPCPort(8200+i),
+				testserver.WithSnapshotThreshold(10),
+				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+				testserver.WithRaftTickInterval(10*time.Millisecond),
+				testserver.WithRaftHeartbeatTick(10),
+				testserver.WithRaftElectionTick(100),
+				testserver.WithPeers(func() []raft.Peer {
+					ret := make([]raft.Peer, 0, countInstances-1)
+					for j := range countInstances {
+						if i == j {
+							continue
 						}
+						ret = append(ret, raft.Peer{
+							ID:      uint64(j + 1),
+							Address: fmt.Sprintf("127.0.0.1:%d", 8200+j),
+						})
+					}
 
-						return ret
-					}()...),
-					testserver.WithExtraDataDir(extraDataTmpDir),
-				),
-			)
-			Expect(server.Start(ctx)).To(Succeed())
+					return ret
+				}()...),
+			),
+		)
+		Expect(server.Start(ctx)).To(Succeed())
 
-			servers = append(servers, serviceWithClient{
-				service: server,
-				client: client.New(
-					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
-				),
-				raftDataDir:  raftTmpDir,
-				extraDataDir: extraDataTmpDir,
-			})
+		servers = append(servers, serviceWithClient{
+			service: server,
+			client: client.New(
+				client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
+			),
+			raftDataDir: raftTmpDir,
+		})
 		}
 
 		// Wait for leader election
@@ -144,7 +137,7 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
 		})
 
-		It("Should successfully delete the ledger", func() {
+		It("Should successfully delete the ledger (soft delete)", func() {
 			// Delete the ledger
 			resp, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
 				LedgerName: ledgerName,
@@ -152,7 +145,7 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
-			// Verify the ledger no longer exists
+			// Verify the ledger is not accessible by default (soft delete)
 			Eventually(func(g Gomega) bool {
 				_, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
 					LedgerName: ledgerName,
@@ -160,12 +153,38 @@ var _ = Describe("Ledger Deletion", func() {
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
-			// Verify the ledger is not in the list of all ledgers
-			ledgers, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx)
+			// Verify the ledger is not in the list of all ledgers by default
+			ledgers, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 			Expect(err).To(Succeed())
 			for _, ledger := range ledgers.ListAllLedgersResponse.Data {
 				Expect(ledger.Name).NotTo(Equal(ledgerName))
 			}
+
+			// Verify the ledger can be retrieved with includeDeleted=true
+			includeDeleted := true
+			ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+				LedgerName:     ledgerName,
+				IncludeDeleted: &includeDeleted,
+			})
+			Expect(err).To(Succeed())
+			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			Expect(ledger.GetGetLedgerResponse().Data.DeletedAt).NotTo(BeNil())
+
+			// Verify the ledger appears in the list with includeDeleted=true
+			includeDeleted := true
+			ledgersWithDeleted, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{
+				IncludeDeleted: &includeDeleted,
+			})
+			Expect(err).To(Succeed())
+			found := false
+			for _, ledger := range ledgersWithDeleted.ListAllLedgersResponse.Data {
+				if ledger.Name == ledgerName {
+					found = true
+					Expect(ledger.DeletedAt).NotTo(BeNil())
+					break
+				}
+			}
+			Expect(found).To(BeTrue())
 		})
 
 		It("Should propagate deletion to all nodes", func() {
@@ -188,13 +207,31 @@ var _ = Describe("Ledger Deletion", func() {
 				return true
 			}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
-			// Verify all nodes don't have the ledger in their list
+			// Verify all nodes don't have the ledger in their list by default
 			for i := range countInstances {
-				ledgers, err := servers[i].client.Ledgers.ListAllLedgers(ctx)
+				ledgers, err := servers[i].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
 				Expect(err).To(Succeed())
 				for _, ledger := range ledgers.ListAllLedgersResponse.Data {
 					Expect(ledger.Name).NotTo(Equal(ledgerName))
 				}
+			}
+
+			// Verify all nodes can see the deleted ledger with includeDeleted=true
+			includeDeleted := true
+			for i := range countInstances {
+				ledgers, err := servers[i].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{
+					IncludeDeleted: &includeDeleted,
+				})
+				Expect(err).To(Succeed())
+				found := false
+				for _, ledger := range ledgers.ListAllLedgersResponse.Data {
+					if ledger.Name == ledgerName {
+						found = true
+						Expect(ledger.DeletedAt).NotTo(BeNil())
+						break
+					}
+				}
+				Expect(found).To(BeTrue())
 			}
 		})
 

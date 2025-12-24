@@ -1,3 +1,0 @@
-FROM golang:1.25-alpine
-RUN apk add --no-cache --update go gcc g++ make build-base
-ENV CGO_ENABLED=1

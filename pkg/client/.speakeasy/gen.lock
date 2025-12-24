@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 241335c472c5037f618344e710e1bf56
+  docChecksum: 09b546361daa618ab9d862d8ad4ac094
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.23
-  configChecksum: 99a6af85bf048b71b5a7769b3776fa25
+  releaseVersion: 0.11.25
+  configChecksum: a4b79bb96bcce50d1ae74e14362a3e3e
 features:
   go:
     additionalDependencies: 0.1.0
@@ -133,6 +133,7 @@ generatedFiles:
   - docs/models/operations/getledgerraftstateresponse.md
   - docs/models/operations/getledgerrequest.md
   - docs/models/operations/getledgerresponse.md
+  - docs/models/operations/listallledgersrequest.md
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/option.md
   - docs/models/operations/saveaccountmetadatarequest.md
@@ -171,6 +172,9 @@ generatedFiles:
 examples:
   listAllLedgers:
     speakeasy-default-list-all-ledgers:
+      parameters:
+        query:
+          includeDeleted: false
       responses:
         "200":
           application/json: {"data": []}
@@ -181,6 +185,8 @@ examples:
       parameters:
         path:
           ledgerName: "<value>"
+        query:
+          includeDeleted: false
       responses:
         "200":
           application/json: {"data": {"id": 427403, "name": "<value>", "driver": "sqlite-mattn", "config": {}, "createdAt": "2025-04-04T05:10:16.528Z"}}

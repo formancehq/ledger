@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -92,12 +93,16 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 		}
 	}
 	if len(logs) > 0 {
-		f.logger.
-			WithFields(map[string]any{"count": len(logs)}).
-			Infof("Log stored in memory and persisted to store via FSM")
+		now := time.Now()
 		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
 			return nil, err
 		}
+		f.logger.
+			WithFields(map[string]any{
+				"count":   len(logs),
+				"latency": time.Since(now),
+			}).
+			Infof("Log stored in memory and persisted to store via FSM")
 	}
 
 	return ret, nil

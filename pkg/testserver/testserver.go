@@ -105,10 +105,3 @@ func WithDebug(v bool) testservice.InstrumentationFunc {
 		return nil
 	}
 }
-
-func WithExtraDataDir(dir string) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--extra-data-dir", dir)
-		return nil
-	}
-}

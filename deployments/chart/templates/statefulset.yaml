@@ -127,17 +127,10 @@ spec:
           exec ./ledger-v3-poc \
             --node-id $NODE_ID \
             --advertise-addr "$ADVERTISE_ADDR" \
-            {{- if .Values.extraData.enabled }}
-            --extra-data-dir {{ .Values.extraData.mountPath }} \
-            {{- end }}
             $PEERS_LIST
         volumeMounts:
         - name: data
           mountPath: {{ .Values.config.dataDir }}
-        {{- if .Values.extraData.enabled }}
-        - name: extra-data
-          mountPath: {{ .Values.extraData.mountPath }}
-        {{- end }}
         {{- with .Values.livenessProbe }}
         livenessProbe:
           {{- toYaml . | nindent 10 }}
@@ -177,22 +170,5 @@ spec:
       resources:
         requests:
           storage: {{ .Values.persistence.size }}
-  {{- end }}
-  {{- if .Values.extraData.enabled }}
-  - metadata:
-      name: extra-data
-      {{- with .Values.extraData.annotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-    spec:
-      accessModes:
-        - {{ .Values.extraData.accessMode }}
-      {{- if .Values.extraData.storageClass }}
-      storageClassName: {{ .Values.extraData.storageClass }}
-      {{- end }}
-      resources:
-        requests:
-          storage: {{ .Values.extraData.size }}
   {{- end }}
 

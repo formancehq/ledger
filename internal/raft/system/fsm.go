@@ -19,8 +19,9 @@ import (
 
 // State represents the state of the system FSM
 type State struct {
-	NextLedgerID uint64                      // Next sequential ledger ID
-	Ledgers      map[string]*ledgerraft.Node // Map of ledger name -> ledger node
+	NextLedgerID   uint64                          // Next sequential ledger ID
+	Ledgers        map[string]*ledgerraft.Node     // Map of ledger name -> ledger node
+	DeletedLedgers map[string]*ledgerpb.LedgerInfo // Map of deleted ledger name -> ledger info (for soft delete)
 }
 
 // FSM implements the raft.FSM interface
@@ -39,8 +40,9 @@ func newFSM(
 ) *FSM {
 	return &FSM{
 		state: State{
-			Ledgers:      make(map[string]*ledgerraft.Node),
-			NextLedgerID: 1, // Start at 1, first ledger will have ID 1
+			Ledgers:        make(map[string]*ledgerraft.Node),
+			DeletedLedgers: make(map[string]*ledgerpb.LedgerInfo),
+			NextLedgerID:   1, // Start at 1, first ledger will have ID 1
 		},
 		logger:               logger,
 		raftConfig:           raftConfig,
@@ -94,6 +96,11 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 		fsm.mu.Unlock()
 		return nil, fmt.Errorf("ledger already exists: %s", createCmd.Name)
 	}
+	// Check if ledger was previously deleted (soft delete)
+	if deletedInfo, exists := fsm.state.DeletedLedgers[createCmd.Name]; exists {
+		fsm.mu.Unlock()
+		return nil, fmt.Errorf("ledger %s was deleted at %v and cannot be recreated", createCmd.Name, deletedInfo.DeletedAt)
+	}
 
 	// Assign sequential ledger ID
 	ledgerID := fsm.state.NextLedgerID
@@ -128,7 +135,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 	return ledgerInfo, nil
 }
 
-// handleDeleteLedger handles the delete ledger command
+// handleDeleteLedger handles the delete ledger command (soft delete)
 func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error {
 	var deleteCmd DeleteLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
@@ -136,11 +143,40 @@ func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error 
 		return fmt.Errorf("unmarshaling delete ledger command: %w", err)
 	}
 
-	if err := fsm.stopLedgerRaftGroup(ctx, deleteCmd.Name); err != nil {
+	fsm.mu.Lock()
+	group, exists := fsm.state.Ledgers[deleteCmd.Name]
+	if !exists {
+		fsm.mu.Unlock()
+		fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("WARN: Ledger does not exist")
+		return fmt.Errorf("ledger %s does not exist", deleteCmd.Name)
+	}
+
+	// Get ledger info and mark as deleted
+	ledgerInfo := group.Info()
+	if ledgerInfo.DeletedAt != nil {
+		fsm.mu.Unlock()
+		fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger already deleted")
+		return nil // Already deleted, no-op
+	}
+
+	// Set deleted_at timestamp
+	ledgerInfo.DeletedAt = ledgerpb.NewTimestamp(cmd.Date)
+
+	// Store deleted ledger info and remove from active ledgers
+	fsm.state.DeletedLedgers[deleteCmd.Name] = ledgerInfo
+	fsm.mu.Unlock()
+
+	// Stop the Raft group
+	if err := fsm.stopLedgerRaftGroupSoft(ctx, deleteCmd.Name); err != nil {
 		return err
 	}
 
-	fsm.logger.Infof("Ledger deleted")
+	// Remove from active ledgers map
+	fsm.mu.Lock()
+	delete(fsm.state.Ledgers, deleteCmd.Name)
+	fsm.mu.Unlock()
+
+	fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger soft-deleted")
 	return nil
 }
 
@@ -173,27 +209,36 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]r
 	return ret, nil
 }
 
-// GetLedger returns the ledger node for a given name
+// GetLedger returns the ledger node for a given name (including deleted ledgers)
 func (fsm *FSM) GetLedger(name string) (*ledgerraft.Node, error) {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
 	ledgerNode, ok := fsm.state.Ledgers[name]
 	if !ok {
+		// Check if ledger was deleted
+		if _, deleted := fsm.state.DeletedLedgers[name]; deleted {
+			return nil, ledgerpb.NewNotFoundError("ledger %s has been deleted", name)
+		}
 		return nil, ledgerpb.NewNotFoundError("ledger %s does not exist", name)
 	}
 	return ledgerNode, nil
 }
 
-// GetAllLedgers returns all ledgers
+// GetAllLedgers returns all ledgers (including deleted ones)
 func (fsm *FSM) GetAllLedgers() map[string]*ledgerpb.LedgerInfo {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
 	// Return a copy to avoid external modifications
-	result := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers))
+	// Include both active and deleted ledgers
+	result := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers)+len(fsm.state.DeletedLedgers))
 	for k, v := range fsm.state.Ledgers {
 		result[k] = v.Info()
+	}
+	// Add deleted ledgers
+	for k, v := range fsm.state.DeletedLedgers {
+		result[k] = v
 	}
 	return result
 }
@@ -204,7 +249,8 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 	defer fsm.mu.RUnlock()
 
 	// Ledgers are already in protobuf format
-	ledgersProto := make(map[string]*LedgerInfo, len(fsm.state.Ledgers))
+	// Include both active and deleted ledgers in snapshot
+	ledgersProto := make(map[string]*LedgerInfo, len(fsm.state.Ledgers)+len(fsm.state.DeletedLedgers))
 	for name, node := range fsm.state.Ledgers {
 		ledgerInfo := node.Info()
 		// Convert from ledgerpb.LedgerInfo to system.LedgerInfo (both are protobuf but different packages)
@@ -220,6 +266,24 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 			Metadata:          metadata,
 			CreatedAt:         ledgerInfo.CreatedAt,
 			SnapshotThreshold: ledgerInfo.SnapshotThreshold,
+			DeletedAt:         ledgerInfo.DeletedAt,
+		}
+	}
+	// Add deleted ledgers to snapshot
+	for name, ledgerInfo := range fsm.state.DeletedLedgers {
+		var metadata *structpb.Struct
+		if len(ledgerInfo.Metadata) > 0 {
+			metadata, _ = ledgerpb.MetadataToStruct(ledgerInfo.Metadata)
+		}
+		ledgersProto[name] = &LedgerInfo{
+			Id:                ledgerInfo.Id,
+			Name:              ledgerInfo.Name,
+			Driver:            ledgerInfo.Driver,
+			Config:            ledgerInfo.Config,
+			Metadata:          metadata,
+			CreatedAt:         ledgerInfo.CreatedAt,
+			SnapshotThreshold: ledgerInfo.SnapshotThreshold,
+			DeletedAt:         ledgerInfo.DeletedAt,
 		}
 	}
 
@@ -275,6 +339,7 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.S
 			Metadata:          metadata,
 			CreatedAt:         ledgerProto.CreatedAt,
 			SnapshotThreshold: ledgerProto.SnapshotThreshold,
+			DeletedAt:         ledgerProto.DeletedAt,
 		}
 	}
 
@@ -282,7 +347,20 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.S
 	fsm.state.Ledgers = make(map[string]*ledgerraft.Node, len(ledgers))
 	fsm.mu.Unlock()
 
+	fsm.mu.Lock()
+	fsm.state.DeletedLedgers = make(map[string]*ledgerpb.LedgerInfo)
+	fsm.mu.Unlock()
+
 	for _, ledgerInfo := range ledgers {
+		// Don't start Raft groups for deleted ledgers (soft delete)
+		if ledgerInfo.DeletedAt != nil {
+			fsm.logger.WithFields(map[string]any{"ledger": ledgerInfo.GetName()}).Infof("Skipping deleted ledger during snapshot restore")
+			// Store deleted ledger info
+			fsm.mu.Lock()
+			fsm.state.DeletedLedgers[ledgerInfo.Name] = ledgerInfo
+			fsm.mu.Unlock()
+			continue
+		}
 		err := fsm.startLedgerRaftGroupFromFSM(ctx, ledgerInfo)
 		if err != nil {
 			panic(err)
@@ -296,8 +374,8 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.S
 	fsm.logger.Infof("FSM restored from snapshot")
 }
 
-// stopLedgerRaftGroup stops a Raft group for a ledger
-func (fsm *FSM) stopLedgerRaftGroup(ctx context.Context, ledgerName string) error {
+// stopLedgerRaftGroupSoft stops a Raft group for a ledger (soft delete)
+func (fsm *FSM) stopLedgerRaftGroupSoft(ctx context.Context, ledgerName string) error {
 	fsm.mu.Lock()
 	group, exists := fsm.state.Ledgers[ledgerName]
 	if !exists {
@@ -307,17 +385,12 @@ func (fsm *FSM) stopLedgerRaftGroup(ctx context.Context, ledgerName string) erro
 	}
 	fsm.mu.Unlock()
 
-	// Stop the group
+	// Stop the group but keep it in the map
 	if err := group.Stop(ctx); err != nil {
 		return fmt.Errorf("stopping ledger Raft group: %w", err)
 	}
 
-	// Remove from map
-	fsm.mu.Lock()
-	delete(fsm.state.Ledgers, ledgerName)
-	fsm.mu.Unlock()
-
-	fsm.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Ledger Raft group stopped")
+	fsm.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Ledger Raft group stopped (soft delete)")
 	return nil
 }
 
@@ -356,6 +429,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 	}
 
 	logger.Infof("Creating node...")
+	ledgerDataDir := filepath.Join(fsm.raftConfig.DataDir, "ledgers", ledgerInfo.Name)
 	group, err := ledgerraft.NewNode(
 		ctx,
 		ledgerInfo,
@@ -368,7 +442,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 					Address: from.Address,
 				}
 			}),
-			DataDir:           filepath.Join(fsm.raftConfig.DataDir, "ledgers", ledgerInfo.Name),
+			DataDir:           ledgerDataDir,
 			SnapshotThreshold: snapshotThreshold,
 			SnapshotInterval:  fsm.raftConfig.SnapshotInterval,
 			ElectionTick:      fsm.raftConfig.ElectionTick,
@@ -378,7 +452,6 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 			TickInterval:      fsm.raftConfig.TickInterval,
 		},
 		logger,
-		fsm.raftConfig.ExtraDataDir,
 		func(peerID uint64) service.LogReader {
 			return service.LogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
 

@@ -4,7 +4,8 @@ services:
   node-1:
     build:
       context: .
-      dockerfile: Dockerfile.build-image
+      dockerfile: Dockerfile
+      target: compiler
     working_dir: /app
     environment:
       - NODE_ID=1
@@ -12,6 +13,7 @@ services:
       - PEERS=2/node-2:8888 3/node-3:8888
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
+      - GOEXPERIMENT=jsonv2
     ports:
       - "8888:8888"
       - "9000:9000"
@@ -32,7 +34,8 @@ services:
   node-2:
     build:
       context: .
-      dockerfile: Dockerfile.build-image
+      dockerfile: Dockerfile
+      target: compiler
     working_dir: /app
     environment:
       - NODE_ID=2
@@ -40,6 +43,7 @@ services:
       - PEERS=1/node-1:8888 3/node-3:8888
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
+      - GOEXPERIMENT=jsonv2
     ports:
       - "8889:8888"
       - "9001:9000"
@@ -60,7 +64,8 @@ services:
   node-3:
     build:
       context: .
-      dockerfile: Dockerfile.build-image
+      dockerfile: Dockerfile
+      target: compiler
     working_dir: /app
     environment:
       - NODE_ID=3
@@ -68,6 +73,7 @@ services:
       - PEERS=1/node-1:8888 2/node-2:8888
       - DEBUG=${DEBUG:-false}
       - CGO_ENABLED=1
+      - GOEXPERIMENT=jsonv2
     ports:
       - "8890:8888"
       - "9002:9000"

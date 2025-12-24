@@ -58,6 +58,36 @@ Ledger management commands are separated into individual files:
 - **`common.go`** : Shared functions (SDK client creation, debug HTTP client)
 - **`cluster.go`** : Raft cluster-related commands (`snapshot`, `cluster-state`)
 
+### Scripts Directory
+
+Utility scripts are located in the `scripts/` directory at the project root:
+
+- **`scripts/compare-storage.sh`** : Script to compare different storage drivers by running benchmarks on each driver and comparing CPU profiles. This script:
+  - Checks and starts docker-compose if necessary
+  - Creates a ledger for each storage driver (sqlite-mattn, sqlite-modern)
+  - Runs benchmarks with CPU profiling enabled
+  - Deletes ledgers after each benchmark
+  - Compares CPU profiles using `go tool pprof`
+  - Stores all results in the `build/` directory (which is gitignored)
+  
+  Usage:
+  ```bash
+  ./scripts/compare-storage.sh
+  ```
+  
+  See `cmd/bench/STORAGE_COMPARISON.md` for detailed documentation.
+
+### Build Directory
+
+All generated files and build artifacts are stored in the `build/` directory at the project root. This directory is gitignored and contains:
+
+- **`build/storage-comparison-results/`** : Results from storage comparison benchmarks, including:
+  - CPU profiles (`profiles/*.prof`)
+  - Benchmark reports (`*-report.json`)
+  - Comparison reports (`profile-comparison.txt`)
+
+Any script or tool that generates files should place them in the `build/` directory to keep the repository clean.
+
 ### HTTP Handlers
 
 HTTP handlers are organized into separate files, with **one handler per file**. This convention ensures clear separation of concerns and makes it easy to locate and maintain individual handlers.

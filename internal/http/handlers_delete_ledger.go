@@ -25,4 +25,3 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 	// Return 204 No Content on successful deletion
 	w.WriteHeader(http.StatusNoContent)
 }
-

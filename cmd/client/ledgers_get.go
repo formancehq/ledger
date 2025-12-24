@@ -8,18 +8,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var getLedgerName string
+var (
+	getLedgerName           string
+	getLedgerIncludeDeleted bool
+)
 
 var ledgersGetCmd = &cobra.Command{
 	Use:          "get",
 	Short:        "Get a ledger",
-	Long:         "Retrieves a ledger by its name",
+	Long:         "Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use --include-deleted to retrieve deleted ledgers.",
 	RunE:         runGetLedger,
 	SilenceUsage: true,
 }
 
 func init() {
 	ledgersGetCmd.Flags().StringVar(&getLedgerName, "name", "", "Ledger name (required)")
+	ledgersGetCmd.Flags().BoolVar(&getLedgerIncludeDeleted, "include-deleted", false, "Include deleted ledgers")
 	if err := ledgersGetCmd.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
@@ -38,8 +42,13 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	sdk := newSDKClient()
 
 	// Get ledger request
+	var includeDeletedPtr *bool
+	if getLedgerIncludeDeleted {
+		includeDeletedPtr = &getLedgerIncludeDeleted
+	}
 	req := operations.GetLedgerRequest{
-		LedgerName: getLedgerName,
+		LedgerName:     getLedgerName,
+		IncludeDeleted: includeDeletedPtr,
 	}
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledger...")
@@ -67,8 +76,8 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	panelData += fmt.Sprintf("Name: %s\n", data.Name)
 	panelData += fmt.Sprintf("Driver: %s\n", string(data.Driver))
 	panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
-	if data.LastLogID != nil {
-		panelData += fmt.Sprintf("Last Log ID: %d\n", *data.LastLogID)
+	if data.DeletedAt != nil {
+		panelData += fmt.Sprintf("Deleted At: %s\n", data.DeletedAt.Format("2006-01-02 15:04:05"))
 	}
 	if len(data.Metadata) > 0 {
 		panelData += "\nMetadata:\n"

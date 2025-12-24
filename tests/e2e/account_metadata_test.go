@@ -24,9 +24,9 @@ import (
 
 var _ = Describe("Account Metadata", func() {
 	type serviceWithClient struct {
-		service                   *testservice.Service
-		client                    *client.Formance
-		raftDataDir, extraDataDir string
+		service     *testservice.Service
+		client      *client.Formance
+		raftDataDir string
 	}
 
 	var (
@@ -43,11 +43,6 @@ var _ = Describe("Account Metadata", func() {
 			raftTmpDir := GinkgoT().TempDir()
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
-			})
-
-			extraDataTmpDir := GinkgoT().TempDir()
-			DeferCleanup(func() {
-				Expect(os.RemoveAll(extraDataTmpDir)).To(Succeed())
 			})
 
 			server := testservice.New(cmdserver.NewRootCommand,
@@ -75,7 +70,6 @@ var _ = Describe("Account Metadata", func() {
 
 						return ret
 					}()...),
-					testserver.WithExtraDataDir(extraDataTmpDir),
 				),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
@@ -85,8 +79,7 @@ var _ = Describe("Account Metadata", func() {
 				client: client.New(
 					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9100+i)),
 				),
-				raftDataDir:  raftTmpDir,
-				extraDataDir: extraDataTmpDir,
+				raftDataDir: raftTmpDir,
 			})
 		}
 
