@@ -8,21 +8,21 @@ receivers:
 
 processors:
   batch:
+    timeout: 1s
+    send_batch_size: 1024
+  memory_limiter:
+    limit_mib: 512
+    check_interval: 1s
 
 exporters:
-  #debug:
-  #  verbosity: detailed
-  otlp/signoz:
-    endpoint: signoz:4317
-    tls:
-      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      source: "otel-collector"
 
 service:
   pipelines:
-    traces:
+    metrics:
       receivers: [otlp]
-      processors: [batch]
-      exporters:
-      #- debug
-      - otlp/signoz
-
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

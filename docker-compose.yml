@@ -1,6 +1,40 @@
 
-
 services:
+  # OpenTelemetry collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./deployments/otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver
+      - "4318:4318"  # OTLP HTTP receiver
+    networks:
+      - raft-network
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - raft-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 10s
+
+  # Ledger nodes
   node-1:
     build:
       context: .
@@ -15,6 +49,12 @@ services:
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
       - OTEL_METRICS_KEEP_IN_MEMORY=true
+      # OpenTelemetry configuration
+      - OTEL_SERVICE_NAME=ledger-v3-poc-node-1
+      - OTEL_METRICS_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
+      - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
+      - OTEL_METRICS_EXPORTER=otlp
     ports:
       - "8888:8888"
       - "9000:9000"
@@ -24,6 +64,8 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
+    depends_on:
+      - otel-collector
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
       interval: 5s
@@ -46,6 +88,12 @@ services:
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
       - OTEL_METRICS_KEEP_IN_MEMORY=true
+      # OpenTelemetry configuration
+      - OTEL_SERVICE_NAME=ledger-v3-poc-node-2
+      - OTEL_METRICS_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
     ports:
       - "8889:8888"
       - "9001:9000"
@@ -55,6 +103,8 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
+    depends_on:
+      - otel-collector
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
       interval: 5s
@@ -77,6 +127,12 @@ services:
       - CGO_ENABLED=1
       - GOEXPERIMENT=jsonv2
       - OTEL_METRICS_KEEP_IN_MEMORY=true
+      # OpenTelemetry configuration
+      - OTEL_SERVICE_NAME=ledger-v3-poc-node-3
+      - OTEL_METRICS_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
     ports:
       - "8890:8888"
       - "9002:9000"
@@ -86,6 +142,8 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
+    depends_on:
+      - otel-collector
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
       interval: 5s
@@ -100,4 +158,4 @@ networks:
 
 volumes:
   go-mod-cache:
-
+  prometheus-data:

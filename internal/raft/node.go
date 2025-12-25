@@ -237,7 +237,7 @@ func (node *Node[State, F]) readyLoop() {
 	}
 	confState = &initialConfState
 
-	processingTick := time.NewTicker(tickInterval / 5) // todo: make configurable
+	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
 
 	for {
 		select {
