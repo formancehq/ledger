@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSQLiteLogStoreIntegration(t *testing.T) {
+func TestSQLiteLogStoreModernIntegration(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -25,7 +25,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("InsertLogs", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 
 		testLogs := createTestLogs(t, ledgerName)
 		err := store.InsertLogs(ctx, testLogs...)
@@ -34,7 +34,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("GetLogWithIdempotencyKey", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 
 		testLogs := createTestLogs(t, ledgerName)
 		err := store.InsertLogs(ctx, testLogs...)
@@ -54,7 +54,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("GetLastLog", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 
 		testLogs := createTestLogs(t, ledgerName)
 		err := store.InsertLogs(ctx, testLogs...)
@@ -75,7 +75,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("GetAllLogs", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 
 		testLogs := createTestLogs(t, ledgerName)
 		err := store.InsertLogs(ctx, testLogs...)
@@ -110,7 +110,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("InsertLogsEmpty", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 
 		err := store.InsertLogs(ctx)
 		require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("BalancesCalculation", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 		testLogs := createTestLogs(t, ledgerName)
 
 		// Insert logs
@@ -138,7 +138,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("GetAccountMetadata", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 		testLogs := createTestLogs(t, ledgerName)
 
 		// Insert logs
@@ -181,7 +181,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 	t.Run("GetAccountMetadataWithMergeAndDelete", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
+		store := createSQLiteModernStore(t)
 		now := libtime.New(time.Now())
 
 		// Create logs with account metadata
@@ -254,13 +254,14 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 
 }
 
-func createSQLiteStore(t *testing.T) *SQLiteMattnLogStore {
+func createSQLiteModernStore(t *testing.T) *SQLiteModernLogStore {
 	tmpDir := t.TempDir()
-	dsn := fmt.Sprintf("file:%s/test.db?mode=memory&cache=shared", tmpDir)
+	dsn := fmt.Sprintf("file:%s/test.db", tmpDir)
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	store, err := NewSQLiteMattnLogStore(ctx, dsn, logger)
+	store, err := NewSQLiteModernLogStore(ctx, dsn, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+
 	return store
 }

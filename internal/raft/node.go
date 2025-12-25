@@ -26,20 +26,22 @@ type NodeTransport interface {
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node[State any, F FSM[State]] struct {
-	rawNode               *raft.RawNode
-	logger                logging.Logger
-	meter                 metric.Meter
-	applyEntriesHistogram metric.Float64Histogram
-	mu                    sync.RWMutex
-	futures               map[uint64]*applyFuture // Map of command ID -> future
-	fsmSyncer             *syncer[State, F]
-	storage               *WALStorage
-	transport             NodeTransport
-	config                NodeConfig
-	stopped               chan struct{}
-	ctx                   context.Context
-	cancel                func()
-	proposeCh             chan []byte
+	rawNode                        *raft.RawNode
+	logger                         logging.Logger
+	meter                          metric.Meter
+	applyEntriesHistogram          metric.Float64Histogram
+	applyEntriesBatchSizeCounter   metric.Int64Counter
+	applyEntriesBatchSizeHistogram metric.Int64Histogram
+	mu                             sync.RWMutex
+	futures                        map[uint64]*applyFuture // Map of command ID -> future
+	fsmSyncer                      *syncer[State, F]
+	storage                        *WALStorage
+	transport                      NodeTransport
+	config                         NodeConfig
+	stopped                        chan struct{}
+	ctx                            context.Context
+	cancel                         func()
+	proposeCh                      chan []byte
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -103,6 +105,28 @@ func NewNode[State any, F FSM[State]](
 		)
 		if err == nil {
 			node.applyEntriesHistogram = histogram
+		}
+
+		// Create counter metric for ApplyEntries batch size
+		counter, err := meter.Int64Counter("raft.apply_entries.batch_size",
+			metric.WithDescription("Size of batches passed to ApplyEntries"),
+			metric.WithUnit("1"),
+		)
+		if err == nil {
+			node.applyEntriesBatchSizeCounter = counter
+		}
+
+		// Create histogram metric for ApplyEntries batch size distribution
+		// Buckets: 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000+
+		batchSizeHistogram, err := meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
+			metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
+			metric.WithUnit("1"),
+			metric.WithExplicitBucketBoundaries(
+				1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000,
+			),
+		)
+		if err == nil {
+			node.applyEntriesBatchSizeHistogram = batchSizeHistogram
 		}
 	}
 
@@ -213,7 +237,8 @@ func (node *Node[State, F]) readyLoop() {
 	}
 	confState = &initialConfState
 
-	processingTick := time.NewTicker(tickInterval / 10)
+	processingTick := time.NewTicker(tickInterval / 5) // todo: make configurable
+
 	for {
 		select {
 		case <-ticker.C:
@@ -236,26 +261,12 @@ func (node *Node[State, F]) readyLoop() {
 			if err := node.rawNode.Propose(cmd); err != nil {
 				panic(err)
 			}
-
-			// todo: try to drain more
-			until := time.After(20 * time.Millisecond)
-		l:
-			for {
-				select {
-				case <-until:
-					break l
-				case cmd := <-node.proposeCh:
-					if err := node.rawNode.Propose(cmd); err != nil {
-						panic(err)
-					}
-				}
-			}
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
 				leader, confState, err = node.processReady(node.ctx, leader, confState)
 				if err != nil {
 					if !errors.Is(err, context.Canceled) {
-						break
+						panic(err)
 					}
 				}
 			}
@@ -361,13 +372,29 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 	results, err := node.fsmSyncer.ApplyEntries(node.ctx, commands...)
 	duration := time.Since(start)
 
+	batchSize := int64(len(commands))
+
 	// Record metric if histogram is available and we have commands
-	if node.applyEntriesHistogram != nil && len(commands) > 0 {
+	if node.applyEntriesHistogram != nil && batchSize > 0 {
 		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()),
 			metric.WithAttributes(
 				attribute.Int("commands_count", len(commands)),
 			),
 		)
+	}
+
+	// Record batch size counter if available
+	if node.applyEntriesBatchSizeCounter != nil && batchSize > 0 {
+		node.applyEntriesBatchSizeCounter.Add(ctx, batchSize,
+			metric.WithAttributes(
+				attribute.Int("batch_size", len(commands)),
+			),
+		)
+	}
+
+	// Record batch size histogram if available
+	if node.applyEntriesBatchSizeHistogram != nil && batchSize > 0 {
+		node.applyEntriesBatchSizeHistogram.Record(ctx, batchSize)
 	}
 
 	if err != nil {

@@ -49,7 +49,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		}
 
 		// Use sqlite driver (modernc.org/sqlite)
-		dsn := fmt.Sprintf("file:%s?mode=rwc", dbPath)
+		dsn := fmt.Sprintf("file:%s", dbPath)
 		return service.NewSQLiteModernLogStore(ctx, dsn, logger)
 	},
 }

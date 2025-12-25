@@ -47,10 +47,13 @@ type sqliteMattnLogCursor struct {
 // NewSQLiteMattnLogStore creates a new SQLite log store using github.com/mattn/go-sqlite3
 func NewSQLiteMattnLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteMattnLogStore, error) {
 	// Open SQLite database using sqlite3 driver
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite3", dsn+
+		"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=-32768&_temp_store=MEMORY&_busy_timeout=5000&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	store := &SQLiteMattnLogStore{
 		db:     db,

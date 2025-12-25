@@ -367,107 +367,6 @@ compare_cpu_profiles() {
     echo "  go tool pprof -http=:8080 -base=${baseline} ${profiles[1]}"
 }
 
-# Generate TPS comparison chart
-generate_tps_chart() {
-    log_info "Generating TPS comparison chart..."
-    
-    local chart_script="${SCRIPT_DIR}/generate_tps_chart.py"
-    local chart_output="${RESULTS_DIR}/tps-comparison.png"
-    
-    if [ ! -f "${chart_script}" ]; then
-        log_warning "Chart generation script not found: ${chart_script}"
-        return 1
-    fi
-    
-    # Check if Python is available
-    if ! command -v python3 >/dev/null 2>&1; then
-        log_warning "python3 not found, skipping chart generation"
-        return 1
-    fi
-    
-    # Check if matplotlib is available
-    if ! python3 -c "import matplotlib" >/dev/null 2>&1; then
-        log_warning "matplotlib not installed, skipping chart generation"
-        log_info "Install matplotlib with: pip install matplotlib"
-        return 1
-    fi
-    
-    if python3 "${chart_script}" "${RESULTS_DIR}" "${chart_output}"; then
-        log_success "TPS comparison chart generated: ${chart_output}"
-        return 0
-    else
-        log_warning "Failed to generate TPS comparison chart"
-        return 1
-    fi
-}
-
-# Generate percentiles comparison chart
-generate_percentiles_chart() {
-    log_info "Generating percentiles comparison chart..."
-    
-    local chart_script="${SCRIPT_DIR}/generate_percentiles_chart.py"
-    local chart_output="${RESULTS_DIR}/percentiles-comparison.png"
-    
-    if [ ! -f "${chart_script}" ]; then
-        log_warning "Percentiles chart generation script not found: ${chart_script}"
-        return 1
-    fi
-    
-    # Check if Python is available
-    if ! command -v python3 >/dev/null 2>&1; then
-        log_warning "python3 not found, skipping percentiles chart generation"
-        return 1
-    fi
-    
-    # Check if matplotlib and numpy are available
-    if ! python3 -c "import matplotlib, numpy" >/dev/null 2>&1; then
-        log_warning "matplotlib or numpy not installed, skipping percentiles chart generation"
-        log_info "Install dependencies with: pip install matplotlib numpy"
-        return 1
-    fi
-    
-    if python3 "${chart_script}" "${RESULTS_DIR}" "${chart_output}"; then
-        log_success "Percentiles comparison chart generated: ${chart_output}"
-        return 0
-    else
-        log_warning "Failed to generate percentiles comparison chart"
-        return 1
-    fi
-}
-
-# Generate ApplyEntries histogram chart
-generate_apply_entries_histogram() {
-    log_info "Generating ApplyEntries histogram chart..."
-    
-    local chart_script="${SCRIPT_DIR}/generate_apply_entries_histogram.py"
-    local chart_output="${RESULTS_DIR}/apply-entries-histogram.png"
-    
-    if [ ! -f "${chart_script}" ]; then
-        log_warning "ApplyEntries histogram chart generation script not found: ${chart_script}"
-        return 1
-    fi
-    
-    # Check if Python is available
-    if ! command -v python3 >/dev/null 2>&1; then
-        log_warning "python3 not found, skipping ApplyEntries histogram chart generation"
-        return 1
-    fi
-    
-    # Check if matplotlib and numpy are available
-    if ! python3 -c "import matplotlib, numpy" >/dev/null 2>&1; then
-        log_warning "matplotlib or numpy not installed, skipping ApplyEntries histogram chart generation"
-        log_info "Install dependencies with: pip install matplotlib numpy"
-        return 1
-    fi
-    
-    if python3 "${chart_script}" "${RESULTS_DIR}" "${chart_output}"; then
-        log_success "ApplyEntries histogram chart generated: ${chart_output}"
-        return 0
-    else
-        log_warning "Failed to generate ApplyEntries histogram chart"
-        return 1
-    fi
-}
 
 # Main execution
 main() {
@@ -529,14 +428,69 @@ main() {
     # Compare CPU profiles
     compare_cpu_profiles
     
-    # Generate TPS comparison chart
-    generate_tps_chart
+    # Generate HTML viewer with auto-loaded reports
+    log_info "Generating benchmark viewer with auto-loaded reports..."
+    local viewer_script="${SCRIPT_DIR}/benchmark-viewer.html"
+    local viewer_output="${RESULTS_DIR}/benchmark-viewer.html"
     
-    # Generate percentiles comparison chart
-    generate_percentiles_chart
+    if [ ! -f "${viewer_script}" ]; then
+        log_warning "Benchmark viewer script not found: ${viewer_script}"
+        return
+    fi
     
-    # Generate ApplyEntries histogram chart
-    generate_apply_entries_histogram
+    # Find all report JSON files
+    local report_files=()
+    while IFS= read -r -d '' file; do
+        report_files+=("${file}")
+    done < <(find "${RESULTS_DIR}" -maxdepth 1 -name "*-report.json" -type f -print0 2>/dev/null)
+    
+    if [ ${#report_files[@]} -eq 0 ]; then
+        log_warning "No report files found, copying viewer without auto-load"
+        cp "${viewer_script}" "${viewer_output}"
+        return
+    fi
+    
+    # Generate JavaScript array of report paths (relative to HTML file)
+    local report_paths_js="["
+    local first=true
+    for report_file in "${report_files[@]}"; do
+        local filename=$(basename "${report_file}")
+        if [ "$first" = true ]; then
+            first=false
+        else
+            report_paths_js+=", "
+        fi
+        report_paths_js+="\"${filename}\""
+    done
+    report_paths_js+="]"
+    
+    # Inject report paths into HTML
+    cp "${viewer_script}" "${viewer_output}"
+    
+    # Inject report paths using a more reliable method
+    # Read the file, replace the line, write it back
+    local temp_file=$(mktemp)
+    local found=false
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ "window.reportPaths = window.reportPaths ||" ]] && [ "$found" = false ]; then
+            echo "        window.reportPaths = ${report_paths_js};"
+            found=true
+        else
+            echo "$line"
+        fi
+    done < "${viewer_output}" > "${temp_file}"
+    
+    if [ "$found" = true ]; then
+        mv "${temp_file}" "${viewer_output}"
+    else
+        rm -f "${temp_file}"
+        log_warning "Could not inject report paths, using manual file selection"
+    fi
+    
+    log_success "Benchmark viewer generated at: ${viewer_output}"
+    log_info "Found ${#report_files[@]} report file(s)"
+    log_info "Open ${viewer_output} in your browser to view results (reports will auto-load)"
     
     # Summary
     log_info "=========================================="
@@ -556,18 +510,9 @@ main() {
     log_info "Generated files:"
     ls -lh "${RESULTS_DIR}" || true
     
-    # Show chart locations if generated
-    if [ -f "${RESULTS_DIR}/tps-comparison.png" ]; then
-        log_info ""
-        log_success "TPS comparison chart: ${RESULTS_DIR}/tps-comparison.png"
-        log_info "Open it with: open ${RESULTS_DIR}/tps-comparison.png"
-    fi
-    
-    if [ -f "${RESULTS_DIR}/percentiles-comparison.png" ]; then
-        log_info ""
-        log_success "Percentiles comparison chart: ${RESULTS_DIR}/percentiles-comparison.png"
-        log_info "Open it with: open ${RESULTS_DIR}/percentiles-comparison.png"
-    fi
+    log_info ""
+    log_success "Benchmark viewer: ${viewer_output}"
+    log_info "Open ${viewer_output} in your browser to visualize all results"
 }
 
 # Run main function

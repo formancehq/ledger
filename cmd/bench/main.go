@@ -396,7 +396,6 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 					// Apply action using bulk operations
 					err = ApplyAction(ctx, benchEnv.Client(), ledgerName, bulkElement)
 					if err != nil {
-						//TODO: log errors
 						r.config.Logger.Errorf("Error applying action: %v", err)
 						continue
 					}

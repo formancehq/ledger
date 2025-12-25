@@ -76,10 +76,13 @@ func init() {
 // NewSQLiteModernLogStore creates a new SQLite Modern log store
 func NewSQLiteModernLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteModernLogStore, error) {
 	// Open SQLite database
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", dsn +
+		"?cache=shared&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-32768)")
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite modern database: %w", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	store := &SQLiteModernLogStore{
 		db:     db,
