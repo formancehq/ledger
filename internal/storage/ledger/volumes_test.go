@@ -562,6 +562,14 @@ func TestVolumesAggregate(t *testing.T) {
 		},
 	}, time.Time{}))
 
+	beforeBazTimestamp := time.Now()
+
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"account:1:1": {
+			"baz": "qux",
+		},
+	}, time.Time{}))
+
 	t.Run("Aggregation Volumes with balance for GroupLvl 0", func(t *testing.T) {
 		t.Parallel()
 		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
@@ -781,6 +789,21 @@ func TestVolumesAggregate(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 1)
+	})
+
+	t.Run("filter using metadata and PIT", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+				Options: common.ResourceQuery[ledgerstore.GetVolumesOptions]{
+					PIT:     pointer.For(beforeBazTimestamp),
+					Builder: query.Match("metadata[baz]", "qux"),
+				},
+			})
+
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 0)
 	})
 }
 
