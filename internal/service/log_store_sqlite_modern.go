@@ -76,7 +76,7 @@ func init() {
 // NewSQLiteModernLogStore creates a new SQLite Modern log store
 func NewSQLiteModernLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteModernLogStore, error) {
 	// Open SQLite database
-	db, err := sql.Open("sqlite", dsn +
+	db, err := sql.Open("sqlite", dsn+
 		"?cache=shared&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-32768)")
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite modern database: %w", err)
@@ -104,17 +104,13 @@ func (s *SQLiteModernLogStore) createTables(ctx context.Context) error {
 	// data is stored as BLOB (protobuf binary format)
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
-			id INTEGER,
+			id INTEGER PRIMARY KEY,
 			data BLOB NOT NULL,
 			date TEXT,
 			idempotency_key TEXT,
 			idempotency_hash TEXT,
-			UNIQUE(idempotency_key),
-			UNIQUE(idempotency_hash)
+			UNIQUE(idempotency_key)
 		);
-		
-		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
-		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
@@ -126,28 +122,11 @@ func (s *SQLiteModernLogStore) createTables(ctx context.Context) error {
 			account TEXT NOT NULL,
 			asset TEXT NOT NULL,
 			balance TEXT NOT NULL DEFAULT '0',
-			PRIMARY KEY (account, asset)
+			PRIMARY KEY (asset, account)
 		);
-		
-		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(account);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating balances table: %w", err)
-	}
-
-	// Create accounts table
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS accounts (
-			address TEXT PRIMARY KEY,
-			first_usage TEXT,
-			insertion_date TEXT,
-			updated_at TEXT
-		);
-		
-		CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating accounts table: %w", err)
 	}
 
 	// Create account_metadata table
@@ -156,31 +135,11 @@ func (s *SQLiteModernLogStore) createTables(ctx context.Context) error {
 			account_address TEXT NOT NULL,
 			key TEXT NOT NULL,
 			value TEXT NOT NULL,
-			PRIMARY KEY (account_address, key),
-			FOREIGN KEY (account_address) REFERENCES accounts(address) ON DELETE CASCADE
+			PRIMARY KEY (account_address, key)
 		);
-		
-		CREATE INDEX IF NOT EXISTS idx_account_metadata_account ON account_metadata(account_address);
-		CREATE INDEX IF NOT EXISTS idx_account_metadata_key ON account_metadata(key);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating account_metadata table: %w", err)
-	}
-
-	// Create transaction_metadata table
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS transaction_metadata (
-			transaction_id INTEGER NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
-			PRIMARY KEY (transaction_id, key)
-		);
-		
-		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_transaction ON transaction_metadata(transaction_id);
-		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_key ON transaction_metadata(key);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating transaction_metadata table: %w", err)
 	}
 
 	return nil
@@ -248,7 +207,7 @@ func (s *SQLiteModernLogStore) batchUpsertAccountMetadata(ctx context.Context, t
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO account_metadata (account_address, key, value)
-		VALUES (?, ?, ?)
+		VALUES (?, ?, ?) 
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing account metadata statement: %w", err)
@@ -494,11 +453,8 @@ func (s *SQLiteModernLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb
 				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
 				// Accumulate account and metadata updates for batch processing
 				accumulateAccountsFromTransaction(
-					accountsToCreate,
 					accountMetadataBatch,
-					transactionMetadataBatch,
 					payload.CreatedTransaction,
-					dateStr,
 				)
 			}
 		case *ledgerpb.LogPayload_RevertedTransaction:
@@ -519,7 +475,6 @@ func (s *SQLiteModernLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb
 				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
 				// Accumulate account updates for batch processing
 				accumulateAccountsFromRevertedTransaction(
-					accountsToCreate,
 					payload.RevertedTransaction,
 					dateStr,
 				)
@@ -529,10 +484,7 @@ func (s *SQLiteModernLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb
 				// Accumulate metadata updates for batch processing
 				accumulateMetadataFromSetMetadata(
 					accountMetadataBatch,
-					transactionMetadataBatch,
-					accountsToCreate,
 					payload.SavedMetadata,
-					dateStr,
 				)
 			}
 		case *ledgerpb.LogPayload_DeletedMetadata:
@@ -540,7 +492,6 @@ func (s *SQLiteModernLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb
 				// Accumulate metadata deletions for batch processing
 				accumulateMetadataFromDeleteMetadata(
 					accountMetadataDeletes,
-					transactionMetadataDeletes,
 					payload.DeletedMetadata,
 				)
 			}
@@ -740,7 +691,7 @@ func (s *SQLiteModernLogStore) GetAllLogs(ctx context.Context, from uint64, to u
 	args := []interface{}{}
 	whereClauses := []string{}
 	if from > 0 {
-		whereClauses = append(whereClauses, `id >= ?`)
+		whereClauses = append(whereClauses, `id > ?`)
 		args = append(args, int64(from))
 	}
 	if to > 0 {

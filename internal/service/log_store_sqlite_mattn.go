@@ -75,17 +75,15 @@ func (s *SQLiteMattnLogStore) createTables(ctx context.Context) error {
 	// data is stored as BLOB (protobuf binary format)
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
-			id INTEGER,
+			id INTEGER PRIMARY KEY,
 			data BLOB NOT NULL,
 			date TEXT,
 			idempotency_key TEXT,
 			idempotency_hash TEXT,
-			UNIQUE(idempotency_key),
-			UNIQUE(idempotency_hash)
+			UNIQUE(idempotency_key)
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
-		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
@@ -97,28 +95,11 @@ func (s *SQLiteMattnLogStore) createTables(ctx context.Context) error {
 			account TEXT NOT NULL,
 			asset TEXT NOT NULL,
 			balance TEXT NOT NULL DEFAULT '0',
-			PRIMARY KEY (account, asset)
+			PRIMARY KEY (asset, account)
 		);
-		
-		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(account);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating balances table: %w", err)
-	}
-
-	// Create accounts table
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS accounts (
-			address TEXT PRIMARY KEY,
-			first_usage TEXT,
-			insertion_date TEXT,
-			updated_at TEXT
-		);
-		
-		CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating accounts table: %w", err)
 	}
 
 	// Create account_metadata table
@@ -127,31 +108,11 @@ func (s *SQLiteMattnLogStore) createTables(ctx context.Context) error {
 			account_address TEXT NOT NULL,
 			key TEXT NOT NULL,
 			value TEXT NOT NULL,
-			PRIMARY KEY (account_address, key),
-			FOREIGN KEY (account_address) REFERENCES accounts(address) ON DELETE CASCADE
+			PRIMARY KEY (account_address, key)
 		);
-		
-		CREATE INDEX IF NOT EXISTS idx_account_metadata_account ON account_metadata(account_address);
-		CREATE INDEX IF NOT EXISTS idx_account_metadata_key ON account_metadata(key);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating account_metadata table: %w", err)
-	}
-
-	// Create transaction_metadata table
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS transaction_metadata (
-			transaction_id INTEGER NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
-			PRIMARY KEY (transaction_id, key)
-		);
-		
-		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_transaction ON transaction_metadata(transaction_id);
-		CREATE INDEX IF NOT EXISTS idx_transaction_metadata_key ON transaction_metadata(key);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating transaction_metadata table: %w", err)
 	}
 
 	return nil
@@ -166,47 +127,6 @@ func (s *SQLiteMattnLogStore) Close() error {
 // Batch Operations - Accounts
 // ============================================================================
 
-// batchUpdateAccounts updates or inserts multiple accounts in a single batch operation
-// Uses ON CONFLICT to update first_usage with the earliest transaction timestamp
-// first_usage represents the timestamp of the oldest transaction involving this account
-func (s *SQLiteMattnLogStore) batchUpdateAccounts(ctx context.Context, tx *sql.Tx, accountAddrs []string, dateStr string) error {
-	if len(accountAddrs) == 0 {
-		return nil
-	}
-
-	// Prepare batch insert statement with ON CONFLICT
-	// For existing accounts: update first_usage only if new timestamp is earlier (lexicographic comparison works for RFC3339)
-	// For new accounts: set first_usage to the transaction timestamp
-	// dateStr is the RFC3339 formatted timestamp of the transaction
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO accounts (address, first_usage, insertion_date, updated_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(address) DO UPDATE SET
-			updated_at = excluded.updated_at,
-			first_usage = CASE 
-				WHEN excluded.first_usage < accounts.first_usage THEN excluded.first_usage
-				ELSE accounts.first_usage
-			END,
-			insertion_date = COALESCE(NULLIF(accounts.insertion_date, ''), excluded.insertion_date)
-	`)
-	if err != nil {
-		return fmt.Errorf("preparing batch insert statement: %w", err)
-	}
-	defer stmt.Close()
-
-	// Insert/update all accounts
-	// dateStr is the transaction timestamp (RFC3339 format)
-	// For new accounts: first_usage is set to the transaction timestamp
-	// For existing accounts: first_usage is updated only if the transaction timestamp is earlier
-	for _, accountAddr := range accountAddrs {
-		if _, err := stmt.ExecContext(ctx, accountAddr, dateStr, dateStr, dateStr); err != nil {
-			return fmt.Errorf("batch updating account %s: %w", accountAddr, err)
-		}
-	}
-
-	return nil
-}
-
 // ============================================================================
 // Batch Operations - Metadata
 // ============================================================================
@@ -219,7 +139,7 @@ func (s *SQLiteMattnLogStore) batchUpsertAccountMetadata(ctx context.Context, tx
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO account_metadata (account_address, key, value)
-		VALUES (?, ?, ?)
+		VALUES (?, ?, ?) 
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing account metadata statement: %w", err)
@@ -267,62 +187,6 @@ func (s *SQLiteMattnLogStore) batchDeleteAccountMetadataKeys(ctx context.Context
 	return nil
 }
 
-// batchDeleteTransactionMetadataKeys deletes multiple metadata keys for multiple transactions in a single batch operation
-func (s *SQLiteMattnLogStore) batchDeleteTransactionMetadataKeys(ctx context.Context, tx *sql.Tx, transactionKeys map[uint64][]string) error {
-	if len(transactionKeys) == 0 {
-		return nil
-	}
-
-	stmt, err := tx.PrepareContext(ctx, `
-		DELETE FROM transaction_metadata
-		WHERE transaction_id = ? AND key = ?
-	`)
-	if err != nil {
-		return fmt.Errorf("preparing delete transaction metadata statement: %w", err)
-	}
-	defer stmt.Close()
-
-	for transactionID, keys := range transactionKeys {
-		for _, key := range keys {
-			if _, err := stmt.ExecContext(ctx, transactionID, key); err != nil {
-				return fmt.Errorf("deleting transaction metadata key: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// batchUpsertTransactionMetadata inserts or updates transaction metadata for multiple transactions in a single batch operation
-func (s *SQLiteMattnLogStore) batchUpsertTransactionMetadata(ctx context.Context, tx *sql.Tx, transactionMetadata map[uint64]map[string]interface{}) error {
-	if len(transactionMetadata) == 0 {
-		return nil
-	}
-
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO transaction_metadata (transaction_id, key, value)
-		VALUES (?, ?, ?)
-	`)
-	if err != nil {
-		return fmt.Errorf("preparing transaction metadata statement: %w", err)
-	}
-	defer stmt.Close()
-
-	for transactionID, metadataMap := range transactionMetadata {
-		for key, value := range metadataMap {
-			valueJSON, err := json.Marshal(value)
-			if err != nil {
-				return fmt.Errorf("marshaling metadata value: %w", err)
-			}
-			if _, err := stmt.ExecContext(ctx, transactionID, key, string(valueJSON)); err != nil {
-				return fmt.Errorf("upserting transaction metadata: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
 // ============================================================================
 // Balance Operations
 // ============================================================================
@@ -334,87 +198,19 @@ func (s *SQLiteMattnLogStore) applyBalanceDiffs(ctx context.Context, tx *sql.Tx,
 		return nil
 	}
 
-	// Read existing balances for all account/asset pairs
-	// We'll query each account separately to avoid SQLite limitations with tuple IN clauses
-	existingBalances := make(map[string]map[string]*big.Int)
-	for account, assets := range balanceDiffs {
-		if len(assets) == 0 {
-			continue
-		}
-		// Convert map keys to slice for iteration
-		assetList := make([]string, 0, len(assets))
-		for asset := range assets {
-			assetList = append(assetList, asset)
-		}
-		placeholders := make([]string, len(assetList))
-		args := make([]interface{}, len(assetList)+1)
-		args[0] = account
-		for i, asset := range assetList {
-			placeholders[i] = "?"
-			args[i+1] = asset
-		}
-
-		query := fmt.Sprintf(`
-			SELECT asset, balance FROM balances
-			WHERE account = ? AND asset IN (%s)
-		`, strings.Join(placeholders, ", "))
-
-		rows, err := tx.QueryContext(ctx, query, args...)
-		if err != nil {
-			return fmt.Errorf("querying existing balances for account %s: %w", account, err)
-		}
-
-		if existingBalances[account] == nil {
-			existingBalances[account] = make(map[string]*big.Int)
-		}
-		for rows.Next() {
-			var asset, balanceStr string
-			if err := rows.Scan(&asset, &balanceStr); err != nil {
-				rows.Close()
-				return fmt.Errorf("scanning balance row: %w", err)
-			}
-			balance, ok := new(big.Int).SetString(balanceStr, 10)
-			if !ok {
-				rows.Close()
-				return fmt.Errorf("invalid balance string: %s", balanceStr)
-			}
-			existingBalances[account][asset] = balance
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return fmt.Errorf("iterating balance rows: %w", err)
-		}
-		rows.Close()
-	}
-
-	// Calculate new balances by adding diffs to existing balances
-	newBalances := make(map[string]map[string]*big.Int)
-	for account, assets := range balanceDiffs {
-		if newBalances[account] == nil {
-			newBalances[account] = make(map[string]*big.Int)
-		}
-		for asset, diff := range assets {
-			existing := big.NewInt(0)
-			if existingBalances[account] != nil && existingBalances[account][asset] != nil {
-				existing = existingBalances[account][asset]
-			}
-			newBalances[account][asset] = new(big.Int).Add(existing, diff)
-		}
-	}
-
 	// Insert or update balances
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO balances (account, asset, balance)
 		VALUES (?, ?, ?)
 		ON CONFLICT (account, asset) DO UPDATE
-		SET balance = excluded.balance
+		SET balance = balance + excluded.balance
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing balance update statement: %w", err)
 	}
 	defer stmt.Close()
 
-	for account, assets := range newBalances {
+	for account, assets := range balanceDiffs {
 		for asset, balance := range assets {
 			if _, err := stmt.ExecContext(ctx, account, asset, balance.String()); err != nil {
 				return fmt.Errorf("updating balance for account %s asset %s: %w", account, asset, err)
@@ -460,10 +256,7 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 
 	// Accumulate metadata operations for batch processing
 	accountMetadataBatch := make(map[string]map[string]interface{})
-	transactionMetadataBatch := make(map[uint64]map[string]interface{})
 	accountMetadataDeletes := make(map[string][]string)
-	transactionMetadataDeletes := make(map[uint64][]string)
-	accountsToCreate := make(map[string]string) // account -> dateStr
 
 	for _, log := range logs {
 		// Validate log data
@@ -528,11 +321,8 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
 				// Accumulate account and metadata updates for batch processing
 				accumulateAccountsFromTransaction(
-					accountsToCreate,
 					accountMetadataBatch,
-					transactionMetadataBatch,
 					payload.CreatedTransaction,
-					dateStr,
 				)
 			}
 		case *ledgerpb.LogPayload_RevertedTransaction:
@@ -553,7 +343,6 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
 				// Accumulate account updates for batch processing
 				accumulateAccountsFromRevertedTransaction(
-					accountsToCreate,
 					payload.RevertedTransaction,
 					dateStr,
 				)
@@ -563,10 +352,7 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 				// Accumulate metadata updates for batch processing
 				accumulateMetadataFromSetMetadata(
 					accountMetadataBatch,
-					transactionMetadataBatch,
-					accountsToCreate,
 					payload.SavedMetadata,
-					dateStr,
 				)
 			}
 		case *ledgerpb.LogPayload_DeletedMetadata:
@@ -574,7 +360,6 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 				// Accumulate metadata deletions for batch processing
 				accumulateMetadataFromDeleteMetadata(
 					accountMetadataDeletes,
-					transactionMetadataDeletes,
 					payload.DeletedMetadata,
 				)
 			}
@@ -586,20 +371,6 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 		return fmt.Errorf("applying balance differences: %w", err)
 	}
 
-	// Batch create/update all accounts
-	// Group accounts by date to batch them efficiently
-	if len(accountsToCreate) > 0 {
-		accountsByDate := make(map[string][]string)
-		for accountAddr, dateStr := range accountsToCreate {
-			accountsByDate[dateStr] = append(accountsByDate[dateStr], accountAddr)
-		}
-		for dateStr, accountAddrs := range accountsByDate {
-			if err := s.batchUpdateAccounts(ctx, tx, accountAddrs, dateStr); err != nil {
-				return fmt.Errorf("batch updating accounts: %w", err)
-			}
-		}
-	}
-
 	// Batch upsert all account metadata
 	if len(accountMetadataBatch) > 0 {
 		if err := s.batchUpsertAccountMetadata(ctx, tx, accountMetadataBatch); err != nil {
@@ -607,24 +378,10 @@ func (s *SQLiteMattnLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.
 		}
 	}
 
-	// Batch upsert all transaction metadata
-	if len(transactionMetadataBatch) > 0 {
-		if err := s.batchUpsertTransactionMetadata(ctx, tx, transactionMetadataBatch); err != nil {
-			return fmt.Errorf("batch upserting transaction metadata: %w", err)
-		}
-	}
-
 	// Batch delete all account metadata keys
 	if len(accountMetadataDeletes) > 0 {
 		if err := s.batchDeleteAccountMetadataKeys(ctx, tx, accountMetadataDeletes); err != nil {
 			return fmt.Errorf("batch deleting account metadata keys: %w", err)
-		}
-	}
-
-	// Batch delete all transaction metadata keys
-	if len(transactionMetadataDeletes) > 0 {
-		if err := s.batchDeleteTransactionMetadataKeys(ctx, tx, transactionMetadataDeletes); err != nil {
-			return fmt.Errorf("batch deleting transaction metadata keys: %w", err)
 		}
 	}
 
@@ -774,7 +531,7 @@ func (s *SQLiteMattnLogStore) GetAllLogs(ctx context.Context, from uint64, to ui
 	args := []interface{}{}
 	whereClauses := []string{}
 	if from > 0 {
-		whereClauses = append(whereClauses, `id >= ?`)
+		whereClauses = append(whereClauses, `id > ?`)
 		args = append(args, int64(from))
 	}
 	if to > 0 {

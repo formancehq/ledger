@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -360,16 +361,21 @@ func (r *Runner) Run(ctx context.Context, envFactory EnvFactory) (map[string]Res
 
 		for i := 0; i < parallelism; i++ {
 			wg.Add(1)
+
+			// Create action provider from factory
+			factory := scriptFactories[scenario]
+			actionProvider, err := factory.Create()
+			if err != nil {
+				panic(fmt.Errorf("creating action provider for %s: %w", scenario, err))
+			}
+
 			go func(workerID int) {
 				defer wg.Done()
 				iteration := atomic.Int64{}
 
-				// Create action provider from factory
-				factory := scriptFactories[scenario]
-				actionProvider, err := factory.Create()
-				if err != nil {
-					panic(fmt.Errorf("creating action provider for %s: %w", scenario, err))
-				}
+				ra := rand.NewSource(time.Now().UnixNano())
+				// Random delay to avoid all workers starting at the same time
+				time.Sleep(time.Duration(ra.Int63()%1000) * time.Millisecond)
 
 				for {
 					select {

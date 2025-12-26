@@ -54,11 +54,8 @@ func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, posting
 
 // accumulateAccountsFromTransaction accumulates account and metadata updates from a transaction
 func accumulateAccountsFromTransaction(
-	accountsToUpdate map[string]string,
 	accountMetadataBatch map[string]map[string]interface{},
-	transactionMetadataBatch map[uint64]map[string]interface{},
 	transaction *ledgerpb.CreatedTransaction,
-	dateStr string,
 ) {
 	postings := transaction.Transaction.Postings
 
@@ -76,24 +73,8 @@ func accumulateAccountsFromTransaction(
 		}
 	}
 
-	// Mark accounts for batch update (keep earliest transaction timestamp if multiple)
-	// dateStr is the RFC3339 formatted timestamp of the transaction
-	// first_usage will be set to the earliest transaction timestamp involving this account
-	for accountAddr := range accounts {
-		if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
-			accountsToUpdate[accountAddr] = dateStr
-		}
-	}
-
 	// Accumulate account metadata from accountMetadata in transaction
 	if len(transaction.AccountMetadata) > 0 {
-		// Mark accounts for batch update
-		for accountAddr := range transaction.AccountMetadata {
-			if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
-				accountsToUpdate[accountAddr] = dateStr
-			}
-		}
-
 		// Accumulate account metadata for batch processing
 		for accountAddr, accountMetaStruct := range transaction.AccountMetadata {
 			if accountMetadataBatch[accountAddr] == nil {
@@ -104,24 +85,10 @@ func accumulateAccountsFromTransaction(
 			}
 		}
 	}
-
-	// Accumulate transaction metadata if present
-	if transaction.Transaction != nil && transaction.Transaction.Metadata != nil && len(transaction.Transaction.Metadata) > 0 {
-		transactionID := transaction.Transaction.Id
-		if transactionID != 0 {
-			if transactionMetadataBatch[transactionID] == nil {
-				transactionMetadataBatch[transactionID] = make(map[string]interface{})
-			}
-			for k, v := range convertMetadataToStringMap(transaction.Transaction.Metadata) {
-				transactionMetadataBatch[transactionID][k] = v
-			}
-		}
-	}
 }
 
 // accumulateAccountsFromRevertedTransaction accumulates account updates from a reverted transaction
 func accumulateAccountsFromRevertedTransaction(
-	accountsToUpdate map[string]string,
 	revertedTransaction *ledgerpb.RevertedTransaction,
 	dateStr string,
 ) {
@@ -140,34 +107,17 @@ func accumulateAccountsFromRevertedTransaction(
 			accounts[posting.Destination] = true
 		}
 	}
-
-	// Mark accounts for batch update (keep earliest transaction timestamp if multiple)
-	// dateStr is the RFC3339 formatted timestamp of the reverted transaction
-	// first_usage will be set to the earliest transaction timestamp involving this account
-	for accountAddr := range accounts {
-		if existingDate, exists := accountsToUpdate[accountAddr]; !exists || dateStr < existingDate {
-			accountsToUpdate[accountAddr] = dateStr
-		}
-	}
 }
 
 // accumulateMetadataFromSetMetadata accumulates metadata updates from SET_METADATA log
 func accumulateMetadataFromSetMetadata(
 	accountMetadataBatch map[string]map[string]interface{},
-	transactionMetadataBatch map[uint64]map[string]interface{},
-	accountsToCreate map[string]string,
 	savedMetadata *ledgerpb.SavedMetadata,
-	dateStr string,
 ) {
 	if savedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
 		accountAddr := savedMetadata.GetAccountId()
 		if accountAddr == "" {
 			return
-		}
-
-		// Mark account for creation (keep earliest date if multiple)
-		if existingDate, exists := accountsToCreate[accountAddr]; !exists || dateStr < existingDate {
-			accountsToCreate[accountAddr] = dateStr
 		}
 
 		// Accumulate metadata for batch processing
@@ -177,26 +127,12 @@ func accumulateMetadataFromSetMetadata(
 		for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
 			accountMetadataBatch[accountAddr][k] = v
 		}
-	} else if savedMetadata.TargetType == ledgerpb.MetaTargetTypeTransaction {
-		transactionID := savedMetadata.GetTransactionId()
-		if transactionID == 0 {
-			return
-		}
-
-		// Accumulate metadata for batch processing
-		if transactionMetadataBatch[transactionID] == nil {
-			transactionMetadataBatch[transactionID] = make(map[string]interface{})
-		}
-		for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
-			transactionMetadataBatch[transactionID][k] = v
-		}
 	}
 }
 
 // accumulateMetadataFromDeleteMetadata accumulates metadata deletions from DELETE_METADATA log
 func accumulateMetadataFromDeleteMetadata(
 	accountMetadataDeletes map[string][]string,
-	transactionMetadataDeletes map[uint64][]string,
 	deletedMetadata *ledgerpb.DeletedMetadata,
 ) {
 	if deletedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
@@ -207,14 +143,6 @@ func accumulateMetadataFromDeleteMetadata(
 
 		// Accumulate deletion for batch processing
 		accountMetadataDeletes[accountAddr] = append(accountMetadataDeletes[accountAddr], deletedMetadata.Key)
-	} else if deletedMetadata.TargetType == ledgerpb.MetaTargetTypeTransaction {
-		transactionID := deletedMetadata.GetTransactionId()
-		if transactionID == 0 {
-			return
-		}
-
-		// Accumulate deletion for batch processing
-		transactionMetadataDeletes[transactionID] = append(transactionMetadataDeletes[transactionID], deletedMetadata.Key)
 	}
 }
 
