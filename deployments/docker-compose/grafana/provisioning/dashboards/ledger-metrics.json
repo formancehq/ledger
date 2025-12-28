@@ -1450,7 +1450,32 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Peer 3 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -1630,7 +1655,32 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Peer 3 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
@@ -1661,11 +1711,11 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[30s])) by (scope.attributes.peer)",
+          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[30s])) by (scope.attributes.peer, type)",
           "format": "time_series",
           "instant": false,
           "interval": "1s",
-          "legendFormat": "Peer {{scope.attributes.peer}}",
+          "legendFormat": "Peer {{scope.attributes.peer}} : {{type}}",
           "range": true,
           "refId": "A"
         },
@@ -1960,7 +2010,7 @@
           "expr": "rate({\"raft.multiplexed_transport.ledger.unreachable.incoming\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
-          "legendFormat": "__auto",
+          "legendFormat": "Peer {{peer}}",
           "range": true,
           "refId": "A"
         }

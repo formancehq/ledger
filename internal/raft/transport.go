@@ -26,13 +26,13 @@ type GRPCTransport struct {
 	connectionPool *transport.ConnectionPool
 
 	// Channel for Incoming messages
-	recvCh *Channel[Incoming]
+	recvCh Queue[Incoming]
 
 	// Channels for outgoing messages per peer
 	peers map[uint64]peerConnection
 
 	// Channel for reporting unreachable peers
-	unreachableCh *Channel[uint64]
+	unreachableCh Queue[uint64]
 
 	logger        logging.Logger
 	globalMeter   metric.Meter
@@ -48,8 +48,9 @@ func NewTransport(
 	meter := meterProvider.Meter("raft.transport")
 	return &GRPCTransport{
 		connectionPool: connectionPool,
-		recvCh: NewChannel[Incoming](
+		recvCh: NewQueueObserver[Incoming](
 			"raft.transport.recv",
+			NewSimpleQueue[Incoming](),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
@@ -57,8 +58,9 @@ func NewTransport(
 			}),
 		),
 		peers: make(map[uint64]peerConnection),
-		unreachableCh: NewChannel[uint64](
+		unreachableCh: NewQueueObserver[uint64](
 			"raft.transport.unreachable",
+			NewSimpleQueue[uint64](),
 			WithMeter[uint64](meter),
 			WithLogger[uint64](logger),
 		),
@@ -81,7 +83,7 @@ func (t *GRPCTransport) Stop(ctx context.Context) error {
 		return err
 	}
 
-	t.unreachableCh.stop()
+	t.unreachableCh.Close()
 
 	return nil
 }
@@ -101,8 +103,9 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 
 	if _, exists := t.peers[id]; !exists {
 		conn := peerConnection{
-			sendCh: NewChannel[raftpb.Message](
+			sendCh: NewQueueObserver[raftpb.Message](
 				"raft.transport.peer.sending",
+				NewSimpleQueue[raftpb.Message](),
 				WithLogger[raftpb.Message](t.logger),
 				WithMeter[raftpb.Message](meter),
 				WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -236,9 +239,9 @@ func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
 }
 
 type peerConnection struct {
-	sendCh        *Channel[raftpb.Message]
+	sendCh       Queue[raftpb.Message]
 	closeCh       chan chan struct{}
-	unreachableCh *Channel[uint64]
+	unreachableCh Queue[uint64]
 	connection    *grpc.ClientConn
 	logger        logging.Logger
 	peerID        uint64
@@ -363,7 +366,7 @@ func (conn *peerConnection) stop(ctx context.Context) error {
 		select {
 		case <-ch:
 			close(conn.closeCh)
-			conn.sendCh.stop()
+			conn.sendCh.Close()
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()

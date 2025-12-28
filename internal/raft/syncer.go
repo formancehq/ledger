@@ -45,6 +45,9 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, d
 	s.syncingTerminated = make(chan struct{})
 	go func() {
 		defer func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
 			s.syncingCancel()
 			s.syncingContext = nil
 			s.syncingCancel = nil

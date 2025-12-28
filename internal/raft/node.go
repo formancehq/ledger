@@ -41,7 +41,7 @@ type Node[State any, F FSM[State]] struct {
 	stopped                        chan struct{}
 	ctx                            context.Context
 	cancel                         func()
-	proposeCh                      *Channel[[]byte]
+	proposeCh                      Queue[[]byte]
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -84,8 +84,9 @@ func NewNode[State any, F FSM[State]](
 		storage:   storage,
 		transport: transport,
 		config:    cfg,
-		proposeCh: NewChannel[[]byte](
+		proposeCh: NewQueueObserver[[]byte](
 			"raft.node.propose",
+			NewSimpleQueue[[]byte](),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 		),

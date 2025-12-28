@@ -13,8 +13,8 @@ import (
 )
 
 type receptionsChannels struct {
-	recv        *raft.Channel[raftpb.Message]
-	unreachable *raft.Channel[uint64]
+	recv        raft.Queue[raftpb.Message]
+	unreachable raft.Queue[uint64]
 }
 
 type multiplexedTransport struct {
@@ -115,8 +115,9 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	))
 
 	channels := receptionsChannels{
-		recv: raft.NewChannel[raftpb.Message](
+		recv: raft.NewQueueObserver[raftpb.Message](
 			"raft.multiplexed_transport.ledger.recv",
+			raft.NewSimpleQueue[raftpb.Message](),
 			raft.WithLogger[raftpb.Message](r.logger),
 			raft.WithMeter[raftpb.Message](meter),
 			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -125,8 +126,9 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 				return ret
 			}),
 		),
-		unreachable: raft.NewChannel[uint64](
+		unreachable: raft.NewQueueObserver[uint64](
 			"raft.multiplexed_transport.ledger.unreachable",
+			raft.NewSimpleQueue[uint64](),
 			raft.WithLogger[uint64](r.logger),
 			raft.WithMeter[uint64](meter),
 			raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
@@ -159,8 +161,9 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 	return &multiplexedTransport{
 		grpcTransport: grpcTransport,
 		mainReceptionChannels: receptionsChannels{
-			recv: raft.NewChannel[raftpb.Message](
+			recv: raft.NewQueueObserver[raftpb.Message](
 				"raft.multiplexed_transport.system.recv",
+				raft.NewSimpleQueue[raftpb.Message](),
 				raft.WithLogger[raftpb.Message](logger),
 				raft.WithMeter[raftpb.Message](meter),
 				raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -169,8 +172,9 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 					return ret
 				}),
 			),
-			unreachable: raft.NewChannel[uint64](
+			unreachable: raft.NewQueueObserver[uint64](
 				"raft.multiplexed_transport.system.unreachable",
+				raft.NewSimpleQueue[uint64](),
 				raft.WithLogger[uint64](logger),
 				raft.WithMeter[uint64](meter),
 				raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
