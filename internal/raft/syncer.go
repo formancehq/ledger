@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -11,12 +12,14 @@ import (
 )
 
 type syncer[State any, F FSM[State]] struct {
-	spool        *spool
-	fsm          F
-	mu           sync.Mutex
-	syncing      bool
-	syncingError error
-	logger       logging.Logger
+	spool             *spool
+	fsm               F
+	mu                sync.Mutex
+	syncingContext    context.Context
+	syncingCancel     func()
+	syncingTerminated chan struct{}
+	syncingError      error
+	logger            logging.Logger
 }
 
 func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
@@ -27,14 +30,36 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, d
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.syncing {
-		// todo: handle the case
-		panic("cannot restore snapshot while syncing")
+	if s.syncingContext != nil {
+		s.logger.Infof("Restoring snapshot while syncing - interupting actual syncing")
+		s.syncingCancel()
+		select {
+		case <-s.syncingTerminated:
+		case <-ctx.Done():
+			return
+		}
 	}
+
 	s.logger.Infof("Restoring snapshot - switching to syncing mode")
-	s.syncing = true
+	s.syncingContext, s.syncingCancel = context.WithCancel(ctx)
+	s.syncingTerminated = make(chan struct{})
 	go func() {
-		s.fsm.RestoreSnapshot(ctx, leader, data)
+		defer func() {
+			s.syncingCancel()
+			s.syncingContext = nil
+			s.syncingCancel = nil
+			close(s.syncingTerminated)
+		}()
+		defer func() {
+			if r := recover(); r != nil {
+				if err, ok := r.(error); ok && errors.Is(err, context.Canceled) {
+					s.logger.Infof("Snapshot restoration canceled")
+					return
+				}
+				panic(r)
+			}
+		}()
+		s.fsm.RestoreSnapshot(s.syncingContext, leader, data)
 
 		for {
 			s.mu.Lock()
@@ -43,7 +68,6 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, d
 				if err := s.spool.Reset(); err != nil {
 					panic(err)
 				}
-				s.syncing = false
 				s.mu.Unlock()
 				break
 			}
@@ -52,7 +76,7 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, d
 				panic(err)
 			}
 
-			_, err = s.fsm.ApplyEntries(ctx, command)
+			_, err = s.fsm.ApplyEntries(s.syncingContext, command)
 			if err != nil {
 				s.syncingError = err
 			}
@@ -63,7 +87,6 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, d
 		} else {
 			s.logger.Infof("Snapshot restored - switching to normal mode")
 		}
-		s.syncing = false
 	}()
 }
 
@@ -71,7 +94,7 @@ func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.syncing {
+	if s.syncingContext != nil {
 		s.logger.Debugf("Applying entries while syncing - appending to spool")
 		if err := s.spool.AppendCommittedEntries(ctx, commands...); err != nil {
 			return nil, fmt.Errorf("appending committed entries to spool: %w", err)
@@ -93,7 +116,7 @@ func (s *syncer[State, F]) IsSyncing() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.syncing
+	return s.syncingContext != nil
 }
 
 func newSyncer[State any, F FSM[State]](spool *spool, fsm F, logger logging.Logger) *syncer[State, F] {

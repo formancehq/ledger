@@ -15,14 +15,16 @@ processors:
     check_interval: 1s
 
 exporters:
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-    const_labels:
-      source: "otel-collector"
+  otlphttp/victoriametrics:
+    compression: gzip
+    encoding: proto
+    metrics_endpoint: http://victoria-metrics:8428/opentelemetry/v1/metrics
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheus]
+      exporters: [otlphttp/victoriametrics]

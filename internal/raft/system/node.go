@@ -39,15 +39,19 @@ func NewNode(
 		return nil, fmt.Errorf("creating storage: %w", err)
 	}
 
-	multiplexedTransport := newMultiplexedTransport(logger.WithFields(map[string]any{
-		"cmp": "multiplexer",
-	}), transport)
+	multiplexedTransport := newMultiplexedTransport(
+		logger.WithFields(map[string]any{
+			"cmp": "multiplexer",
+		}),
+		transport,
+		meterProvider,
+	)
 
 	// Create FSM (Finite State Machine)
 	fsm := newFSM(logger, config, multiplexedTransport, meterProvider)
 
 	// Create meter for system node
-	systemMeter := meterProvider.Meter("ledger-v3-poc.raft.system")
+	systemMeter := meterProvider.Meter("raft.node.system")
 
 	node, err := raft.NewNode(config.NodeConfig, storage, multiplexedTransport.MainTransport(), fsm, logger, systemMeter)
 	if err != nil {

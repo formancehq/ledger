@@ -3,36 +3,47 @@ services:
   # OpenTelemetry collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
-    container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yml"]
     volumes:
-      - ./deployments/otel-collector-config.yml:/etc/otel-collector-config.yml
+      - ./deployments/docker-compose/otel-collector-config.yml:/etc/otel-collector-config.yml
     ports:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver
     networks:
       - raft-network
+    depends_on:
+      - victoria-metrics
 
-  # Prometheus for metrics
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
+  # VictoriaMetrics for metrics (victoria-metrics-compatible with remote write support)
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
     ports:
-      - "9090:9090"
+      - "8428:8428"
     volumes:
-      - ./deployments/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - victoria-metrics-data:/data
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - '--storageDataPath=/data'
+      - '--httpListenAddr=:8428'
     networks:
       - raft-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
-      interval: 5s
-      timeout: 2s
-      retries: 5
-      start_period: 10s
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployments/docker-compose/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - raft-network
+    depends_on:
+      - victoria-metrics
 
   # Ledger nodes
   node-1:
@@ -55,12 +66,14 @@ services:
       - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
       - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
       - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
+      - OTEL_RESOURCE_ATTRIBUTES=service.node_id=1
     ports:
       - "8888:8888"
       - "9000:9000"
     volumes:
       - .:/app
-      - ./data/node-1:/data
+      - node-1-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -94,12 +107,14 @@ services:
       - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
+      - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
+      - OTEL_RESOURCE_ATTRIBUTES=service.node_id=2
     ports:
       - "8889:8888"
       - "9001:9000"
     volumes:
       - .:/app
-      - ./data/node-2:/data
+      - node-2-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -133,12 +148,14 @@ services:
       - OTEL_METRICS_EXPORTER_OTLP_INSECURE=true
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
+      - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
+      - OTEL_RESOURCE_ATTRIBUTES=service.node_id=3
     ports:
       - "8890:8888"
       - "9002:9000"
     volumes:
       - .:/app
-      - ./data/node-3:/data
+      - node-3-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -157,5 +174,9 @@ networks:
     driver: bridge
 
 volumes:
+  node-1-data:
+  node-2-data:
+  node-3-data:
   go-mod-cache:
-  prometheus-data:
+  victoria-metrics-data:
+  grafana-data:

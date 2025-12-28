@@ -7,12 +7,14 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 )
 
 type receptionsChannels struct {
-	recv        chan raftpb.Message
-	unreachable chan uint64
+	recv        *raft.Channel[raftpb.Message]
+	unreachable *raft.Channel[uint64]
 }
 
 type multiplexedTransport struct {
@@ -22,6 +24,7 @@ type multiplexedTransport struct {
 	stopChannel           chan chan struct{}
 	mu                    sync.RWMutex
 	logger                logging.Logger
+	meterProvider         metric.MeterProvider
 }
 
 func (r *multiplexedTransport) Start() {
@@ -34,11 +37,10 @@ func (r *multiplexedTransport) Start() {
 			ledgerID := ledgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
 				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.String())
-				select {
-				case r.mainReceptionChannels.recv <- incoming.Msg:
-					incoming.Rsp <- nil
-				default:
+				if !r.mainReceptionChannels.recv.Send(incoming.Msg) {
 					incoming.Rsp <- fmt.Errorf("main transport channel full")
+				} else {
+					incoming.Rsp <- nil
 				}
 				continue
 			}
@@ -48,10 +50,9 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received message from ledger transport: %s", incoming.Msg.String())
-				select {
-				case ledger.recv <- incoming.Msg:
+				if ledger.recv.Send(incoming.Msg) {
 					incoming.Rsp <- nil
-				default:
+				} else {
 					incoming.Rsp <- fmt.Errorf("ledger transport channel full")
 					r.logger.
 						WithFields(map[string]any{
@@ -67,12 +68,9 @@ func (r *multiplexedTransport) Start() {
 		case nodeID := <-r.grpcTransport.Unreachable():
 			ledgerID := ledgerIDFromLedgerNodeID(nodeID)
 			if ledgerID == 0 {
-				select {
-				case r.mainReceptionChannels.unreachable <- nodeID:
-				default:
+				if !r.mainReceptionChannels.unreachable.Send(nodeID) {
 					r.logger.Errorf("Main transport channel full, dropping unreachable")
 				}
-
 				continue
 			}
 
@@ -81,9 +79,7 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received unreachable from ledger transport: %d", nodeID)
-				select {
-				case ledger.unreachable <- nodeID:
-				default:
+				if !ledger.unreachable.Send(nodeID) {
 					r.logger.Errorf("Ledger transport channel full, dropping unreachable")
 				}
 			} else {
@@ -114,9 +110,31 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	meter := r.meterProvider.Meter("raft.multiplexed_transport.ledger", metric.WithInstrumentationAttributes(
+		attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
+	))
+
 	channels := receptionsChannels{
-		recv:        make(chan raftpb.Message, 100),
-		unreachable: make(chan uint64, 100),
+		recv: raft.NewChannel[raftpb.Message](
+			"raft.multiplexed_transport.ledger.recv",
+			raft.WithLogger[raftpb.Message](r.logger),
+			raft.WithMeter[raftpb.Message](meter),
+			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
+				ret := raft.AddTypeAsAttribute(msg)
+				ret = append(ret, attribute.Int("peer", int(NodeIDFromLedgerNodeID(msg.From))))
+				return ret
+			}),
+		),
+		unreachable: raft.NewChannel[uint64](
+			"raft.multiplexed_transport.ledger.unreachable",
+			raft.WithLogger[uint64](r.logger),
+			raft.WithMeter[uint64](meter),
+			raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
+				return []attribute.KeyValue{
+					attribute.Int("peer", int(NodeIDFromLedgerNodeID(peerID))),
+				}
+			}),
+		),
 	}
 	r.ledgers[ledgerID] = channels
 
@@ -134,16 +152,38 @@ func (r *multiplexedTransport) GetPeerConnection(nodeID uint64) grpc.ClientConnI
 	return r.grpcTransport.GetPeerConnection(NodeIDFromLedgerNodeID(nodeID))
 }
 
-func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport) *multiplexedTransport {
+func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport, meterProvider metric.MeterProvider) *multiplexedTransport {
+
+	meter := meterProvider.Meter("raft.multiplexed_transport.system")
+
 	return &multiplexedTransport{
 		grpcTransport: grpcTransport,
 		mainReceptionChannels: receptionsChannels{
-			recv:        make(chan raftpb.Message, 100),
-			unreachable: make(chan uint64, 100),
+			recv: raft.NewChannel[raftpb.Message](
+				"raft.multiplexed_transport.system.recv",
+				raft.WithLogger[raftpb.Message](logger),
+				raft.WithMeter[raftpb.Message](meter),
+				raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
+					ret := raft.AddTypeAsAttribute(msg)
+					ret = append(ret, attribute.Int("peer", int(msg.From)))
+					return ret
+				}),
+			),
+			unreachable: raft.NewChannel[uint64](
+				"raft.multiplexed_transport.system.unreachable",
+				raft.WithLogger[uint64](logger),
+				raft.WithMeter[uint64](meter),
+				raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
+					return []attribute.KeyValue{
+						attribute.Int("peer", int(peerID)),
+					}
+				}),
+			),
 		},
-		ledgers:     make(map[uint64]receptionsChannels),
-		stopChannel: make(chan chan struct{}),
-		logger:      logger,
+		ledgers:       make(map[uint64]receptionsChannels),
+		stopChannel:   make(chan chan struct{}),
+		logger:        logger,
+		meterProvider: meterProvider,
 	}
 }
 
@@ -163,11 +203,11 @@ func (m *channelsTransport) GetPeerAddress(peerID uint64) string {
 }
 
 func (m *channelsTransport) Unreachable() <-chan uint64 {
-	return m.channels.unreachable
+	return m.channels.unreachable.Recv()
 }
 
 func (m *channelsTransport) Recv() <-chan raftpb.Message {
-	return m.channels.recv
+	return m.channels.recv.Recv()
 }
 
 func (m *channelsTransport) Send(msg raftpb.Message) {

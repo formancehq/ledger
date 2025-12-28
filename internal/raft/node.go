@@ -41,7 +41,7 @@ type Node[State any, F FSM[State]] struct {
 	stopped                        chan struct{}
 	ctx                            context.Context
 	cancel                         func()
-	proposeCh                      chan []byte
+	proposeCh                      *Channel[[]byte]
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -84,7 +84,11 @@ func NewNode[State any, F FSM[State]](
 		storage:   storage,
 		transport: transport,
 		config:    cfg,
-		proposeCh: make(chan []byte, 100),
+		proposeCh: NewChannel[[]byte](
+			"raft.node.propose",
+			WithLogger[[]byte](logger),
+			WithMeter[[]byte](meter),
+		),
 	}
 
 	// Create histogram metric for ApplyEntries duration
@@ -107,7 +111,7 @@ func NewNode[State any, F FSM[State]](
 			node.applyEntriesHistogram = histogram
 		}
 
-		// Create counter metric for ApplyEntries batch size
+		// Create inflightCounter metric for ApplyEntries batch size
 		counter, err := meter.Int64Counter("raft.apply_entries.batch_size",
 			metric.WithDescription("Size of batches passed to ApplyEntries"),
 			metric.WithUnit("1"),
@@ -157,16 +161,14 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 		return 0, nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
-	// Propose the command
-	select {
-	case node.proposeCh <- cmdData:
-	default:
-		return 0, nil, fmt.Errorf("propose channel full")
-	}
-
 	// Wait for the future to complete with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	// Propose the command
+	if !node.proposeCh.Send(cmdData) {
+		return 0, nil, fmt.Errorf("propose channel full")
+	}
 
 	select {
 	case err := <-future.ch:
@@ -257,7 +259,7 @@ func (node *Node[State, F]) readyLoop() {
 			if err := node.rawNode.Step(msg); err != nil {
 				panic(err)
 			}
-		case cmd := <-node.proposeCh:
+		case cmd := <-node.proposeCh.Recv():
 			if err := node.rawNode.Propose(cmd); err != nil {
 				panic(err)
 			}
@@ -383,7 +385,7 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 		)
 	}
 
-	// Record batch size counter if available
+	// Record batch size inflightCounter if available
 	if node.applyEntriesBatchSizeCounter != nil && batchSize > 0 {
 		node.applyEntriesBatchSizeCounter.Add(ctx, batchSize,
 			metric.WithAttributes(
@@ -510,7 +512,8 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 	}
 
 	raftConfig := &raft.Config{
-		ID:                        node.config.NodeID,
+		ID: node.config.NodeID,
+		// todo: add random delay on election tick
 		ElectionTick:              node.config.ElectionTick,
 		HeartbeatTick:             node.config.HeartbeatTick,
 		Storage:                   node.storage,

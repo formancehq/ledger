@@ -267,6 +267,18 @@
                     <canvas id="batchSizeHistogramChart"></canvas>
                 </div>
             </div>
+
+            <!-- Channel Full Errors Chart -->
+            <div class="chart-card full-width">
+                <h2>Channel Full Errors</h2>
+                <div class="chart-wrapper">
+                    <canvas id="channelFullErrorsChart"></canvas>
+                </div>
+                <div id="channelFullErrorsTable" class="stats-box" style="margin-top: 15px; display: none;">
+                    <h3>Error Details</h3>
+                    <div id="channelFullErrorsTableContent"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -303,6 +315,7 @@
         let p999Chart = null;
         let histogramChart = null;
         let batchSizeHistogramChart = null;
+        let channelFullErrorsChart = null;
         let allReports = {};
         let selectedDrivers = new Set();
 
@@ -612,6 +625,7 @@
                 if (p999Chart) { p999Chart.destroy(); p999Chart = null; }
                 if (histogramChart) { histogramChart.destroy(); histogramChart = null; }
                 if (batchSizeHistogramChart) { batchSizeHistogramChart.destroy(); batchSizeHistogramChart = null; }
+                if (channelFullErrorsChart) { channelFullErrorsChart.destroy(); channelFullErrorsChart = null; }
                 return;
             }
             
@@ -1151,6 +1165,253 @@
                         }
                     }
                 });
+            }
+
+            // Render Channel Full Errors Chart
+            if (channelFullErrorsChart) {
+                channelFullErrorsChart.destroy();
+                channelFullErrorsChart = null;
+            }
+            
+            // Extract channel full errors data
+            const channelFullErrorsData = extractChannelFullErrors(allReports, drivers);
+            
+            const channelFullErrorsCanvas = document.getElementById('channelFullErrorsChart');
+            const channelFullErrorsCtx = channelFullErrorsCanvas.getContext('2d');
+            if (channelFullErrorsCanvas.width > 0 && channelFullErrorsCanvas.height > 0) {
+                channelFullErrorsCtx.clearRect(0, 0, channelFullErrorsCanvas.width, channelFullErrorsCanvas.height);
+            }
+            
+            // Update table display
+            const tableContainer = document.getElementById('channelFullErrorsTable');
+            const tableContent = document.getElementById('channelFullErrorsTableContent');
+            
+            if (channelFullErrorsData.hasErrors) {
+                tableContainer.style.display = 'block';
+                
+                // Create table HTML
+                let tableHTML = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
+                tableHTML += '<thead><tr style="background: #e9ecef; border-bottom: 2px solid #dee2e6;">';
+                tableHTML += '<th style="padding: 8px; text-align: left;">Driver</th>';
+                tableHTML += '<th style="padding: 8px; text-align: left;">Channel</th>';
+                tableHTML += '<th style="padding: 8px; text-align: right;">Error Count</th>';
+                tableHTML += '</tr></thead><tbody>';
+                
+                drivers.forEach((driver, idx) => {
+                    const driverErrors = channelFullErrorsData.errors[driver] || {};
+                    const channelNames = Object.keys(driverErrors).sort();
+                    
+                    if (channelNames.length > 0) {
+                        channelNames.forEach((channel, channelIdx) => {
+                            const isFirstRow = channelIdx === 0;
+                            tableHTML += `<tr style="border-bottom: 1px solid #dee2e6;">`;
+                            if (isFirstRow) {
+                                tableHTML += `<td style="padding: 8px; font-weight: bold;" rowspan="${channelNames.length}">${driver}</td>`;
+                            }
+                            tableHTML += `<td style="padding: 8px;">${channel}</td>`;
+                            tableHTML += `<td style="padding: 8px; text-align: right; color: ${driverErrors[channel] > 0 ? '#e74c3c' : '#27ae60'}; font-weight: bold;">${driverErrors[channel].toFixed(0)}</td>`;
+                            tableHTML += '</tr>';
+                        });
+                    } else {
+                        tableHTML += `<tr style="border-bottom: 1px solid #dee2e6;">`;
+                        tableHTML += `<td style="padding: 8px; font-weight: bold;">${driver}</td>`;
+                        tableHTML += `<td style="padding: 8px; color: #95a5a6;" colspan="2">No channel full errors</td>`;
+                        tableHTML += '</tr>';
+                    }
+                });
+                
+                tableHTML += '</tbody></table>';
+                tableContent.innerHTML = tableHTML;
+                
+                // Create chart datasets
+                const allChannels = new Set();
+                drivers.forEach(driver => {
+                    const driverErrors = channelFullErrorsData.errors[driver] || {};
+                    Object.keys(driverErrors).forEach(channel => allChannels.add(channel));
+                });
+                const sortedChannels = Array.from(allChannels).sort();
+                
+                const channelFullDatasets = drivers.map((driver, idx) => {
+                    const driverErrors = channelFullErrorsData.errors[driver] || {};
+                    const data = sortedChannels.map(channel => driverErrors[channel] || 0);
+                    return {
+                        label: driver,
+                        data: data,
+                        backgroundColor: colors[idx % colors.length],
+                        borderColor: borderColors[idx % borderColors.length],
+                        borderWidth: 1
+                    };
+                });
+                
+                if (sortedChannels.length > 0 && channelFullDatasets.some(ds => ds.data.some(v => v > 0))) {
+                    channelFullErrorsChart = new Chart(channelFullErrorsCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: sortedChannels,
+                            datasets: channelFullDatasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: true, position: 'top' },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + context.parsed.y.toFixed(0) + ' errors';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Errors'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Channel Name'
+                                    },
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    // Show message if no errors
+                    channelFullErrorsCtx.font = '16px sans-serif';
+                    channelFullErrorsCtx.fillStyle = '#95a5a6';
+                    channelFullErrorsCtx.textAlign = 'center';
+                    channelFullErrorsCtx.fillText('No channel full errors detected', channelFullErrorsCanvas.width / 2, channelFullErrorsCanvas.height / 2);
+                }
+            } else {
+                tableContainer.style.display = 'none';
+                // Show message if no errors
+                channelFullErrorsCtx.font = '16px sans-serif';
+                channelFullErrorsCtx.fillStyle = '#95a5a6';
+                channelFullErrorsCtx.textAlign = 'center';
+                channelFullErrorsCtx.fillText('No channel full errors detected', channelFullErrorsCanvas.width / 2, channelFullErrorsCanvas.height / 2);
+            }
+        }
+
+        function extractChannelFullErrors(allReports, drivers) {
+            const errors = {};
+            let hasErrors = false;
+            
+            drivers.forEach(driver => {
+                errors[driver] = {};
+                const report = allReports[driver];
+                
+                // Extract channel full errors from server_metrics (OTLP format)
+                for (const scenario in report) {
+                    if (report[scenario].InternalMetrics && report[scenario].InternalMetrics.server_metrics) {
+                        const serverMetrics = report[scenario].InternalMetrics.server_metrics;
+                        
+                        // Handle OTLP format: server_metrics.ScopeMetrics[].Metrics[]
+                        if (serverMetrics.ScopeMetrics && Array.isArray(serverMetrics.ScopeMetrics)) {
+                            serverMetrics.ScopeMetrics.forEach(scopeMetric => {
+                                if (scopeMetric.Metrics && Array.isArray(scopeMetric.Metrics)) {
+                                    scopeMetric.Metrics.forEach(metric => {
+                                        // Look for metrics ending with ".full"
+                                        if (metric.Name && metric.Name.endsWith('.full')) {
+                                            const channelName = metric.Name.replace('.full', '');
+                                            
+                                            // Extract value from metric data
+                                            let errorCount = 0;
+                                            
+                                            // Handle different metric data types
+                                            if (metric.Data) {
+                                                // Counter metric: Data.DataPoints[].Value
+                                                if (metric.Data.DataPoints && Array.isArray(metric.Data.DataPoints)) {
+                                                    metric.Data.DataPoints.forEach(dataPoint => {
+                                                        if (dataPoint.Value !== undefined && dataPoint.Value !== null) {
+                                                            errorCount += parseFloat(dataPoint.Value) || 0;
+                                                        }
+                                                    });
+                                                }
+                                                
+                                                // Sum field (for aggregated counters)
+                                                if (metric.Data.Sum !== undefined && metric.Data.Sum !== null) {
+                                                    errorCount += parseFloat(metric.Data.Sum) || 0;
+                                                }
+                                                
+                                                // Direct value field
+                                                if (metric.Data.Value !== undefined && metric.Data.Value !== null) {
+                                                    errorCount += parseFloat(metric.Data.Value) || 0;
+                                                }
+                                            }
+                                            
+                                            if (errorCount > 0) {
+                                                if (!errors[driver][channelName]) {
+                                                    errors[driver][channelName] = 0;
+                                                }
+                                                errors[driver][channelName] += errorCount;
+                                                hasErrors = true;
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // Also handle flat metric structure (fallback)
+                        if (!hasErrors || Object.keys(errors[driver]).length === 0) {
+                            extractFromMap(serverMetrics, '', errors[driver]);
+                            if (Object.keys(errors[driver]).length > 0) {
+                                hasErrors = true;
+                            }
+                        }
+                    }
+                }
+            });
+            
+            return { errors, hasErrors };
+        }
+        
+        // Helper function to recursively extract metrics from nested maps
+        function extractFromMap(obj, prefix, result) {
+            if (typeof obj !== 'object' || obj === null) {
+                return;
+            }
+            
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    const value = obj[key];
+                    const fullKey = prefix ? `${prefix}.${key}` : key;
+                    
+                    // Check if key ends with ".full"
+                    if (key.endsWith('.full')) {
+                        const channelName = key.replace('.full', '');
+                        const errorCount = parseFloat(value) || 0;
+                        if (errorCount > 0) {
+                            if (!result[channelName]) {
+                                result[channelName] = 0;
+                            }
+                            result[channelName] += errorCount;
+                        }
+                    }
+                    
+                    // Recursively search nested objects
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        extractFromMap(value, fullKey, result);
+                    }
+                    
+                    // Handle arrays of objects
+                    if (Array.isArray(value)) {
+                        value.forEach(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                extractFromMap(item, fullKey, result);
+                            }
+                        });
+                    }
+                }
             }
         }
     </script>

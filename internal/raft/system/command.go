@@ -23,25 +23,11 @@ func NewCreateLedgerCommand(name, driver string, config map[string]interface{}, 
 		return nil, err
 	}
 
-	// Convert metadata map to protobuf Struct
-	var metadataStruct *structpb.Struct
-	if len(metadata) > 0 {
-		// Convert map[string]string to map[string]interface{}
-		metadataMap := make(map[string]interface{})
-		for k, v := range metadata {
-			metadataMap[k] = v
-		}
-		metadataStruct, err = structpb.NewStruct(metadataMap)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	cmdProto := &CreateLedgerCommand{
 		Name:     name,
 		Driver:   driver,
 		Config:   configStruct,
-		Metadata: metadataStruct,
+		Metadata: metadata,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		cmdProto.SnapshotThreshold = *snapshotThreshold

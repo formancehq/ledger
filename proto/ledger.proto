@@ -315,6 +315,11 @@ message RevertedTransactionMemento {
   TransactionResume revert_transaction = 2;
 }
 
+enum LedgerStatus {
+  Active = 0;
+  Deleted = 1;
+}
+
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
   uint64 id = 1;                            // Sequential ledger ID
@@ -325,5 +330,5 @@ message LedgerInfo {
   Timestamp created_at = 6; // Creation timestamp
   uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
   Timestamp deleted_at = 8;                 // Deletion timestamp (optional, set when ledger is soft-deleted)
+  LedgerStatus status = 9;
 }
-

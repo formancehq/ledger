@@ -9,6 +9,8 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 )
 
@@ -24,25 +26,45 @@ type GRPCTransport struct {
 	connectionPool *transport.ConnectionPool
 
 	// Channel for Incoming messages
-	recvCh chan Incoming
+	recvCh *Channel[Incoming]
 
 	// Channels for outgoing messages per peer
 	peers map[uint64]peerConnection
 
 	// Channel for reporting unreachable peers
-	unreachableCh chan uint64
+	unreachableCh *Channel[uint64]
 
-	logger logging.Logger
+	logger        logging.Logger
+	globalMeter   metric.Meter
+	meterProvider metric.MeterProvider
 }
 
 // NewTransport creates a new transport with a gRPC connection pool and client pool
-func NewTransport(logger logging.Logger, connectionPool *transport.ConnectionPool) *GRPCTransport {
+func NewTransport(
+	logger logging.Logger,
+	connectionPool *transport.ConnectionPool,
+	meterProvider metric.MeterProvider,
+) *GRPCTransport {
+	meter := meterProvider.Meter("raft.transport")
 	return &GRPCTransport{
 		connectionPool: connectionPool,
-		recvCh:         make(chan Incoming, 100),
-		peers:          make(map[uint64]peerConnection),
-		unreachableCh:  make(chan uint64, 100),
-		logger:         logger,
+		recvCh: NewChannel[Incoming](
+			"raft.transport.recv",
+			WithLogger[Incoming](logger),
+			WithMeter[Incoming](meter),
+			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
+				return AddTypeAsAttribute(t.Msg)
+			}),
+		),
+		peers: make(map[uint64]peerConnection),
+		unreachableCh: NewChannel[uint64](
+			"raft.transport.unreachable",
+			WithMeter[uint64](meter),
+			WithLogger[uint64](logger),
+		),
+		globalMeter:   meter,
+		meterProvider: meterProvider,
+		logger:        logger,
 	}
 }
 
@@ -59,8 +81,7 @@ func (t *GRPCTransport) Stop(ctx context.Context) error {
 		return err
 	}
 
-	//close(t.recvCh)
-	close(t.unreachableCh)
+	t.unreachableCh.stop()
 
 	return nil
 }
@@ -72,9 +93,24 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		return
 	}
 
+	meter := t.meterProvider.Meter("raft.transport",
+		metric.WithInstrumentationAttributes(
+			attribute.Int("peer", int(id)),
+		),
+	)
+
 	if _, exists := t.peers[id]; !exists {
 		conn := peerConnection{
-			sendCh:        make(chan raftpb.Message, 100),
+			sendCh: NewChannel[raftpb.Message](
+				"raft.transport.peer.sending",
+				WithLogger[raftpb.Message](t.logger),
+				WithMeter[raftpb.Message](meter),
+				WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
+					ret := AddTypeAsAttribute(msg)
+					ret = append(ret, attribute.Int("peer", int(id)))
+					return ret
+				}),
+			),
 			closeCh:       make(chan chan struct{}),
 			unreachableCh: t.unreachableCh,
 			connection:    t.connectionPool.GetConnection(id),
@@ -92,9 +128,7 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 	peer, exists := t.peers[peerID]
 
 	if exists {
-		select {
-		case peer.sendCh <- msg:
-		default:
+		if !peer.sendCh.Send(msg) {
 			t.logger.
 				WithFields(map[string]any{
 					"peer": fmt.Sprintf("%x", peerID),
@@ -114,12 +148,12 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 
 // Recv returns the channel for receiving messages
 func (t *GRPCTransport) Recv() <-chan Incoming {
-	return t.recvCh
+	return t.recvCh.Recv()
 }
 
 // Unreachable returns the channel for reporting unreachable peers
 func (t *GRPCTransport) Unreachable() <-chan uint64 {
-	return t.unreachableCh
+	return t.unreachableCh.Recv()
 }
 
 // GetPeerConnection returns the gRPC connection for a specific peer, if it exists
@@ -158,33 +192,31 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 
 		// Send message to recvCh for processing
 		rspChan := make(chan error)
+		if !t.recvCh.Send(Incoming{
+			Msg: msg,
+			Rsp: rspChan,
+		}) {
+			if err := stream.Send(&SendMessageResponse{
+				Error:     "recv channel full, dropping message",
+				RequestId: req.Id,
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+
 		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()
-		case t.recvCh <- Incoming{
-			Msg: msg,
-			Rsp: rspChan,
-		}:
-			select {
-			case <-stream.Context().Done():
-				return stream.Context().Err()
-			case ret := <-rspChan:
-				if err := stream.Send(&SendMessageResponse{
-					Success: ret == nil,
-					Error: func() string {
-						if ret != nil {
-							return ret.Error()
-						}
-						return ""
-					}(),
-					RequestId: req.Id,
-				}); err != nil {
-					return err
-				}
-			}
-		default:
+		case ret := <-rspChan:
 			if err := stream.Send(&SendMessageResponse{
-				Error:     "recv channel full, dropping message",
+				Success: ret == nil,
+				Error: func() string {
+					if ret != nil {
+						return ret.Error()
+					}
+					return ""
+				}(),
 				RequestId: req.Id,
 			}); err != nil {
 				return err
@@ -204,9 +236,9 @@ func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
 }
 
 type peerConnection struct {
-	sendCh        chan raftpb.Message
+	sendCh        *Channel[raftpb.Message]
 	closeCh       chan chan struct{}
-	unreachableCh chan uint64
+	unreachableCh *Channel[uint64]
 	connection    *grpc.ClientConn
 	logger        logging.Logger
 	peerID        uint64
@@ -234,11 +266,10 @@ func (conn *peerConnection) loop() {
 				}).
 				Errorf("Failed to create stream to peer")
 			// Report peer as unreachable
-			select {
-			case conn.unreachableCh <- conn.peerID:
-			default:
+			if !conn.unreachableCh.Send(conn.peerID) {
 				conn.logger.Errorf("Unreachable channel full, dropping unreachable")
 			}
+
 			// Wait before retrying
 			select {
 			case ch := <-conn.closeCh:
@@ -266,7 +297,9 @@ func (conn *peerConnection) loop() {
 					}
 					mu.Unlock()
 					if ok {
-						conn.unreachableCh <- nodeID
+						conn.logger.
+							Errorf("Failed to send message to peer %d, peer respond with error: %s", nodeID, res.Error)
+						conn.unreachableCh.Send(nodeID)
 					}
 				}
 			}
@@ -278,7 +311,7 @@ func (conn *peerConnection) loop() {
 			case ch := <-conn.closeCh:
 				close(ch)
 				return
-			case msg := <-conn.sendCh:
+			case msg := <-conn.sendCh.Recv():
 				data, err := msg.Marshal()
 				if err != nil {
 					conn.logger.
@@ -310,9 +343,7 @@ func (conn *peerConnection) loop() {
 						}).
 						Errorf("Failed to send message via stream")
 					// Report peer as unreachable
-					select {
-					case conn.unreachableCh <- msg.To:
-					default:
+					if !conn.unreachableCh.Send(msg.To) {
 						conn.logger.Errorf("Unreachable channel full, dropping unreachable")
 					}
 					break l
@@ -332,7 +363,7 @@ func (conn *peerConnection) stop(ctx context.Context) error {
 		select {
 		case <-ch:
 			close(conn.closeCh)
-			close(conn.sendCh)
+			conn.sendCh.stop()
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
