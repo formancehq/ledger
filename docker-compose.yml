@@ -68,12 +68,13 @@ services:
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=1
+      - DATA_DIR=/data/node-1/raft
     ports:
       - "8888:8888"
       - "9000:9000"
     volumes:
       - .:/app
-      - node-1-data:/data
+      - nodes-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -85,7 +86,7 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --data-dir /data/raft --http-port 9000 --snapshot-threshold 100"]
+    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --http-port 9000"]
 
   node-2:
     build:
@@ -109,12 +110,13 @@ services:
       - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=2
+      - DATA_DIR=/data/node-2/raft
     ports:
       - "8889:8888"
       - "9001:9000"
     volumes:
       - .:/app
-      - node-2-data:/data
+      - nodes-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -126,7 +128,7 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --data-dir /data/raft --http-port 9000 --snapshot-threshold 100"]
+    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --http-port 9000"]
 
   node-3:
     build:
@@ -150,12 +152,13 @@ services:
       - OTEL_METRICS_EXPORTER_OTLP_MODE=grpc
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=3
+      - DATA_DIR=/data/node-3/raft
     ports:
       - "8890:8888"
       - "9002:9000"
     volumes:
       - .:/app
-      - node-3-data:/data
+      - nodes-data:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -167,16 +170,14 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --data-dir /data/raft --http-port 9000 --snapshot-threshold 100"]
+    command: ["sh", "-c", "go mod download && go run . --bind-addr 0.0.0.0:8888 --http-port 9000"]
 
 networks:
   raft-network:
     driver: bridge
 
 volumes:
-  node-1-data:
-  node-2-data:
-  node-3-data:
+  nodes-data:
   go-mod-cache:
   victoria-metrics-data:
   grafana-data:

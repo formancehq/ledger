@@ -59,7 +59,7 @@ func (r *multiplexedTransport) Start() {
 							"channel": fmt.Sprintf("ledger/%d", ledgerID),
 							"type":    incoming.Msg.Type.String(),
 						}).
-						Errorf("Ledger transport channel full, dropping message")
+						Errorf("Ledger incoming queue full, dropping message")
 				}
 			} else {
 				incoming.Rsp <- fmt.Errorf("unknown ledger")
@@ -117,7 +117,7 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	channels := receptionsChannels{
 		recv: raft.NewQueueObserver[raftpb.Message](
 			"raft.multiplexed_transport.ledger.recv",
-			raft.NewSimpleQueue[raftpb.Message](),
+			raft.NewPriorityQueue[raftpb.Message](5, raft.RaftMessagePriority),
 			raft.WithLogger[raftpb.Message](r.logger),
 			raft.WithMeter[raftpb.Message](meter),
 			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -163,7 +163,7 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 		mainReceptionChannels: receptionsChannels{
 			recv: raft.NewQueueObserver[raftpb.Message](
 				"raft.multiplexed_transport.system.recv",
-				raft.NewSimpleQueue[raftpb.Message](),
+				raft.NewPriorityQueue[raftpb.Message](5, raft.RaftMessagePriority),
 				raft.WithLogger[raftpb.Message](logger),
 				raft.WithMeter[raftpb.Message](meter),
 				raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {

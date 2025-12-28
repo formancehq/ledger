@@ -1,5 +1,5 @@
 FROM golang:1.25-alpine AS compiler
-RUN apk add --no-cache --update go gcc g++ make build-base
+RUN apk add --no-cache --update go gcc g++ make build-base sqlite
 ENV CGO_ENABLED=1
 
 FROM compiler AS builder

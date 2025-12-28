@@ -360,7 +360,7 @@
           "refId": "B"
         }
       ],
-      "title": "Transport Recv Channel - Inflight Messages (by Scope)",
+      "title": "Transport queue incoming messages",
       "type": "timeseries"
     },
     {
@@ -456,7 +456,7 @@
           "refId": "A"
         }
       ],
-      "title": "Transport Recv Channel - Inflights",
+      "title": "Transport queue inflight messages",
       "type": "timeseries"
     },
     {
@@ -520,7 +520,7 @@
           "refId": "A"
         }
       ],
-      "title": "Transport Recv Channel - Full Messages (by Scope)",
+      "title": "Transport queue full count",
       "type": "gauge"
     },
     {
@@ -1184,7 +1184,7 @@
           "refId": "B"
         }
       ],
-      "title": "Propose Channel Inflight Messages (by Node)",
+      "title": "Propose queue incoming messages",
       "type": "timeseries"
     },
     {
@@ -1294,7 +1294,7 @@
           "refId": "B"
         }
       ],
-      "title": "Propose Channel Inflight Messages (by Node)",
+      "title": "Propose queue inflight messages",
       "type": "timeseries"
     },
     {
@@ -1390,7 +1390,7 @@
           "refId": "A"
         }
       ],
-      "title": "Propose Channel Full Errors - Total Count (by Node)",
+      "title": "Propose queue full count",
       "type": "timeseries"
     },
     {
@@ -1458,7 +1458,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "Peer 3 : MsgHeartbeat"
+                  "Peer 2 : MsgHeartbeat"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -1506,7 +1506,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[30s])) by (scope.attributes.peer, type)",
+          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\"}[30s])) by (scope.attributes.peer, type)",
           "format": "time_series",
           "hide": false,
           "instant": false,

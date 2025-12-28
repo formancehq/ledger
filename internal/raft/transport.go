@@ -50,7 +50,9 @@ func NewTransport(
 		connectionPool: connectionPool,
 		recvCh: NewQueueObserver[Incoming](
 			"raft.transport.recv",
-			NewSimpleQueue[Incoming](),
+			NewPriorityQueue[Incoming](5, func(incoming Incoming) int {
+				return RaftMessagePriority(incoming.Msg)
+			}),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
@@ -100,30 +102,29 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 			attribute.Int("peer", int(id)),
 		),
 	)
+	logger := t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id)})
 
-	if _, exists := t.peers[id]; !exists {
-		conn := peerConnection{
-			sendCh: NewQueueObserver[raftpb.Message](
-				"raft.transport.peer.sending",
-				NewSimpleQueue[raftpb.Message](),
-				WithLogger[raftpb.Message](t.logger),
-				WithMeter[raftpb.Message](meter),
-				WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
-					ret := AddTypeAsAttribute(msg)
-					ret = append(ret, attribute.Int("peer", int(id)))
-					return ret
-				}),
-			),
-			closeCh:       make(chan chan struct{}),
-			unreachableCh: t.unreachableCh,
-			connection:    t.connectionPool.GetConnection(id),
-			logger:        t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id)}),
-			peerID:        id,
-		}
-		t.peers[id] = conn
-
-		go conn.loop()
+	conn := peerConnection{
+		sendCh: NewQueueObserver[raftpb.Message](
+			"raft.transport.peer.sending",
+			NewPriorityQueue[raftpb.Message](5, RaftMessagePriority),
+			WithLogger[raftpb.Message](logger),
+			WithMeter[raftpb.Message](meter),
+			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
+				ret := AddTypeAsAttribute(msg)
+				ret = append(ret, attribute.Int("peer", int(id)))
+				return ret
+			}),
+		),
+		closeCh:       make(chan chan struct{}),
+		unreachableCh: t.unreachableCh,
+		connection:    t.connectionPool.GetConnection(id),
+		logger:        logger,
+		peerID:        id,
 	}
+	t.peers[id] = conn
+
+	go conn.loop()
 }
 
 // Send sends a message to a peer
