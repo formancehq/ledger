@@ -1,5 +1,4 @@
 //go:build it
-// +build it
 
 package service
 
