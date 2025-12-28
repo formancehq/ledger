@@ -61,8 +61,7 @@ func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (C
 // LogStore embeds both LogWriter and LogReader, plus additional methods
 type LogStore interface {
 	// todo: relax ?
-	BalancesStore
-	AccountStore
+	RuntimeStore
 	LogWriter
 	LogReader
 	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error)
@@ -75,11 +74,8 @@ type Store interface {
 	LogReader
 }
 
-// BalancesStore handles balance/volume queries
-type BalancesStore interface {
+// RuntimeStore handles runtime queries for balances and account metadata
+type RuntimeStore interface {
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
-}
-
-type AccountStore interface {
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 }

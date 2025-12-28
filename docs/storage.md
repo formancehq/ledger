@@ -21,7 +21,7 @@ graph TB
     
     subgraph "Application Storage"
         logstore[Log Store<br/>SQLite]
-        BalancesStore[Balances Store<br/>in-Memory Cache]
+        RuntimeStore[Runtime Store<br/>Balances & Account Metadata]
     end
     
     subgraph "Data Directory Structure"
@@ -326,10 +326,13 @@ The Balances Store provides persistent storage of account balances for each ledg
 ### Structure
 
 ```go
-type BalancesStore interface {
-    GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
+type RuntimeStore interface {
+    GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
+    GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 }
 ```
+
+The `RuntimeStore` interface combines balance queries and account metadata queries into a single interface, providing runtime data access for the ledger service.
 
 ### Implementation
 
@@ -365,7 +368,7 @@ CREATE TABLE balances (
 
 **File**: `internal/service/balances_store_locked.go`
 
-The `DefaultLockedBalancesStore` wraps a `BalancesStore` and adds locking for concurrent access:
+The `DefaultLockedBalancesStore` wraps a `RuntimeStore` and adds locking for concurrent access:
 
 - **Purpose**: Ensures safe concurrent access to balances during transaction processing
 - **Mechanism**: Uses mutexes keyed by `account:asset` combinations

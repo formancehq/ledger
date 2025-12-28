@@ -563,10 +563,10 @@ func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) 
 }
 
 // ============================================================================
-// Common BalancesStore Implementation
+// Common RuntimeStore Implementation
 // ============================================================================
 
-// GetBalances retrieves balances from the balances table (implements BalancesStore)
+// GetBalances retrieves balances from the balances table (implements RuntimeStore)
 func (s *SQLiteLogStore) GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
@@ -634,11 +634,7 @@ func (s *SQLiteLogStore) GetBalances(ctx context.Context, balanceQuery map[strin
 	return result, nil
 }
 
-// ============================================================================
-// Common AccountStore Implementation
-// ============================================================================
-
-// GetAccountMetadata retrieves account metadata for multiple accounts from account_metadata table (implements AccountStore)
+// GetAccountMetadata retrieves account metadata for multiple accounts from account_metadata table (implements RuntimeStore)
 func (s *SQLiteLogStore) GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 

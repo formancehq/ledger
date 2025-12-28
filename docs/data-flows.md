@@ -90,7 +90,7 @@ sequenceDiagram
     participant HTTP as HTTP Handler
     participant LedgerNode as Ledger Raft Node
     participant LedgerService as Ledger Service
-    participant BalancesStore as Balances Store
+    participant RuntimeStore as Runtime Store
     participant LedgerFSM as Ledger FSM
     participant logstore as Log Store
     
@@ -100,13 +100,13 @@ sequenceDiagram
     
     alt Node is leader
         LedgerNode->>LedgerService: CreateTransaction()
-        LedgerService->>BalancesStore: Check Balances
-        BalancesStore-->>LedgerService: Balances OK
+        LedgerService->>RuntimeStore: Check Balances
+        RuntimeStore-->>LedgerService: Balances OK
         LedgerService->>LedgerService: Validate Transaction
         LedgerService->>LedgerFSM: Propose InsertLogCommand
         LedgerFSM->>LedgerFSM: Generate Sequence
         LedgerFSM->>logstore: Write Log
-        LedgerFSM->>BalancesStore: Update Balances
+        LedgerFSM->>RuntimeStore: Update Balances
         LedgerFSM-->>LedgerService: Log with Sequence
         LedgerService-->>LedgerNode: CreatedTransaction
     else Node is Follower

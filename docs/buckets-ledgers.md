@@ -177,12 +177,12 @@ sequenceDiagram
     participant LedgerNode
     participant LedgerFSM
     participant LogStore
-    participant BalancesStore
+    participant RuntimeStore
     
     Client->>HTTP: POST /ledgers/my-ledger/transactions
     HTTP->>LedgerNode: CreateTransaction()
     LedgerNode->>LedgerNode: Validate Transaction
-    LedgerNode->>BalancesStore: Check Balances
+    LedgerNode->>RuntimeStore: Check Balances
     LedgerNode->>LedgerFSM: Propose InsertLogCommand
     LedgerFSM->>LedgerFSM: Generate Sequence
     LedgerFSM->>LogStore: Write Log

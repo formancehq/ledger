@@ -15,9 +15,9 @@ type LockedBalancesStore interface {
 }
 
 // DefaultLockedBalancesStore is a default implementation of LockedBalancesStore
-// that wraps a BalancesStore and provides locking for concurrent access
+// that wraps a RuntimeStore and provides locking for concurrent access
 type DefaultLockedBalancesStore struct {
-	balancesStore BalancesStore
+	runtimeStore RuntimeStore
 	// locks is a map of mutexes keyed by "account:asset" combination
 	locks map[string]*sync.Mutex
 	// locksMutex protects the locks map itself
@@ -30,9 +30,9 @@ func makeLockKey(account, asset string) string {
 }
 
 // NewDefaultLockedBalancesStore creates a new DefaultLockedBalancesStore
-func NewDefaultLockedBalancesStore(balancesStore BalancesStore) *DefaultLockedBalancesStore {
+func NewDefaultLockedBalancesStore(runtimeStore RuntimeStore) *DefaultLockedBalancesStore {
 	return &DefaultLockedBalancesStore{
-		balancesStore: balancesStore,
+		runtimeStore: runtimeStore,
 		locks:         make(map[string]*sync.Mutex),
 	}
 }
@@ -60,7 +60,7 @@ func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQu
 	}
 
 	// Get balances from the underlying store
-	balances, err := s.balancesStore.GetBalances(ctx, balanceQuery)
+	balances, err := s.runtimeStore.GetBalances(ctx, balanceQuery)
 	if err != nil {
 		// Release all locks on error
 		s.releaseLocks(lockedKeys)
