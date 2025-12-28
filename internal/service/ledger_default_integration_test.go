@@ -288,7 +288,3 @@ func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) e
 	}
 	return m.store.InsertLogs(ctx, logs...)
 }
-
-func (m *mockLogWriter) GetLastLogID(ctx context.Context) (uint64, error) {
-	return m.store.GetLastLogID(ctx)
-}

@@ -195,7 +195,7 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 		}
 
 		// Send message to recvCh for processing
-		rspChan := make(chan error)
+		rspChan := make(chan error, 1)
 		if !t.recvCh.Send(Incoming{
 			Msg: msg,
 			Rsp: rspChan,
@@ -240,7 +240,7 @@ func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
 }
 
 type peerConnection struct {
-	sendCh       Queue[raftpb.Message]
+	sendCh        Queue[raftpb.Message]
 	closeCh       chan chan struct{}
 	unreachableCh Queue[uint64]
 	connection    *grpc.ClientConn

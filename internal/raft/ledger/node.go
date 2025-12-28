@@ -175,11 +175,6 @@ func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	return nil
 }
 
-// GetLastLogID returns the highest log id from the underlying log store (implements LogWriter)
-func (node *Node) GetLastLogID(ctx context.Context) (uint64, error) {
-	return node.logStore.GetLastLogID(ctx)
-}
-
 func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {
 	return node.defaultLedger.CreateTransaction(ctx, ledgerName, parameters)
 }

@@ -138,18 +138,13 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	f.state.LedgerInfo = snapshotData.LedgerInfo
 	f.mu.Unlock()
 
-	storeLastLogID, err := f.logWriter.GetLastLogID(ctx)
-	if err != nil {
-		panic(fmt.Errorf("getting last log ID from log store: %w", err))
-	}
-
-	if storeLastLogID < snapshotData.LastLogID {
+	if f.state.LastLogID < snapshotData.LastLogID {
 		f.logger.WithFields(map[string]any{
 			"snapshotLogID": snapshotData.LastLogID,
-			"storeLogID":    storeLastLogID,
+			"storeLogID":    f.state.LastLogID,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
-		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, storeLastLogID, snapshotData.LastLogID) // 0 = no limit
+		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, f.state.LastLogID, snapshotData.LastLogID)
 		if err != nil {
 			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
 		}

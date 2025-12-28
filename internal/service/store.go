@@ -44,7 +44,6 @@ func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], ma
 // LogWriter handles log writing operations
 type LogWriter interface {
 	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
-	GetLastLogID(ctx context.Context) (uint64, error)
 }
 
 // LogReader handles log reading operations
