@@ -83,7 +83,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 				continue
 			}
 			ret = append(ret, raft.ApplyResult{
-				Result: log,
+				Result: log.Id,
 			})
 			logs = append(logs, log)
 		default:

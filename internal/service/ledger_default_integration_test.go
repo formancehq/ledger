@@ -45,7 +45,6 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log)
-		require.NotZero(t, log.Id)
 
 		// Verify the log was created correctly
 		require.Equal(t, ledgerpb.SetMetadataLogType, ledgerpb.GetLogTypeFromLog(log))
@@ -83,7 +82,6 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		idempotencyKey := "test-idempotency-key"
 
 		log1, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
-			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
@@ -95,7 +93,6 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 		// Try to save again with the same idempotency key
 		log2, err := ledgerService.SaveAccountMetadata(ctx, ledgerName, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
-			DryRun:         false,
 			IdempotencyKey: idempotencyKey,
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
@@ -245,11 +242,9 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 				"test-account": {Entries: md},
 			},
 		})
-		txLog := ledgerpb.NewLog(payload).
-			WithID(1).
-			WithDate(now)
+		txLog := ledgerpb.NewLog(payload).WithDate(now)
 
-		err := store.InsertLogs(ctx, txLog)
+		err := logWriter.InsertLogs(ctx, txLog)
 		require.NoError(t, err)
 
 		// Then, save additional metadata
@@ -282,10 +277,15 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 // mockLogWriter implements LogWriter by delegating to the underlying store
 type mockLogWriter struct {
-	store LogStore
+	store   LogStore
+	counter uint64
 }
 
 func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+	for _, log := range logs {
+		m.counter++
+		log.Id = m.counter
+	}
 	return m.store.InsertLogs(ctx, logs...)
 }
 

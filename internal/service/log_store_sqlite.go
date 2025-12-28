@@ -52,7 +52,7 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 			idempotency_key TEXT,
 			idempotency_hash TEXT,
 			UNIQUE(idempotency_key)
-		);
+		) WITHOUT ROWID;
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
 	`)

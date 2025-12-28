@@ -160,12 +160,16 @@ func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 		}
 
 		// Apply the command via Raft (waits for application)
-		_, _, err = node.Apply(cmd, 5*time.Second)
+		_, logID, err := node.Apply(cmd, 5*time.Second)
 		if err != nil {
 			return fmt.Errorf("applying insert log command via etcdraft: %w", err)
 		}
 
-		node.logger.WithFields(map[string]any{"commandID": cmd.ID}).Debugf("Log inserted via ledger Raft")
+		log.Id = logID.(uint64)
+
+		node.logger.
+			WithFields(map[string]any{"commandID": cmd.ID}).
+			Debugf("Log inserted via ledger Raft")
 	}
 
 	return nil

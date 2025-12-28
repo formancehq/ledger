@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sync"
 
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -20,9 +19,6 @@ type DefaultLedger struct {
 	lockedVolumesStore LockedBalancesStore
 	logStore           LogStore // Needed for GetLastLog, GetLogWithIdempotencyKey, and GetAllLogs
 	logger             logging.Logger
-	// todo: clean on leader change
-	nextLogIDs     map[string]uint64 // Counter for log IDs per ledger
-	nextLogIDMutex sync.RWMutex      // Protects nextLogIDs access
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -32,7 +28,6 @@ func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStor
 		lockedVolumesStore: lockedVolumesStore,
 		logStore:           logStore,
 		logger:             logger,
-		nextLogIDs:         make(map[string]uint64),
 	}
 }
 
@@ -62,54 +57,6 @@ func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey str
 
 	// Same operation, return the existing log
 	return existingLog, nil
-}
-
-// getNextLogID returns the next log ID for a ledger and increments the counter (thread-safe)
-// It initializes the counter from the last log if not already initialized
-func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (uint64, error) {
-	// First, check if counter is already initialized (read lock)
-	l.nextLogIDMutex.RLock()
-	_, exists := l.nextLogIDs[ledgerName]
-	l.nextLogIDMutex.RUnlock()
-
-	if !exists {
-		// Need to initialize counter, acquire write lock
-		l.nextLogIDMutex.Lock()
-		// Double-check after acquiring write lock
-		_, exists = l.nextLogIDs[ledgerName]
-		if !exists {
-			// Initialize counter from last log
-			lastLog, err := l.logStore.GetLastLog(ctx)
-			if err != nil {
-				l.nextLogIDMutex.Unlock()
-				return 0, fmt.Errorf("getting last log to initialize counter: %w", err)
-			}
-
-			var counter uint64
-			if lastLog != nil && lastLog.Id != 0 {
-				// Initialize counter to last log ID + 1
-				counter = lastLog.Id + 1
-				l.logger.WithFields(map[string]any{"ledger": ledgerName, "lastLogID": lastLog.Id, "nextLogID": counter}).Infof("Initialized log ID counter from last log")
-			} else {
-				// No logs yet, start at 1
-				counter = 1
-				l.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Initialized log ID counter to 1 (no previous logs)")
-			}
-			l.nextLogIDs[ledgerName] = counter
-		}
-		l.nextLogIDMutex.Unlock()
-	}
-
-	// Get current ID and increment (need write lock)
-	l.nextLogIDMutex.Lock()
-	defer l.nextLogIDMutex.Unlock()
-
-	// Get counter and increment
-	counter := l.nextLogIDs[ledgerName]
-	currentID := counter
-	l.nextLogIDs[ledgerName] = counter + 1
-
-	return currentID, nil
 }
 
 // CreateTransaction creates a new transaction
@@ -241,12 +188,6 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		}
 	}
 
-	// Get next log ID from counter
-	nextLogID, err := l.getNextLogID(ctx, ledgerName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting next log ID: %w", err)
-	}
-
 	// Determine timestamp: use provided timestamp or current time if not provided
 	var timestamp *time.Time
 	if input.Timestamp != nil {
@@ -340,7 +281,6 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// Create protobuf Log
 	log := &ledgerpb.Log{
-		Id:   nextLogID,
 		Data: logPayload,
 	}
 
@@ -454,12 +394,6 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName stri
 		return existingLog, nil
 	}
 
-	// Get next log ID from counter
-	nextLogID, err := l.getNextLogID(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting next log ID: %w", err)
-	}
-
 	// Create SavedMetadata payload in protobuf
 	savedMetadata := &ledgerpb.SavedMetadata{
 		TargetType: "ACCOUNT",
@@ -479,7 +413,6 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName stri
 	// Create protobuf Log
 	now := time.Now()
 	log := &ledgerpb.Log{
-		Id:   nextLogID,
 		Data: logPayload,
 		Date: ledgerpb.NewTimestamp(now),
 	}
