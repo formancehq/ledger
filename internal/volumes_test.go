@@ -162,3 +162,65 @@ func TestPostCommitVolumes_AddOutput_OnEmptyMap(t *testing.T) {
 	require.Contains(t, volumes["any_account"], "USD")
 	require.Equal(t, big.NewInt(100), volumes["any_account"]["USD"].Output)
 }
+
+// TestPostCommitVolumes_Get_WithExistingAccount verifies Get returns existing volumes
+func TestPostCommitVolumes_Get_WithExistingAccount(t *testing.T) {
+	t.Parallel()
+
+	volumes := PostCommitVolumes{
+		"existing_account": {
+			"USD": NewVolumesInt64(100, 50),
+		},
+	}
+
+	result := volumes.Get("existing_account", "USD")
+
+	require.Equal(t, big.NewInt(100), result.Input)
+	require.Equal(t, big.NewInt(50), result.Output)
+}
+
+// TestPostCommitVolumes_Get_WithNonExistingAccount verifies Get creates empty volumes
+func TestPostCommitVolumes_Get_WithNonExistingAccount(t *testing.T) {
+	t.Parallel()
+
+	volumes := PostCommitVolumes{
+		"existing_account": {
+			"USD": NewEmptyVolumes(),
+		},
+	}
+
+	// Should NOT panic - account should be created automatically
+	var result Volumes
+	require.NotPanics(t, func() {
+		result = volumes.Get("new_account", "USD")
+	})
+
+	// Verify empty volumes are returned
+	require.Equal(t, big.NewInt(0), result.Input)
+	require.Equal(t, big.NewInt(0), result.Output)
+
+	// Verify the account and asset were created in the map
+	require.Contains(t, volumes, "new_account")
+	require.Contains(t, volumes["new_account"], "USD")
+}
+
+// TestPostCommitVolumes_Get_OnEmptyMap verifies Get works on empty map
+func TestPostCommitVolumes_Get_OnEmptyMap(t *testing.T) {
+	t.Parallel()
+
+	volumes := PostCommitVolumes{}
+
+	// Should NOT panic - account and asset should be created automatically
+	var result Volumes
+	require.NotPanics(t, func() {
+		result = volumes.Get("any_account", "USD")
+	})
+
+	// Verify empty volumes are returned
+	require.Equal(t, big.NewInt(0), result.Input)
+	require.Equal(t, big.NewInt(0), result.Output)
+
+	// Verify the account and asset were created
+	require.Contains(t, volumes, "any_account")
+	require.Contains(t, volumes["any_account"], "USD")
+}

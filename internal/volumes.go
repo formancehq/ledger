@@ -117,6 +117,18 @@ func (v VolumesByAssets) copy() VolumesByAssets {
 
 type PostCommitVolumes map[string]VolumesByAssets
 
+// Get returns the volumes for the given account and asset, creating empty volumes if they don't exist.
+// This method is safe to call even if the account or asset doesn't exist in the map.
+func (a PostCommitVolumes) Get(account, asset string) Volumes {
+	if _, ok := a[account]; !ok {
+		a[account] = map[string]Volumes{}
+	}
+	if _, ok := a[account][asset]; !ok {
+		a[account][asset] = NewEmptyVolumes()
+	}
+	return a[account][asset]
+}
+
 func (a PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
 	if _, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{}

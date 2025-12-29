@@ -82,7 +82,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 				Asset:             posting.Asset,
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,
-				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
+				PostCommitVolumes: pointer.For(postCommitVolumes.Get(posting.Destination, posting.Asset).Copy()),
 				TransactionID:     *tx.ID,
 			})
 			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
@@ -94,7 +94,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 				Asset:             posting.Asset,
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,
-				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
+				PostCommitVolumes: pointer.For(postCommitVolumes.Get(posting.Source, posting.Asset).Copy()),
 				TransactionID:     *tx.ID,
 			})
 			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
