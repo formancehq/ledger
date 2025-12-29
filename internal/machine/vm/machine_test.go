@@ -133,7 +133,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	err := exec(m)
 	if expected.Error != nil {
-		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %v, got: %v", expected.Error, err)
+		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %[1]v (%[1]T), got: %v", expected.Error, err)
 		if expected.ErrorContains != "" {
 			require.ErrorContains(t, err, expected.ErrorContains)
 		}
@@ -1698,6 +1698,54 @@ func TestVariablesErrors(t *testing.T) {
 	test(t, tc)
 }
 
+func TestWorldSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = $foo
+		destination = @bob
+	)`)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed:       []machine.Value{},
+		Postings:      []Posting{},
+		Error:         &machine.ErrInvalidVars{},
+		ErrorContains: "`@world` can only be used as a variable in the experimental interpreter, or if it is never used as a source",
+	}
+	test(t, tc)
+}
+
+func TestWorldNonSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = @alice
+		destination = $foo
+	)`)
+	tc.setBalance("alice", "COIN", 1)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Source:      "alice",
+				Destination: "world",
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(1),
+			},
+		},
+	}
+	test(t, tc)
+}
+
 func TestSetVarsFromJSON(t *testing.T) {
 
 	type testCase struct {
@@ -2263,6 +2311,109 @@ func TestSaveFromAccount(t *testing.T) {
 			Printed:  []machine.Value{},
 			Postings: []Posting{},
 			Error:    &machine.ErrNegativeAmount{},
+		}
+		test(t, tc)
+	})
+
+	t.Run("save all and overdraft", func(t *testing.T) {
+		script := `
+ 			save [USD *] from @alice
+
+ 			send [USD 10] (
+ 			   source = @alice allowing overdraft up to [USD 10]
+ 			   destination = @world
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", -10)
+		tc.expected = CaseResult{
+			Printed:       []machine.Value{},
+			ErrorContains: "insufficient funds",
+			Error:         &machine.ErrInsufficientFund{},
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save with unbounded overdraft must not panic
+	// This reproduces the exact scenario from production where OP_SAVE panicked
+	// because balances were not fetched when 'save' was followed by 'send' with 'allowing unbounded overdraft'
+	t.Run("save with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [EUR/4 1500000] from @source
+
+			send [EUR/4 240000] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("source", "EUR/4", 2000000)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "EUR/4",
+					Amount:      machine.NewMonetaryInt(240000),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save all with unbounded overdraft
+	t.Run("save all with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [EUR/4 *] from @source
+
+			send [EUR/4 100] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("source", "EUR/4", 500)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "EUR/4",
+					Amount:      machine.NewMonetaryInt(100),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save from account not in send statement
+	// This ensures balances are fetched even when the save account is different from send source
+	t.Run("save from different account with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [USD 100] from @blocked
+
+			send [USD 50] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("blocked", "USD", 200)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      machine.NewMonetaryInt(50),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
 		}
 		test(t, tc)
 	})
