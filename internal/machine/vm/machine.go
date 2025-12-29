@@ -433,10 +433,17 @@ func (m *Machine) tick() (bool, error) {
 	case program.OP_SAVE:
 		a := pop[machine.AccountAddress](m)
 		v := m.popValue()
+		// Ensure the account's balance map is initialized to prevent nil map panic
+		if m.Balances[a] == nil {
+			m.Balances[a] = make(map[machine.Asset]*machine.MonetaryInt)
+		}
 		switch v := v.(type) {
 		case machine.Asset:
 			m.Balances[a][v] = machine.Zero
 		case machine.Monetary:
+			if m.Balances[a][v.Asset] == nil {
+				m.Balances[a][v.Asset] = machine.NewMonetaryInt(0)
+			}
 			m.Balances[a][v.Asset] = m.Balances[a][v.Asset].Sub(v.Amount)
 		default:
 			panic(fmt.Errorf("invalid value type: %T", v))
