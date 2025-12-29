@@ -464,6 +464,7 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *C
 				"save monetary from account: the first expression should be of type 'monetary' instead of '%s'", typ))
 		}
 	}
+	monAddr := addr // Save the monetary/asset address before it gets overwritten
 	p.PushAddress(*addr)
 
 	typ, addr, compErr = p.VisitExpr(c.GetAcc(), false)
@@ -474,7 +475,12 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *C
 		return LogicError(c, fmt.Errorf(
 			"save monetary from account: the second expression should be of type 'account' instead of '%s'", typ))
 	}
+	accAddr := addr
 	p.PushAddress(*addr)
+
+	// Register the account's balance as needed so it gets fetched before execution.
+	// This fixes a panic in OP_SAVE when the account's balances map is not initialized.
+	p.setNeededBalances(map[machine.Address]struct{}{*accAddr: {}}, monAddr)
 
 	p.AppendInstruction(program.OP_SAVE)
 
