@@ -97,6 +97,7 @@ func NewServeCommand() *cobra.Command {
 				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
+				fx.Supply(connectionOptions),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
