@@ -94,6 +94,7 @@ func NewServeCommand() *cobra.Command {
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
+				fx.Supply(connectionOptions),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter: numscriptInterpreter,
