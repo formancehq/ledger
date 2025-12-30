@@ -174,11 +174,7 @@ func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint6
 		return "", 0, ledgerpb.NewNotFoundError("Ledger not found: %s", name)
 	}
 
-	// Check if ledger is deleted (soft delete)
-	if ledgerInfo.DeletedAt != nil {
-		return "", 0, ledgerpb.NewNotFoundError("Ledger %s has been deleted", name)
-	}
-
+	// With hard delete, if the ledger is in the map, it's active
 	return ledgerInfo.GetName(), ledgerInfo.GetId(), nil
 }
 

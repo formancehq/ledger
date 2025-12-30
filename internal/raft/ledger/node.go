@@ -105,8 +105,10 @@ type Node struct {
 	config        raft.NodeConfig
 	logger        logging.Logger
 	defaultLedger *service.DefaultLedger
-	ledgerInfo *ledgerpb.LedgerInfo
-	logReader  service.LogReader
+	ledgerInfo    *ledgerpb.LedgerInfo
+	logReader     service.LogReader
+	runtimeStore  service.RuntimeStore
+	logStore      service.LogStore
 }
 
 func (node *Node) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
@@ -159,10 +161,12 @@ func NewNode(
 	)
 
 	ret := &Node{
-		config:     cfg,
-		logger:     logger,
-		ledgerInfo: ledgerInfo,
-		logReader:  logStore,
+		config:       cfg,
+		logger:       logger,
+		ledgerInfo:   ledgerInfo,
+		logReader:    logStore,
+		runtimeStore: runtimeStore,
+		logStore:     logStore,
 	}
 
 	// Create locked volumes store
@@ -251,6 +255,54 @@ func (node *Node) Export(ctx context.Context, ledgerName string, w service.Expor
 
 func (node *Node) Info() *ledgerpb.LedgerInfo {
 	return node.ledgerInfo
+}
+
+// CloseStores closes the runtime and log stores
+func (node *Node) CloseStores() error {
+	var errs []error
+	
+	if node.runtimeStore != nil {
+		if closer, ok := node.runtimeStore.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("closing runtime store: %w", err))
+			}
+		}
+	}
+	
+	if node.logStore != nil {
+		if closer, ok := node.logStore.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("closing log store: %w", err))
+			}
+		}
+	}
+	
+	if len(errs) > 0 {
+		return fmt.Errorf("errors closing stores: %v", errs)
+	}
+	
+	return nil
+}
+
+// DeleteStoreFiles deletes the database files and data directory for this ledger
+func (node *Node) DeleteStoreFiles() error {
+	// Close stores first to ensure all connections are closed
+	if err := node.CloseStores(); err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Error closing stores before deletion")
+	}
+	
+	// Delete the entire ledger data directory
+	// This includes:
+	// - ledger-{id}-logs.db
+	// - ledger-{id}-runtime.db
+	// - WAL files
+	// - Other Raft storage files
+	if err := os.RemoveAll(node.config.DataDir); err != nil {
+		return fmt.Errorf("deleting ledger data directory %s: %w", node.config.DataDir, err)
+	}
+	
+	node.logger.WithFields(map[string]any{"dataDir": node.config.DataDir}).Infof("Ledger store files deleted")
+	return nil
 }
 
 var _ service.Ledger = (*Node)(nil)

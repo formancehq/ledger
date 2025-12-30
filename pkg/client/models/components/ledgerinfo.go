@@ -119,7 +119,7 @@ type LedgerInfo struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// Number of logs before triggering a snapshot (0 means use global config)
 	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
-	// Deletion timestamp (ISO 8601 format). Set when the ledger is soft-deleted. Null if the ledger is active.
+	// Deletion timestamp (always null with hard delete)
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 }
 

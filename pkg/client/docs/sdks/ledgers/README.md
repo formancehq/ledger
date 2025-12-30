@@ -13,7 +13,7 @@
 
 ## ListAllLedgers
 
-Returns a list of all ledgers in the cluster. By default, deleted ledgers are excluded. Use the includeDeleted query parameter to include them.
+Returns a list of all ledgers in the cluster.
 
 ### Example Usage
 
@@ -23,7 +23,6 @@ package main
 import(
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -32,7 +31,7 @@ func main() {
 
     s := client.New()
 
-    res, err := s.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
+    res, err := s.Ledgers.ListAllLedgers(ctx)
     if err != nil {
         log.Fatal(err)
     }
@@ -44,11 +43,10 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
-| `request`                                                                            | [operations.ListAllLedgersRequest](../../models/operations/listallledgersrequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
-| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
+| Parameter                                                | Type                                                     | Required                                                 | Description                                              |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
+| `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
 
 ### Response
 
@@ -63,7 +61,7 @@ func main() {
 
 ## GetLedger
 
-Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use the includeDeleted query parameter to retrieve deleted ledgers.
+Retrieves a ledger by its name.
 
 ### Example Usage
 

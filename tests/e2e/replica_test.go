@@ -339,7 +339,7 @@ var _ = Describe("Simple cluster", func() {
 						}
 
 						// Then verify the follower can see the ledger created while it was down
-						ledgers, err := servers[followerID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
+						ledgers, err := servers[followerID-1].client.Ledgers.ListAllLedgers(ctx)
 						g.Expect(err).To(Succeed())
 
 						for _, ledger := range ledgers.ListAllLedgersResponse.Data {

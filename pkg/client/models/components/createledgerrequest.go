@@ -14,8 +14,8 @@ import (
 type CreateLedgerRequestDriver string
 
 const (
-	CreateLedgerRequestDriverSqliteMattn  CreateLedgerRequestDriver = "sqlite-mattn"
 	CreateLedgerRequestDriverSqliteModern CreateLedgerRequestDriver = "sqlite-modern"
+	CreateLedgerRequestDriverSqliteMattn  CreateLedgerRequestDriver = "sqlite-mattn"
 )
 
 func (e CreateLedgerRequestDriver) ToPointer() *CreateLedgerRequestDriver {
@@ -27,9 +27,9 @@ func (e *CreateLedgerRequestDriver) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v {
-	case "sqlite-mattn":
-		fallthrough
 	case "sqlite-modern":
+		fallthrough
+	case "sqlite-mattn":
 		*e = CreateLedgerRequestDriver(v)
 		return nil
 	default:

@@ -3,26 +3,12 @@
 package operations
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 )
 
 type GetLedgerRequest struct {
 	// Name of the ledger to retrieve
 	LedgerName string `pathParam:"style=simple,explode=false,name=ledgerName"`
-	// If true, returns the ledger even if it has been deleted
-	IncludeDeleted *bool `default:"false" queryParam:"style=form,explode=true,name=includeDeleted"`
-}
-
-func (g GetLedgerRequest) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(g, "", false)
-}
-
-func (g *GetLedgerRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &g, "", false, false); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (o *GetLedgerRequest) GetLedgerName() string {
@@ -30,13 +16,6 @@ func (o *GetLedgerRequest) GetLedgerName() string {
 		return ""
 	}
 	return o.LedgerName
-}
-
-func (o *GetLedgerRequest) GetIncludeDeleted() *bool {
-	if o == nil {
-		return nil
-	}
-	return o.IncludeDeleted
 }
 
 type GetLedgerResponse struct {

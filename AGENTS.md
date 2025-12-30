@@ -256,11 +256,15 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 ### Modifying Protocol Definitions
 
+**CRITICAL**: When modifying any `.proto` file, you MUST regenerate the protobuf code immediately after making the changes.
+
 When modifying any `.proto` file:
 1. Edit the `.proto` file in the `proto/` directory
-2. Run `just generate-proto` to regenerate the Go code for all proto files
+2. **IMMEDIATELY run `just generate-proto` to regenerate the Go code for all proto files** - Do not skip this step!
 3. Update any code that uses the generated types if the API has changed
 4. Rebuild the project to ensure everything compiles
+
+**Note for AI agents**: Always regenerate protobuf files automatically after modifying any `.proto` file. Use `just generate-proto` command with `required_permissions: ['all']` to regenerate the code.
 
 ### Adding New Command Models
 

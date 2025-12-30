@@ -9,21 +9,19 @@ import (
 )
 
 var (
-	getLedgerName           string
-	getLedgerIncludeDeleted bool
+	getLedgerName string
 )
 
 var ledgersGetCmd = &cobra.Command{
 	Use:          "get",
 	Short:        "Get a ledger",
-	Long:         "Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use --include-deleted to retrieve deleted ledgers.",
+	Long:         "Retrieves a ledger by its name.",
 	RunE:         runGetLedger,
 	SilenceUsage: true,
 }
 
 func init() {
 	ledgersGetCmd.Flags().StringVar(&getLedgerName, "name", "", "Ledger name (required)")
-	ledgersGetCmd.Flags().BoolVar(&getLedgerIncludeDeleted, "include-deleted", false, "Include deleted ledgers")
 	if err := ledgersGetCmd.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
@@ -42,13 +40,8 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	sdk := newSDKClient()
 
 	// Get ledger request
-	var includeDeletedPtr *bool
-	if getLedgerIncludeDeleted {
-		includeDeletedPtr = &getLedgerIncludeDeleted
-	}
 	req := operations.GetLedgerRequest{
-		LedgerName:     getLedgerName,
-		IncludeDeleted: includeDeletedPtr,
+		LedgerName: getLedgerName,
 	}
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledger...")

@@ -136,7 +136,7 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
 		})
 
-		It("Should successfully delete the ledger (soft delete)", func() {
+		It("Should successfully delete the ledger (hard delete)", func() {
 			// Delete the ledger
 			resp, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
 				LedgerName: ledgerName,
@@ -144,7 +144,7 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
-			// Verify the ledger is not accessible by default (soft delete)
+			// Verify the ledger is completely removed (hard delete)
 			Eventually(func(g Gomega) bool {
 				_, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
 					LedgerName: ledgerName,
@@ -152,38 +152,30 @@ var _ = Describe("Ledger Deletion", func() {
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
-			// Verify the ledger is not in the list of all ledgers by default
-			ledgers, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{})
+			// Verify the ledger is not in the list of all ledgers
+			ledgers, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx)
 			Expect(err).To(Succeed())
 			for _, ledger := range ledgers.ListAllLedgersResponse.Data {
 				Expect(ledger.Name).NotTo(Equal(ledgerName))
 			}
 
-			// Verify the ledger can be retrieved with includeDeleted=true
-			includeDeleted := true
-			ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-				LedgerName:     ledgerName,
-				IncludeDeleted: &includeDeleted,
+			// Verify the ledger cannot be retrieved (hard delete)
+			_, err = servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+				LedgerName: ledgerName,
 			})
-			Expect(err).To(Succeed())
-			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
-			Expect(ledger.GetGetLedgerResponse().Data.DeletedAt).NotTo(BeNil())
+			Expect(err).NotTo(BeNil())
 
-			// Verify the ledger appears in the list with includeDeleted=true
-			includeDeleted = true
-			ledgersWithDeleted, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx, operations.ListAllLedgersRequest{
-				IncludeDeleted: &includeDeleted,
-			})
+			// Verify the ledger does not appear in the list
+			ledgers, err = servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx)
 			Expect(err).To(Succeed())
 			found := false
-			for _, ledger := range ledgersWithDeleted.ListAllLedgersResponse.Data {
+			for _, ledger := range ledgers.ListAllLedgersResponse.Data {
 				if ledger.Name == ledgerName {
 					found = true
-					Expect(ledger.DeletedAt).NotTo(BeNil())
 					break
 				}
 			}
-			Expect(found).To(BeTrue())
+			Expect(found).To(BeFalse())
 		})
 
 		It("Should return 404 when trying to delete a non-existent ledger", func() {

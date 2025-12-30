@@ -329,6 +329,6 @@ message LedgerInfo {
   map<string, string> metadata = 5;      // Optional metadata
   Timestamp created_at = 6; // Creation timestamp
   uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
-  Timestamp deleted_at = 8;                 // Deletion timestamp (optional, set when ledger is soft-deleted)
+  Timestamp deleted_at = 8;                 // Deletion timestamp (always null with hard delete)
   LedgerStatus status = 9;
 }

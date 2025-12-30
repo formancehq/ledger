@@ -28,18 +28,10 @@ paths:
   /:
     get:
       summary: List all ledgers
-      description: Returns a list of all ledgers in the cluster. By default, deleted ledgers are excluded. Use the includeDeleted query parameter to include them.
+      description: Returns a list of all ledgers in the cluster.
       operationId: listAllLedgers
       tags:
         - Ledgers
-      parameters:
-        - name: includeDeleted
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: If true, includes deleted ledgers in the response
       responses:
         '200':
           description: List of ledgers retrieved successfully
@@ -57,7 +49,7 @@ paths:
   /{ledgerName}:
     get:
       summary: Get a ledger
-      description: Retrieves a ledger by its name. By default, deleted ledgers are not returned. Use the includeDeleted query parameter to retrieve deleted ledgers.
+      description: Retrieves a ledger by its name.
       operationId: getLedger
       tags:
         - Ledgers
@@ -68,13 +60,6 @@ paths:
           schema:
             type: string
           description: Name of the ledger to retrieve
-        - name: includeDeleted
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: If true, returns the ledger even if it has been deleted
       responses:
         '200':
           description: Ledger retrieved successfully
@@ -554,7 +539,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Deletion timestamp (ISO 8601 format). Set when the ledger is soft-deleted. Null if the ledger is active.
+          description: Deletion timestamp (always null with hard delete)
 
     CreateTransactionRequest:
       type: object

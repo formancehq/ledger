@@ -117,7 +117,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 	return ledgerInfo, nil
 }
 
-// handleDeleteLedger handles the delete ledger command (soft delete)
+// handleDeleteLedger handles the delete ledger command (hard delete)
 func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error {
 	var deleteCmd DeleteLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
@@ -126,33 +126,29 @@ func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error 
 	}
 
 	fsm.mu.Lock()
-	// Check if already deleted first
-	info, ok := fsm.state.Infos[deleteCmd.Name]
+	// Check if ledger exists
+	_, ok := fsm.state.Infos[deleteCmd.Name]
 	if !ok {
 		fsm.mu.Unlock()
 		return ledgerpb.NewNotFoundError("ledger %s does not exist", deleteCmd.Name)
 	}
-	if info.Status == ledgerpb.LedgerStatus_Deleted {
-		fsm.mu.Unlock()
-		return fmt.Errorf("ledger %s was already deleted at %v", deleteCmd.Name, info.DeletedAt)
-	}
 
 	group, exists := fsm.state.Nodes[deleteCmd.Name]
 	if exists {
-		// Stop the Raft group (after removing from map to prevent new operations)
-		if err := fsm.stopLedgerRaftGroupSoft(ctx, group); err != nil {
+		// Stop the Raft group and delete stores (hard delete)
+		if err := fsm.stopLedgerRaftGroupHard(ctx, group); err != nil {
+			fsm.mu.Unlock()
 			return err
 		}
 		delete(fsm.state.Nodes, deleteCmd.Name)
 	}
 
-	// Set deleted_at timestamp
-	fsm.state.Infos[deleteCmd.Name].DeletedAt = ledgerpb.NewTimestamp(cmd.Date)
+	// Remove ledger info completely (hard delete)
+	delete(fsm.state.Infos, deleteCmd.Name)
 
-	// Remove from active ledgers map before stopping (to prevent race conditions)
 	fsm.mu.Unlock()
 
-	fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger soft-deleted")
+	fsm.logger.WithFields(map[string]any{"ledger": deleteCmd.Name}).Infof("Ledger hard-deleted")
 	return nil
 }
 
@@ -279,19 +275,26 @@ l2:
 	return nil
 }
 
-// stopLedgerRaftGroupSoft stops a Raft group for a ledger (soft delete)
-func (fsm *FSM) stopLedgerRaftGroupSoft(ctx context.Context, group *ledgerraft.Node) error {
+// stopLedgerRaftGroupHard stops a Raft group for a ledger and deletes all associated stores (hard delete)
+func (fsm *FSM) stopLedgerRaftGroupHard(ctx context.Context, group *ledgerraft.Node) error {
 	if group == nil {
 		fsm.logger.Infof("WARN: Ledger Raft group is nil")
 		return nil
 	}
 
-	// Stop the group
+	ledgerName := group.Info().GetName()
+
+	// Stop the Raft group first
 	if err := group.Stop(ctx); err != nil {
 		return fmt.Errorf("stopping ledger Raft group: %w", err)
 	}
 
-	fsm.logger.WithFields(map[string]any{"ledger": group.Info().GetName()}).Infof("Ledger Raft group stopped (soft delete)")
+	// Delete store files and data directory
+	if err := group.DeleteStoreFiles(); err != nil {
+		return fmt.Errorf("deleting ledger store files: %w", err)
+	}
+
+	fsm.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Ledger Raft group stopped and stores deleted (hard delete)")
 	return nil
 }
 

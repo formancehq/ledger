@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 09b546361daa618ab9d862d8ad4ac094
+  docChecksum: eef24f9907c3fe9463a525e46341938d
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.25
-  configChecksum: a4b79bb96bcce50d1ae74e14362a3e3e
+  releaseVersion: 0.11.27
+  configChecksum: 5f87990cb8f61a435374c8dc34d9eb2d
 features:
   go:
     additionalDependencies: 0.1.0
@@ -133,7 +133,6 @@ generatedFiles:
   - docs/models/operations/getledgerraftstateresponse.md
   - docs/models/operations/getledgerrequest.md
   - docs/models/operations/getledgerresponse.md
-  - docs/models/operations/listallledgersrequest.md
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/option.md
   - docs/models/operations/saveaccountmetadatarequest.md
