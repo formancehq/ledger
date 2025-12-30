@@ -69,6 +69,7 @@ services:
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=1
       - DATA_DIR=/data/node-1/raft
+      - SNAPSHOT_THRESHOLD=5000
     ports:
       - "8888:8888"
       - "9000:9000"
@@ -111,6 +112,7 @@ services:
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=2
       - DATA_DIR=/data/node-2/raft
+      - SNAPSHOT_THRESHOLD=5000
     ports:
       - "8889:8888"
       - "9001:9000"
@@ -153,6 +155,7 @@ services:
       - OTEL_METRICS_EXPORTER_PUSH_INTERVAL=1s
       - OTEL_RESOURCE_ATTRIBUTES=service.node_id=3
       - DATA_DIR=/data/node-3/raft
+      - SNAPSHOT_THRESHOLD=5000
     ports:
       - "8890:8888"
       - "9002:9000"
