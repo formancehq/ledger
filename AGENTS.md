@@ -62,10 +62,10 @@ Ledger management commands are separated into individual files:
 
 Utility scripts are located in the `scripts/` directory at the project root:
 
-- **`scripts/compare-storage.sh`** : Script to compare different storage drivers by running benchmarks on each driver and comparing CPU profiles. This script:
+- **`scripts/compare-storage.sh`** : Script to compare different storage drivers by running k6 performance tests on each driver and comparing CPU profiles. This script:
   - Checks and starts docker-compose if necessary
   - Creates a ledger for each storage driver (sqlite-mattn, sqlite-modern)
-  - Runs benchmarks with CPU profiling enabled
+  - Runs k6 performance tests with CPU profiling enabled
   - Deletes ledgers after each benchmark
   - Compares CPU profiles using `go tool pprof`
   - Stores all results in the `build/` directory (which is gitignored)
@@ -75,7 +75,7 @@ Utility scripts are located in the `scripts/` directory at the project root:
   ./scripts/compare-storage.sh
   ```
   
-  See `cmd/bench/STORAGE_COMPARISON.md` for detailed documentation.
+  See `k6/README.md` for detailed documentation on k6 performance tests.
 
 ### Build Directory
 

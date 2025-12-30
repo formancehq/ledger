@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LEDGER_URL="${LEDGER_URL:-http://localhost:9000}"
 BENCH_DURATION="${BENCH_DURATION:-30s}"
 BENCH_PARALLELISM="${BENCH_PARALLELISM:-5}"
-BENCH_SCRIPT="${BENCH_SCRIPT:-cmd/bench/scripts/any_unbounded_to_any.js}"
+BENCH_SCRIPT="${BENCH_SCRIPT:-k6/scripts/any_unbounded_to_any.js}"
 RESULTS_DIR="${RESULTS_DIR:-${PROJECT_ROOT}/build/storage-comparison-results}"
 PROFILES_DIR="${RESULTS_DIR}/profiles"
 DEBUG="${DEBUG:-false}"
@@ -75,6 +75,18 @@ else
 fi
 
 log_info "Found ${#STORAGE_DRIVERS[@]} storage driver(s): ${STORAGE_DRIVERS[*]}"
+
+# Check if k6 is installed
+check_k6() {
+    if ! command -v k6 &> /dev/null; then
+        log_error "k6 is not installed. Please install k6 first."
+        log_info "See https://k6.io/docs/getting-started/installation/"
+        exit 1
+    fi
+    log_success "k6 is installed: $(k6 version | head -1)"
+}
+
+check_k6
 
 # Check if docker-compose is running
 check_docker_compose() {
@@ -287,31 +299,55 @@ run_benchmark() {
         bench_script_path="${PROJECT_ROOT}/${bench_script_path}"
     fi
     
-    # Run benchmark with CPU profiling using go run
+    # Run benchmark with CPU profiling using k6
+    # Note: k6 doesn't support CPU profiling directly, but we can collect it from the server
+    # The CPU profile URL is automatically deduced from LEDGER_URL
+    local cpu_profile_url="${LEDGER_URL}/debug/pprof/profile"
+    
+    # Start CPU profiling in background
+    local profile_duration_seconds=$(echo "${BENCH_DURATION}" | sed 's/s$//')
+    if [[ "${profile_duration_seconds}" =~ ^[0-9]+$ ]]; then
+        # Add buffer for profile collection
+        profile_duration_seconds=$((profile_duration_seconds + 2))
+        (curl -s "${cpu_profile_url}?seconds=${profile_duration_seconds}" > "${cpu_profile_file}" 2>&1) &
+        local profile_pid=$!
+    fi
+    
+    # Run k6 benchmark
     if [ "${DEBUG}" = "true" ]; then
-        (cd "${PROJECT_ROOT}" && go run ./cmd/bench \
-            --ledger.url="${LEDGER_URL}" \
-            --ledger.name="${ledger_name}" \
-            --duration="${BENCH_DURATION}" \
-            --parallelism="${BENCH_PARALLELISM}" \
-            --script="${bench_script_path}" \
-            --cpu-profile.file="${cpu_profile_file}" \
-            --report.file="${RESULTS_DIR}/${driver}-report.json") 2>&1 || {
+        (cd "${PROJECT_ROOT}" && LEDGER_URL="${LEDGER_URL}" \
+            LEDGER_NAME="${ledger_name}" \
+            DURATION="${BENCH_DURATION}" \
+            VUS="${BENCH_PARALLELISM}" \
+            k6 run \
+            --out "json=${RESULTS_DIR}/${driver}-report.json" \
+            "${bench_script_path}") 2>&1 || {
             log_error "Benchmark failed for driver '${driver}'"
+            kill "${profile_pid}" 2>/dev/null || true
             return 1
         }
     else
-        (cd "${PROJECT_ROOT}" && go run ./cmd/bench \
-            --ledger.url="${LEDGER_URL}" \
-            --ledger.name="${ledger_name}" \
-            --duration="${BENCH_DURATION}" \
-            --parallelism="${BENCH_PARALLELISM}" \
-            --script="${bench_script_path}" \
-            --cpu-profile.file="${cpu_profile_file}" \
-            --report.file="${RESULTS_DIR}/${driver}-report.json") > /dev/null 2>&1 || {
+        (cd "${PROJECT_ROOT}" && LEDGER_URL="${LEDGER_URL}" \
+            LEDGER_NAME="${ledger_name}" \
+            DURATION="${BENCH_DURATION}" \
+            VUS="${BENCH_PARALLELISM}" \
+            k6 run \
+            --out "json=${RESULTS_DIR}/${driver}-report.json" \
+            "${bench_script_path}") > /dev/null 2>&1 || {
             log_error "Benchmark failed for driver '${driver}'"
+            kill "${profile_pid}" 2>/dev/null || true
             return 1
         }
+    fi
+    
+    # Wait for CPU profile collection to complete
+    if [ -n "${profile_pid:-}" ]; then
+        wait "${profile_pid}" 2>/dev/null || true
+        if [ -f "${cpu_profile_file}" ] && [ -s "${cpu_profile_file}" ]; then
+            log_info "CPU profile collected: ${cpu_profile_file}"
+        else
+            log_warning "CPU profile collection may have failed or is empty"
+        fi
     fi
     
     log_success "Benchmark completed for driver '${driver}'"

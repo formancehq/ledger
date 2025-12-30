@@ -104,6 +104,7 @@
             yq-go
             kubernetes-helm
             python313Packages.matplotlib
+            k6
           ];
           unstablePackages = with pkgs-unstable; [
             golangci-lint

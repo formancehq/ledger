@@ -39,7 +39,7 @@ test:
 
 # Clean build artifacts
 clean:
-    rm -rf client bench server
+    rm -rf client server
 
 clean-benchmarks-data:
     rm -rf build

@@ -48,3 +48,6 @@ cpu.prof
 
 # Build directory (generated files, benchmark results, etc.)
 build/
+
+# K6 outputs
+summary.json

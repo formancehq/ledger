@@ -216,24 +216,31 @@ go tool cover -html=coverage.ort
 
 ## Tests de Performance
 
-### Benchmark
+Les tests de performance utilisent k6 pour les tests de charge. Voir `k6/README.md` pour la documentation complète.
 
-```go
-func BenchmarkCreateTransAction(b *testing.B) {
-    setup := setupBenchmark(b)
-    defer cleanupBenchmark(b, setup)
-    
-    b.ResandTimer()
-    for i := 0; i < b.N; i++ {
-        _, err := setup.client.TransActions.CreateTransAction(...)
-        if err != nil {
-            b.Fatal(err)
-        }
-    }
-}
+### Exécution des tests k6
+
+```bash
+# Exécuter un scénario spécifique
+k6 run k6/scripts/world_to_bank.js
+
+# Avec variables d'environnement
+LEDGER_URL=http://localhost:9000 \
+LEDGER_NAME=my-ledger \
+DURATION=60s \
+VUS=20 \
+k6 run k6/scripts/world_to_bank.js
+
+# Exécuter tous les scénarios
+for test in k6/scripts/*.js; do
+  echo "Running $test..."
+  k6 run "$test"
+done
 ```
 
-### Execution
+### Benchmark Go (pour tests unitaires)
+
+Pour les benchmarks Go intégrés dans les tests unitaires :
 
 ```bash
 go test -bench=. -benchmem ./...
