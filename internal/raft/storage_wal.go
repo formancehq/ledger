@@ -22,6 +22,7 @@ var (
 )
 
 // WALStorage implements raft.Storage interface for etcd/raft using etcd/wal
+// todo: add margin behind the snapshot
 type WALStorage struct {
 	mu sync.RWMutex
 
