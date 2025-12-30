@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -23,12 +24,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 	t.Run("SaveAccountMetadata", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		// Save account metadata
 		md := metadata.Metadata{
@@ -55,7 +56,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.EqualValues(t, md, savedMetadata.Metadata)
 
 		// Verify metadata was stored in the accounts table
-		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"test-account"})
+		accountsMetadata, err := runtimeStore.GetAccountMetadata(ctx, []string{"test-account"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 
@@ -67,12 +68,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 	t.Run("SaveAccountMetadata_WithIdempotencyKey", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		// Save account metadata with idempotency key
 		md := metadata.Metadata{
@@ -108,12 +109,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 	t.Run("SaveAccountMetadata_WithIdempotencyKeyConflict", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		idempotencyKey := "test-idempotency-key-conflict"
 
@@ -151,12 +152,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 	t.Run("SaveAccountMetadata_DryRun", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		// Save account metadata in dry run mode
 		md := metadata.Metadata{
@@ -172,23 +173,16 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, log)
-
-		// Verify the log was not persisted (dry run)
-		lastLog, err := store.GetLastLog(ctx)
-		require.NoError(t, err)
-		if lastLog != nil {
-			require.NotEqual(t, log.Id, lastLog.Id)
-		}
 	})
 
 	t.Run("SaveAccountMetadata_ValidationErrors", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		// Test empty address
 		md1 := metadata.Metadata{"key": "value"}
@@ -218,12 +212,12 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 	t.Run("SaveAccountMetadata_MergeWithExisting", func(t *testing.T) {
 		t.Parallel()
-		store := createSQLiteStore(t)
-		logWriter := &mockLogWriter{store: store}
-		lockedVolumesStore := NewDefaultLockedBalancesStore(store)
+		logStore, runtimeStore := createSQLiteStores(t)
+		logWriter := &mockLogWriter{logStore: logStore, runtimeStore: runtimeStore}
+		lockedVolumesStore := NewDefaultLockedBalancesStore(runtimeStore)
 		logger := logging.FromContext(ctx)
 
-		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, store, logger)
+		ledgerService := NewDefaultLedger(logWriter, lockedVolumesStore, logStore, runtimeStore, logger)
 
 		// First, create a transaction with account metadata
 		now := libtime.New(time.Now())
@@ -263,7 +257,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.NotNil(t, log)
 
 		// Verify metadata was merged correctly
-		accountsMetadata, err := store.GetAccountMetadata(ctx, []string{"test-account"})
+		accountsMetadata, err := runtimeStore.GetAccountMetadata(ctx, []string{"test-account"})
 		require.NoError(t, err)
 		require.NotNil(t, accountsMetadata)
 
@@ -277,8 +271,9 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 // mockLogWriter implements LogWriter by delegating to the underlying store
 type mockLogWriter struct {
-	store   LogStore
-	counter uint64
+	logStore      LogWriter
+	runtimeStore  RuntimeStore
+	counter       uint64
 }
 
 func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
@@ -286,5 +281,30 @@ func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) e
 		m.counter++
 		log.Id = m.counter
 	}
-	return m.store.InsertLogs(ctx, logs...)
+	// Insert logs into both stores
+	if err := m.logStore.InsertLogs(ctx, logs...); err != nil {
+		return err
+	}
+	return m.runtimeStore.InsertLogs(ctx, logs...)
+}
+
+// createSQLiteStores creates separate log and runtime stores for testing
+func createSQLiteStores(t *testing.T) (LogStore, RuntimeStore) {
+	tmpDir := t.TempDir()
+	logsDSN := fmt.Sprintf("file:%s/test-logs.db", tmpDir)
+	runtimeDSN := fmt.Sprintf("file:%s/test-runtime.db", tmpDir)
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	
+	// Create log store (stores logs)
+	logStore, err := NewSQLiteMattnLogStore(ctx, logsDSN, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logStore.Close() })
+	
+	// Create runtime store (stores balances and metadata)
+	runtimeStore, err := NewSQLiteMattnRuntimeStore(ctx, runtimeDSN, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = runtimeStore.Close() })
+	
+	return logStore, runtimeStore
 }

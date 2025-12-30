@@ -15,7 +15,7 @@ const (
 // NewInsertLogCommand creates a new InsertLogCommand
 func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
 	cmdProto := &InsertLogCommand{
-		Log: log, // log is *ledgerpb.Log, which matches InsertLogCommand.Log type
+		Log: log,
 	}
 
 	data, err := proto.Marshal(cmdProto)

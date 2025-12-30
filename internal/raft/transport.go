@@ -50,9 +50,13 @@ func NewTransport(
 		connectionPool: connectionPool,
 		recvCh: NewQueueObserver[Incoming](
 			"raft.transport.recv",
-			NewPriorityQueue[Incoming](5, func(incoming Incoming) int {
-				return RaftMessagePriority(incoming.Msg)
-			}),
+			NewPriorityQueue[Incoming](
+				5,
+				func(incoming Incoming) int {
+					return RaftMessagePriority(incoming.Msg)
+				},
+				WithPriorityQueueSize[Incoming](512), //todo: make configurable
+			),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
@@ -107,7 +111,11 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 	conn := peerConnection{
 		sendCh: NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
-			NewPriorityQueue[raftpb.Message](5, RaftMessagePriority),
+			NewPriorityQueue[raftpb.Message](
+				5,
+				RaftMessagePriority,
+				WithPriorityQueueSize[raftpb.Message](512),
+			),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
 			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -302,7 +310,7 @@ func (conn *peerConnection) loop() {
 					mu.Unlock()
 					if ok {
 						conn.logger.
-							Errorf("Failed to send message to peer %d, peer respond with error: %s", nodeID, res.Error)
+							Errorf("Failed to send message, peer respond with error: %s", res.Error)
 						conn.unreachableCh.Send(nodeID)
 					}
 				}

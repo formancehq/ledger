@@ -232,11 +232,11 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the FSM from a snapshot
-func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.Snapshot) {
+func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.Snapshot) error {
 	// Unmarshal from protobuf
 	var snapshotProto SystemFSMSnapshot
 	if err := proto.Unmarshal(snapshot.Data, &snapshotProto); err != nil {
-		panic(fmt.Errorf("unmarshaling snapshot data: %w", err))
+		return err
 	}
 
 l1:
@@ -250,7 +250,7 @@ l1:
 
 		if node, ok := fsm.state.Nodes[existingLedgerName]; ok {
 			if err := node.Stop(ctx); err != nil {
-				panic(err)
+				return err
 			}
 			delete(fsm.state.Nodes, existingLedgerName)
 		}
@@ -267,7 +267,7 @@ l2:
 		fsm.state.Infos[expectedLedgerName] = expectedLedgerInfo
 		if *expectedLedgerInfo.Status.Enum() == ledgerpb.LedgerStatus_Active {
 			if err := fsm.startLedgerRaftGroupFromFSM(ctx, expectedLedgerInfo); err != nil {
-				panic(err)
+				return err
 			}
 		}
 	}
@@ -275,6 +275,8 @@ l2:
 	fsm.state.NextLedgerID = snapshotProto.NextLedgerId
 
 	fsm.logger.Infof("FSM restored from snapshot")
+
+	return nil
 }
 
 // stopLedgerRaftGroupSoft stops a Raft group for a ledger (soft delete)

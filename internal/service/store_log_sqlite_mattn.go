@@ -4,7 +4,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 
 	"context"
-	"database/sql"
 	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -21,23 +20,14 @@ type SQLiteMattnConfig struct {
 
 // NewSQLiteMattnLogStore creates a new SQLite log store using github.com/mattn/go-sqlite3
 func NewSQLiteMattnLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
-	// Open SQLite database using sqlite3 driver
-	db, err := sql.Open("sqlite3", dsn+
-		"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=-32768&_temp_store=MEMORY&_busy_timeout=5000&_txlock=immediate")
+	db, err := openSQLiteMattnDB(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("opening sqlite database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-
-	store := &SQLiteLogStore{
-		db:     db,
-		logger: logger,
+		return nil, err
 	}
 
-	// Create tables if they don't exist
-	if err := store.createTables(ctx); err != nil {
-		return nil, fmt.Errorf("creating tables: %w", err)
+	store, err := NewSQLiteLogStore(db, logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating log store: %w", err)
 	}
 
 	return store, nil

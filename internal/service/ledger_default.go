@@ -17,16 +17,24 @@ import (
 type DefaultLedger struct {
 	logWriter          LogWriter // Writes logs via Raft
 	lockedVolumesStore LockedBalancesStore
-	logStore           LogStore // Needed for GetLastLog, GetLogWithIdempotencyKey, and GetAllLogs
+	logReader          LogReader
 	logger             logging.Logger
+	runtimeStore       RuntimeStore
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logStore LogStore, logger logging.Logger) *DefaultLedger {
+func NewDefaultLedger(
+	logWriter LogWriter,
+	lockedVolumesStore LockedBalancesStore,
+	logReader LogReader,
+	runtimeStore RuntimeStore,
+	logger logging.Logger,
+) *DefaultLedger {
 	return &DefaultLedger{
 		logWriter:          logWriter,
 		lockedVolumesStore: lockedVolumesStore,
-		logStore:           logStore,
+		logReader:          logReader,
+		runtimeStore: runtimeStore,
 		logger:             logger,
 	}
 }
@@ -40,23 +48,36 @@ func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey str
 		return nil, nil
 	}
 
-	existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, idempotencyKey)
+	idempotencyHash, existingLogID, err := l.runtimeStore.GetLogForIdempotencyKey(ctx, idempotencyKey)
 	if err != nil {
 		return nil, err
 	}
-	if existingLog == nil {
+	if existingLogID == 0 {
 		return nil, nil
 	}
 
 	// Log already exists with this idempotency key
 	// Verify that the idempotency hash matches
 	expectedHash := ledgerpb.ComputeIdempotencyHash(input)
-	if existingLog.IdempotencyHash != expectedHash {
+	if idempotencyHash != expectedHash {
 		return nil, ErrIdempotencyKeyConflict
 	}
 
 	// Same operation, return the existing log
-	return existingLog, nil
+	ret, err := l.logReader.GetAllLogs(ctx, existingLogID-1, existingLogID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = ret.Close()
+	}()
+
+	next, err := ret.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return next, nil
 }
 
 // CreateTransaction creates a new transaction
@@ -325,7 +346,7 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 	storeAdapter := &numscriptStoreAdapter{
 		ledgerName:         ledgerName,
 		lockedVolumesStore: l.lockedVolumesStore,
-		logStore:           l.logStore,
+		runtimeStore:       l.runtimeStore,
 	}
 
 	// Execute the script
@@ -455,13 +476,13 @@ func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportW
 }
 
 func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
-	return l.logStore.GetAllLogs(ctx, from, to)
+	return l.logReader.GetAllLogs(ctx, from, to)
 }
 
 type numscriptStoreAdapter struct {
 	ledgerName         string
 	lockedVolumesStore LockedBalancesStore
-	logStore           LogStore
+	runtimeStore       RuntimeStore
 }
 
 func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
@@ -500,7 +521,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numsc
 	}
 
 	// Get metadata from the log store
-	metadataMap, err := s.logStore.GetAccountMetadata(ctx, accounts)
+	metadataMap, err := s.runtimeStore.GetAccountMetadata(ctx, accounts)
 	if err != nil {
 		return nil, err
 	}

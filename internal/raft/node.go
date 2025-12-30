@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -34,7 +35,7 @@ type Node[State any, F FSM[State]] struct {
 	applyEntriesBatchSizeHistogram metric.Int64Histogram
 	mu                             sync.RWMutex
 	futures                        map[uint64]*applyFuture // Map of command ID -> future
-	fsmSyncer                      *syncer[State, F]
+	syncer                         *syncer[State, F]
 	storage                        *WALStorage
 	transport                      NodeTransport
 	config                         NodeConfig
@@ -71,7 +72,7 @@ func NewNode[State any, F FSM[State]](
 		cfg.SnapshotThreshold = 1000
 	}
 
-	spool, err := newSpool(filepath.Join(cfg.DataDir, "spool"))
+	spool, err := newFileSpool(filepath.Join(cfg.DataDir, "spool"))
 	if err != nil {
 		return nil, fmt.Errorf("creating spool: %w", err)
 	}
@@ -80,7 +81,7 @@ func NewNode[State any, F FSM[State]](
 		logger:    logger,
 		meter:     meter,
 		futures:   make(map[uint64]*applyFuture),
-		fsmSyncer: newSyncer[State, F](spool, fsm, logger),
+		syncer:    newSyncer[State, F](spool, fsm, logger, storage),
 		storage:   storage,
 		transport: transport,
 		config:    cfg,
@@ -91,6 +92,7 @@ func NewNode[State any, F FSM[State]](
 			WithMeter[[]byte](meter),
 		),
 	}
+	go node.syncer.run()
 
 	// Create histogram metric for ApplyEntries duration
 	// Use explicit bucket boundaries for better granularity on small values
@@ -139,7 +141,7 @@ func NewNode[State any, F FSM[State]](
 }
 
 func (node *Node[State, F]) Inner() F {
-	return node.fsmSyncer.fsm
+	return node.syncer.fsm
 }
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
@@ -229,9 +231,10 @@ func (node *Node[State, F]) readyLoop() {
 	}()
 
 	var (
-		leader    uint64
-		confState *raftpb.ConfState
-		err       error
+		leader         uint64
+		confState      *raftpb.ConfState
+		isSnapshotting atomic.Bool
+		err            error
 	)
 
 	_, initialConfState, err := node.storage.InitialState()
@@ -240,13 +243,13 @@ func (node *Node[State, F]) readyLoop() {
 	}
 	confState = &initialConfState
 
-	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
+	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
 
 	for {
 		select {
 		case <-ticker.C:
 			// Prevent election timeouts from happening while syncing the FSM
-			if !node.fsmSyncer.IsSyncing() {
+			if !node.syncer.IsSyncing() {
 				node.rawNode.Tick()
 			}
 		case <-node.ctx.Done():
@@ -261,12 +264,14 @@ func (node *Node[State, F]) readyLoop() {
 				panic(err)
 			}
 		case cmd := <-node.proposeCh.Recv():
+			// todo: handle raft propose dropped, indicating the cluster has no leader
+			// need to propagate ErrNoLeader to the caller?
 			if err := node.rawNode.Propose(cmd); err != nil {
 				panic(err)
 			}
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
-				leader, confState, err = node.processReady(node.ctx, leader, confState)
+				leader, confState, err = node.processReady(node.ctx, leader, confState, &isSnapshotting)
 				if err != nil {
 					if !errors.Is(err, context.Canceled) {
 						panic(err)
@@ -277,7 +282,12 @@ func (node *Node[State, F]) readyLoop() {
 	}
 }
 
-func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, confState *raftpb.ConfState) (uint64, *raftpb.ConfState, error) {
+func (node *Node[State, F]) processReady(
+	ctx context.Context,
+	leader uint64,
+	confState *raftpb.ConfState,
+	isSnapshotting *atomic.Bool,
+) (uint64, *raftpb.ConfState, error) {
 
 	node.logger.Debugf("Processing ready")
 	rd := node.rawNode.Ready()
@@ -306,10 +316,15 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 		}
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-		// todo: since the snapshot is already written in storage at this point
-		// we must be able to detect a crash and restart the restoration process
-		// in case of rawNode recover
-		node.fsmSyncer.RestoreSnapshot(context.Background(), leader, rd.Snapshot)
+
+		go func() {
+			// todo: since the snapshot is already written in storage at this point
+			// we must be able to detect a crash and restart the restoration process
+			// in case of rawNode recover
+			if err := node.syncer.RestoreSnapshot(context.Background(), leader, rd.Snapshot); err != nil {
+				panic(fmt.Errorf("restoring snapshot in storage: %w", err))
+			}
+		}()
 	}
 
 	// Send messages via transport
@@ -372,7 +387,7 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 	// Apply bucket-specific entries to bucket FSM
 	// Measure time spent in ApplyEntries
 	start := time.Now()
-	results, err := node.fsmSyncer.ApplyEntries(node.ctx, commands...)
+	results, err := node.syncer.ApplyEntries(node.ctx, commands...)
 	duration := time.Since(start)
 
 	batchSize := int64(len(commands))
@@ -422,7 +437,12 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 
 	// Check if we need to create a snapshot
 	status := node.rawNode.Status()
-	if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
+	lastSnapshot, err := node.storage.Snapshot()
+	if err != nil {
+		return 0, nil, fmt.Errorf("getting last snapshot: %w", err)
+	}
+
+	if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold && !isSnapshotting.Swap(true) {
 
 		node.logger.WithFields(map[string]any{
 			"applied":           status.Applied,
@@ -431,26 +451,30 @@ func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, con
 			"snapshotThreshold": node.config.SnapshotThreshold,
 		}).Infof("Creating new snapshot for ledger")
 
-		// Create snapshot: write logs to store and create snapshot data
-		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)
-		if err != nil {
-			return 0, nil, fmt.Errorf("creating snapshot data: %w", err)
-		}
+		go func() {
+			defer isSnapshotting.Store(false)
 
-		// Create snapshot in storage
-		_, err = node.storage.CreateSnapshot(status.Applied, confState, snapshotData)
-		if err != nil {
-			// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
-			if err != ErrSnapOutOfDate {
-				return 0, nil, fmt.Errorf("creating snapshot in storage: %w", err)
+			err := node.syncer.CreateSnapshot(ctx, status.Applied, confState)
+			if err != nil {
+				// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
+				if errors.Is(err, ErrSnapOutOfDate) {
+					node.logger.
+						WithFields(map[string]any{"applied": status.Applied}).
+						Infof("Snapshot already up to date, creating skippde")
+					return
+				}
+				if errors.Is(err, context.Canceled) {
+					node.logger.
+						WithFields(map[string]any{"applied": status.Applied}).
+						Infof("Snapshot creation cancelled")
+					return
+				}
+
+				panic(fmt.Errorf("creating snapshot in storage: %w", err))
 			}
 
-			node.logger.Infof("Snapshot already up to date, skipping creation")
-
-			return leader, confState, nil
-		}
-
-		node.logger.Infof("Snapshot created for bucket")
+			node.logger.Infof("Snapshot created successfully")
+		}()
 	}
 
 	return leader, confState, nil
@@ -468,7 +492,7 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 	node.stopped = make(chan struct{})
 	node.ctx, node.cancel = context.WithCancel(context.Background())
 
-	err := restoreFromStorage(ctx, node.fsmSyncer, node.storage, node.logger)
+	err := restoreFromStorage(ctx, node.syncer, node.storage, node.logger)
 	if err != nil {
 		return fmt.Errorf("restoring FSM from storage: %w", err)
 	}
@@ -497,16 +521,9 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 		// Create initial snapshot with ConfState at index 0
 		// This ensures FirstIndex() returns 1, which is the correct starting point
 		// The ConfState in the snapshot defines the initial cluster configuration
-		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)
+		err := node.syncer.CreateSnapshot(ctx, 0, &confState)
 		if err != nil {
 			return fmt.Errorf("creating initial snapshot data: %w", err)
-		}
-
-		// Create snapshot at index 0 with the ConfState
-		// Index 0 means no entries yet, so FirstIndex() will return 1
-		_, err = node.storage.CreateSnapshot(0, &confState, snapshotData)
-		if err != nil {
-			return fmt.Errorf("creating initial snapshot: %w", err)
 		}
 
 		node.logger.WithFields(map[string]any{"voters": len(voters)}).Infof("Storage initialized with ConfState")
@@ -639,7 +656,7 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledgerpb.Clus
 		Nodes:      nodes,
 		LocalNode:  uint(node.config.NodeID),
 		RaftStatus: raftStatus,
-		InnerState: node.fsmSyncer.fsm.GetState(),
+		InnerState: node.syncer.fsm.GetState(),
 	}, nil
 }
 
@@ -660,28 +677,18 @@ func (node *Node[State, F]) Snapshot(ctx context.Context) error {
 	// We can trigger one manually by checking the status
 	if status.Applied > 0 {
 		node.logger.WithFields(map[string]any{"applied": status.Applied}).Debugf("Creating snapshot data via FSM")
-		// Create snapshot data via FSM
-		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)
-		if err != nil {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot data")
-			return fmt.Errorf("creating snapshot data: %w", err)
-		}
-		node.logger.WithFields(map[string]any{"size": len(snapshotData)}).Debugf("Snapshot data created")
 
 		// Get current configuration state from storage
 		node.logger.Debugf("Getting initial state from storage")
 		_, confState, err := node.storage.InitialState()
 		if err != nil {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to get initial state")
 			return fmt.Errorf("getting initial state: %w", err)
 		}
 
-		// Create snapshot via storage
-		node.logger.WithFields(map[string]any{"index": status.Applied}).Debugf("Creating snapshot in storage")
-		_, err = node.storage.CreateSnapshot(status.Applied, &confState, snapshotData)
+		// Create snapshot data via FSM
+		err = node.syncer.CreateSnapshot(ctx, 0, &confState)
 		if err != nil {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot in storage")
-			return fmt.Errorf("creating snapshot: %w", err)
+			return fmt.Errorf("creating snapshot data: %w", err)
 		}
 
 		node.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("Snapshot created successfully")
@@ -698,6 +705,7 @@ func (node *Node[State, F]) IsHealthy() bool {
 	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
 }
 
+// todo: stop the syncer too
 func (node *Node[State, F]) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 	node.mu.Lock()
@@ -718,8 +726,12 @@ func (node *Node[State, F]) Stop(ctx context.Context) error {
 		return ctx.Err()
 	case <-node.stopped:
 		node.logger.Infof("Node stopped as expected")
-		return nil
 	}
+
+	node.logger.Infof("Stopping syncer...")
+	node.syncer.stop()
+
+	return nil
 }
 
 // applyFuture represents a future for an applied entry
@@ -750,6 +762,7 @@ func restoreFromStorage[State any, F FSM[State]](
 	// If snapshot exists, restore FSM from it
 	if snapshot.Metadata.Index > 0 {
 		logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
+		//todo handle error
 		fsm.RestoreSnapshot(context.Background(), 0, snapshot)
 	} else {
 		logger.Infof("No snapshot found, starting with empty FSM")

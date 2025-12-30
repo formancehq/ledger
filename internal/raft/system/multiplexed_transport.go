@@ -117,7 +117,11 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	channels := receptionsChannels{
 		recv: raft.NewQueueObserver[raftpb.Message](
 			"raft.multiplexed_transport.ledger.recv",
-			raft.NewPriorityQueue[raftpb.Message](5, raft.RaftMessagePriority),
+			raft.NewPriorityQueue[raftpb.Message](
+				5,
+				raft.RaftMessagePriority,
+				raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
+			),
 			raft.WithLogger[raftpb.Message](r.logger),
 			raft.WithMeter[raftpb.Message](meter),
 			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -163,7 +167,11 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 		mainReceptionChannels: receptionsChannels{
 			recv: raft.NewQueueObserver[raftpb.Message](
 				"raft.multiplexed_transport.system.recv",
-				raft.NewPriorityQueue[raftpb.Message](5, raft.RaftMessagePriority),
+				raft.NewPriorityQueue[raftpb.Message](
+					5,
+					raft.RaftMessagePriority,
+					raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
+				),
 				raft.WithLogger[raftpb.Message](logger),
 				raft.WithMeter[raftpb.Message](meter),
 				raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {

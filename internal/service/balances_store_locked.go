@@ -33,7 +33,7 @@ func makeLockKey(account, asset string) string {
 func NewDefaultLockedBalancesStore(runtimeStore RuntimeStore) *DefaultLockedBalancesStore {
 	return &DefaultLockedBalancesStore{
 		runtimeStore: runtimeStore,
-		locks:         make(map[string]*sync.Mutex),
+		locks:        make(map[string]*sync.Mutex),
 	}
 }
 

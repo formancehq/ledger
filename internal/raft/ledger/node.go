@@ -16,57 +16,87 @@ import (
 )
 
 // logStoreFactory is a function that creates a LogStore from a JSON config
-type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error)
+type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.RuntimeStore, service.LogStore, error)
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
-	"sqlite-mattn": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
+	"sqlite-mattn": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.RuntimeStore, service.LogStore, error) {
 		// SQLite DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Mattn driver
-		// Create database file path: dataDir/ledger-{id}.db
-		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
-		dbPath := filepath.Join(dataDir, dbFileName)
+		// Create database file paths: dataDir/ledger-{id}-logs.db and dataDir/ledger-{id}-runtime.db
+		logsDBFileName := fmt.Sprintf("ledger-%d-logs.db", ledgerID)
+		logsDBPath := filepath.Join(dataDir, logsDBFileName)
+		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
+		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
 
 		// Ensure the directory exists
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			return nil, fmt.Errorf("creating directory for sqlite-mattn database: %w", err)
+			return nil, nil, fmt.Errorf("creating directory for sqlite-mattn database: %w", err)
 		}
 
-		// Use sqlite3 driver (github.com/mattn/go-sqlite3)
-		dsn := dbPath
-		return service.NewSQLiteMattnLogStore(ctx, dsn, logger)
+		// Create log store (stores logs)
+		logStore, err := service.NewSQLiteMattnLogStore(ctx, logsDBPath, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating log store: %w", err)
+		}
+
+		// Create runtime store (stores balances and metadata)
+		runtimeStore, err := service.NewSQLiteMattnRuntimeStore(ctx, runtimeDBPath, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
+		}
+
+		// Combine both stores
+		return runtimeStore, logStore, nil
 	},
-	"sqlite-modern": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
+	"sqlite-modern": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.RuntimeStore, service.LogStore, error) {
 		// SQLite Modern DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Modern driver
-		// Create database file path: dataDir/ledger-{id}.db
-		dbFileName := fmt.Sprintf("ledger-%d.db", ledgerID)
-		dbPath := filepath.Join(dataDir, dbFileName)
+		// Create database file paths: dataDir/ledger-{id}-logs.db and dataDir/ledger-{id}-runtime.db
+		logsDBFileName := fmt.Sprintf("ledger-%d-logs.db", ledgerID)
+		logsDBPath := filepath.Join(dataDir, logsDBFileName)
+		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
+		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
 
 		// Ensure the directory exists
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			return nil, fmt.Errorf("creating directory for sqlite-modern database: %w", err)
+			return nil, nil, fmt.Errorf("creating directory for sqlite-modern database: %w", err)
 		}
 
 		// Use sqlite driver (modernc.org/sqlite)
-		dsn := fmt.Sprintf("file:%s", dbPath)
-		return service.NewSQLiteModernLogStore(ctx, dsn, logger)
+		logsDSN := fmt.Sprintf("file:%s", logsDBPath)
+		runtimeDSN := fmt.Sprintf("file:%s", runtimeDBPath)
+
+		// Create log store (stores logs)
+		logStore, err := service.NewSQLiteModernLogStore(ctx, logsDSN, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating log store: %w", err)
+		}
+
+		// Create runtime store (stores balances and metadata)
+		runtimeStore, err := service.NewSQLiteModernRuntimeStore(ctx, runtimeDSN, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
+		}
+
+		// Combine both stores
+		return runtimeStore, logStore, nil
 	},
 }
 
 // CreateLogStore creates a LogStore based on the ledger driver and config
-func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.LogStore, error) {
+func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.RuntimeStore, service.LogStore, error) {
 	factory, exists := logStoreFactories[driver]
 	if !exists {
-		return nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
+		return nil, nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
 	}
 
-	store, err := factory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir)
+	runtimeStore, logStore, err := factory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
+		return nil, nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
 	}
 
-	return store, nil
+	return runtimeStore, logStore, nil
 }
 
 // Node represents a Raft group for a specific ledger
@@ -75,12 +105,12 @@ type Node struct {
 	config        raft.NodeConfig
 	logger        logging.Logger
 	defaultLedger *service.DefaultLedger
-	ledgerInfo    *ledgerpb.LedgerInfo
-	logStore      service.LogStore // Underlying log store for direct access
+	ledgerInfo *ledgerpb.LedgerInfo
+	logReader  service.LogReader
 }
 
 func (node *Node) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[*ledgerpb.Log], error) {
-	return node.logStore.GetAllLogs(ctx, from, to)
+	return node.logReader.GetAllLogs(ctx, from, to)
 }
 
 // NewNode creates a new Raft group for a ledger
@@ -113,27 +143,39 @@ func NewNode(
 
 	// Create application log store for this ledger based on ledger driver
 	// Use the same dataDir as the Raft storage (ledger data directory)
-	appLogStore, err := CreateLogStore(ctx, ledgerInfo.Driver, configJSON, logger, ledgerInfo.GetName(), ledgerInfo.GetId(), cfg.DataDir)
+	runtimeStore, logStore, err := CreateLogStore(ctx, ledgerInfo.Driver, configJSON, logger, ledgerInfo.GetName(), ledgerInfo.GetId(), cfg.DataDir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create ledger FSM for managing the ledger
 	// recoveryLogReader is used for catching up logs from leader via gRPC
-	ledgerFSM := newFSM(logger, appLogStore, recoveryLogReader, ledgerInfo)
+	ledgerFSM := newFSM(
+		logger,
+		logStore,
+		runtimeStore,
+		recoveryLogReader,
+		ledgerInfo,
+	)
 
 	ret := &Node{
 		config:     cfg,
 		logger:     logger,
 		ledgerInfo: ledgerInfo,
-		logStore:   appLogStore,
+		logReader:  logStore,
 	}
 
 	// Create locked volumes store
-	lockedVolumesStore := service.NewDefaultLockedBalancesStore(appLogStore)
+	lockedVolumesStore := service.NewDefaultLockedBalancesStore(runtimeStore)
 
 	// Create ledger service for this ledger (will use stores for balance checking and log writing)
-	ret.defaultLedger = service.NewDefaultLedger(ret, lockedVolumesStore, appLogStore, logger)
+	ret.defaultLedger = service.NewDefaultLedger(
+		ret,
+		lockedVolumesStore,
+		logStore,
+		runtimeStore,
+		logger,
+	)
 
 	logger.Infof("Creating Raft node for ledger %s", ledgerInfo.Name)
 	ret.Node, err = raft.NewNode(cfg, storage, transport, ledgerFSM, logger, meter)

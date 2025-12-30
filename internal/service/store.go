@@ -51,30 +51,22 @@ type LogReader interface {
 	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
 }
 
+type LogStore interface {
+	LogWriter
+	LogReader
+}
+
 type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
 
 func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	return fn(ctx, from, to)
 }
 
-// LogStore embeds both LogWriter and LogReader, plus additional methods
-type LogStore interface {
-	// todo: relax ?
-	RuntimeStore
-	LogWriter
-	LogReader
-	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error)
-	GetLastLog(ctx context.Context) (*ledgerpb.Log, error)
-}
-
-// Store embeds LogWriter and LogReader
-type Store interface {
-	LogWriter
-	LogReader
-}
-
 // RuntimeStore handles runtime queries for balances and account metadata
 type RuntimeStore interface {
+	LogWriter
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
+	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
+	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error)
 }

@@ -362,8 +362,8 @@ var _ = Describe("Simple cluster", func() {
 			Context("Then creating more transactions than the snapshot threshold", func() {
 				BeforeEach(func() {
 					// Create enough transactions to trigger a snapshot
-					// snapshotThreshold is 10, so we create 11 transactions to ensure a snapshot is created
-					for i := 0; i < 11; i++ {
+					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
+					for i := 0; i < 15; i++ {
 						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
 							LedgerName: ledgerName,
 							CreateTransactionRequest: components.CreateTransactionRequest{
@@ -396,8 +396,8 @@ var _ = Describe("Simple cluster", func() {
 							if leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID == nil {
 								return fmt.Errorf("last log id is nil")
 							}
-							if *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID != 11 {
-								return fmt.Errorf("all transactions not committed, expected last log id to be 11, got %d", *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID)
+							if *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID != 15 {
+								return fmt.Errorf("all transactions not committed, expected last log id to be 15, got %d", *leaderState.LedgerClusterStateResponse.Data.InnerState.LastLogID)
 							}
 
 							return nil

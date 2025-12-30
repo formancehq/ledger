@@ -246,7 +246,7 @@ The Log Store is responsible for persistent storage of transactions (logs) for e
 
 #### SQLite
 
-**File**: `internal/service/log_store_sqlite.go`
+**File**: `internal/service/store_log_sqlite.go`
 
 **Characteristics**:
 - Storage in a SQLite file per ledger
@@ -338,13 +338,12 @@ The `RuntimeStore` interface combines balance queries and account metadata queri
 
 #### SQLite
 
-**File**: `internal/service/log_store_sqlite.go`
+**File**: `internal/service/store_runtime.go`
 
 - Balances stored in a `balances` table: `(account, asset, balance)`
-- Automatic updates via SQL triggers on `logs` table insert
-- Trigger fires on `NEW_TRANSACTION` and `REVERTED_TRANSACTION` log types
+- Updates performed when logs are written via `InsertLogs` method
 - Updates balances by subtracting from source accounts and adding to destination accounts
-- Each ledger has its own LogStore, so no need to filter by ledger
+- Each ledger has its own RuntimeStore, so no need to filter by ledger
 
 **Schema**:
 ```sql
@@ -358,7 +357,7 @@ CREATE TABLE balances (
 
 #### ClickHouse
 
-**File**: `internal/service/log_store_clickhouse.go`
+**File**: `internal/service/store_log_clickhouse.go` (if exists)
 
 - Balances stored in a `balances` table with ReplacingMergeTree engine
 - Updates performed via direct INSERT statements
@@ -368,7 +367,7 @@ CREATE TABLE balances (
 
 **File**: `internal/service/balances_store_locked.go`
 
-The `DefaultLockedBalancesStore` wraps a `RuntimeStore` and adds locking for concurrent access:
+The `DefaultLockedBalancesStore` wraps a `RuntimeStore` and adds locking for concurrent access to balances:
 
 - **Purpose**: Ensures safe concurrent access to balances during transaction processing
 - **Mechanism**: Uses mutexes keyed by `account:asset` combinations

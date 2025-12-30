@@ -21,12 +21,20 @@ type FSM struct {
 	mu                sync.RWMutex         // Protects access to state
 	state             ledgerpb.LedgerState // FSM state
 	logger            logging.Logger
-	logWriter         service.LogWriter
+	runtimeStore      service.RuntimeStore
 	logReaderProvider func(uint64) service.LogReader // LogReader to catch up logs from leader via gRPC
+	logs              []*ledgerpb.Log
+	logWriter         service.LogWriter
 }
 
 // newFSM creates a new ledger FSM
-func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider func(uint64) service.LogReader, ledgerInfo *ledgerpb.LedgerInfo) *FSM {
+func newFSM(
+	logger logging.Logger,
+	logWriter service.LogWriter,
+	runtimeStore service.RuntimeStore,
+	logReaderProvider func(uint64) service.LogReader,
+	ledgerInfo *ledgerpb.LedgerInfo,
+) *FSM {
 	return &FSM{
 		state: ledgerpb.LedgerState{
 			LedgerInfo: ledgerInfo,
@@ -36,7 +44,8 @@ func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider
 			"service": "ledgerpb.fsm",
 			"ledger":  ledgerInfo.GetName(),
 		}),
-		logWriter:         logStore,
+		runtimeStore:      runtimeStore,
+		logWriter:          logWriter,
 		logReaderProvider: logReaderProvider,
 	}
 }
@@ -63,6 +72,7 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	f.mu.Lock()
 	f.state.LastLogID++
 	insertCmd.Log.Id = f.state.LastLogID
+	f.logs = append(f.logs, insertCmd.Log)
 	f.mu.Unlock()
 
 	return insertCmd.Log, nil
@@ -94,7 +104,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 	}
 	if len(logs) > 0 {
 		now := time.Now()
-		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
+		if err := f.runtimeStore.InsertLogs(ctx, logs...); err != nil {
 			return nil, err
 		}
 		f.logger.
@@ -110,12 +120,19 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	f.mu.RLock()
-	defer f.mu.RUnlock()
-
 	snapshotData := map[string]interface{}{
 		"ledgerInfo": f.state.LedgerInfo,
 		"lastLogID":  f.state.LastLogID,
 	}
+	logs := f.logs
+	f.logs = nil
+	f.mu.RUnlock()
+
+	err := f.logWriter.InsertLogs(ctx, logs...)
+	if err != nil {
+		return nil, err
+	}
+	f.logs = nil
 
 	// Marshal to JSON
 	data, err := json.Marshal(snapshotData)
@@ -127,7 +144,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the ledger FSM from a snapshot
-func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) {
+func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
 	var snapshotData ledgerpb.LedgerState
 
 	if err := json.Unmarshal(snapshot.Data, &snapshotData); err != nil {
@@ -146,7 +163,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 
 		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, f.state.LastLogID, snapshotData.LastLogID)
 		if err != nil {
-			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
+			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
 		}
 		defer func() {
 			_ = cursor.Close()
@@ -164,29 +181,27 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 				if err == io.EOF {
 					break
 				}
-				panic(fmt.Errorf("reading log during catch-up: %w", err))
+				return fmt.Errorf("reading log during catch-up: %w", err)
 			}
+
+			f.logger.Debugf("Catching up log %d", log.Id)
+			f.mu.Lock()
+			f.state.LastLogID++
+			log.Id = f.state.LastLogID
+			f.mu.Unlock()
 
 			logsToWrite = append(logsToWrite, log)
 		}
 
 		// Write all collected logs to the writer
 		if len(logsToWrite) > 0 {
-			if err := f.logWriter.InsertLogs(ctx, logsToWrite...); err != nil {
-				panic(fmt.Errorf("writing catch-up logs to store: %w", err))
+			if err := f.runtimeStore.InsertLogs(ctx, logsToWrite...); err != nil {
+				return fmt.Errorf("writing catch-up logs to store: %w", err)
 			}
 			f.logger.WithFields(map[string]any{
 				"logsWritten": len(logsToWrite),
 			}).Infof("Caught up logs from reader to writer")
-
-			f.mu.Lock()
-			f.state.LastLogID = logsToWrite[len(logsToWrite)-1].Id
-			f.mu.Unlock()
 		}
-	} else {
-		f.mu.Lock()
-		f.state.LastLogID = snapshotData.LastLogID
-		f.mu.Unlock()
 	}
 
 	f.mu.RLock()
@@ -197,4 +212,6 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 		"ledger":     f.state.LedgerInfo.Name,
 		"storeLogID": lastLogID,
 	}).Infof("Ledger FSM restored from snapshot")
+
+	return nil
 }

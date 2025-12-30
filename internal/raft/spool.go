@@ -10,7 +10,15 @@ import (
 	"os"
 )
 
-type spool struct {
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -package raft . Spool
+type Spool interface {
+	AppendCommittedEntries(ctx context.Context, commands ...Command) error
+	Next() (Command, error)
+	Reset() error
+	Close() error
+}
+
+type fileSpool struct {
 	f    *os.File
 	w    *bufio.Writer
 	path string
@@ -19,19 +27,19 @@ type spool struct {
 	readOffset int64
 }
 
-func newSpool(path string) (*spool, error) {
+func newFileSpool(path string) (*fileSpool, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	return &spool{
+	return &fileSpool{
 		f:    f,
 		w:    bufio.NewWriterSize(f, 1<<20),
 		path: path,
 	}, nil
 }
 
-func (s *spool) Close() error {
+func (s *fileSpool) Close() error {
 	if s.w != nil {
 		_ = s.w.Flush()
 	}
@@ -40,7 +48,7 @@ func (s *spool) Close() error {
 
 // AppendCommittedEntries écrit des committed entries (déjà ordonnées) dans le spool.
 // À appeler quand storageReady == false, au lieu d'appliquer au FSM.
-func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command) error {
+func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...Command) error {
 
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
@@ -62,7 +70,7 @@ func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command)
 
 // Next lit le prochain record à partir de readOffset, l'avance si la lecture réussit,
 // et retourne la commande ou io.EOF s'il n'y a plus d'éléments à lire.
-func (s *spool) Next() (Command, error) {
+func (s *fileSpool) Next() (Command, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
 		return Command{}, err
 	}
@@ -85,7 +93,7 @@ func (s *spool) Next() (Command, error) {
 }
 
 // Reset efface complètement le spool (ex: une fois que tu as fini le rattrapage + replay).
-func (s *spool) Reset() error {
+func (s *fileSpool) Reset() error {
 
 	if err := s.f.Truncate(0); err != nil {
 		return err

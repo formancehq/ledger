@@ -467,7 +467,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "red",
+            "mode": "fixed"
           },
           "mappings": [],
           "thresholds": {
@@ -579,32 +580,7 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Incoming"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 5,
@@ -761,7 +737,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "red",
+            "mode": "fixed"
           },
           "mappings": [],
           "thresholds": {
@@ -1046,10 +1023,15 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
+          "editorMode": "code",
+          "expr": "rate({\"raft.apply_entries.batch_size_distribution_count\", \"service.node_id\"=\"$node\", \"scope.name\"!=\"raft.node.system\"})",
+          "interval": "1s",
+          "legendFormat": "__auto",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "New panel",
+      "title": "Batch size distribution",
       "type": "timeseries"
     },
     {
@@ -1450,32 +1432,7 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Peer 2 : MsgHeartbeat"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 6,
@@ -1530,20 +1487,15 @@
             "fixedColor": "red",
             "mode": "fixed"
           },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
           },
+          "fieldMinMax": false,
+          "mappings": [],
           "unit": "ops"
         },
         "overrides": []
@@ -1556,18 +1508,12 @@
       },
       "id": 24,
       "options": {
-        "displayMode": "gradient",
         "legend": {
-          "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": false
+          "showLegend": true
         },
-        "maxVizHeight": 300,
-        "minVizHeight": 16,
-        "minVizWidth": 8,
-        "namePlacement": "auto",
-        "orientation": "auto",
+        "pieType": "pie",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1575,9 +1521,12 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "pluginVersion": "12.3.1",
       "targets": [
@@ -1588,15 +1537,17 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "raft.transport.peer.sending.full{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[30s]",
+          "expr": "sum({\"raft.transport.peer.sending.full\", \"service.node_id\"=\"$node\"}[$__interval]) by (peer, type)",
+          "format": "time_series",
+          "instant": false,
           "interval": "1s",
-          "legendFormat": "Peer {{scope.attributes.peer}} : {{type}}",
+          "legendFormat": "Peer {{peer}}: {{type}}",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "Transport Peer Sending Channel - Full errors",
-      "type": "bargauge"
+      "type": "piechart"
     },
     {
       "datasource": {
@@ -1798,32 +1749,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Peer 2 : MsgHeartbeatResp"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -1868,7 +1794,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "red",
+            "mode": "fixed"
           },
           "mappings": [],
           "thresholds": {
