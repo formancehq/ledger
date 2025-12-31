@@ -2376,7 +2376,7 @@
         "x": 12,
         "y": 52
       },
-      "id": 35,
+      "id": 46,
       "options": {
         "legend": {
           "calcs": [],
@@ -2393,10 +2393,19 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "{\"pending_response\", \"service.node_id\"=\"$node\"}",
+          "instant": true,
+          "legendFormat": "Peer : {{scope.attributes.peer}}",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "New panel",
+      "title": "Pending responses",
       "type": "timeseries"
     },
     {

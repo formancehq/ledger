@@ -108,6 +108,11 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 	)
 	logger := t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id)})
 
+	pendingResponseCounter, err := meter.Float64UpDownCounter("pending_response")
+	if err != nil {
+		panic(err)
+	}
+
 	conn := peerConnection{
 		sendCh: NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
@@ -124,11 +129,12 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 				return ret
 			}),
 		),
-		closeCh:       make(chan chan struct{}),
-		unreachableCh: t.unreachableCh,
-		connection:    t.connectionPool.GetConnection(id),
-		logger:        logger,
-		peerID:        id,
+		closeCh:                make(chan chan struct{}),
+		unreachableCh:          t.unreachableCh,
+		connection:             t.connectionPool.GetConnection(id),
+		logger:                 logger,
+		peerID:                 id,
+		pendingResponseCounter: pendingResponseCounter,
 	}
 	t.peers[id] = conn
 
@@ -248,12 +254,13 @@ func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
 }
 
 type peerConnection struct {
-	sendCh        Queue[raftpb.Message]
-	closeCh       chan chan struct{}
-	unreachableCh Queue[uint64]
-	connection    *grpc.ClientConn
-	logger        logging.Logger
-	peerID        uint64
+	sendCh                 Queue[raftpb.Message]
+	closeCh                chan chan struct{}
+	unreachableCh          Queue[uint64]
+	connection             *grpc.ClientConn
+	logger                 logging.Logger
+	peerID                 uint64
+	pendingResponseCounter metric.Float64UpDownCounter
 }
 
 func (conn *peerConnection) loop() {
@@ -305,14 +312,19 @@ func (conn *peerConnection) loop() {
 				nodeID, ok := pending[res.RequestId]
 				if ok {
 					delete(pending, res.RequestId)
+					conn.pendingResponseCounter.Add(context.Background(), -1)
+				} else {
+					conn.logger.
+						WithFields(map[string]any{
+							"request-id": res.RequestId,
+						}).
+						Errorf("Received unexpected response from peer")
 				}
 				mu.Unlock()
-				if !res.Success {
-					if ok {
-						conn.logger.
-							Errorf("Failed to send message, peer respond with error: %s", res.Error)
-						conn.unreachableCh.Send(nodeID)
-					}
+				if !res.Success && ok {
+					conn.logger.
+						Errorf("Failed to send message, peer respond with error: %s", res.Error)
+					conn.unreachableCh.Send(nodeID)
 				}
 			}
 		}()
@@ -341,19 +353,25 @@ func (conn *peerConnection) loop() {
 					Debugf("Sending message to peer via stream")
 
 				mu.Lock()
-				pending[messageID] = msg.To
-				mu.Unlock()
+				currentMessageID := messageID
 				messageID++
+				pending[currentMessageID] = msg.To
+				mu.Unlock()
+
+				conn.pendingResponseCounter.Add(context.Background(), 1)
 
 				if err := stream.Send(&SendMessageRequest{
 					Message: data,
-					Id:      messageID,
+					Id:      currentMessageID,
 				}); err != nil {
 					conn.logger.
 						WithFields(map[string]any{
 							"error": err,
 						}).
 						Errorf("Failed to send message via stream")
+					mu.Lock()
+					delete(pending, currentMessageID)
+					mu.Unlock()
 					// Report peer as unreachable
 					if !conn.unreachableCh.Send(msg.To) {
 						conn.logger.Errorf("Unreachable channel full, dropping unreachable")
