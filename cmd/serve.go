@@ -66,8 +66,14 @@ func NewServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
-			numscriptInterpreterFlags, _ := cmd.Flags().GetStringSlice(NumscriptInterpreterFlagsToPass)
+			numscriptInterpreter, err := cmd.Flags().GetBool(NumscriptInterpreterFlag)
+			if err != nil {
+				return err
+			}
+			numscriptInterpreterFlags, err := cmd.Flags().GetStringSlice(NumscriptInterpreterFlagsToPass)
+			if err != nil {
+				return err
+			}
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
 			if err != nil {
