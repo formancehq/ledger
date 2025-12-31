@@ -361,6 +361,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 			MaxSizePerMsg:     fsm.raftConfig.MaxSizePerMsg,
 			MaxInflightMsgs:   fsm.raftConfig.MaxInflightMsgs,
 			TickInterval:      fsm.raftConfig.TickInterval,
+			CompactionMargin:  fsm.raftConfig.CompactionMargin,
 		},
 		logger,
 		func(peerID uint64) service.LogReader {

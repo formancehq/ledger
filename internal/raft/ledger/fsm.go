@@ -33,16 +33,13 @@ func newFSM(
 	logWriter service.LogWriter,
 	runtimeStore service.RuntimeStore,
 	logReaderProvider func(uint64) service.LogReader,
-	ledgerInfo *ledgerpb.LedgerInfo,
+	initialState ledgerpb.LedgerState,
 ) *FSM {
 	return &FSM{
-		state: ledgerpb.LedgerState{
-			LedgerInfo: ledgerInfo,
-			LastLogID:  0,
-		},
+		state: initialState,
 		logger: logger.WithFields(map[string]any{
 			"service": "ledgerpb.fsm",
-			"ledger":  ledgerInfo.GetName(),
+			"ledger":  initialState.LedgerInfo.GetName(),
 		}),
 		runtimeStore:      runtimeStore,
 		logWriter:          logWriter,
@@ -143,7 +140,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
-// RestoreSnapshot restores the ledger FSM from a snapshot
+// RestoreSnapshot restores the ledger FSM from a remote snapshot
 func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
 	var snapshotData ledgerpb.LedgerState
 

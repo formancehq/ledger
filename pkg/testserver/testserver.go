@@ -97,6 +97,13 @@ func WithRaftTickInterval(interval time.Duration) testservice.InstrumentationFun
 	}
 }
 
+func WithRaftCompactionMargin(margin uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--raft-compaction-margin", fmt.Sprintf("%d", margin))
+		return nil
+	}
+}
+
 func WithDebug(v bool) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		if v {

@@ -15,6 +15,7 @@ type NodeConfig struct {
 	MaxSizePerMsg     uint64        // Maximum size per message in bytes (default: 1MB)
 	MaxInflightMsgs   int           // Maximum number of in-flight messages (default: 256)
 	TickInterval      time.Duration
+	CompactionMargin uint64 // Compaction margin in number of logs
 }
 
 type Peer struct {

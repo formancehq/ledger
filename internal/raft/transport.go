@@ -301,13 +301,13 @@ func (conn *peerConnection) loop() {
 				if err != nil {
 					return
 				}
+				mu.Lock()
+				nodeID, ok := pending[res.RequestId]
+				if ok {
+					delete(pending, res.RequestId)
+				}
+				mu.Unlock()
 				if !res.Success {
-					mu.Lock()
-					nodeID, ok := pending[res.RequestId]
-					if ok {
-						delete(pending, res.RequestId)
-					}
-					mu.Unlock()
 					if ok {
 						conn.logger.
 							Errorf("Failed to send message, peer respond with error: %s", res.Error)

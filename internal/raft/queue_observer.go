@@ -15,6 +15,7 @@ type QueueObserver[T any] struct {
 	logger       logging.Logger
 	incoming     metric.Float64Counter
 	outgoing     metric.Float64Counter
+	inflight     metric.Float64UpDownCounter
 	fullCounter  metric.Float64Counter
 	attributesFn func(t T) []attribute.KeyValue
 	meter        metric.Meter
@@ -25,6 +26,7 @@ type QueueObserver[T any] struct {
 func (m *QueueObserver[T]) Send(msg T) bool {
 	if m.queue.Send(msg) {
 		m.incoming.Add(context.Background(), 1, metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)))
+		m.inflight.Add(context.Background(), 1, metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)))
 		return true
 	} else {
 		m.logger.WithFields(map[string]any{
@@ -70,6 +72,11 @@ func NewQueueObserver[T any](
 		panic(err)
 	}
 
+	ret.inflight, err = ret.meter.Float64UpDownCounter(name+".inflight", metric.WithUnit("1"))
+	if err != nil {
+		panic(err)
+	}
+
 	ret.fullCounter, err = ret.meter.Float64Counter(name+".full", metric.WithUnit("1"))
 	if err != nil {
 		panic(err)
@@ -79,6 +86,7 @@ func NewQueueObserver[T any](
 		for msg := range queue.Recv() {
 			ret.out <- msg
 			ret.outgoing.Add(context.Background(), 1, metric.WithAttributeSet(attribute.NewSet(ret.attributesFn(msg)...)))
+			ret.inflight.Add(context.Background(), -1, metric.WithAttributeSet(attribute.NewSet(ret.attributesFn(msg)...)))
 		}
 	}()
 

@@ -150,6 +150,18 @@ func NewNode(
 		return nil, err
 	}
 
+	var state ledgerpb.LedgerState
+	snapshot, _ := storage.Snapshot()
+	if snapshot.Metadata.Index > 0 {
+		if err := json.Unmarshal(snapshot.Data, &state); err != nil {
+			return nil, fmt.Errorf("unmarshaling snapshot data: %w", err)
+		}
+	} else {
+		state = ledgerpb.LedgerState{
+			LedgerInfo: ledgerInfo,
+		}
+	}
+
 	// Create ledger FSM for managing the ledger
 	// recoveryLogReader is used for catching up logs from leader via gRPC
 	ledgerFSM := newFSM(
@@ -157,7 +169,7 @@ func NewNode(
 		logStore,
 		runtimeStore,
 		recoveryLogReader,
-		ledgerInfo,
+		state,
 	)
 
 	ret := &Node{

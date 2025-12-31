@@ -135,6 +135,7 @@ func (s *WALStorage) openOrCreateWAL() (*wal.WAL, error) {
 }
 
 // replayWAL replays all entries from the WAL to rebuild the entries cache
+// todo: the underlying wal is not snapshotted yet, so all entries are reread
 func (s *WALStorage) replayWAL() error {
 	// Read all entries from WAL
 	// Note: ReadAll() can return an error if the WAL is empty or corrupted
@@ -409,7 +410,7 @@ func (s *WALStorage) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.snapshot.Metadata.Index + 1, nil
+	return s.firstIndexLocked()
 }
 
 // Snapshot returns the most recent snapshot
@@ -579,26 +580,29 @@ func (s *WALStorage) Compact(compactIndex uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if compactIndex <= s.snapshot.Metadata.Index {
-		return ErrCompacted
+	if compactIndex > s.snapshot.Metadata.Index {
+		return fmt.Errorf(
+			"index (%d) after last snapshot index(%d): %w",
+			compactIndex,
+			s.snapshot.Metadata.Index,
+			ErrCompacted,
+		)
 	}
 
-	firstIndex := s.snapshot.Metadata.Index + 1
+	firstIndex, err := s.firstIndexLocked()
+	if err != nil {
+		return err
+	}
 	if compactIndex < firstIndex {
-		return ErrCompacted
+		return fmt.Errorf("index before first index: %w", ErrCompacted)
 	}
 
 	if len(s.entries) == 0 {
 		return nil
 	}
 
-	offset := s.entries[0].Index
-	if compactIndex <= offset {
-		return ErrCompacted
-	}
-
 	// Truncate entries before compactIndex
-	truncateIndex := compactIndex - offset
+	truncateIndex := compactIndex - firstIndex
 	if truncateIndex < uint64(len(s.entries)) {
 		s.entries = s.entries[truncateIndex:]
 	} else {
@@ -623,4 +627,12 @@ func (s *WALStorage) Close() error {
 		s.wal = nil
 	}
 	return nil
+}
+
+func (s *WALStorage) firstIndexLocked() (uint64, error) {
+	if len(s.entries) == 0 {
+		return s.snapshot.Metadata.Index + 1, nil
+	}
+
+	return s.entries[0].Index, nil
 }

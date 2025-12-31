@@ -1,0 +1,20 @@
+Every 1.0s: docker compose ps                                                                                                                   formance-geoffrey-ragot: 11:45:21
+                                                                                                                                                                    in 0.108s (0)
+NAME                               IMAGE                                         COMMAND                  SERVICE            CREATED          STATUS                    PORTS    
+grafana                            grafana/grafana:latest                        "/run.sh"                grafana            10 minutes ago   Up 10 minutes             0.0.0.0:3
+000->3000/tcp, [::]:3000->3000/tcp                                                                                                                                               
+ledger-v3-poc-node-1-1             ledger-v3-poc-node-1                          "sh -c 'go mod downl…"   node-1             10 minutes ago   Up 10 minutes (healthy)   0.0.0.0:8
+888->8888/tcp, [::]:8888->8888/tcp, 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp                                                                                                  
+ledger-v3-poc-node-2-1             ledger-v3-poc-node-2                          "sh -c 'go mod downl…"   node-2             10 minutes ago   Up 10 minutes (healthy)   0.0.0.0:8
+889->8888/tcp, [::]:8889->8888/tcp, 0.0.0.0:9001->9000/tcp, [::]:9001->9000/tcp                                                                                                  
+ledger-v3-poc-node-3-1             ledger-v3-poc-node-3                          "sh -c 'go mod downl…"   node-3             10 minutes ago   Up 10 minutes (healthy)   0.0.0.0:8
+890->8888/tcp, [::]:8890->8888/tcp, 0.0.0.0:9002->9000/tcp, [::]:9002->9000/tcp                                                                                                  
+ledger-v3-poc-otel-collector-1     otel/opentelemetry-collector-contrib:latest   "/otelcol-contrib --…"   otel-collector     10 minutes ago   Up 10 minutes             0.0.0.0:4
+317-4318->4317-4318/tcp, [::]:4317-4318->4317-4318/tcp, 55679/tcp                                                                                                                
+ledger-v3-poc-victoria-metrics-1   victoriametrics/victoria-metrics:latest       "/victoria-metrics-p…"   victoria-metrics   10 minutes ago   Up 10 minutes             0.0.0.0:8
+428->8428/tcp, [::]:8428->8428/tcp                                                                                                                                               
+                                                                                                                                                                                 
+                                                                                                                                                                                 
+                                                                                                                                                                                 
+                                                                                                                                                                                 
+                                                                                                                                                                                 

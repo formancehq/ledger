@@ -473,6 +473,12 @@ func (node *Node[State, F]) processReady(
 				panic(fmt.Errorf("creating snapshot in storage: %w", err))
 			}
 
+			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+			err = node.storage.Compact(status.Applied - node.config.CompactionMargin)
+			if err != nil {
+				panic("Compacting storage failed: " + err.Error())
+			}
+
 			node.logger.Infof("Snapshot created successfully")
 		}()
 	}
@@ -498,7 +504,6 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 	}
 
 	// Initialize storage with ConfState if storage is empty
-	// This replaces the deprecated Bootstrap() method
 	// All nodes need ConfState to participate in elections
 	node.logger.Infof("Storage empty: %v", node.storage.IsEmpty())
 	if node.storage.IsEmpty() {

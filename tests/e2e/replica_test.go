@@ -53,10 +53,11 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithDataDir(raftTmpDir),
 					testserver.WithGRPCPort(8000+i),
 					testserver.WithSnapshotThreshold(10),
-					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
 					//testserver.WithRaftTickInterval(10*time.Millisecond),
 					//testserver.WithRaftHeartbeatTick(10),
 					//testserver.WithRaftElectionTick(100),
+					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 					testserver.WithPeers(func() []raft.Peer {
 						ret := make([]raft.Peer, 0, countInstances-1)
 						for j := range countInstances {

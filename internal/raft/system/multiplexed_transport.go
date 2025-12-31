@@ -36,7 +36,7 @@ func (r *multiplexedTransport) Start() {
 		case incoming := <-r.grpcTransport.Recv():
 			ledgerID := ledgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
-				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.String())
+				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.Type)
 				if !r.mainReceptionChannels.recv.Send(incoming.Msg) {
 					incoming.Rsp <- fmt.Errorf("main transport channel full")
 				} else {
@@ -49,7 +49,7 @@ func (r *multiplexedTransport) Start() {
 			ledger, ok := r.ledgers[ledgerID]
 			r.mu.RUnlock()
 			if ok {
-				r.logger.Debugf("Received message from ledger transport: %s", incoming.Msg.String())
+				r.logger.Debugf("Received message from ledger transport: %s", incoming.Msg.Type)
 				if ledger.recv.Send(incoming.Msg) {
 					incoming.Rsp <- nil
 				} else {
@@ -57,7 +57,7 @@ func (r *multiplexedTransport) Start() {
 					r.logger.
 						WithFields(map[string]any{
 							"channel": fmt.Sprintf("ledger/%d", ledgerID),
-							"type":    incoming.Msg.Type.String(),
+							"type":    incoming.Msg.Type,
 						}).
 						Errorf("Ledger incoming queue full, dropping message")
 				}
