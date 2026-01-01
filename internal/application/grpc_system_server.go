@@ -141,7 +141,10 @@ func (impl *SystemServiceServerImpl) ResolveLedger(ctx context.Context, req *ser
 func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, req *service.GetAllLedgersRequest) (*service.GetAllLedgersResponse, error) {
 	impl.logger.Debugf("GetAllLedgersInfo request received")
 
-	ledgers := impl.systemNode.GetAllLedgersInfo(ctx)
+	ledgers, err := impl.systemNode.GetAllLedgersInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting all ledgers: %w", err)
+	}
 
 	// Convert map[string]*ledgerpb.LedgerInfo to []CreateLedgerResponse
 	ledgersList := make([]*service.CreateLedgerResponse, 0, len(ledgers))

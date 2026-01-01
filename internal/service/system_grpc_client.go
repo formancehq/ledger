@@ -91,12 +91,10 @@ func (g *SystemGRPCClient) ResolveLedger(ctx context.Context, ledgerName string)
 	return resp.LedgerName, resp.LedgerId, nil
 }
 
-func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo {
+func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
 	resp, err := g.client.GetAllLedgersInfo(ctx, &GetAllLedgersRequest{})
 	if err != nil {
-		// Return empty map on error - this is a limitation of the interface
-		// In practice, this should not happen as GetAllLedgersInfo is typically called locally
-		return make(map[string]*ledgerpb.LedgerInfo)
+		return nil, err
 	}
 
 	// Convert []*CreateLedgerResponse to map[string]*ledgerpb.LedgerInfo
@@ -117,7 +115,7 @@ func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) map[string]*le
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {

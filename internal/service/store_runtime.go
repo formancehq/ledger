@@ -32,6 +32,8 @@ type SQLiteRuntimeStore struct {
 	stmtUpsertAccountMetadata     *sql.Stmt
 	stmtDeleteAccountMetadata      *sql.Stmt
 	stmtInsertIdempotency         *sql.Stmt
+	stmtGetLastProcessedLogID     *sql.Stmt
+	stmtUpdateLastProcessedLogID   *sql.Stmt
 }
 
 // NewSQLiteRuntimeStore creates a new SQLiteRuntimeStore instance
@@ -92,6 +94,23 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 		return nil, fmt.Errorf("preparing insertIdempotency statement: %w", err)
 	}
 
+	store.stmtGetLastProcessedLogID, err = db.PrepareContext(ctx, `
+		SELECT value
+		FROM infos
+		WHERE key = 'last_processed_log_id'
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing getLastProcessedLogID statement: %w", err)
+	}
+
+	store.stmtUpdateLastProcessedLogID, err = db.PrepareContext(ctx, `
+		INSERT OR REPLACE INTO infos (key, value)
+		VALUES ('last_processed_log_id', ?)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing updateLastProcessedLogID statement: %w", err)
+	}
+
 	return store, nil
 }
 
@@ -142,6 +161,18 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 		return fmt.Errorf("creating idempotency table: %w", err)
 	}
 
+	// Create infos table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS infos (
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			PRIMARY KEY (key)
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating infos table: %w", err)
+	}
+
 	return nil
 }
 
@@ -170,6 +201,16 @@ func (s *SQLiteRuntimeStore) Close() error {
 	}
 	if s.stmtInsertIdempotency != nil {
 		if err := s.stmtInsertIdempotency.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.stmtGetLastProcessedLogID != nil {
+		if err := s.stmtGetLastProcessedLogID.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.stmtUpdateLastProcessedLogID != nil {
+		if err := s.stmtUpdateLastProcessedLogID.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -309,6 +350,14 @@ func (s *SQLiteRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.L
 	if len(idempotencyEntries) > 0 {
 		if err := s.batchInsertIdempotency(ctx, tx, idempotencyEntries); err != nil {
 			return fmt.Errorf("batch inserting idempotency entries: %w", err)
+		}
+	}
+
+	// Update last processed log ID (use the last log's ID)
+	if len(logs) > 0 {
+		lastLogID := logs[len(logs)-1].Id
+		if err := s.updateLastProcessedLogID(ctx, tx, lastLogID); err != nil {
+			return fmt.Errorf("updating last processed log ID: %w", err)
 		}
 	}
 
@@ -567,4 +616,37 @@ func (s *SQLiteRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	}
 
 	return hash, logID, nil
+}
+
+// GetLastProcessedLogID retrieves the ID of the last processed log from the infos table
+func (s *SQLiteRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64, error) {
+	var valueStr string
+	err := s.stmtGetLastProcessedLogID.QueryRowContext(ctx).Scan(&valueStr)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("querying last processed log ID: %w", err)
+	}
+
+	// Parse the value as uint64
+	var lastLogID uint64
+	if _, err := fmt.Sscanf(valueStr, "%d", &lastLogID); err != nil {
+		return 0, fmt.Errorf("parsing last processed log ID: %w", err)
+	}
+
+	return lastLogID, nil
+}
+
+// updateLastProcessedLogID updates the last processed log ID in the infos table
+func (s *SQLiteRuntimeStore) updateLastProcessedLogID(ctx context.Context, tx *sql.Tx, logID uint64) error {
+	stmt := tx.StmtContext(ctx, s.stmtUpdateLastProcessedLogID)
+	defer stmt.Close()
+
+	valueStr := fmt.Sprintf("%d", logID)
+	if _, err := stmt.ExecContext(ctx, valueStr); err != nil {
+		return fmt.Errorf("updating last processed log ID: %w", err)
+	}
+
+	return nil
 }

@@ -498,11 +498,6 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 	node.stopped = make(chan struct{})
 	node.ctx, node.cancel = context.WithCancel(context.Background())
 
-	err := restoreFromStorage(ctx, node.syncer, node.storage, node.logger)
-	if err != nil {
-		return fmt.Errorf("restoring FSM from storage: %w", err)
-	}
-
 	// Initialize storage with ConfState if storage is empty
 	// All nodes need ConfState to participate in elections
 	node.logger.Infof("Storage empty: %v", node.storage.IsEmpty())
@@ -532,6 +527,26 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 		}
 
 		node.logger.WithFields(map[string]any{"voters": len(voters)}).Infof("Storage initialized with ConfState")
+	} else {
+		node.logger.Infof("Restoring FSM from storage")
+		// Read the last snapshot
+		snapshot, err := node.storage.Snapshot()
+		if err != nil {
+			return fmt.Errorf("reading snapshot: %w", err)
+		}
+
+		// If snapshot exists, restore FSM from it
+		if snapshot.Metadata.Index > 0 {
+			node.logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
+			if err := node.syncer.fsm.RestoreSnapshot(context.Background(), 0, snapshot); err != nil {
+				panic(err)
+			}
+			node.logger.Infof("Snapshot restored successfully")
+		} else {
+			node.logger.Infof("No snapshot found, starting with empty FSM")
+		}
+
+		node.logger.Infof("Finished restoring FSM from storage")
 	}
 
 	raftConfig := &raft.Config{
@@ -546,6 +561,7 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 		DisableProposalForwarding: true,
 	}
 
+	var err error
 	node.rawNode, err = raft.NewRawNode(raftConfig)
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
@@ -749,102 +765,4 @@ type applyFuture struct {
 	mu     sync.Mutex
 	done   bool
 	err    error
-}
-
-// RestoreFromStorage restores the FSM state from storage by reading the last snapshot
-// and applying all entries after the snapshot
-func restoreFromStorage[State any, F FSM[State]](
-	ctx context.Context,
-	fsm *syncer[State, F],
-	storage *WALStorage,
-	logger logging.Logger,
-) error {
-	logger.Infof("Restoring FSM from storage")
-	// Read the last snapshot
-	snapshot, err := storage.Snapshot()
-	if err != nil {
-		return fmt.Errorf("reading snapshot: %w", err)
-	}
-
-	// If snapshot exists, restore FSM from it
-	if snapshot.Metadata.Index > 0 {
-		logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
-		//todo handle error
-		fsm.RestoreSnapshot(context.Background(), 0, snapshot)
-	} else {
-		logger.Infof("No snapshot found, starting with empty FSM")
-	}
-
-	// Read all entries after the snapshot
-	firstIndex, err := storage.FirstIndex()
-	if err != nil {
-		return fmt.Errorf("getting first index: %w", err)
-	}
-
-	lastIndex, err := storage.LastIndex()
-	if err != nil {
-		return fmt.Errorf("getting last index: %w", err)
-	}
-
-	// If there are entries after the snapshot, apply them to the FSM
-	if firstIndex <= lastIndex {
-		logger.
-			WithFields(map[string]any{"firstIndex": firstIndex, "lastIndex": lastIndex}).
-			Infof("Applying entries after snapshot")
-		// Read entries in batches to avoid loading everything in memory at once
-		const maxBatchSize = 1000
-		for i := firstIndex; i <= lastIndex; i += maxBatchSize {
-			endIndex := i + maxBatchSize
-			if endIndex > lastIndex+1 {
-				endIndex = lastIndex + 1
-			}
-
-			entries, err := storage.Entries(i, endIndex, 10*1024*1024) // 10MB max size per batch
-			if err != nil {
-				return fmt.Errorf("reading entries [%d, %d): %w", i, endIndex, err)
-			}
-
-			// Apply each entry to the FSM
-			// todo: bufferies entries application to speed up the recovery
-			for _, entry := range entries {
-				// Skip configuration change entries
-				if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
-					continue
-				}
-				// Skip other non-normal entries
-				if entry.Type != raftpb.EntryNormal {
-					continue
-				}
-				// Skip empty entries
-				if len(entry.Data) == 0 {
-					continue
-				}
-
-				// Decode the command
-				var cmd Command
-				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-					return fmt.Errorf("unmarshaling command during FSM restoration: %w", err)
-				}
-
-				ret, err := fsm.ApplyEntries(ctx, cmd)
-				if err != nil {
-					return fmt.Errorf("applying entry %d: %w", entry.Index, err)
-				}
-				if ret[0].Error != nil {
-					logger.
-						WithFields(map[string]any{
-							"index":     entry.Index,
-							"error":     ret[0].Error,
-							"commandID": cmd.ID,
-						}).
-						Infof("WARN: Failed to apply entry during FSM restoration")
-				}
-			}
-		}
-		logger.WithFields(map[string]any{"lastIndex": lastIndex}).Infof("Finished applying entries after snapshot")
-	}
-
-	logger.Infof("Finished restoring FSM from storage")
-
-	return nil
 }

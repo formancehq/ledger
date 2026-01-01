@@ -224,7 +224,7 @@ func (m *channelsTransport) Recv() <-chan raftpb.Message {
 
 func (m *channelsTransport) Send(msg raftpb.Message) {
 	target := NodeIDFromLedgerNodeID(msg.To)
-	m.logger.Debugf("Sending message to node: %d (%d)", msg.To, target)
+	m.logger.Debugf("Sending message to node: %d (%x)", msg.To, target)
 	m.sender.Send(target, msg)
 }
 

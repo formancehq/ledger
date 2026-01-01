@@ -42,7 +42,7 @@ func newFSM(
 			"ledger":  initialState.LedgerInfo.GetName(),
 		}),
 		runtimeStore:      runtimeStore,
-		logWriter:          logWriter,
+		logWriter:         logWriter,
 		logReaderProvider: logReaderProvider,
 	}
 }
@@ -122,14 +122,16 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 		"lastLogID":  f.state.LastLogID,
 	}
 	logs := f.logs
-	f.logs = nil
 	f.mu.RUnlock()
 
 	err := f.logWriter.InsertLogs(ctx, logs...)
 	if err != nil {
 		return nil, err
 	}
-	f.logs = nil
+
+	f.mu.Lock()
+	f.logs = f.logs[len(logs):]
+	f.mu.Unlock()
 
 	// Marshal to JSON
 	data, err := json.Marshal(snapshotData)
@@ -149,16 +151,22 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	}
 
 	f.mu.Lock()
-	f.state.LedgerInfo = snapshotData.LedgerInfo
+	f.state = snapshotData
 	f.mu.Unlock()
 
-	if f.state.LastLogID < snapshotData.LastLogID {
+	lastProcessedLogID, err := f.runtimeStore.GetLastProcessedLogID(ctx)
+	if err != nil {
+		return err
+	}
+
+	// todo: need to check the real state of the log store
+	if lastProcessedLogID < snapshotData.LastLogID {
 		f.logger.WithFields(map[string]any{
 			"snapshotLogID": snapshotData.LastLogID,
-			"storeLogID":    f.state.LastLogID,
+			"storeLogID":    lastProcessedLogID,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
-		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, f.state.LastLogID, snapshotData.LastLogID)
+		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, lastProcessedLogID, snapshotData.LastLogID)
 		if err != nil {
 			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
 		}
@@ -182,10 +190,6 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 			}
 
 			f.logger.Debugf("Catching up log %d", log.Id)
-			f.mu.Lock()
-			f.state.LastLogID++
-			log.Id = f.state.LastLogID
-			f.mu.Unlock()
 
 			logsToWrite = append(logsToWrite, log)
 		}
@@ -201,13 +205,8 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 		}
 	}
 
-	f.mu.RLock()
-	lastLogID := f.state.LastLogID
-	f.mu.RUnlock()
-
 	f.logger.WithFields(map[string]any{
-		"ledger":     f.state.LedgerInfo.Name,
-		"storeLogID": lastLogID,
+		"ledger": f.state.LedgerInfo.Name,
 	}).Infof("Ledger FSM restored from snapshot")
 
 	return nil

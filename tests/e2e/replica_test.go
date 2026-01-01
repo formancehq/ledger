@@ -315,11 +315,28 @@ var _ = Describe("Simple cluster", func() {
 						})
 
 						Eventually(servers[followerID-1]).To(BeFollower())
-					})
-
-					FIt("Should restore the state from a snapshot sent by the leader", func() {
 						Eventually(servers[followerID-1]).To(BeLedgerFollower(ledgerName))
 						Eventually(servers[followerID-1]).To(HasLastLog(ledgerName, countTransactions))
+					})
+
+					It("Should restore the state from a snapshot sent by the leader", func() {})
+					Context("Then restarting again the follower", func() {
+						BeforeEach(func() {
+							By("Stopping the follower", func() {
+								By("Stopping the follower", func() {
+									Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
+								})
+								<-time.After(time.Second)
+								By("Starting the follower", func() {
+									Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
+								})
+							})
+						})
+						It("Should restart as expected", func() {
+							Eventually(servers[followerID-1]).To(BeFollower())
+							Eventually(servers[followerID-1]).To(BeLedgerFollower(ledgerName))
+							Eventually(servers[followerID-1]).To(HasLastLog(ledgerName, countTransactions))
+						})
 					})
 				})
 			})
@@ -421,6 +438,10 @@ func (matcher *hasLastLogMatcher) Match(actual any) (success bool, err error) {
 	}
 
 	matcher.observedLastLog = uint64(clusterState.LedgerClusterStateResponse.Data.InnerState.LastLogID)
+
+	if matcher.observedLastLog > matcher.expectedLastLog {
+		return false, fmt.Errorf("last log %d is greater than expected %d", matcher.observedLastLog, matcher.expectedLastLog)
+	}
 
 	return matcher.observedLastLog == matcher.expectedLastLog, nil
 }

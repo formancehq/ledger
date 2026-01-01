@@ -26,7 +26,7 @@ type System interface {
 	LeaderOnly
 	CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error)
 	DeleteLedger(ctx context.Context, name string) error
-	GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo
+	GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error)
 	GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
 	ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error)
 	ResolveLedgerLeader(ctx context.Context, ledgerName string) (uint64, error)

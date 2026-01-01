@@ -140,13 +140,13 @@ func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.Led
 }
 
 // GetAllLedgersInfo returns all ledgers
-func (node *Node) GetAllLedgersInfo(ctx context.Context) map[string]*ledgerpb.LedgerInfo {
+func (node *Node) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
 	allLedgers := node.Inner().GetAllLedgers()
 	result := make(map[string]*ledgerpb.LedgerInfo, len(allLedgers))
 	for name, info := range allLedgers {
 		result[name] = info
 	}
-	return result
+	return result, nil
 }
 
 // DeleteLedger deletes a ledger via a FSM command

@@ -9,7 +9,11 @@ import (
 // handleListAllLedgers handles GET / to list all ledgers
 func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	// Get all ledgers info
-	ledgersInfo := s.cluster.GetAllLedgersInfo(r.Context())
+	ledgersInfo, err := s.cluster.GetAllLedgersInfo(r.Context())
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
 
 	// Convert to response format
 	ledgersList := make([]LedgerResponse, 0, len(ledgersInfo))

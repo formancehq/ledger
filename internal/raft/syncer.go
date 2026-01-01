@@ -14,13 +14,19 @@ type createSnapshotCommand struct {
 	applied uint64
 	state   *raftpb.ConfState
 }
+
+type createSnapshotTerminatedCommand struct {
+	createSnapshotCommand createSnapshotCommand
+}
 type restoreSnapshotCommand struct {
 	leader   uint64
 	snapshot raftpb.Snapshot
 	errCh    chan error
 }
 
-type restoreSnapshotUnspoolCommand struct{}
+type restoreSnapshotUnspoolCommand struct {
+	restoreSnapshotCommand restoreSnapshotCommand
+}
 
 type applyEntriesCommand struct {
 	commands []Command
@@ -54,15 +60,13 @@ type syncer[State any, F FSM[State]] struct {
 
 func (s *syncer[State, F]) run() {
 
-	taskExecutor := newSingleTaskExecutor()
+	taskExecutor := newSingleTaskExecutor(s.commands)
 	for {
 		select {
 		case stop := <-s.stopCh:
 			taskExecutor.interrupt()
 			close(stop)
 			return
-		case <-taskExecutor.success():
-			s.status = syncerStatusNormal
 		case cmd := <-s.commands:
 			switch cmd := cmd.(type) {
 			case createSnapshotCommand:
@@ -76,21 +80,18 @@ func (s *syncer[State, F]) run() {
 					taskExecutor.interrupt()
 				}
 
-				taskExecutor.run(context.Background(), func(ctx context.Context) error {
+				taskExecutor.run(context.Background(), cmd.errCh, func(ctx context.Context) (any, error) {
 					data, err := s.fsm.CreateSnapshot(ctx)
-					if err != nil {
-						cmd.errCh <- err
-					} else {
+					if err == nil {
 						_, err = s.storage.CreateSnapshot(cmd.applied, cmd.state, data)
-						if err != nil {
-							cmd.errCh <- err
-						} else {
-							cmd.errCh <- nil
-						}
 					}
-					return err
-				})
 
+					return createSnapshotTerminatedCommand{
+						createSnapshotCommand: cmd,
+					}, err
+				})
+			case createSnapshotTerminatedCommand:
+				s.status = syncerStatusNormal
 			case restoreSnapshotCommand:
 				switch s.status {
 				case syncerStatusNormal:
@@ -101,8 +102,12 @@ func (s *syncer[State, F]) run() {
 					taskExecutor.interrupt()
 				}
 
-				taskExecutor.run(context.Background(), func(ctx context.Context) error {
-					return s.fsm.RestoreSnapshot(ctx, cmd.leader, cmd.snapshot)
+				taskExecutor.run(context.Background(), cmd.errCh, func(ctx context.Context) (any, error) {
+					err := s.fsm.RestoreSnapshot(ctx, cmd.leader, cmd.snapshot)
+					if err != nil {
+						return nil, err
+					}
+					return restoreSnapshotUnspoolCommand{cmd}, nil
 				})
 
 			case restoreSnapshotUnspoolCommand:
@@ -115,6 +120,7 @@ func (s *syncer[State, F]) run() {
 						panic(err)
 					}
 					s.status = syncerStatusNormal
+					cmd.restoreSnapshotCommand.errCh <- nil
 					continue
 				}
 
@@ -123,11 +129,12 @@ func (s *syncer[State, F]) run() {
 					panic(err)
 				}
 				if errors.Is(err, context.Canceled) {
+					cmd.restoreSnapshotCommand.errCh <- err
 					continue
 				}
 
 				go func() {
-					s.commands <- restoreSnapshotUnspoolCommand{}
+					s.commands <- cmd
 				}()
 
 			case applyEntriesCommand:
@@ -246,13 +253,13 @@ func newSyncer[State any, F FSM[State]](
 }
 
 type singleTaskExecutor struct {
-	ctx            context.Context
-	cancel         context.CancelFunc
-	successfulJobs chan struct{}
-	terminated     chan struct{}
+	ctx         context.Context
+	cancel      context.CancelFunc
+	terminated  chan struct{}
+	nextChannel chan any
 }
 
-func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Context) error) {
+func (t *singleTaskExecutor) run(ctx context.Context, errCh chan error, fn func(ctx context.Context) (any, error)) {
 	select {
 	case <-t.terminated:
 		t.terminated = make(chan struct{})
@@ -264,7 +271,8 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 				close(t.terminated)
 			}()
 
-			err := fn(t.ctx)
+			next, err := fn(t.ctx)
+			errCh <- err
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -272,7 +280,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 				panic(err)
 			}
 
-			t.successfulJobs <- struct{}{}
+			t.nextChannel <- next
 		}()
 	default:
 		panic("already running")
@@ -286,22 +294,18 @@ func (t *singleTaskExecutor) interrupt() {
 		t.cancel()
 		<-t.terminated
 		select {
-		case <-t.successfulJobs:
-			// Drain potentially terminated job
+		case <-t.nextChannel:
+			// Drain channel
 		default:
 		}
 	}
 }
 
-func (t *singleTaskExecutor) success() chan struct{} {
-	return t.successfulJobs
-}
-
-func newSingleTaskExecutor() *singleTaskExecutor {
+func newSingleTaskExecutor(nextChannel chan any) *singleTaskExecutor {
 	terminatedChan := make(chan struct{})
 	close(terminatedChan)
 	return &singleTaskExecutor{
-		terminated:     terminatedChan,
-		successfulJobs: make(chan struct{}, 1),
+		terminated:  terminatedChan,
+		nextChannel: nextChannel,
 	}
 }

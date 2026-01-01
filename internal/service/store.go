@@ -69,4 +69,6 @@ type RuntimeStore interface {
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
 	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error)
+	// GetLastProcessedLogID retrieves the ID of the last processed log
+	GetLastProcessedLogID(ctx context.Context) (uint64, error)
 }
