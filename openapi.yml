@@ -919,13 +919,13 @@ components:
       type: object
       required:
         - ledgerInfo
-        - lastLogIDce
+        - lastLogID
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
         lastLogID:
           type: integer
-          format: int64
+          format: uint64
           minimum: 0
           description: Last global id number
 

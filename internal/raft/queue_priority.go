@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
@@ -29,6 +30,7 @@ func (pq *PriorityQueue[T]) Recv() <-chan T {
 }
 
 func (pq *PriorityQueue[T]) Close() {
+	fmt.Println("Closing queue")
 	for _, ch := range pq.queues {
 		close(ch)
 	}

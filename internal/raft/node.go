@@ -736,6 +736,8 @@ func (node *Node[State, F]) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping syncer...")
 	node.syncer.stop()
 
+	// todo: close channels
+
 	return nil
 }
 

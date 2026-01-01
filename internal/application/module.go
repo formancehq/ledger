@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -31,12 +30,12 @@ func Module() fx.Option {
 			raft.NewTransport,
 			func(
 				params struct {
-					fx.In
-					Config        system.Config
-					Logger        logging.Logger
-					Transport     *raft.GRPCTransport
-					MeterProvider metric.MeterProvider
-				},
+				fx.In
+				Config        system.Config
+				Logger        logging.Logger
+				Transport     *raft.GRPCTransport
+				MeterProvider metric.MeterProvider
+			},
 			) (*system.Node, error) {
 				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
 			},
@@ -69,11 +68,11 @@ func Module() fx.Option {
 		),
 		fx.Decorate(func(
 			params struct {
-				fx.In
-				Handler       http.Handler
-				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-			},
+			fx.In
+			Handler       http.Handler
+			MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+			Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+		},
 		) http.Handler {
 			// If InMemoryExporter is available, wrap handler to add metrics endpoint
 			if params.Exporter != nil && params.MeterProvider != nil {
@@ -208,36 +207,36 @@ func (adapter *systemNodeAdapter) GetClusterState(ctx context.Context) (*ledgerp
 }
 
 func (adapter *systemNodeAdapter) GetLedgerCluster(ctx context.Context, name string) (service.LedgerCluster, error) {
-	ledgerNode, err := adapter.systemNode.GetLedgerNode(ctx, name)
-	if err != nil && !errors.Is(err, &ledgerpb.NotFoundError{}) {
+	mainCluster, err := adapter.getMainCluster()
+	if err != nil {
+		return nil, err
+	}
+	ledgerLeader, err := mainCluster.ResolveLedgerLeader(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ledger leader: %w", err)
+	}
+	ledgerLeaderNode := ledgerLeader & 0xFFFF // todo: should not be here
+
+	if ledgerLeaderNode == adapter.systemNode.Node.Status().ID {
+		return adapter.systemNode.GetLedgerNode(ctx, name)
+	}
+
+	grpcConn := adapter.connectionPool.GetConnection(ledgerLeaderNode)
+	if grpcConn == nil {
+		return nil, fmt.Errorf("no connection to ledger leader: %d", ledgerLeaderNode)
+	}
+	ledgerClusterClient := service.NewLedgerGrpcClient(name, ledgerpb.NewLedgerServiceClient(grpcConn))
+
+	localNode, err := adapter.systemNode.GetLedgerNode(ctx, name)
+	if err != nil {
 		return nil, fmt.Errorf("resolving local ledger node: %w", err)
 	}
 
-	if err != nil || !ledgerNode.IsLeader() {
-		mainCluster, err := adapter.getMainCluster()
-		if err != nil {
-			return nil, err
-		}
-
-		ledgerLeader, err := mainCluster.ResolveLedgerLeader(ctx, name)
-		if err != nil {
-			return nil, fmt.Errorf("resolving ledger leader: %w", err)
-		}
-
-		grpcConn := adapter.connectionPool.GetConnection(ledgerLeader & 0xFFFF) // todo: move that
-		if grpcConn == nil {
-			panic(fmt.Sprintf("no connection to ledger leader: %d", ledgerLeader))
-		}
-		ledgerClusterClient := service.NewLedgerGrpcClient(name, ledgerpb.NewLedgerServiceClient(grpcConn))
-
-		return &ledgerClusterRouter{
-			localNode:     ledgerNode,
-			ledgerCluster: ledgerClusterClient,
-			logger:        adapter.logger,
-		}, nil
-	}
-
-	return ledgerNode, nil
+	return &ledgerClusterRouter{
+		localNode:     localNode,
+		ledgerCluster: ledgerClusterClient,
+		logger:        adapter.logger,
+	}, nil
 }
 
 func (adapter *systemNodeAdapter) ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error) {
