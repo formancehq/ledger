@@ -19,7 +19,7 @@ type Cursor[T any] interface {
 
 type GRPCStreamCursor[Res, To any] struct {
 	client grpc.ServerStreamingClient[Res]
-	mapper func(Res) (To, error)
+	mapper func(*Res) (To, error)
 }
 
 func (cursor GRPCStreamCursor[Res, To]) Next(ctx context.Context) (To, error) {
@@ -28,7 +28,7 @@ func (cursor GRPCStreamCursor[Res, To]) Next(ctx context.Context) (To, error) {
 		var zero To
 		return zero, err
 	}
-	return cursor.mapper(*next)
+	return cursor.mapper(next)
 }
 
 func (cursor GRPCStreamCursor[Res, To]) Close() error {
@@ -37,7 +37,7 @@ func (cursor GRPCStreamCursor[Res, To]) Close() error {
 
 var _ Cursor[any] = (*GRPCStreamCursor[any, any])(nil)
 
-func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(Res) (To, error)) Cursor[To] {
+func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(*Res) (To, error)) Cursor[To] {
 	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
 }
 

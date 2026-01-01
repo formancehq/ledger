@@ -10,7 +10,7 @@ import (
 
 func NewTimestamp(time time.Time) *Timestamp {
 	return &Timestamp{
-		Data: uint64(time.Time.UnixMicro()),
+		Data: uint64(time.UnixMicro()),
 	}
 }
 

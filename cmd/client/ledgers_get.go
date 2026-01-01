@@ -25,7 +25,9 @@ func init() {
 	if err := ledgersGetCmd.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
-	ledgersGetCmd.RegisterFlagCompletionFunc("name", completeLedgerNames())
+	if err := ledgersGetCmd.RegisterFlagCompletionFunc("name", completeLedgerNames()); err != nil {
+		panic(err)
+	}
 }
 
 func runGetLedger(cmd *cobra.Command, args []string) error {

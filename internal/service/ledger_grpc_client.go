@@ -118,7 +118,7 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint6
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
 
-	return NewGRPCStreamCursor(stream, func(res ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
+	return NewGRPCStreamCursor(stream, func(res *ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
 		return res.Log, nil
 	}), nil
 }

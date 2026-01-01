@@ -378,7 +378,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 					return nil, err
 				}
 
-				return service.NewGRPCStreamCursor(streamLogs, func(res ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
+				return service.NewGRPCStreamCursor(streamLogs, func(res *ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
 					return res.Log, nil
 				}), nil
 			})

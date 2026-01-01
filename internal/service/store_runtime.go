@@ -27,13 +27,13 @@ type SQLiteRuntimeStore struct {
 	logger logging.Logger
 
 	// Prepared statements
-	stmtGetIdempotency            *sql.Stmt
-	stmtInsertBalance              *sql.Stmt
-	stmtUpsertAccountMetadata     *sql.Stmt
-	stmtDeleteAccountMetadata      *sql.Stmt
-	stmtInsertIdempotency         *sql.Stmt
-	stmtGetLastProcessedLogID     *sql.Stmt
-	stmtUpdateLastProcessedLogID   *sql.Stmt
+	stmtGetIdempotency           *sql.Stmt
+	stmtInsertBalance            *sql.Stmt
+	stmtUpsertAccountMetadata    *sql.Stmt
+	stmtDeleteAccountMetadata    *sql.Stmt
+	stmtInsertIdempotency        *sql.Stmt
+	stmtGetLastProcessedLogID    *sql.Stmt
+	stmtUpdateLastProcessedLogID *sql.Stmt
 }
 
 // NewSQLiteRuntimeStore creates a new SQLiteRuntimeStore instance
@@ -376,7 +376,9 @@ func (s *SQLiteRuntimeStore) applyBalanceDiffs(ctx context.Context, tx *sql.Tx, 
 	}
 
 	stmt := tx.StmtContext(ctx, s.stmtInsertBalance)
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for account, assets := range balanceDiffs {
 		for asset, balance := range assets {
@@ -396,7 +398,9 @@ func (s *SQLiteRuntimeStore) batchUpsertAccountMetadata(ctx context.Context, tx 
 	}
 
 	stmt := tx.StmtContext(ctx, s.stmtUpsertAccountMetadata)
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for accountAddr, metadataMap := range accountMetadata {
 		for key, value := range metadataMap {
@@ -420,7 +424,9 @@ func (s *SQLiteRuntimeStore) batchDeleteAccountMetadataKeys(ctx context.Context,
 	}
 
 	stmt := tx.StmtContext(ctx, s.stmtDeleteAccountMetadata)
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for accountAddr, keys := range accountKeys {
 		for _, key := range keys {
@@ -440,7 +446,9 @@ func (s *SQLiteRuntimeStore) batchInsertIdempotency(ctx context.Context, tx *sql
 	}
 
 	stmt := tx.StmtContext(ctx, s.stmtInsertIdempotency)
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for _, entry := range entries {
 		if _, err := stmt.ExecContext(ctx, entry.key, entry.hash, entry.logID); err != nil {
@@ -492,7 +500,9 @@ func (s *SQLiteRuntimeStore) GetBalances(ctx context.Context, balanceQuery map[s
 		if err != nil {
 			return nil, fmt.Errorf("querying balances: %w", err)
 		}
-		defer rows.Close()
+		defer func() {
+			_ = rows.Close()
+		}()
 
 		for rows.Next() {
 			var asset string
@@ -555,7 +565,9 @@ func (s *SQLiteRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 	if err != nil {
 		return nil, fmt.Errorf("querying account metadata: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var address string
@@ -641,7 +653,9 @@ func (s *SQLiteRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 // updateLastProcessedLogID updates the last processed log ID in the infos table
 func (s *SQLiteRuntimeStore) updateLastProcessedLogID(ctx context.Context, tx *sql.Tx, logID uint64) error {
 	stmt := tx.StmtContext(ctx, s.stmtUpdateLastProcessedLogID)
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	valueStr := fmt.Sprintf("%d", logID)
 	if _, err := stmt.ExecContext(ctx, valueStr); err != nil {

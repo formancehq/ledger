@@ -117,10 +117,6 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 		return nil
 	}
 
-	if bulkOptions.Atomic {
-		// Would commit here if atomic transactions were supported
-	}
-
 	return nil
 }
 

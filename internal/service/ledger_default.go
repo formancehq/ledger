@@ -34,7 +34,7 @@ func NewDefaultLedger(
 		logWriter:          logWriter,
 		lockedVolumesStore: lockedVolumesStore,
 		logReader:          logReader,
-		runtimeStore: runtimeStore,
+		runtimeStore:       runtimeStore,
 		logger:             logger,
 	}
 }
@@ -90,14 +90,13 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	input := parameters.Input
 
 	// Validate that we have either postings or script, but not both
-	hasPostings := input.Postings != nil && len(input.Postings) > 0
 	hasScript := input.Script != nil && input.Script.Plain != ""
 
-	if hasPostings && hasScript {
+	if len(parameters.Input.Postings) > 0 && hasScript {
 		return nil, nil, fmt.Errorf("cannot pass postings and numscript in the same request")
 	}
 
-	if !hasPostings && !hasScript {
+	if len(parameters.Input.Postings) == 0 && !hasScript {
 		return nil, nil, fmt.Errorf("you need to pass either a posting array or a numscript script")
 	}
 
@@ -256,23 +255,18 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			finalAccountMetadata[addr] = md.Entries
 		}
 	}
-	if scriptAccountMetadata != nil {
-		if finalAccountMetadata == nil {
-			finalAccountMetadata = make(map[string]metadata.Metadata)
-		}
-		for account, accountMeta := range scriptAccountMetadata {
-			if existing, exists := finalAccountMetadata[account]; exists {
-				// Merge metadata for this account
-				for k, v := range accountMeta {
-					if existingValue, exists := existing[k]; exists && existingValue != v {
-						return nil, nil, fmt.Errorf("account metadata key '%s' for account '%s' conflicts: script sets '%s' but input provides '%s'", k, account, v, existingValue)
-					}
-					existing[k] = v
+	for account, accountMeta := range scriptAccountMetadata {
+		if existing, exists := finalAccountMetadata[account]; exists {
+			// Merge metadata for this account
+			for k, v := range accountMeta {
+				if existingValue, exists := existing[k]; exists && existingValue != v {
+					return nil, nil, fmt.Errorf("account metadata key '%s' for account '%s' conflicts: script sets '%s' but input provides '%s'", k, account, v, existingValue)
 				}
-				finalAccountMetadata[account] = existing
-			} else {
-				finalAccountMetadata[account] = accountMeta
+				existing[k] = v
 			}
+			finalAccountMetadata[account] = existing
+		} else {
+			finalAccountMetadata[account] = accountMeta
 		}
 	}
 

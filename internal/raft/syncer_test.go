@@ -122,10 +122,8 @@ func TestSyncerCreateSnapshotWhileAlreadySnapshotting(t *testing.T) {
 		CreateSnapshot(gomock.Any()).
 		DoAndReturn(func(ctx context.Context) ([]byte, error) {
 			close(snapshotting1)
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
+			<-ctx.Done()
+			return nil, ctx.Err()
 		})
 
 	snapshotErr1 := make(chan error)
@@ -144,10 +142,8 @@ func TestSyncerCreateSnapshotWhileAlreadySnapshotting(t *testing.T) {
 		CreateSnapshot(gomock.Any()).
 		DoAndReturn(func(ctx context.Context) ([]byte, error) {
 			close(snapshotting2)
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
+			<-ctx.Done()
+			return nil, ctx.Err()
 		})
 
 	snapshotErr2 := make(chan error)

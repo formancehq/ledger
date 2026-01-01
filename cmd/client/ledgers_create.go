@@ -35,8 +35,12 @@ func init() {
 	// Name is no longer required - wizard will prompt if not provided
 
 	// Register completions
-	ledgersCreateCmd.RegisterFlagCompletionFunc("name", completeLedgerNames())
-	ledgersCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames())
+	if err := ledgersCreateCmd.RegisterFlagCompletionFunc("name", completeLedgerNames()); err != nil {
+		panic(err)
+	}
+	if err := ledgersCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames()); err != nil {
+		panic(err)
+	}
 }
 
 func runCreateLedger(cmd *cobra.Command, args []string) error {
