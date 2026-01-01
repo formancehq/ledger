@@ -24,7 +24,7 @@ func TraceWithMetric[RET any](
 		now := time.Now()
 		ret, err := fn(ctx)
 		if err != nil {
-			otlp.RecordError(ctx, err)
+			// Error is already recorded by Trace(), no need to record it here
 			return zeroRet, err
 		}
 
