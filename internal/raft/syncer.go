@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 type createSnapshotCommand struct {
@@ -48,9 +51,10 @@ type SnapshotStore interface {
 }
 
 type syncer[State any, F FSM[State]] struct {
-	spool  Spool
-	fsm    F
-	logger logging.Logger
+	spool                      Spool
+	fsm                        F
+	logger                     logging.Logger
+	createSnapshotHistogram    metric.Float64Histogram
 
 	status   syncerStatus
 	commands chan any
@@ -81,9 +85,16 @@ func (s *syncer[State, F]) run() {
 				}
 
 				taskExecutor.run(context.Background(), cmd.errCh, func(ctx context.Context) (any, error) {
+					startTime := time.Now()
 					data, err := s.fsm.CreateSnapshot(ctx)
 					if err == nil {
 						_, err = s.storage.CreateSnapshot(cmd.applied, cmd.state, data)
+					}
+
+					// Record metric for snapshot creation duration
+					if s.createSnapshotHistogram != nil && err == nil {
+						duration := time.Since(startTime)
+						s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
 					}
 
 					return createSnapshotTerminatedCommand{
@@ -240,8 +251,9 @@ func newSyncer[State any, F FSM[State]](
 	fsm F,
 	logger logging.Logger,
 	store SnapshotStore,
+	meter metric.Meter,
 ) *syncer[State, F] {
-	return &syncer[State, F]{
+	s := &syncer[State, F]{
 		spool:    spool,
 		fsm:      fsm,
 		logger:   logger,
@@ -250,6 +262,30 @@ func newSyncer[State any, F FSM[State]](
 		storage:  store,
 		stopCh:   make(chan chan struct{}, 1),
 	}
+
+	// Create histogram metric for CreateSnapshot duration
+	if meter == nil {
+		meter = noop.Meter{}
+	}
+	histogram, err := meter.Float64Histogram("raft.syncer.create_snapshot.duration",
+		metric.WithDescription("Time spent creating snapshot in syncer"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(
+			// Fine-grained buckets for small values (0-100ms)
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+			12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
+			60, 70, 80, 90, 100,
+			// Medium buckets (100-500ms)
+			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+			// Larger buckets (500ms-5s)
+			600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+		),
+	)
+	if err == nil {
+		s.createSnapshotHistogram = histogram
+	}
+
+	return s
 }
 
 type singleTaskExecutor struct {

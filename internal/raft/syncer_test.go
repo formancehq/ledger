@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 )
 
@@ -23,7 +24,7 @@ func TestSyncerApplyEntries(t *testing.T) {
 	fsm := NewMockFSM[State](ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
-	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore)
+	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})
 	go syncer.run()
 	t.Cleanup(syncer.stop)
 
@@ -50,7 +51,7 @@ func TestSyncerCreateSnapshot(t *testing.T) {
 	fsm := NewMockFSM[State](ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
-	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore)
+	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})
 	go syncer.run()
 	t.Cleanup(syncer.stop)
 
@@ -112,7 +113,7 @@ func TestSyncerCreateSnapshotWhileAlreadySnapshotting(t *testing.T) {
 	fsm := NewMockFSM[State](ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
-	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore)
+	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})
 	go syncer.run()
 	t.Cleanup(syncer.stop)
 

@@ -81,7 +81,7 @@ func NewNode[State any, F FSM[State]](
 		logger:    logger,
 		meter:     meter,
 		futures:   make(map[uint64]*applyFuture),
-		syncer:    newSyncer[State, F](spool, fsm, logger, storage),
+		syncer:    newSyncer[State, F](spool, fsm, logger, storage, meter),
 		storage:   storage,
 		transport: transport,
 		config:    cfg,
