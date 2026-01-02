@@ -174,7 +174,7 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
 	var (
 		cursor *bunpaginate.Cursor[any]
-		err     error
+		err    error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
 		cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, parameters)

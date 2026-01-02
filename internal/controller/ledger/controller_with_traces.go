@@ -587,7 +587,7 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
 	var (
 		cursor *bunpaginate.Cursor[any]
-		err     error
+		err    error
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,

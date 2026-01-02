@@ -1,33 +1,54 @@
 package v2
 
 import (
+	"fmt"
 	"net/http"
-	// "strconv"
 
 	"github.com/go-chi/chi/v5"
 	_ "github.com/pkg/errors"
 
-	// "github.com/formancehq/go-libs/v3/api"
-
 	// ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	// ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	// systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
 type RunQueryBody struct {
-	Params        map[string]string              `json:"params,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
-func runQuery(w http.ResponseWriter, r *http.Request) {
-	common.WithBody(w, r, func(payload RunQueryBody) {
-		l := common.LedgerFromContext(r.Context())
+func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		common.WithBody(w, r, func(payload RunQueryBody) {
 
-		schemaVersion := r.URL.Query().Get("schemaVersion")
-		queryId := chi.URLParam(r, "id")
+			l := common.LedgerFromContext(r.Context())
 
-		l.RunQuery(r.Context(), schemaVersion, queryId, payload.Params)
+			schemaVersion := r.URL.Query().Get("schemaVersion")
+			queryId := chi.URLParam(r, "id")
 
-		w.WriteHeader(http.StatusAccepted)
-	})
+			cursor, err := l.RunQuery(r.Context(), schemaVersion, queryId, payload.Params)
+			if err != nil {
+				common.HandleCommonPaginationErrors(w, r, err)
+				return
+			}
+
+			fmt.Printf("what? %v\n%v\n", cursor, err)
+
+			api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(item any) any {
+				switch v := item.(type) {
+				case ledger.Transaction:
+					return renderTransaction(r, v)
+				case ledger.Account:
+					return renderAccount(r, v)
+				case ledger.VolumesWithBalanceByAssetByAccount:
+					return renderVolumesWithBalances(r, v)
+				case ledger.Log:
+					return renderLog(r, v)
+				}
+				return item
+			}))
+		})
+	}
 }

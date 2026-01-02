@@ -13,6 +13,7 @@ import "github.com/formancehq/ledger/internal"
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
 - [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
 - [func MarkReverts\(m metadata.Metadata, txID uint64\) metadata.Metadata](<#MarkReverts>)
+- [func ResolveFilter\(body json.RawMessage, params map\[string\]string\) \(query.Builder, error\)](<#ResolveFilter>)
 - [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
@@ -115,6 +116,8 @@ import "github.com/formancehq/ledger/internal"
 - [type Move](<#Move>)
 - [type Moves](<#Moves>)
   - [func \(m Moves\) ComputePostCommitEffectiveVolumes\(\) PostCommitVolumes](<#Moves.ComputePostCommitEffectiveVolumes>)
+- [type ParamSpec](<#ParamSpec>)
+  - [func \(p \*ParamSpec\) UnmarshalJSON\(b \[\]byte\) error](<#ParamSpec.UnmarshalJSON>)
 - [type Pipeline](<#Pipeline>)
   - [func NewPipeline\(pipelineConfiguration PipelineConfiguration\) Pipeline](<#NewPipeline>)
 - [type PipelineConfiguration](<#PipelineConfiguration>)
@@ -297,6 +300,15 @@ func ComputeMetadata(key, value string) metadata.Metadata
 
 ```go
 func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata
+```
+
+
+
+<a name="ResolveFilter"></a>
+## func [ResolveFilter](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L48>)
+
+```go
+func ResolveFilter(body json.RawMessage, params map[string]string) (query.Builder, error)
 ```
 
 
@@ -1337,6 +1349,27 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes
 
 
 
+<a name="ParamSpec"></a>
+## type [ParamSpec](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L20-L23>)
+
+
+
+```go
+type ParamSpec struct {
+    Type    string  `json:"type,omitempty"`
+    Default *string `json:"default"`
+}
+```
+
+<a name="ParamSpec.UnmarshalJSON"></a>
+### func \(\*ParamSpec\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L25>)
+
+```go
+func (p *ParamSpec) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="Pipeline"></a>
 ## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L28-L37>)
 
@@ -1517,7 +1550,7 @@ func (p Postings) Validate() (int, error)
 
 
 <a name="QueryMode"></a>
-## type [QueryMode](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L7>)
+## type [QueryMode](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L12>)
 
 
 
@@ -1534,22 +1567,22 @@ const (
 ```
 
 <a name="QueryTemplate"></a>
-## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L15-L21>)
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L40-L46>)
 
 
 
 ```go
 type QueryTemplate struct {
-    Name        string            `json:"name"`
-    OperationId string            `json:"operation_id"`
-    Mode        QueryMode         `json:"mode"`
-    Params      map[string]string `json:"params"`
-    Body        json.RawMessage   `json:"body"`
+    Name        string               `json:"name,omitempty"`
+    OperationId string               `json:"operationId"`
+    Mode        QueryMode            `json:"mode"`
+    Params      map[string]ParamSpec `json:"params"`
+    Body        json.RawMessage      `json:"body"`
 }
 ```
 
 <a name="QueryTemplates"></a>
-## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L13>)
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L18>)
 
 
 

@@ -22,7 +22,6 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -683,8 +682,9 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 	if err != nil {
 		return nil, err
 	}
+	var result *bunpaginate.Cursor[any]
 	if q, ok := schema.Queries[id]; ok {
-		builder, err := query.ParseJSON(string(q.Body))
+		builder, err := ledger.ResolveFilter(q.Body, parameters)
 		if err != nil {
 			return nil, err
 		}
@@ -701,13 +701,35 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 			},
 		}
 		switch q.OperationId {
+		case "transactions":
+			r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
+			if err != nil {
+				return nil, err
+			}
+			result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
 		case "accounts":
-			ctrl.store.Accounts().Paginate(ctx, resourceQuery)
+			r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
+			if err != nil {
+				return nil, err
+			}
+			result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
+		case "logs":
+			r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
+			if err != nil {
+				return nil, err
+			}
+			result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
+		case "volumes":
+			r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
+			if err != nil {
+				return nil, err
+			}
+			result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
 		}
-		// template := parameters.Input.TemplateID
+	} else {
+		return nil, fmt.Errorf("unknown query template")
 	}
-	// return ctrl.store.Accounts().Paginate(ctx, q)
-	return nil, nil
+	return result, nil
 }
 
 var _ Controller = (*DefaultController)(nil)

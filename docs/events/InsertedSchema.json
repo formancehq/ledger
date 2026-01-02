@@ -112,6 +112,55 @@
         "schema"
       ]
     },
+    "ParamSpec": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "default": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "default"
+      ]
+    },
+    "QueryTemplate": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ParamSpec"
+          },
+          "type": "object"
+        },
+        "body": true
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "operationId",
+        "mode",
+        "params",
+        "body"
+      ]
+    },
+    "QueryTemplates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/QueryTemplate"
+      },
+      "type": "object"
+    },
     "Schema": {
       "properties": {
         "chart": {
@@ -119,6 +168,9 @@
         },
         "transactions": {
           "$ref": "#/$defs/TransactionTemplates"
+        },
+        "queries": {
+          "$ref": "#/$defs/QueryTemplates"
         },
         "version": {
           "type": "string"
@@ -132,6 +184,7 @@
       "required": [
         "chart",
         "transactions",
+        "queries",
         "version",
         "createdAt"
       ]

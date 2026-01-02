@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -112,7 +111,6 @@ type RepositoryHandler[Opts any] interface {
 
 type ResourceRepository[ResourceType, OptionsType any] struct {
 	resourceHandler RepositoryHandler[OptionsType]
-	params          map[string]string
 }
 
 func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string][]any, error) {
@@ -123,24 +121,6 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	ret := make(map[string][]any)
 	properties := r.resourceHandler.Schema().Fields
 	if err := builder.Walk(func(operator string, key string, value any) (err error) {
-
-		spew.Dump(value)
-
-		switch v := value.(type) {
-		case string:
-			for key, value := range r.params {
-				v = strings.ReplaceAll(v, "<"+key+">", value)
-				value = v
-			}
-		case []string:
-			for idx, s := range v {
-				for key, value := range r.params {
-					s = strings.ReplaceAll(s, "<"+key+">", value)
-					v[idx] = s
-				}
-			}
-		}
-
 		for name, property := range properties {
 			key := key
 			if property.Type.IsIndexable() {
@@ -431,7 +411,6 @@ func NewPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceTy
 	handler RepositoryHandler[OptionsType],
 	defaultPaginationColumn string,
 	defaultOrder bunpaginate.Order,
-	params map[string]string,
 ) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType] {
 	return &PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]{
 		PaginatedResourceRepository: NewPaginatedResourceRepository[OriginalResourceType, OptionsType](handler, defaultPaginationColumn, defaultOrder),

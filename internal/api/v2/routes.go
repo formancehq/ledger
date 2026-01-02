@@ -128,7 +128,7 @@ func NewRouter(
 
 				router.Get("/volumes", readVolumes(routerOptions.paginationConfig))
 
-				router.Post("/queries/{id}/run", runQuery)
+				router.Post("/queries/{id}/run", runQuery(routerOptions.paginationConfig))
 			})
 		})
 	})
