@@ -35,7 +35,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		}
 
 		// Create log store (stores logs)
-		logStore, err := service.NewSQLiteMattnLogStore(ctx, logsDBPath, logger)
+		logStore, err := service.NewSQLiteMattnLogStore(logsDBPath, logger)
 		if err != nil {
 			return nil, nil, fmt.Errorf("creating log store: %w", err)
 		}
@@ -68,7 +68,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		runtimeDSN := fmt.Sprintf("file:%s", runtimeDBPath)
 
 		// Create log store (stores logs)
-		logStore, err := service.NewSQLiteModernLogStore(ctx, logsDSN, logger)
+		logStore, err := service.NewSQLiteModernLogStore(logsDSN, logger)
 		if err != nil {
 			return nil, nil, fmt.Errorf("creating log store: %w", err)
 		}

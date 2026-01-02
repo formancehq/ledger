@@ -297,7 +297,7 @@ func createSQLiteStores(t *testing.T) (LogStore, RuntimeStore) {
 	logger := logging.FromContext(ctx)
 	
 	// Create log store (stores logs)
-	logStore, err := NewSQLiteMattnLogStore(ctx, logsDSN, logger)
+	logStore, err := NewSQLiteMattnLogStore(logsDSN, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logStore.Close() })
 	

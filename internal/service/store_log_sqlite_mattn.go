@@ -5,7 +5,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.opentelemetry.io/otel/attribute"
 
-	"context"
 	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -21,9 +20,9 @@ type SQLiteMattnConfig struct {
 }
 
 // NewSQLiteMattnLogStore creates a new SQLite log store using github.com/mattn/go-sqlite3
-func NewSQLiteMattnLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
+func NewSQLiteMattnLogStore(dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
 	db, err := openSQLiteMattnDB(dsn, otelsql.WithAttributes(
-		attribute.String("store.type", "log-store"),
+		attribute.String("store_type", "log-store"),
 	))
 	if err != nil {
 		return nil, err
