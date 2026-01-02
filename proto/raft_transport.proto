@@ -11,17 +11,38 @@ service RaftTransportService {
   rpc StreamMessages(stream SendMessageRequest) returns (stream SendMessageResponse);
 }
 
-// SendMessageRequest contains a Raft message to send
-message SendMessageRequest {
-  // Serialized raftpb.Message
+message RaftRequestMessage {
   uint64 id = 1;
   bytes message = 2;
 }
 
-// SendMessageResponse is the response to SendMessage
-message SendMessageResponse {
+message RaftResponseMessage {
   uint64 request_id = 1;
   bool success = 2;
   string error = 3;
+}
+
+message PingMessage {
+  uint64 seq_id = 1;
+}
+
+message PongResponse {
+  uint64 seq_id = 1;
+}
+
+// SendMessageRequest contains a Raft message to send
+message SendMessageRequest {
+  oneof message {
+    RaftRequestMessage raft = 1;
+    PingMessage ping = 2;
+  }
+}
+
+// SendMessageResponse is the response to SendMessage
+message SendMessageResponse {
+  oneof message {
+    RaftResponseMessage raft = 1;
+    PongResponse pong = 2;
+  }
 }
 

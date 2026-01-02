@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -113,6 +114,11 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
+	pingLatency, err := meter.Int64Histogram("raft.transport.ping.latency", metric.WithUnit("microseconds"))
+	if err != nil {
+		panic(err)
+	}
+
 	conn := peerConnection{
 		sendCh: NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
@@ -135,6 +141,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		logger:                 logger,
 		peerID:                 id,
 		pendingResponseCounter: pendingResponseCounter,
+		pingLatency:            pingLatency,
 	}
 	t.peers[id] = conn
 
@@ -197,47 +204,72 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 			return err
 		}
 
-		var msg raftpb.Message
-		if err := msg.Unmarshal(req.Message); err != nil {
+		switch m := req.Message.(type) {
+		case *SendMessageRequest_Ping:
 			if err := stream.Send(&SendMessageResponse{
-				Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
-				RequestId: req.Id,
+				Message: &SendMessageResponse_Pong{
+					Pong: &PongResponse{
+						SeqId: m.Ping.SeqId,
+					},
+				},
 			}); err != nil {
 				return err
 			}
-			continue
-		}
-
-		// Send message to recvCh for processing
-		rspChan := make(chan error, 1)
-		if !t.recvCh.Send(Incoming{
-			Msg: msg,
-			Rsp: rspChan,
-		}) {
-			if err := stream.Send(&SendMessageResponse{
-				Error:     "recv channel full, dropping message",
-				RequestId: req.Id,
-			}); err != nil {
-				return err
+		case *SendMessageRequest_Raft:
+			var msg raftpb.Message
+			if err := msg.Unmarshal(m.Raft.Message); err != nil {
+				if err := stream.Send(&SendMessageResponse{
+					Message: &SendMessageResponse_Raft{
+						Raft: &RaftResponseMessage{
+							Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
+							RequestId: m.Raft.Id,
+						},
+					},
+				}); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
-		}
 
-		select {
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		case ret := <-rspChan:
-			if err := stream.Send(&SendMessageResponse{
-				Success: ret == nil,
-				Error: func() string {
-					if ret != nil {
-						return ret.Error()
-					}
-					return ""
-				}(),
-				RequestId: req.Id,
-			}); err != nil {
-				return err
+			// Send message to recvCh for processing
+			rspChan := make(chan error, 1)
+			if !t.recvCh.Send(Incoming{
+				Msg: msg,
+				Rsp: rspChan,
+			}) {
+				if err := stream.Send(&SendMessageResponse{
+					Message: &SendMessageResponse_Raft{
+						Raft: &RaftResponseMessage{
+							Error:     "recv channel full, dropping message",
+							RequestId: m.Raft.Id,
+						},
+					},
+				}); err != nil {
+					return err
+				}
+				continue
+			}
+
+			select {
+			case <-stream.Context().Done():
+				return stream.Context().Err()
+			case ret := <-rspChan:
+				if err := stream.Send(&SendMessageResponse{
+					Message: &SendMessageResponse_Raft{
+						Raft: &RaftResponseMessage{
+							Success: ret == nil,
+							Error: func() string {
+								if ret != nil {
+									return ret.Error()
+								}
+								return ""
+							}(),
+							RequestId: m.Raft.Id,
+						},
+					},
+				}); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -261,6 +293,7 @@ type peerConnection struct {
 	logger                 logging.Logger
 	peerID                 uint64
 	pendingResponseCounter metric.Float64UpDownCounter
+	pingLatency            metric.Int64Histogram
 }
 
 func (conn *peerConnection) loop() {
@@ -300,7 +333,13 @@ func (conn *peerConnection) loop() {
 		}
 		conn.logger.Infof("Created stream to peer")
 
+		type ping struct {
+			at    time.Time
+			seqId uint64
+		}
+
 		pending := make(map[uint64]uint64)
+		lastPing := atomic.Value{}
 		mu := sync.Mutex{}
 		go func() {
 			for {
@@ -308,26 +347,45 @@ func (conn *peerConnection) loop() {
 				if err != nil {
 					return
 				}
-				mu.Lock()
-				nodeID, ok := pending[res.RequestId]
-				if ok {
-					delete(pending, res.RequestId)
-					conn.pendingResponseCounter.Add(context.Background(), -1)
-				} else {
-					conn.logger.
-						WithFields(map[string]any{
-							"request-id": res.RequestId,
-						}).
-						Errorf("Received unexpected response from peer")
-				}
-				mu.Unlock()
-				if !res.Success && ok {
-					conn.logger.
-						Errorf("Failed to send message, peer respond with error: %s", res.Error)
-					conn.unreachableCh.Send(nodeID)
+
+				switch msg := res.Message.(type) {
+				case *SendMessageResponse_Pong:
+					lastPing := lastPing.Load().(ping)
+					if msg.Pong.SeqId != lastPing.seqId {
+						conn.logger.
+							WithFields(map[string]any{
+								"expected-seq-id": lastPing.seqId,
+								"received-seq-id": msg.Pong.SeqId,
+							}).
+							Errorf("Received unexpected ping response from peer")
+						continue
+					}
+					conn.pingLatency.Record(context.Background(), time.Since(lastPing.at).Microseconds())
+
+				case *SendMessageResponse_Raft:
+					mu.Lock()
+					nodeID, ok := pending[msg.Raft.RequestId]
+					if ok {
+						delete(pending, msg.Raft.RequestId)
+						conn.pendingResponseCounter.Add(context.Background(), -1)
+					} else {
+						conn.logger.
+							WithFields(map[string]any{
+								"request-id": msg.Raft.RequestId,
+							}).
+							Errorf("Received unexpected response from peer")
+					}
+					mu.Unlock()
+					if !msg.Raft.Success && ok {
+						conn.logger.
+							Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
+						conn.unreachableCh.Send(nodeID)
+					}
 				}
 			}
 		}()
+
+		pingInterval := time.NewTicker(time.Second)
 
 	l:
 		for {
@@ -335,6 +393,22 @@ func (conn *peerConnection) loop() {
 			case ch := <-conn.closeCh:
 				close(ch)
 				return
+			case <-pingInterval.C:
+				p := ping{
+					at:    time.Now(),
+					seqId: messageID,
+				}
+				lastPing.Store(p)
+				err := stream.Send(&SendMessageRequest{
+					Message: &SendMessageRequest_Ping{
+						Ping: &PingMessage{
+							SeqId: p.seqId,
+						},
+					},
+				})
+				if err != nil {
+					conn.logger.Errorf("Failed to send ping to peer: %v", err)
+				}
 			case msg := <-conn.sendCh.Recv():
 				data, err := msg.Marshal()
 				if err != nil {
@@ -361,8 +435,12 @@ func (conn *peerConnection) loop() {
 				conn.pendingResponseCounter.Add(context.Background(), 1)
 
 				if err := stream.Send(&SendMessageRequest{
-					Message: data,
-					Id:      currentMessageID,
+					Message: &SendMessageRequest_Raft{
+						Raft: &RaftRequestMessage{
+							Message: data,
+							Id:      currentMessageID,
+						},
+					},
 				}); err != nil {
 					conn.logger.
 						WithFields(map[string]any{

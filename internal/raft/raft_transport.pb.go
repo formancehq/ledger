@@ -21,19 +21,221 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type RaftRequestMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Message       []byte                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftRequestMessage) Reset() {
+	*x = RaftRequestMessage{}
+	mi := &file_raft_transport_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftRequestMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftRequestMessage) ProtoMessage() {}
+
+func (x *RaftRequestMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftRequestMessage.ProtoReflect.Descriptor instead.
+func (*RaftRequestMessage) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RaftRequestMessage) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *RaftRequestMessage) GetMessage() []byte {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+type RaftResponseMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftResponseMessage) Reset() {
+	*x = RaftResponseMessage{}
+	mi := &file_raft_transport_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftResponseMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftResponseMessage) ProtoMessage() {}
+
+func (x *RaftResponseMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftResponseMessage.ProtoReflect.Descriptor instead.
+func (*RaftResponseMessage) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RaftResponseMessage) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
+func (x *RaftResponseMessage) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RaftResponseMessage) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type PingMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SeqId         uint64                 `protobuf:"varint,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingMessage) Reset() {
+	*x = PingMessage{}
+	mi := &file_raft_transport_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingMessage) ProtoMessage() {}
+
+func (x *PingMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingMessage.ProtoReflect.Descriptor instead.
+func (*PingMessage) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PingMessage) GetSeqId() uint64 {
+	if x != nil {
+		return x.SeqId
+	}
+	return 0
+}
+
+type PongResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SeqId         uint64                 `protobuf:"varint,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PongResponse) Reset() {
+	*x = PongResponse{}
+	mi := &file_raft_transport_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PongResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PongResponse) ProtoMessage() {}
+
+func (x *PongResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PongResponse.ProtoReflect.Descriptor instead.
+func (*PongResponse) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PongResponse) GetSeqId() uint64 {
+	if x != nil {
+		return x.SeqId
+	}
+	return 0
+}
+
 // SendMessageRequest contains a Raft message to send
 type SendMessageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Serialized raftpb.Message
-	Id            uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Message       []byte `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Types that are valid to be assigned to Message:
+	//
+	//	*SendMessageRequest_Raft
+	//	*SendMessageRequest_Ping
+	Message       isSendMessageRequest_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_raft_transport_proto_msgTypes[0]
+	mi := &file_raft_transport_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +247,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[0]
+	mi := &file_raft_transport_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,36 +260,65 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{0}
+	return file_raft_transport_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *SendMessageRequest) GetId() uint64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *SendMessageRequest) GetMessage() []byte {
+func (x *SendMessageRequest) GetMessage() isSendMessageRequest_Message {
 	if x != nil {
 		return x.Message
 	}
 	return nil
 }
 
+func (x *SendMessageRequest) GetRaft() *RaftRequestMessage {
+	if x != nil {
+		if x, ok := x.Message.(*SendMessageRequest_Raft); ok {
+			return x.Raft
+		}
+	}
+	return nil
+}
+
+func (x *SendMessageRequest) GetPing() *PingMessage {
+	if x != nil {
+		if x, ok := x.Message.(*SendMessageRequest_Ping); ok {
+			return x.Ping
+		}
+	}
+	return nil
+}
+
+type isSendMessageRequest_Message interface {
+	isSendMessageRequest_Message()
+}
+
+type SendMessageRequest_Raft struct {
+	Raft *RaftRequestMessage `protobuf:"bytes,1,opt,name=raft,proto3,oneof"`
+}
+
+type SendMessageRequest_Ping struct {
+	Ping *PingMessage `protobuf:"bytes,2,opt,name=ping,proto3,oneof"`
+}
+
+func (*SendMessageRequest_Raft) isSendMessageRequest_Message() {}
+
+func (*SendMessageRequest_Ping) isSendMessageRequest_Message() {}
+
 // SendMessageResponse is the response to SendMessage
 type SendMessageResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Message:
+	//
+	//	*SendMessageResponse_Raft
+	//	*SendMessageResponse_Pong
+	Message       isSendMessageResponse_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_raft_transport_proto_msgTypes[1]
+	mi := &file_raft_transport_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -99,7 +330,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[1]
+	mi := &file_raft_transport_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -112,43 +343,75 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{1}
+	return file_raft_transport_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *SendMessageResponse) GetRequestId() uint64 {
+func (x *SendMessageResponse) GetMessage() isSendMessageResponse_Message {
 	if x != nil {
-		return x.RequestId
+		return x.Message
 	}
-	return 0
+	return nil
 }
 
-func (x *SendMessageResponse) GetSuccess() bool {
+func (x *SendMessageResponse) GetRaft() *RaftResponseMessage {
 	if x != nil {
-		return x.Success
+		if x, ok := x.Message.(*SendMessageResponse_Raft); ok {
+			return x.Raft
+		}
 	}
-	return false
+	return nil
 }
 
-func (x *SendMessageResponse) GetError() string {
+func (x *SendMessageResponse) GetPong() *PongResponse {
 	if x != nil {
-		return x.Error
+		if x, ok := x.Message.(*SendMessageResponse_Pong); ok {
+			return x.Pong
+		}
 	}
-	return ""
+	return nil
 }
+
+type isSendMessageResponse_Message interface {
+	isSendMessageResponse_Message()
+}
+
+type SendMessageResponse_Raft struct {
+	Raft *RaftResponseMessage `protobuf:"bytes,1,opt,name=raft,proto3,oneof"`
+}
+
+type SendMessageResponse_Pong struct {
+	Pong *PongResponse `protobuf:"bytes,2,opt,name=pong,proto3,oneof"`
+}
+
+func (*SendMessageResponse_Raft) isSendMessageResponse_Message() {}
+
+func (*SendMessageResponse_Pong) isSendMessageResponse_Message() {}
 
 var File_raft_transport_proto protoreflect.FileDescriptor
 
 const file_raft_transport_proto_rawDesc = "" +
 	"\n" +
 	"\x14raft_transport.proto\x12\x0eraft_transport\">\n" +
-	"\x12SendMessageRequest\x12\x0e\n" +
+	"\x12RaftRequestMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"d\n" +
-	"\x13SendMessageResponse\x12\x1d\n" +
+	"\x13RaftResponseMessage\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x04R\trequestId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error2u\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"$\n" +
+	"\vPingMessage\x12\x15\n" +
+	"\x06seq_id\x18\x01 \x01(\x04R\x05seqId\"%\n" +
+	"\fPongResponse\x12\x15\n" +
+	"\x06seq_id\x18\x01 \x01(\x04R\x05seqId\"\x8c\x01\n" +
+	"\x12SendMessageRequest\x128\n" +
+	"\x04raft\x18\x01 \x01(\v2\".raft_transport.RaftRequestMessageH\x00R\x04raft\x121\n" +
+	"\x04ping\x18\x02 \x01(\v2\x1b.raft_transport.PingMessageH\x00R\x04pingB\t\n" +
+	"\amessage\"\x8f\x01\n" +
+	"\x13SendMessageResponse\x129\n" +
+	"\x04raft\x18\x01 \x01(\v2#.raft_transport.RaftResponseMessageH\x00R\x04raft\x122\n" +
+	"\x04pong\x18\x02 \x01(\v2\x1c.raft_transport.PongResponseH\x00R\x04pongB\t\n" +
+	"\amessage2u\n" +
 	"\x14RaftTransportService\x12]\n" +
 	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01B3Z1github.com/formancehq/ledger-v3-poc/internal/raftb\x06proto3"
 
@@ -164,19 +427,27 @@ func file_raft_transport_proto_rawDescGZIP() []byte {
 	return file_raft_transport_proto_rawDescData
 }
 
-var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_raft_transport_proto_goTypes = []any{
-	(*SendMessageRequest)(nil),  // 0: raft_transport.SendMessageRequest
-	(*SendMessageResponse)(nil), // 1: raft_transport.SendMessageResponse
+	(*RaftRequestMessage)(nil),  // 0: raft_transport.RaftRequestMessage
+	(*RaftResponseMessage)(nil), // 1: raft_transport.RaftResponseMessage
+	(*PingMessage)(nil),         // 2: raft_transport.PingMessage
+	(*PongResponse)(nil),        // 3: raft_transport.PongResponse
+	(*SendMessageRequest)(nil),  // 4: raft_transport.SendMessageRequest
+	(*SendMessageResponse)(nil), // 5: raft_transport.SendMessageResponse
 }
 var file_raft_transport_proto_depIdxs = []int32{
-	0, // 0: raft_transport.RaftTransportService.StreamMessages:input_type -> raft_transport.SendMessageRequest
-	1, // 1: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: raft_transport.SendMessageRequest.raft:type_name -> raft_transport.RaftRequestMessage
+	2, // 1: raft_transport.SendMessageRequest.ping:type_name -> raft_transport.PingMessage
+	1, // 2: raft_transport.SendMessageResponse.raft:type_name -> raft_transport.RaftResponseMessage
+	3, // 3: raft_transport.SendMessageResponse.pong:type_name -> raft_transport.PongResponse
+	4, // 4: raft_transport.RaftTransportService.StreamMessages:input_type -> raft_transport.SendMessageRequest
+	5, // 5: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_raft_transport_proto_init() }
@@ -184,13 +455,21 @@ func file_raft_transport_proto_init() {
 	if File_raft_transport_proto != nil {
 		return
 	}
+	file_raft_transport_proto_msgTypes[4].OneofWrappers = []any{
+		(*SendMessageRequest_Raft)(nil),
+		(*SendMessageRequest_Ping)(nil),
+	}
+	file_raft_transport_proto_msgTypes[5].OneofWrappers = []any{
+		(*SendMessageResponse_Raft)(nil),
+		(*SendMessageResponse_Pong)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_transport_proto_rawDesc), len(file_raft_transport_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

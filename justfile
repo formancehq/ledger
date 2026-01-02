@@ -145,5 +145,3 @@ k8s-install-k6-operator:
     helm repo update
     helm upgrade --install k6-operator grafana/k6-operator
     kubectl create configmap k6-scripts --from-file ./k6/scripts
-
-k8s-run-test script:
