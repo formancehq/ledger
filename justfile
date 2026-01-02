@@ -111,3 +111,39 @@ k8s-describe-pod:
 k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-v3-poc
     kubectl rollout status statefulset/ledger-v3-poc
+
+k8s-install-victoria-metrics:
+    helm repo add victoria-metrics https://victoriametrics.github.io/helm-charts/
+    helm repo update
+    helm upgrade --install vm victoria-metrics/victoria-metrics-single \
+        -n monitoring \
+        --create-namespace \
+        -f ./deployments/k8s/victoriametrics/values.yaml
+
+k8s-install-otlp-collector:
+    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+    helm repo update
+    helm upgrade --install otel open-telemetry/opentelemetry-collector \
+        -n monitoring \
+        -f ./deployments/k8s/otlp/values.yaml
+
+k8s-install-grafana:
+    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo update
+    kubectl create configmap grafana-dashboard \
+        -n monitoring \
+        --from-file=./deployments/docker-compose/grafana/provisioning/dashboards/ledger-metrics.json \
+        -o yaml --dry-run=client \
+        | kubectl label -f - grafana_dashboard=1 --local -o yaml \
+        | kubectl apply -f -
+    helm upgrade --install grafana grafana/grafana \
+        -n monitoring \
+        -f ./deployments/k8s/grafana/values.yaml
+
+k8s-install-k6-operator:
+    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo update
+    helm upgrade --install k6-operator grafana/k6-operator
+    kubectl create configmap k6-scripts --from-file ./k6/scripts
+
+k8s-run-test script:

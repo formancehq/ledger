@@ -14,11 +14,21 @@ config:
     traces:
       enabled: true
       exporter: "otlp"
-      endpoint: "opentelemetry-collector.monitoring.svc.cluster.local"
+      endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
       port: "4317"
       insecure: "true"
       mode: "grpc"
       batch: "true"
+    metrics:
+      enabled: true
+      exporter: "otlp"
+      endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
+      port: "4317"
+      insecure: "true"
+      mode: "grpc"
+      batch: "true"
+      exporterPushInterval: "1s"
+      runtimeMinimumReadMemStatsInterval: "1s"
 
 ingress:
   enabled: true

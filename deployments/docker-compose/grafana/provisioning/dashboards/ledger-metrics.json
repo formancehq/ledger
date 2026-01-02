@@ -300,7 +300,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -713,9 +714,35 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "bytes"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Transmission"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 5,
@@ -765,7 +792,7 @@
           "refId": "B"
         }
       ],
-      "title": "Network traffic",
+      "title": "System network traffic",
       "type": "timeseries"
     },
     {
@@ -1280,32 +1307,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "{__name__=\"go.goroutine.count\", scope.name=\"go.opentelemetry.io/contrib/instrumentation/runtime\", scope.version=\"0.62.0\", service.name=\"ledger-v3-poc-node-3\", service.node_id=\"3\", service.version=\"dev-unknown\", telemetry.sdk.language=\"go\", telemetry.sdk.name=\"opentelemetry\", telemetry.sdk.version=\"1.39.0\"}"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 5,
@@ -1523,7 +1525,32 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "MsgApp"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -1967,7 +1994,32 @@
           },
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "P99"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2198,7 +2250,32 @@
           },
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "{scope.attributes.id=\"1\", scope.attributes.name=\"ledger0\", scope.name=\"raft.node.ledger\", scope.version=\"unknown\", service.name=\"ledger-v3-poc\", service.node_id=\"3\", service.version=\"dev-unknown\", telemetry.sdk.language=\"go\", telemetry.sdk.name=\"opentelemetry\", telemetry.sdk.version=\"1.39.0\"}"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
@@ -2588,7 +2665,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"pending_response\", \"service.node_id\"=\"$node\"}",
+          "expr": "{\"raft.transport.sending.pending_response\", \"service.node_id\"=\"$node\"}",
           "instant": true,
           "legendFormat": "Peer : {{scope.attributes.peer}}",
           "range": true,
@@ -2971,7 +3048,32 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Peer 1 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -3145,7 +3247,32 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Peer 2 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
@@ -3176,29 +3303,13 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (scope.attributes.peer, type)",
+          "expr": "{\"raft.transport.peer.sending.inflight\", \"service.node_id\"=\"$node\"}",
           "format": "time_series",
           "instant": false,
           "interval": "1s",
           "legendFormat": "Peer {{scope.attributes.peer}} : {{type}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.outcoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (scope.attributes.peer)",
-          "format": "time_series",
-          "hide": false,
-          "instant": false,
-          "interval": "1s",
-          "legendFormat": "Peer {{scope.attributes.peer}}",
-          "range": true,
-          "refId": "B"
         }
       ],
       "title": "Transport Peer Sending Channel - Inflight Messages (by Peer)",
@@ -3263,7 +3374,32 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Peer 1 : MsgHeartbeatResp"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -3354,7 +3490,10 @@
       "targets": [
         {
           "editorMode": "code",
+          "exemplar": true,
           "expr": "{\"raft.multiplexed_transport.ledger.recv.full\", \"service.node_id\"=\"$node\"}[$__rate_interval]",
+          "format": "time_series",
+          "instant": false,
           "legendFormat": "Peer {{peer}} : {{type}}",
           "range": true,
           "refId": "A"

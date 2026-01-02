@@ -44,7 +44,7 @@ config:
   
   # Raft configuration
   raft:
-    snapshotThreshold: 100   # Number of logs before triggering a snapshot
+    snapshotThreshold: 5000   # Number of logs before triggering a snapshot
     snapshotInterval: "30s"   # Minimum interval between snapshots
     electionTick: 10          # Election timeout in ticks (default: 10)
     heartbeatTick: 1          # Heartbeat interval in ticks (default: 1)
@@ -78,6 +78,11 @@ config:
       port: ""
       insecure: "false"
       mode: "grpc"
+      # OpenTelemetry metrics runtime configuration
+      keepInMemory: true
+      exporterPushInterval: "15s"
+      runtime: true
+      runtimeMinimumReadMemStatsInterval: "15s"
     # Logs configuration
     logs:
       enabled: true

@@ -95,6 +95,15 @@ spec:
         {{- end }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
+        # OpenTelemetry metrics configuration
+        - name: OTEL_METRICS_KEEP_IN_MEMORY
+          value: {{ .Values.config.monitoring.metrics.keepInMemory | default true | toString | quote }}
+        - name: OTEL_METRICS_EXPORTER_PUSH_INTERVAL
+          value: {{ .Values.config.monitoring.metrics.exporterPushInterval | default "1s" | quote }}
+        - name: OTEL_METRICS_RUNTIME
+          value: {{ .Values.config.monitoring.metrics.runtime | default true | toString | quote }}
+        - name: OTEL_METRICS_RUNTIME_MINIMUM_READ_MEM_STATS_INTERVAL
+          value: {{ .Values.config.monitoring.metrics.runtimeMinimumReadMemStatsInterval | default "1s" | quote }}
         {{- include "core.monitoring" . | nindent 8 }}
         command:
         - /bin/sh
@@ -122,6 +131,8 @@ spec:
               fi
             fi
           done
+
+          OTEL_RESOURCE_ATTRIBUTES="service.node_id=$NODE_ID"
           
           # Execute the application
           exec ./ledger-v3-poc \

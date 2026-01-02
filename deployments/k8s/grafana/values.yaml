@@ -1,0 +1,60 @@
+adminPassword: "admin"   # dev only 🙂
+
+service:
+  type: ClusterIP
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: VictoriaMetrics
+        type: prometheus
+        access: proxy
+        url: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
+        isDefault: true
+        editable: true
+
+# Optionnel: un minimum de ressources
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  #ingressClassName: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: zerossl
+  hosts:
+    - grafana.ledger-exp.gfyrag.v2.formance.dev
+  path: /
+  pathType: Prefix
+
+  tls:
+  - secretName: grafana-tls
+    hosts:
+      - grafana.ledger-exp.gfyrag.v2.formance.dev
+
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+    # optionnel: si tu veux les ranger par dossier
+    # folderAnnotation: grafana_folder
+    searchNamespace: monitoring
+
+  datasources:
+    enabled: true
+
+persistence:
+  enabled: true
+  type: pvc
+  size: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  finalizers:
+    - kubernetes.io/pvc-protection

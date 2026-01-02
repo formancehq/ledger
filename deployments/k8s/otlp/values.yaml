@@ -1,0 +1,36 @@
+mode: deployment
+
+image:
+  repository: "otel/opentelemetry-collector-contrib"
+  # optionnel: tu peux pinner une version
+  # tag: "0.96.0"
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: {}
+
+  processors:
+    batch: {}
+
+  exporters:
+    otlphttp/victoriametrics:
+      compression: gzip
+      encoding: proto
+      metrics_endpoint: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428/opentelemetry/v1/metrics
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      metrics:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/victoriametrics]
+
+ports:
+  otlp:
+    enabled: true
+  otlp-http:
+    enabled: false

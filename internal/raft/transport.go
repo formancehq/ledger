@@ -108,7 +108,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 	)
 	logger := t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id)})
 
-	pendingResponseCounter, err := meter.Float64UpDownCounter("pending_response")
+	pendingResponseCounter, err := meter.Float64UpDownCounter("raft.transport.sending.pending_response")
 	if err != nil {
 		panic(err)
 	}
