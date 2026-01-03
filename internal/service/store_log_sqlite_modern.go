@@ -22,7 +22,7 @@ type SQLiteModernConfig struct {
 // NewSQLiteModernLogStore creates a new SQLite Modern log store
 func NewSQLiteModernLogStore(dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
 	db, err := openSQLiteModernDB(dsn, otelsql.WithAttributes(
-		attribute.String("store_type", "log-store"),
+		attribute.String("store.type", "log-store"),
 	))
 	if err != nil {
 		return nil, err

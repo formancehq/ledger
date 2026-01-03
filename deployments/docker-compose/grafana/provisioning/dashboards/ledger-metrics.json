@@ -248,6 +248,191 @@
         "type": "prometheus",
         "uid": "P4169E866C3094E38"
       },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 51,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate({\"http.server.request.duration_count\", \"service.node_id\"=\"$node\"}[$__rate_interval])) by (http.response.status_code)",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP requests count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 52,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "refId": "A"
+        }
+      ],
+      "title": "New panel",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
       "description": "RTT latency ",
       "fieldConfig": {
         "defaults": {
@@ -310,7 +495,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 16
       },
       "id": 49,
       "options": {
@@ -410,7 +595,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 16
       },
       "id": 37,
       "options": {
@@ -523,7 +708,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "id": 36,
       "options": {
@@ -623,7 +808,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 16
+        "y": 24
       },
       "id": 42,
       "options": {
@@ -723,7 +908,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 16
+        "y": 24
       },
       "id": 43,
       "options": {
@@ -849,7 +1034,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 21
+        "y": 29
       },
       "id": 38,
       "options": {
@@ -962,7 +1147,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 21
+        "y": 29
       },
       "id": 41,
       "options": {
@@ -1064,7 +1249,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 21
+        "y": 29
       },
       "id": 44,
       "options": {
@@ -1189,7 +1374,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 26
+        "y": 34
       },
       "id": 39,
       "options": {
@@ -1302,7 +1487,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 26
+        "y": 34
       },
       "id": 45,
       "options": {
@@ -1414,7 +1599,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 26
+        "y": 34
       },
       "id": 40,
       "options": {
@@ -1454,7 +1639,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 39
       },
       "id": 18,
       "panels": [],
@@ -1523,7 +1708,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 32
+        "y": 40
       },
       "id": 11,
       "options": {
@@ -1657,7 +1842,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 32
+        "y": 40
       },
       "id": 32,
       "options": {
@@ -1720,7 +1905,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 32
+        "y": 40
       },
       "id": 22,
       "options": {
@@ -1818,7 +2003,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 38
+        "y": 46
       },
       "id": 13,
       "options": {
@@ -1927,7 +2112,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 38
+        "y": 46
       },
       "id": 33,
       "options": {
@@ -1990,7 +2175,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 38
+        "y": 46
       },
       "id": 25,
       "options": {
@@ -2032,7 +2217,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 51
       },
       "id": 19,
       "panels": [],
@@ -2126,7 +2311,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 44
+        "y": 52
       },
       "id": 20,
       "options": {
@@ -2261,7 +2446,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 44
+        "y": 52
       },
       "id": 21,
       "options": {
@@ -2357,7 +2542,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 60
       },
       "id": 47,
       "options": {
@@ -2448,7 +2633,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -2456,9 +2642,9 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 60
       },
-      "id": 48,
+      "id": 50,
       "options": {
         "legend": {
           "calcs": [],
@@ -2475,10 +2661,91 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "BeginTX",
+          "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "Conn Exec",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "Prepare",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "Query",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "Rows",
+          "range": true,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "Statement Exec",
+          "range": true,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": true,
+          "legendFormat": "CommitTX",
+          "range": true,
+          "refId": "H"
         }
       ],
-      "title": "New panel",
+      "title": "Log store SQL latencies",
       "type": "timeseries"
     },
     {
@@ -2547,7 +2814,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 59
+        "y": 67
       },
       "id": 34,
       "options": {
@@ -2571,7 +2838,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "BeginTX",
           "range": true,
@@ -2583,7 +2850,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Conn Exec",
           "range": true,
@@ -2595,7 +2862,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Prepare",
           "range": true,
@@ -2607,7 +2874,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Query",
           "range": true,
@@ -2619,7 +2886,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Rows",
           "range": true,
@@ -2631,7 +2898,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Statement Exec",
           "range": true,
@@ -2643,14 +2910,14 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "CommitTX",
           "range": true,
           "refId": "H"
         }
       ],
-      "title": "SQL latencies",
+      "title": "Runtime store SQL latencies",
       "type": "timeseries"
     },
     {
@@ -2718,7 +2985,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 59
+        "y": 67
       },
       "id": 46,
       "options": {
@@ -2814,7 +3081,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 67
+        "y": 75
       },
       "id": 2,
       "options": {
@@ -2924,7 +3191,7 @@
         "h": 6,
         "w": 9,
         "x": 8,
-        "y": 67
+        "y": 75
       },
       "id": 30,
       "options": {
@@ -3034,7 +3301,7 @@
         "h": 6,
         "w": 7,
         "x": 17,
-        "y": 67
+        "y": 75
       },
       "id": 7,
       "options": {
@@ -3133,7 +3400,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "Peer 1 : MsgHeartbeat"
+                  "Peer 2 : MsgHeartbeat"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -3156,7 +3423,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 73
+        "y": 81
       },
       "id": 15,
       "options": {
@@ -3222,7 +3489,7 @@
         "h": 13,
         "w": 12,
         "x": 12,
-        "y": 73
+        "y": 81
       },
       "id": 24,
       "options": {
@@ -3355,7 +3622,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 87
       },
       "id": 31,
       "options": {
@@ -3482,7 +3749,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 86
+        "y": 94
       },
       "id": 26,
       "options": {
@@ -3545,7 +3812,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 86
+        "y": 94
       },
       "id": 27,
       "options": {
@@ -3644,7 +3911,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 94
+        "y": 102
       },
       "id": 28,
       "options": {
@@ -3740,7 +4007,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 94
+        "y": 102
       },
       "id": 29,
       "options": {
@@ -3810,5 +4077,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 3
+  "version": 4
 }

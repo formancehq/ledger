@@ -22,7 +22,7 @@ type SQLiteMattnConfig struct {
 // NewSQLiteMattnLogStore creates a new SQLite log store using github.com/mattn/go-sqlite3
 func NewSQLiteMattnLogStore(dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
 	db, err := openSQLiteMattnDB(dsn, otelsql.WithAttributes(
-		attribute.String("store_type", "log-store"),
+		attribute.String("store.type", "log-store"),
 	))
 	if err != nil {
 		return nil, err
