@@ -13,6 +13,11 @@ datasources:
         url: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
         isDefault: true
         editable: true
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.monitoring.svc.cluster.local:3200
+        editable: true
 
 # Optionnel: un minimum de ressources
 resources:

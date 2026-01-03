@@ -22,12 +22,21 @@ config:
       tls:
         insecure: true
 
+    otlp/tempo:
+      endpoint: tempo.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+
   service:
     pipelines:
       metrics:
         receivers: [otlp]
         processors: [batch]
         exporters: [otlphttp/victoriametrics]
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlp/tempo]
 
 ports:
   otlp:
