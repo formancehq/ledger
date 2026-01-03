@@ -336,7 +336,7 @@
           "editorMode": "code",
           "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
           "instant": true,
-          "legendFormat": "Peer {{scope.attributes.peer}}",
+          "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
@@ -2351,32 +2351,7 @@
           },
           "unit": "ms"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "{scope.attributes.id=\"1\", scope.attributes.name=\"ledger0\", scope.name=\"raft.node.ledger\", scope.version=\"unknown\", service.name=\"ledger-v3-poc\", service.node_id=\"3\", service.version=\"dev-unknown\", telemetry.sdk.language=\"go\", telemetry.sdk.name=\"opentelemetry\", telemetry.sdk.version=\"1.39.0\"}"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
@@ -2563,7 +2538,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -3834,5 +3810,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 1
+  "version": 3
 }

@@ -1,0 +1,20 @@
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: k6-run
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: k6-scripts
+      file: world_to_bank.js
+  separate: false
+  runner:
+    env:
+    - name: LEDGER_URL
+      value: http://ledger-v3-poc.default.svc.cluster.local:9000
+    - name: VUS
+      value: "10"
+    - name: DURATION
+      value: "10m"

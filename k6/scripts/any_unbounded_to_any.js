@@ -4,8 +4,8 @@
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
-import { config } from '../config.js';
-import { bulkOperation } from '../utils.js';
+import { config } from './config.js';
+import { bulkOperation } from './utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');

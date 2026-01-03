@@ -3,8 +3,8 @@
 
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
-import { config } from '../config.js';
-import { bulkOperation } from '../utils.js';
+import { config } from './config.js';
+import { bulkOperation } from './utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
@@ -17,6 +17,11 @@ export const options = {
     http_req_duration: ['p(95)<500'], // 95% of requests should be below 500ms
     transaction_latency: ['p(95)<500'], // 95% of transactions should be below 500ms
   },
+  stages: [
+    { duration: '10s', target: config.vus },
+    { duration: config.duration, target: config.vus },
+    { duration: '10s', target: 0 },
+  ]
 };
 
 // Generate transaction script
@@ -33,15 +38,6 @@ function generateTransaction(iteration) {
       },
     },
   };
-}
-
-export function setup() {
-  // Set stages dynamically based on config
-  options.stages = [
-    { duration: '10s', target: config.vus },
-    { duration: config.duration, target: config.vus },
-    { duration: '10s', target: 0 },
-  ];
 }
 
 export default function () {
@@ -71,6 +67,7 @@ export function handleSummary(data) {
   const indent = '  ';
   
   let summary = '\n';
+  console.info(__ENV);
   summary += `${indent}Test: world_to_bank\n`;
   summary += `${indent}Duration: ${(data.state.testRunDurationMs / 1000).toFixed(2)}s\n`;
   summary += `${indent}VUs: ${data.state.vus}\n`;
