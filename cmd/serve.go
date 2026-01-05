@@ -45,7 +45,7 @@ const (
 	BulkMaxSizeFlag                 = "bulk-max-size"
 	BulkParallelFlag                = "bulk-parallel"
 	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
-	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
+	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
 	DefaultPageSizeFlag             = "default-page-size"
 	MaxPageSizeFlag                 = "max-page-size"
 )
