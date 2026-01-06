@@ -34,7 +34,7 @@ func (r *multiplexedTransport) Start() {
 			close(ch)
 			return
 		case incoming := <-r.grpcTransport.Recv():
-			ledgerID := ledgerIDFromLedgerNodeID(incoming.Msg.To)
+			ledgerID := LedgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
 				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.Type)
 				if !r.mainReceptionChannels.recv.Send(incoming.Msg) {
@@ -66,7 +66,7 @@ func (r *multiplexedTransport) Start() {
 				r.logger.Infof("Received message from %x to unknown ledger: %x (%s)", incoming.Msg.From, incoming.Msg.To, incoming.Msg.Type)
 			}
 		case nodeID := <-r.grpcTransport.Unreachable():
-			ledgerID := ledgerIDFromLedgerNodeID(nodeID)
+			ledgerID := LedgerIDFromLedgerNodeID(nodeID)
 			if ledgerID == 0 {
 				if !r.mainReceptionChannels.unreachable.Send(nodeID) {
 					r.logger.Errorf("Main transport channel full, dropping unreachable")
@@ -230,7 +230,7 @@ func (m *channelsTransport) Send(msg raftpb.Message) {
 
 var _ raft.NodeTransport = (*channelsTransport)(nil)
 
-func ledgerIDFromLedgerNodeID(v uint64) uint64 {
+func LedgerIDFromLedgerNodeID(v uint64) uint64 {
 	return (v & 0xFFFF0000) >> 16
 }
 

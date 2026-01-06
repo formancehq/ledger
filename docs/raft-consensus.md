@@ -120,30 +120,37 @@ type Node[F FSM] struct {
 - Automatic message routing to the correct group
 
 ```mermaid
-graph LR
-    subgraph "gRPC Transport"
-        GRPC[gRPC Server]
+graph TB
+    subgraph "gRPC Server"
+        GRPC[gRPC Server<br/>Port 8888]
     end
     
-    subgraph "Multiplexer"
-        Main[Main Channel<br/>System Raft]
-        Ledger1[Ledger 1 Channel]
-        Ledger2[Ledger 2 Channel]
+    subgraph "Transport Layer"
+        Transport[gRPC Transport<br/>Multiplexed]
+        Router[Message Router]
+    end
+    
+    subgraph "Channels"
+        MainChannel[System Channel]
+        Ledger1Channel[Ledger 1 Channel]
+        Ledger2Channel[Ledger 2 Channel]
     end
     
     subgraph "Raft Groups"
-        System[System Raft]
-        L1[Ledger 1 Raft]
-        L2[Ledger 2 Raft]
+        SystemRaft[System Raft Group]
+        Ledger1Raft[Ledger 1 Raft Group]
+        Ledger2Raft[Ledger 2 Raft Group]
     end
     
-    GRPC --> Main
-    GRPC --> Ledger1
-    GRPC --> Ledger2
+    GRPC --> Transport
+    Transport --> Router
+    Router --> MainChannel
+    Router --> Ledger1Channel
+    Router --> Ledger2Channel
     
-    Main --> System
-    Ledger1 --> L1
-    Ledger2 --> L2
+    MainChannel --> SystemRaft
+    Ledger1Channel --> Ledger1Raft
+    Ledger2Channel --> Ledger2Raft
 ```
 
 ## Raft Configuration

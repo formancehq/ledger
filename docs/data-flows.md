@@ -155,28 +155,29 @@ All writes are replicated via the Raft protocol to guarantee consistency.
 
 ```mermaid
 sequenceDiagram
-    participant leader
-    participant Follower1
-    participant Follower2
-    participant FSM
+    participant Client
+    participant Leader as Leader Node
+    participant Follower1 as Follower Node 1
+    participant Follower2 as Follower Node 2
+    participant FSM as FSM
     
-    leader->>leader: Receive Write Request
-    leader->>leader: Append to Local Log
-    leader->>Follower1: AppendEntries (term, entries)
-    leader->>Follower2: AppendEntries (term, entries)
+    Client->>Leader: Write Request
+    Leader->>Leader: Append to Local Log (WAL)
+    Leader->>Follower1: AppendEntries RPC (term, entries)
+    Leader->>Follower2: AppendEntries RPC (term, entries)
     
-    Follower1->>Follower1: Validate Term
-    Follower1->>Follower1: Append to Local Log
-    Follower1-->>leader: Success
+    Follower1->>Follower1: Validate Term & Append to WAL
+    Follower1-->>Leader: Success
     
-    Follower2->>Follower2: Validate Term
-    Follower2->>Follower2: Append to Local Log
-    Follower2-->>leader: Success
+    Follower2->>Follower2: Validate Term & Append to WAL
+    Follower2-->>Leader: Success
     
-    leader->>leader: Majority Confirmed
-    leader->>FSM: Apply Entry
-    FSM-->>leader: Result
-    leader-->>Client: Response
+    Leader->>Leader: Majority Confirmed (Commit)
+    Leader->>FSM: Apply Entry
+    FSM-->>Leader: Result
+    Leader-->>Client: Response
+    
+    Note over Follower1,Follower2: Followers apply entry<br/>after commit notification
 ```
 
 ### Detailed Steps
@@ -216,26 +217,29 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 
 ```mermaid
 sequenceDiagram
-    participant Follower
-    participant leader
-    participant Storage
+    participant Follower as Follower Node
+    participant Leader as Leader Node
+    participant Storage as Storage
+    participant LogStore as Log Store
     
     Follower->>Follower: Start/Recover
     Follower->>Storage: Load Snapshot
     Storage-->>Follower: Snapshot Data
     Follower->>Follower: Restore FSM State
     
-    Follower->>leader: Request logs (from snapshot index)
-    leader->>leader: Check Log Availability
-    leader-->>Follower: Send logs (stream)
+    Follower->>Leader: StreamLogs gRPC (from snapshot index)
+    Leader->>LogStore: GetAllLogs(from, to)
+    LogStore-->>Leader: Stream Logs
+    Leader-->>Follower: Stream Logs (gRPC stream)
     
     loop for each log
-        Follower->>Follower: Append to Log
-        Follower->>Follower: Apply to FSM
+        Follower->>Follower: Append to WAL
+        Follower->>FSM: Apply Entry
+        FSM->>RuntimeStore: InsertLogs() - Update balances
     end
     
     Follower->>Follower: Catch Up Complete
-    Follower->>leader: Ready for Replication
+    Note over Follower,Leader: Follower ready for replication
 ```
 
 ### Detailed Steps
@@ -270,26 +274,30 @@ Snapshots are created periodically to compact logs and accelerate recovery.
 
 ```mermaid
 sequenceDiagram
-    participant leader
-    participant FSM
-    participant Storage
-    participant WAL
+    participant Leader as Leader Node
+    participant FSM as FSM
+    participant LogStore as Log Store
+    participant SnapshotStore as Snapshot Store
+    participant WAL as WAL Storage
     
-    leader->>leader: Check Snapshot Conditions
-    Note over leader: Threshold or interval reached
+    Leader->>Leader: Check Snapshot Conditions
+    Note over Leader: Threshold or interval reached
     
-    leader->>FSM: Create Snapshot
-    FSM->>FSM: Serialize State
-    FSM->>FSM: Include Metadata
-    FSM-->>leader: Snapshot Data
+    Leader->>FSM: Create Snapshot
+    FSM->>FSM: Collect logs from memory
+    FSM->>LogStore: WriteLogs() - Batch write logs
+    LogStore-->>FSM: Logs persisted
+    FSM->>FSM: Serialize State & Metadata
+    FSM->>FSM: Clear logs from memory
+    FSM-->>Leader: Snapshot Data
     
-    leader->>Storage: Save Snapshot
-    Storage->>Storage: Write to Disk
-    Storage-->>leader: Snapshot Saved
+    Leader->>SnapshotStore: Save Snapshot
+    SnapshotStore->>SnapshotStore: Write to Disk
+    SnapshotStore-->>Leader: Snapshot Saved
     
-    leader->>WAL: Compact logs
-    WAL->>WAL: Remove Old Entries
-    WAL-->>leader: Compaction Complete
+    Leader->>WAL: Compact logs (remove old entries)
+    WAL->>WAL: Remove entries before snapshot index
+    WAL-->>Leader: Compaction Complete
 ```
 
 ### Creation Conditions

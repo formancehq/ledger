@@ -61,6 +61,7 @@ func NewTransport(
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
+				// todo: Add something to separate messages for different groups
 				return AddTypeAsAttribute(t.Msg)
 			}),
 		),

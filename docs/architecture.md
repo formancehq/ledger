@@ -8,46 +8,62 @@ Ledger v3 POC is a distributed accounting ledger system using the Raft consensus
 
 ```mermaid
 graph TB
-    subgraph "Cluster Raft"
-        Node1[Node 1<br/>Leader]
-        Node2[Node 2<br/>Follower]
-        Node3[Node 3<br/>Follower]
-    end
-    
     subgraph "Client Applications"
         HTTPClient[HTTP Client]
         GRPCClient[gRPC Client]
         CLIClient[CLI Client]
     end
     
-    subgraph "Node Components"
-        HTTPServer[HTTP Server<br/>Port 9000]
-        GRPCServer[gRPC Server<br/>Port 8888]
-        SystemRaft[System Raft Group]
-        LedgerRaft1[Ledger Raft Group 1]
-        LedgerRaft2[Ledger Raft Group 2]
-        FSM[Finite State Machine]
-        Storage[(Storage)]
+    subgraph "Node 1"
+        HTTPServer1[HTTP Server<br/>Port 9000]
+        GRPCServer1[gRPC Server<br/>Port 8888]
+        MasterCluster1[MasterCluster<br/>Adapter]
+        SystemNode1[System Raft Node]
+        LedgerNode1A[Ledger Raft Node A]
+        LedgerNode1B[Ledger Raft Node B]
     end
     
-    HTTPClient --> HTTPServer
-    GRPCClient --> GRPCServer
-    CLIClient --> HTTPServer
+    subgraph "Node 2"
+        HTTPServer2[HTTP Server<br/>Port 9000]
+        GRPCServer2[gRPC Server<br/>Port 8888]
+        MasterCluster2[MasterCluster<br/>Adapter]
+        SystemNode2[System Raft Node]
+        LedgerNode2A[Ledger Raft Node A]
+        LedgerNode2B[Ledger Raft Node B]
+    end
     
-    HTTPServer --> SystemRaft
-    GRPCServer --> SystemRaft
-    GRPCServer --> LedgerRaft1
-    GRPCServer --> LedgerRaft2
+    subgraph "Node 3"
+        HTTPServer3[HTTP Server<br/>Port 9000]
+        GRPCServer3[gRPC Server<br/>Port 8888]
+        MasterCluster3[MasterCluster<br/>Adapter]
+        SystemNode3[System Raft Node]
+        LedgerNode3A[Ledger Raft Node A]
+        LedgerNode3B[Ledger Raft Node B]
+    end
     
-    SystemRaft --> FSM
-    LedgerRaft1 --> FSM
-    LedgerRaft2 --> FSM
+    HTTPClient --> HTTPServer1
+    GRPCClient --> GRPCServer1
+    CLIClient --> HTTPServer1
     
-    FSM --> Storage
+    HTTPServer1 --> MasterCluster1
+    HTTPServer2 --> MasterCluster2
+    HTTPServer3 --> MasterCluster3
     
-    Node1 -.Raft Protocol.-> Node2
-    Node2 -.Raft Protocol.-> Node3
-    Node3 -.Raft Protocol.-> Node1
+    MasterCluster1 --> SystemNode1
+    MasterCluster1 --> LedgerNode1A
+    MasterCluster1 --> LedgerNode1B
+    
+    GRPCServer1 --> SystemNode1
+    GRPCServer1 --> LedgerNode1A
+    GRPCServer1 --> LedgerNode1B
+    
+    SystemNode1 -.Raft.-> SystemNode2
+    SystemNode2 -.Raft.-> SystemNode3
+    SystemNode3 -.Raft.-> SystemNode1
+    
+    LedgerNode1A -.Raft.-> LedgerNode2A
+    LedgerNode2A -.Raft.-> LedgerNode3A
+    LedgerNode3A -.Raft.-> LedgerNode1A
 ```
 
 ## Main Components
@@ -66,41 +82,43 @@ Each node in the cluster runs the following components:
 ### 2. Abstraction Layers
 
 ```mermaid
-graph LR
+graph TB
     subgraph "API Layer"
         HTTP[HTTP Handlers]
-        GRPC[gRPC Services]
+        GRPC[gRPC Server<br/>SystemService + LedgerService + RaftTransport]
     end
     
     subgraph "Service Layer"
-        MasterCluster[MasterCluster]
-        LedgerCluster[LedgerCluster]
-        LedgerService[Ledger Service]
+        MasterCluster[MasterCluster<br/>Adapter]
+        LedgerCluster[LedgerCluster<br/>Adapter]
     end
     
     subgraph "Raft Layer"
-        SystemNode[System Node]
-        LedgerNode[Ledger Node]
-        Transport[Transport]
+        SystemNode[System Raft Node]
+        LedgerNode[Ledger Raft Node]
+        Transport[gRPC Transport<br/>Multiplexed]
     end
     
     subgraph "Storage Layer"
         WAL[WAL Storage]
-        LogStore[Log Store]
+        LogStore[Log Store<br/>SQLite]
+        RuntimeStore[Runtime Store<br/>Balances]
         Snapshot[Snapshot Store]
     end
     
     HTTP --> MasterCluster
     GRPC --> MasterCluster
     MasterCluster --> SystemNode
-    MasterCluster --> LedgerNode
+    MasterCluster --> LedgerCluster
     LedgerCluster --> LedgerNode
-    LedgerService --> LedgerNode
+    
     SystemNode --> Transport
     LedgerNode --> Transport
+    
     SystemNode --> WAL
     LedgerNode --> WAL
     LedgerNode --> LogStore
+    LedgerNode --> RuntimeStore
     SystemNode --> Snapshot
     LedgerNode --> Snapshot
 ```
@@ -147,12 +165,17 @@ graph TB
         LB3[Node 3 Follower]
     end
     
-    S1 -.Manages.-> LA1
-    S1 -.Manages.-> LB1
-    S2 -.Manages.-> LA2
-    S2 -.Manages.-> LB2
-    S3 -.Manages.-> LA3
-    S3 -.Manages.-> LB3
+    S1 -.Creates.-> LA1
+    S1 -.Creates.-> LB1
+    Note over S1,LB1: System FSM creates ledger groups<br/>Groups then operate independently
+    
+    LA1 -.Raft.-> LA2
+    LA2 -.Raft.-> LA3
+    LA3 -.Raft.-> LA1
+    
+    LB1 -.Raft.-> LB2
+    LB2 -.Raft.-> LB3
+    LB3 -.Raft.-> LB1
 ```
 
 ## Data Flows
@@ -162,20 +185,32 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP
-    participant SystemNode
-    participant SystemFSM
-    participant LedgerNode
-    participant Storage
+    participant HTTP as HTTP Handler
+    participant MasterCluster as MasterCluster Adapter
+    participant SystemNode as System Raft Node
+    participant SystemFSM as System FSM
+    participant LedgerNode as Ledger Raft Node
+    participant Storage as Storage
     
     Client->>HTTP: POST /ledgers/{name}
-    HTTP->>SystemNode: CreateLedger()
-    SystemNode->>SystemFSM: Propose Command
-    SystemFSM->>SystemFSM: Validate & Assign ID
-    SystemFSM->>LedgerNode: Start Ledger Raft Group
-    LedgerNode->>Storage: Initialize Storage
-    SystemFSM->>Storage: Persist Ledger Info
-    SystemNode-->>HTTP: LedgerInfo
+    HTTP->>MasterCluster: CreateLedger()
+    
+    alt Node is leader
+        MasterCluster->>SystemNode: CreateLedger()
+        SystemNode->>SystemFSM: Propose CreateLedgerCommand (via Raft)
+        SystemFSM->>SystemFSM: Validate & Assign ID
+        SystemFSM->>LedgerNode: Start Ledger Raft Group
+        LedgerNode->>Storage: Initialize Storage
+        SystemFSM->>SystemFSM: Store Ledger Info
+        SystemNode-->>MasterCluster: LedgerInfo
+    else Node is follower
+        MasterCluster->>MasterCluster: Find leader
+        MasterCluster->>SystemNode: Forward via gRPC (to leader)
+        Note over SystemNode,Storage: Same as leader path
+        SystemNode-->>MasterCluster: LedgerInfo
+    end
+    
+    MasterCluster-->>HTTP: LedgerInfo
     HTTP-->>Client: 201 Created
 ```
 
@@ -184,19 +219,33 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP
-    participant LedgerNode
-    participant LedgerFSM
-    participant LogStore
-    participant Storage
+    participant HTTP as HTTP Handler
+    participant MasterCluster as MasterCluster Adapter
+    participant LedgerCluster as LedgerCluster Adapter
+    participant LedgerNode as Ledger Raft Node
+    participant LedgerFSM as Ledger FSM
+    participant RuntimeStore as Runtime Store
     
     Client->>HTTP: POST /ledgers/{name}/transactions
-    HTTP->>LedgerNode: CreateTransaction()
-    LedgerNode->>LedgerFSM: Propose InsertLog Command (via Raft)
-    LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
-    LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
-    Note over LedgerFSM,LogStore: Logs written to LogStore during snapshot
-    LedgerNode-->>HTTP: CreatedTransaction
+    HTTP->>MasterCluster: GetLedgerCluster(name)
+    MasterCluster->>LedgerCluster: Get Ledger Cluster
+    HTTP->>LedgerCluster: CreateTransaction()
+    
+    alt Node is leader
+        LedgerCluster->>LedgerNode: CreateTransaction()
+        LedgerNode->>LedgerFSM: Propose InsertLogCommand (via Raft)
+        LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
+        LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
+        Note over LedgerFSM: Logs written to LogStore during snapshot
+        LedgerNode-->>LedgerCluster: CreatedTransaction
+    else Node is follower
+        LedgerCluster->>LedgerCluster: Find leader
+        LedgerCluster->>LedgerNode: Forward via gRPC (to leader)
+        Note over LedgerNode,RuntimeStore: Same as leader path
+        LedgerNode-->>LedgerCluster: CreatedTransaction
+    end
+    
+    LedgerCluster-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
 

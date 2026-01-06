@@ -308,11 +308,11 @@ func (s *WALStorage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		return nil, fmt.Errorf("invalid range: lo=%d, hi=%d", lo, hi)
 	}
 
-	firstIndex, err := s.FirstIndex()
+	firstIndex, err := s.firstIndexLocked()
 	if err != nil {
 		return nil, err
 	}
-	lastIndex, err := s.LastIndex()
+	lastIndex, err := s.lastIndexLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -358,11 +358,11 @@ func (s *WALStorage) Term(i uint64) (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	firstIndex, err := s.FirstIndex()
+	firstIndex, err := s.firstIndexLocked()
 	if err != nil {
 		return 0, err
 	}
-	lastIndex, err := s.LastIndex()
+	lastIndex, err := s.lastIndexLocked()
 	if err != nil {
 		return 0, err
 	}
@@ -398,11 +398,7 @@ func (s *WALStorage) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if len(s.entries) == 0 {
-		return s.snapshot.Metadata.Index, nil
-	}
-
-	return s.entries[len(s.entries)-1].Index, nil
+	return s.lastIndexLocked()
 }
 
 // FirstIndex returns the index of the first log entry
@@ -635,4 +631,12 @@ func (s *WALStorage) firstIndexLocked() (uint64, error) {
 	}
 
 	return s.entries[0].Index, nil
+}
+
+func (s *WALStorage) lastIndexLocked() (uint64, error) {
+	if len(s.entries) == 0 {
+		return s.snapshot.Metadata.Index, nil
+	}
+
+	return s.entries[len(s.entries)-1].Index, nil
 }

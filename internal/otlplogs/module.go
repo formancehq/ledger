@@ -1,10 +1,8 @@
 package otlplogs
 
 import (
-	"fmt"
 	"io"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -50,7 +48,6 @@ func LogsModule(cfg ModuleConfig) fx.Option {
 	options = append(options,
 		fx.Supply(cfg),
 		fx.Provide(fx.Annotate(func(exporter sdklog.Exporter, options ...sdklog.LoggerProviderOption) log.LoggerProvider {
-			spew.Dump(exporter)
 			loggerProvider := sdklog.NewLoggerProvider(
 				append(options, sdklog.WithProcessor(
 					sdklog.NewBatchProcessor(exporter),
@@ -84,8 +81,6 @@ func LogsModule(cfg ModuleConfig) fx.Option {
 			}
 
 			l.SetFormatter(formatter)
-
-			fmt.Println("logger overridden")
 
 			return logging.NewLogrus(l), nil
 		}),

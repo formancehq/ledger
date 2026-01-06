@@ -85,7 +85,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	l.logger.
 		WithFields(map[string]any{"ledger": ledgerName}).
-		Info("Creating transaction")
+		Debugf("Creating transaction")
 
 	input := parameters.Input
 
@@ -309,12 +309,12 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// If not dry run, write the log via LogWriter (which will use Raft)
 	if !parameters.DryRun {
-		l.logger.Info("Writing new log...")
+		l.logger.Debugf("Writing new log...")
 		if err := l.logWriter.InsertLogs(ctx, log); err != nil {
 			return nil, nil, fmt.Errorf("inserting logs: %w", err)
 		}
 
-		l.logger.Infof("Log written successfully")
+		l.logger.Debugf("Log written successfully")
 	}
 
 	return log, createdTx, nil

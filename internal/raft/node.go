@@ -46,7 +46,7 @@ type Node[State any, F FSM[State]] struct {
 	applyEntriesHistogram          metric.Float64Histogram
 	applyEntriesBatchSizeCounter   metric.Int64Counter
 	applyEntriesBatchSizeHistogram metric.Int64Histogram
-	leadCounter                    metric.Int64UpDownCounter
+	leadMonitor                    metric.Int64Gauge
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -137,7 +137,7 @@ func NewNode[State any, F FSM[State]](
 		panic(err)
 	}
 
-	node.leadCounter, err = meter.Int64UpDownCounter("raft.node.lead")
+	node.leadMonitor, err = meter.Int64Gauge("raft.node.lead")
 	if err != nil {
 		panic(err)
 	}
@@ -298,7 +298,6 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 						"term": status.Term,
 					}).
 					Infof("Leadership lost")
-				node.leadCounter.Add(ctx, -1)
 			}
 			// acquire leadership
 			if node.lastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
@@ -308,9 +307,9 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 						"term": status.Term,
 					}).
 					Infof("Leadership gained")
-				node.leadCounter.Add(ctx, 1)
 			}
 		}
+		node.leadMonitor.Record(ctx, int64(ss.Lead))
 		node.lastSoftState = ss
 	}
 

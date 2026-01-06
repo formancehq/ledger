@@ -8,33 +8,45 @@ The Ledger v3 POC system uses a direct architecture where each **Ledger** has it
 
 ```mermaid
 graph TB
-    subgraph "Cluster"
-        subgraph "System Raft Group"
-            SystemNode[System Node<br/>Manages Ledgers]
-        end
-        
-        subgraph "Ledger A Raft Group"
-            LA1[Ledger A<br/>Node 1 Leader]
-            LA2[Ledger A<br/>Node 2 Follower]
-            LA3[Ledger A<br/>Node 3 Follower]
-        end
-        
-        subgraph "Ledger B Raft Group"
-            LB1[Ledger B<br/>Node 1 Follower]
-            LB2[Ledger B<br/>Node 2 Leader]
-            LB3[Ledger B<br/>Node 3 Follower]
-        end
-        
-        subgraph "Ledger C Raft Group"
-            LC1[Ledger C<br/>Node 1 Follower]
-            LC2[Ledger C<br/>Node 2 Follower]
-            LC3[Ledger C<br/>Node 3 Leader]
-        end
+    subgraph "System Raft Group"
+        S1[Node 1 Leader]
+        S2[Node 2 Follower]
+        S3[Node 3 Follower]
     end
     
-    LA1 --> TA1[Transactions]
-    LB2 --> TB1[Transactions]
-    LC3 --> TC1[Transactions]
+    subgraph "Ledger A Raft Group"
+        LA1[Node 1 Leader]
+        LA2[Node 2 Follower]
+        LA3[Node 3 Follower]
+    end
+    
+    subgraph "Ledger B Raft Group"
+        LB1[Node 1 Follower]
+        LB2[Node 2 Leader]
+        LB3[Node 3 Follower]
+    end
+    
+    subgraph "Ledger C Raft Group"
+        LC1[Node 1 Follower]
+        LC2[Node 2 Follower]
+        LC3[Node 3 Leader]
+    end
+    
+    S1 -.Creates.-> LA1
+    S1 -.Creates.-> LB1
+    S1 -.Creates.-> LC1
+    
+    LA1 -.Raft.-> LA2
+    LA2 -.Raft.-> LA3
+    LA3 -.Raft.-> LA1
+    
+    LB1 -.Raft.-> LB2
+    LB2 -.Raft.-> LB3
+    LB3 -.Raft.-> LB1
+    
+    LC1 -.Raft.-> LC2
+    LC2 -.Raft.-> LC3
+    LC3 -.Raft.-> LC1
 ```
 
 ## Ledgers
@@ -80,21 +92,27 @@ Ledger creation is a distributed operation that goes through the system Raft gro
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Node1 as Node (Follower)
-    participant Node2 as Node (Leader)
-    participant SystemFSM
-    participant LedgerRaft
+    participant HTTP1 as HTTP Handler (Follower)
+    participant MasterCluster1 as MasterCluster (Follower)
+    participant MasterCluster2 as MasterCluster (Leader)
+    participant SystemNode as System Raft Node
+    participant SystemFSM as System FSM
+    participant LedgerNode as Ledger Raft Node
     
-    Client->>Node1: POST /ledgers/my-ledger
-    Node1->>Node1: Check IsLeader()
-    Node1->>Node2: Forward via gRPC
-    Node2->>SystemFSM: Propose CreateLedgerCommand
+    Client->>HTTP1: POST /ledgers/my-ledger
+    HTTP1->>MasterCluster1: CreateLedger()
+    MasterCluster1->>MasterCluster1: Check IsLeader()
+    MasterCluster1->>MasterCluster2: Forward via gRPC
+    MasterCluster2->>SystemNode: CreateLedger()
+    SystemNode->>SystemFSM: Propose CreateLedgerCommand (via Raft)
     SystemFSM->>SystemFSM: Validate & Assign ID
-    SystemFSM->>LedgerRaft: Start Ledger Raft Group
-    LedgerRaft->>LedgerRaft: Initialize
-    SystemFSM-->>Node2: LedgerInfo
-    Node2-->>Node1: Response
-    Node1-->>Client: 201 Created
+    SystemFSM->>LedgerNode: Start Ledger Raft Group
+    LedgerNode->>LedgerNode: Initialize
+    SystemFSM-->>SystemNode: LedgerInfo
+    SystemNode-->>MasterCluster2: LedgerInfo
+    MasterCluster2-->>MasterCluster1: LedgerInfo
+    MasterCluster1-->>HTTP1: LedgerInfo
+    HTTP1-->>Client: 201 Created
 ```
 
 ### Storage Drivers
