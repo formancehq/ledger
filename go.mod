@@ -7,7 +7,6 @@ replace github.com/formancehq/ledger/pkg/client => github.com/formancehq/ledger/
 require (
 	github.com/XSAM/otelsql v0.41.0
 	github.com/alitto/pond v1.9.2
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/formancehq/go-libs/v3 v3.6.0
 	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
 	github.com/formancehq/ledger-v3-poc/pkg/client v0.0.0-00010101000000-000000000000
@@ -82,6 +81,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
