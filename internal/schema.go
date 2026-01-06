@@ -9,7 +9,8 @@ import (
 )
 
 type SchemaData struct {
-	Chart ChartOfAccounts `json:"chart" bun:"chart"`
+	Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
+	Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
 }
 
 type Schema struct {
@@ -22,9 +23,13 @@ type Schema struct {
 
 func NewSchema(version string, data SchemaData) (Schema, error) {
 	if data.Chart == nil {
-		return Schema{}, ErrInvalidSchema{
-			err: errors.New("missing chart of accounts"),
-		}
+		return Schema{}, NewErrInvalidSchema(errors.New("missing chart of accounts"))
+	}
+	if data.Transactions == nil {
+		return Schema{}, NewErrInvalidSchema(errors.New("missing transaction templates"))
+	}
+	if err := data.Transactions.Validate(); err != nil {
+		return Schema{}, NewErrInvalidSchema(err)
 	}
 	return Schema{
 		Version:    version,

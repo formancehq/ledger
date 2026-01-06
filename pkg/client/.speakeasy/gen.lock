@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ac202ae13d35aeafe6349dd1302aa143
+  docChecksum: ea145c98b439cd8986d2f3f6160fe430
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -62,6 +62,7 @@ generatedFiles:
   - /models/components/migrationinfo.go
   - /models/components/posting.go
   - /models/components/posttransaction.go
+  - /models/components/runtime.go
   - /models/components/script.go
   - /models/components/scriptresponse.go
   - /models/components/security.go
@@ -125,6 +126,7 @@ generatedFiles:
   - /models/components/v2targettype.go
   - /models/components/v2transaction.go
   - /models/components/v2transactionscursorresponse.go
+  - /models/components/v2transactiontemplate.go
   - /models/components/v2volume.go
   - /models/components/v2volumeswithbalance.go
   - /models/components/v2volumeswithbalancecursorresponse.go
@@ -313,6 +315,7 @@ generatedFiles:
   - docs/models/components/v2transaction.md
   - docs/models/components/v2transactionscursorresponse.md
   - docs/models/components/v2transactionscursorresponsecursor.md
+  - docs/models/components/v2transactiontemplate.md
   - docs/models/components/v2volume.md
   - docs/models/components/v2volumeswithbalance.md
   - docs/models/components/v2volumeswithbalancecursorresponse.md
@@ -921,7 +924,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "template": "<value>"}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateTransaction:
@@ -934,7 +937,7 @@ examples:
           schemaVersion: "v1.0.0"
           force: true
       requestBody:
-        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
+        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"template": "CUSTOMER_DEPOSIT", "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
         "200":
           application/json: {"data": {"timestamp": "2024-06-10T07:40:23.819Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 339560, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -1223,7 +1226,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -1235,7 +1238,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:

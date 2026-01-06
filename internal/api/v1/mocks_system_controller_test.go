@@ -953,6 +953,44 @@ func (c *SystemControllerGetPipelineCall) DoAndReturn(f func(context.Context, st
 	return c
 }
 
+// GetSchemaEnforcementMode mocks base method.
+func (m *SystemController) GetSchemaEnforcementMode(ctx context.Context) ledger0.SchemaEnforcementMode {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSchemaEnforcementMode", ctx)
+	ret0, _ := ret[0].(ledger0.SchemaEnforcementMode)
+	return ret0
+}
+
+// GetSchemaEnforcementMode indicates an expected call of GetSchemaEnforcementMode.
+func (mr *SystemControllerMockRecorder) GetSchemaEnforcementMode(ctx any) *SystemControllerGetSchemaEnforcementModeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchemaEnforcementMode", reflect.TypeOf((*SystemController)(nil).GetSchemaEnforcementMode), ctx)
+	return &SystemControllerGetSchemaEnforcementModeCall{Call: call}
+}
+
+// SystemControllerGetSchemaEnforcementModeCall wrap *gomock.Call
+type SystemControllerGetSchemaEnforcementModeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *SystemControllerGetSchemaEnforcementModeCall) Return(arg0 ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *SystemControllerGetSchemaEnforcementModeCall) Do(f func(context.Context) ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *SystemControllerGetSchemaEnforcementModeCall) DoAndReturn(f func(context.Context) ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListExporters mocks base method.
 func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()

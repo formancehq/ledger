@@ -47,6 +47,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
+			"template",
 		)
 
 	if slices.Contains(opts.Expand, "volumes") {
