@@ -22,12 +22,6 @@ import (
 	"github.com/onsi/gomega/types"
 )
 
-type serviceWithClient struct {
-	service     *testservice.Service
-	client      *client.Formance
-	raftDataDir string
-}
-
 var _ = Describe("Simple cluster", func() {
 	var (
 		ctx      context.Context

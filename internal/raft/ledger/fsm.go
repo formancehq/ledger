@@ -58,7 +58,7 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 	}
 }
 
-// processInsertLog handles the insert log command by storing the log in memory and persisting it to the store
+// processInsertLog handles the insert log command by storing the log in memory
 func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
@@ -101,18 +101,41 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 	}
 	if len(logs) > 0 {
 		now := time.Now()
-		if err := f.runtimeStore.InsertLogs(ctx, logs...); err != nil {
-			return nil, err
+
+		// Update runtime store (balances and metadata) using batch operations
+		if err := f.updateRuntimeStore(ctx, logs); err != nil {
+			return nil, fmt.Errorf("updating runtime store: %w", err)
 		}
+
 		f.logger.
 			WithFields(map[string]any{
 				"count":   len(logs),
 				"latency": time.Since(now),
 			}).
-			Infof("Log stored in memory and persisted to store via FSM")
+			Infof("Runtime store updated via FSM")
 	}
 
 	return ret, nil
+}
+
+// updateRuntimeStore aggregates logs and updates runtime store using Update()
+func (f *FSM) updateRuntimeStore(ctx context.Context, logs []*ledgerpb.Log) error {
+	if len(logs) == 0 {
+		return nil
+	}
+
+	// Convert logs to RuntimeUpdate using the shared function
+	update, err := service.LogsToRuntimeUpdate(logs)
+	if err != nil {
+		return fmt.Errorf("converting logs to runtime update: %w", err)
+	}
+
+	// Apply all updates atomically
+	if err := f.runtimeStore.Update(ctx, update); err != nil {
+		return fmt.Errorf("updating runtime store: %w", err)
+	}
+
+	return nil
 }
 
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
@@ -154,6 +177,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	f.state = snapshotData
 	f.mu.Unlock()
 
+	// todo: we need to restore both stores from the snapshot
 	lastProcessedLogID, err := f.runtimeStore.GetLastProcessedLogID(ctx)
 	if err != nil {
 		return err
@@ -196,9 +220,16 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 
 		// Write all collected logs to the writer
 		if len(logsToWrite) > 0 {
-			if err := f.runtimeStore.InsertLogs(ctx, logsToWrite...); err != nil {
-				return fmt.Errorf("writing catch-up logs to store: %w", err)
+			// Write logs to log store
+			if err := f.logWriter.InsertLogs(ctx, logsToWrite...); err != nil {
+				return fmt.Errorf("writing catch-up logs to log store: %w", err)
 			}
+
+			// Update runtime store (balances and metadata) using batch operations
+			if err := f.updateRuntimeStore(ctx, logsToWrite); err != nil {
+				return fmt.Errorf("updating runtime store during catch-up: %w", err)
+			}
+
 			f.logger.WithFields(map[string]any{
 				"logsWritten": len(logsToWrite),
 			}).Infof("Caught up logs from reader to writer")

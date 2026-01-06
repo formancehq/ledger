@@ -22,12 +22,6 @@ import (
 )
 
 var _ = Describe("Account Metadata", func() {
-	type serviceWithClient struct {
-		service     *testservice.Service
-		client      *client.Formance
-		raftDataDir string
-	}
-
 	var (
 		ctx     context.Context
 		servers []serviceWithClient

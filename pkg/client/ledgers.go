@@ -535,8 +535,8 @@ func (s *Ledgers) GetLedger(ctx context.Context, request operations.GetLedgerReq
 
 // CreateLedger - Create a new ledger
 // Creates a new ledger with the specified name, driver, and configuration. If driver is not specified,
-// sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3)
-// and sqlite-modern (modernc.org/sqlite). Each ledger has its own Raft group for data consistency.
+// sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3),
+// sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble). Each ledger has its own Raft group for data consistency.
 func (s *Ledgers) CreateLedger(ctx context.Context, request operations.CreateLedgerRequest, opts ...operations.Option) (*operations.CreateLedgerResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{

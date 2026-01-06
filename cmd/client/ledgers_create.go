@@ -29,7 +29,7 @@ var ledgersCreateCmd = &cobra.Command{
 
 func init() {
 	ledgersCreateCmd.Flags().String("name", "", "Ledger name")
-	ledgersCreateCmd.Flags().String("driver", "sqlite-mattn", "Storage driver (sqlite-mattn, sqlite-modern)")
+	ledgersCreateCmd.Flags().String("driver", "sqlite-mattn", "Storage driver (sqlite-mattn, sqlite-modern, pebble)")
 	ledgersCreateCmd.Flags().String("metadata", "{}", "Metadata as JSON (default: {})")
 	ledgersCreateCmd.Flags().Bool("no-metadata", false, "Skip metadata prompt in wizard")
 	// Name is no longer required - wizard will prompt if not provided
@@ -160,7 +160,7 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 
 	// Step 2: Get driver if not provided via flag
 	if !driverProvided {
-		driverOptions := []string{"sqlite-mattn", "sqlite-modern"}
+		driverOptions := []string{"sqlite-mattn", "sqlite-modern", "pebble"}
 		selectedDriver, err := pterm.DefaultInteractiveSelect.
 			WithOptions(driverOptions).
 			WithDefaultOption("sqlite-mattn").

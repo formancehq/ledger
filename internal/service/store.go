@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -62,13 +63,35 @@ func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (C
 	return fn(ctx, from, to)
 }
 
+// RuntimeUpdate contains all the updates to apply to the runtime store
+type RuntimeUpdate struct {
+	// BalanceDiffs contains balance differences to apply: map[account]map[asset]*big.Int
+	// Positive values add to balance, negative values subtract
+	BalanceDiffs map[string]map[string]*big.Int
+	// AccountMetadata contains metadata updates: map[account]map[key]value
+	AccountMetadata map[string]map[string]interface{}
+	// AccountMetadataDeletes contains metadata keys to delete: map[account][]keys
+	AccountMetadataDeletes map[string][]string
+	// IdempotencyKeys contains idempotency entries to insert: map[key]{hash, logID}
+	IdempotencyKeys map[string]IdempotencyEntry
+	// LastProcessedLogID is the ID of the last processed log
+	LastProcessedLogID uint64
+}
+
+// IdempotencyEntry represents an idempotency key entry
+type IdempotencyEntry struct {
+	Hash  string
+	LogID uint64
+}
+
 // RuntimeStore handles runtime queries for balances and account metadata
 type RuntimeStore interface {
-	LogWriter
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
 	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
+	// Update applies all runtime updates atomically
+	Update(ctx context.Context, update RuntimeUpdate) error
 }

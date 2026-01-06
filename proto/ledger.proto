@@ -292,6 +292,12 @@ message DeletedMetadata {
   string key = 4;                           // Metadata key to delete
 }
 
+// IdempotencyEntry represents an idempotency key entry stored in Pebble
+message IdempotencyEntry {
+  string hash = 1;                          // Idempotency hash
+  uint64 log_id = 2;                        // Log ID
+}
+
 // TransactionResume represents a simplified transaction for memento purposes
 // Excludes postCommitVolumes and postCommitEffectiveVolumes fields
 message TransactionResume {

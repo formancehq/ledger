@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -20,8 +19,7 @@ import (
 // ============================================================================
 
 // SQLiteRuntimeStore is a SQLite implementation of RuntimeStore
-// It stores balances and account metadata, and implements LogWriter
-// to update these values when logs are written (but does not store the logs themselves)
+// It stores balances and account metadata
 type SQLiteRuntimeStore struct {
 	db     *SQLDB
 	logger logging.Logger
@@ -115,13 +113,6 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 	return store, nil
 }
 
-// idempotencyEntry represents an idempotency key entry
-type idempotencyEntry struct {
-	key   string
-	hash  string
-	logID uint64
-}
-
 // createRuntimeTables creates the necessary tables for balances and account metadata
 func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 	// Create balances table
@@ -178,6 +169,107 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 	return nil
 }
 
+// ============================================================================
+// RuntimeStore Update Implementation
+// ============================================================================
+
+// Update applies all runtime updates atomically
+func (s *SQLiteRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) error {
+	// Use a transaction for atomic updates
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	// Apply balance differences
+	if len(update.BalanceDiffs) > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtInsertBalance)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		for account, assets := range update.BalanceDiffs {
+			for asset, diff := range assets {
+				if _, err := stmt.ExecContext(ctx, account, asset, diff.String()); err != nil {
+					return fmt.Errorf("updating balance for account %s asset %s: %w", account, asset, err)
+				}
+			}
+		}
+	}
+
+	// Apply account metadata updates
+	if len(update.AccountMetadata) > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtUpsertAccountMetadata)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		for accountAddr, metadataMap := range update.AccountMetadata {
+			for key, value := range metadataMap {
+				valueJSON, err := json.Marshal(value)
+				if err != nil {
+					return fmt.Errorf("marshaling metadata value: %w", err)
+				}
+				if _, err := stmt.ExecContext(ctx, accountAddr, key, string(valueJSON)); err != nil {
+					return fmt.Errorf("upserting account metadata: %w", err)
+				}
+			}
+		}
+	}
+
+	// Apply account metadata deletions
+	if len(update.AccountMetadataDeletes) > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtDeleteAccountMetadata)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		for accountAddr, keys := range update.AccountMetadataDeletes {
+			for _, key := range keys {
+				if _, err := stmt.ExecContext(ctx, accountAddr, key); err != nil {
+					return fmt.Errorf("deleting account metadata key: %w", err)
+				}
+			}
+		}
+	}
+
+	// Apply idempotency entries
+	if len(update.IdempotencyKeys) > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtInsertIdempotency)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		for key, entry := range update.IdempotencyKeys {
+			if _, err := stmt.ExecContext(ctx, key, entry.Hash, entry.LogID); err != nil {
+				return fmt.Errorf("inserting idempotency entry for key %s: %w", key, err)
+			}
+		}
+	}
+
+	// Update last processed log ID
+	if update.LastProcessedLogID > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtUpdateLastProcessedLogID)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		valueStr := fmt.Sprintf("%d", update.LastProcessedLogID)
+		if _, err := stmt.ExecContext(ctx, valueStr); err != nil {
+			return fmt.Errorf("updating last processed log ID: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	return nil
+}
+
 // Close closes the database connection and prepared statements
 func (s *SQLiteRuntimeStore) Close() error {
 	var errs []error
@@ -222,242 +314,6 @@ func (s *SQLiteRuntimeStore) Close() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("closing store: %v", errs)
 	}
-	return nil
-}
-
-// ============================================================================
-// LogWriter Implementation (for updating balances and metadata)
-// ============================================================================
-
-// InsertLogs updates balances and account metadata based on the logs (implements LogWriter)
-// This method does NOT store the logs themselves, only updates runtime data
-func (s *SQLiteRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
-	if len(logs) == 0 {
-		return nil
-	}
-
-	// Use a transaction for batch updates
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	// Accumulate balance differences for all logs
-	balanceDiffs := make(map[string]map[string]*big.Int)
-
-	// Accumulate metadata operations for batch processing
-	accountMetadataBatch := make(map[string]map[string]interface{})
-	accountMetadataDeletes := make(map[string][]string)
-
-	// Accumulate idempotency entries for batch processing
-	idempotencyEntries := make([]idempotencyEntry, 0)
-
-	for _, log := range logs {
-		// Validate log data
-		if log.Data == nil {
-			return fmt.Errorf("log data is nil for id %d", log.Id)
-		}
-
-		// Format date as RFC3339 string
-		var dateStr string
-		if log.Date != nil {
-			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
-		}
-
-		// Accumulate idempotency entry if present
-		if log.IdempotencyKey != "" && log.Id != 0 {
-			idempotencyEntries = append(idempotencyEntries, idempotencyEntry{
-				key:   log.IdempotencyKey,
-				hash:  log.IdempotencyHash,
-				logID: log.Id,
-			})
-		}
-
-		// Accumulate balance differences and update accounts based on log type
-		switch payload := log.Data.Payload.(type) {
-		case *ledgerpb.LogPayload_CreatedTransaction:
-			if payload.CreatedTransaction != nil && payload.CreatedTransaction.Transaction != nil {
-				// Accumulate balance differences
-				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
-				// Accumulate account and metadata updates for batch processing
-				accumulateAccountsFromTransaction(
-					accountMetadataBatch,
-					payload.CreatedTransaction,
-				)
-			}
-		case *ledgerpb.LogPayload_RevertedTransaction:
-			if payload.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction != nil {
-				// Reverse postings for balance update (subtract from destination, add to source)
-				reversedPostings := make([]*ledgerpb.Posting, len(payload.RevertedTransaction.RevertedTransaction.Postings))
-				for i, posting := range payload.RevertedTransaction.RevertedTransaction.Postings {
-					if posting != nil {
-						reversedPostings[i] = &ledgerpb.Posting{
-							Source:      posting.Destination,
-							Destination: posting.Source,
-							Asset:       posting.Asset,
-							Amount:      posting.Amount,
-						}
-					}
-				}
-				// Accumulate balance differences (reversed)
-				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
-				// Accumulate account updates for batch processing
-				accumulateAccountsFromRevertedTransaction(
-					payload.RevertedTransaction,
-					dateStr,
-				)
-			}
-		case *ledgerpb.LogPayload_SavedMetadata:
-			if payload.SavedMetadata != nil {
-				// Accumulate metadata updates for batch processing
-				accumulateMetadataFromSetMetadata(
-					accountMetadataBatch,
-					payload.SavedMetadata,
-				)
-			}
-		case *ledgerpb.LogPayload_DeletedMetadata:
-			if payload.DeletedMetadata != nil {
-				// Accumulate metadata deletions for batch processing
-				accumulateMetadataFromDeleteMetadata(
-					accountMetadataDeletes,
-					payload.DeletedMetadata,
-				)
-			}
-		}
-	}
-
-	// Apply all accumulated balance differences in one batch
-	if err := s.applyBalanceDiffs(ctx, tx, balanceDiffs); err != nil {
-		return fmt.Errorf("applying balance differences: %w", err)
-	}
-
-	// Batch upsert all account metadata
-	if len(accountMetadataBatch) > 0 {
-		if err := s.batchUpsertAccountMetadata(ctx, tx, accountMetadataBatch); err != nil {
-			return fmt.Errorf("batch upserting account metadata: %w", err)
-		}
-	}
-
-	// Batch delete all account metadata keys
-	if len(accountMetadataDeletes) > 0 {
-		if err := s.batchDeleteAccountMetadataKeys(ctx, tx, accountMetadataDeletes); err != nil {
-			return fmt.Errorf("batch deleting account metadata keys: %w", err)
-		}
-	}
-
-	// Batch insert all idempotency entries
-	if len(idempotencyEntries) > 0 {
-		if err := s.batchInsertIdempotency(ctx, tx, idempotencyEntries); err != nil {
-			return fmt.Errorf("batch inserting idempotency entries: %w", err)
-		}
-	}
-
-	// Update last processed log ID (use the last log's ID)
-	if len(logs) > 0 {
-		lastLogID := logs[len(logs)-1].Id
-		if err := s.updateLastProcessedLogID(ctx, tx, lastLogID); err != nil {
-			return fmt.Errorf("updating last processed log ID: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-
-	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Runtime data updated from logs")
-	return nil
-}
-
-// applyBalanceDiffs applies accumulated balance differences to the database
-func (s *SQLiteRuntimeStore) applyBalanceDiffs(ctx context.Context, tx *sql.Tx, balanceDiffs map[string]map[string]*big.Int) error {
-	if len(balanceDiffs) == 0 {
-		return nil
-	}
-
-	stmt := tx.StmtContext(ctx, s.stmtInsertBalance)
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	for account, assets := range balanceDiffs {
-		for asset, balance := range assets {
-			if _, err := stmt.ExecContext(ctx, account, asset, balance.String()); err != nil {
-				return fmt.Errorf("updating balance for account %s asset %s: %w", account, asset, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// batchUpsertAccountMetadata inserts or updates account metadata for multiple accounts in a single batch operation
-func (s *SQLiteRuntimeStore) batchUpsertAccountMetadata(ctx context.Context, tx *sql.Tx, accountMetadata map[string]map[string]interface{}) error {
-	if len(accountMetadata) == 0 {
-		return nil
-	}
-
-	stmt := tx.StmtContext(ctx, s.stmtUpsertAccountMetadata)
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	for accountAddr, metadataMap := range accountMetadata {
-		for key, value := range metadataMap {
-			valueJSON, err := json.Marshal(value)
-			if err != nil {
-				return fmt.Errorf("marshaling metadata value: %w", err)
-			}
-			if _, err := stmt.ExecContext(ctx, accountAddr, key, string(valueJSON)); err != nil {
-				return fmt.Errorf("upserting account metadata: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// batchDeleteAccountMetadataKeys deletes multiple metadata keys for multiple accounts in a single batch operation
-func (s *SQLiteRuntimeStore) batchDeleteAccountMetadataKeys(ctx context.Context, tx *sql.Tx, accountKeys map[string][]string) error {
-	if len(accountKeys) == 0 {
-		return nil
-	}
-
-	stmt := tx.StmtContext(ctx, s.stmtDeleteAccountMetadata)
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	for accountAddr, keys := range accountKeys {
-		for _, key := range keys {
-			if _, err := stmt.ExecContext(ctx, accountAddr, key); err != nil {
-				return fmt.Errorf("deleting account metadata key: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// batchInsertIdempotency inserts idempotency entries in a single batch operation
-func (s *SQLiteRuntimeStore) batchInsertIdempotency(ctx context.Context, tx *sql.Tx, entries []idempotencyEntry) error {
-	if len(entries) == 0 {
-		return nil
-	}
-
-	stmt := tx.StmtContext(ctx, s.stmtInsertIdempotency)
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	for _, entry := range entries {
-		if _, err := stmt.ExecContext(ctx, entry.key, entry.hash, entry.logID); err != nil {
-			return fmt.Errorf("inserting idempotency entry for key %s: %w", entry.key, err)
-		}
-	}
-
 	return nil
 }
 
@@ -650,19 +506,4 @@ func (s *SQLiteRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 	}
 
 	return lastLogID, nil
-}
-
-// updateLastProcessedLogID updates the last processed log ID in the infos table
-func (s *SQLiteRuntimeStore) updateLastProcessedLogID(ctx context.Context, tx *sql.Tx, logID uint64) error {
-	stmt := tx.StmtContext(ctx, s.stmtUpdateLastProcessedLogID)
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	valueStr := fmt.Sprintf("%d", logID)
-	if _, err := stmt.ExecContext(ctx, valueStr); err != nil {
-		return fmt.Errorf("updating last processed log ID: %w", err)
-	}
-
-	return nil
 }

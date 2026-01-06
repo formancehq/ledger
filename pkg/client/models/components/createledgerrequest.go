@@ -10,12 +10,14 @@ import (
 )
 
 // CreateLedgerRequestDriver - Storage driver name (defaults to sqlite-mattn).
-// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
+// and pebble (github.com/cockroachdb/pebble)
 type CreateLedgerRequestDriver string
 
 const (
 	CreateLedgerRequestDriverSqliteModern CreateLedgerRequestDriver = "sqlite-modern"
 	CreateLedgerRequestDriverSqliteMattn  CreateLedgerRequestDriver = "sqlite-mattn"
+	CreateLedgerRequestDriverPebble       CreateLedgerRequestDriver = "pebble"
 )
 
 func (e CreateLedgerRequestDriver) ToPointer() *CreateLedgerRequestDriver {
@@ -30,6 +32,8 @@ func (e *CreateLedgerRequestDriver) UnmarshalJSON(data []byte) error {
 	case "sqlite-modern":
 		fallthrough
 	case "sqlite-mattn":
+		fallthrough
+	case "pebble":
 		*e = CreateLedgerRequestDriver(v)
 		return nil
 	default:
@@ -42,12 +46,14 @@ type CreateLedgerRequestConfigType string
 const (
 	CreateLedgerRequestConfigTypeSQLiteMattnConfig  CreateLedgerRequestConfigType = "SQLiteMattnConfig"
 	CreateLedgerRequestConfigTypeSQLiteModernConfig CreateLedgerRequestConfigType = "SQLiteModernConfig"
+	CreateLedgerRequestConfigTypePebbleConfig       CreateLedgerRequestConfigType = "PebbleConfig"
 )
 
-// CreateLedgerRequestConfig - Driver-specific configuration (optional - DSN is auto-generated for both drivers)
+// CreateLedgerRequestConfig - Driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
 type CreateLedgerRequestConfig struct {
 	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
 	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
+	PebbleConfig       *PebbleConfig       `queryParam:"inline"`
 
 	Type CreateLedgerRequestConfigType
 }
@@ -70,6 +76,15 @@ func CreateCreateLedgerRequestConfigSQLiteModernConfig(sqLiteModernConfig SQLite
 	}
 }
 
+func CreateCreateLedgerRequestConfigPebbleConfig(pebbleConfig PebbleConfig) CreateLedgerRequestConfig {
+	typ := CreateLedgerRequestConfigTypePebbleConfig
+
+	return CreateLedgerRequestConfig{
+		PebbleConfig: &pebbleConfig,
+		Type:         typ,
+	}
+}
+
 func (u *CreateLedgerRequestConfig) UnmarshalJSON(data []byte) error {
 
 	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
@@ -86,6 +101,13 @@ func (u *CreateLedgerRequestConfig) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	var pebbleConfig PebbleConfig = PebbleConfig{}
+	if err := utils.UnmarshalJSON(data, &pebbleConfig, "", true, true); err == nil {
+		u.PebbleConfig = &pebbleConfig
+		u.Type = CreateLedgerRequestConfigTypePebbleConfig
+		return nil
+	}
+
 	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateLedgerRequestConfig", string(data))
 }
 
@@ -98,15 +120,20 @@ func (u CreateLedgerRequestConfig) MarshalJSON() ([]byte, error) {
 		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
 	}
 
+	if u.PebbleConfig != nil {
+		return utils.MarshalJSON(u.PebbleConfig, "", true)
+	}
+
 	return nil, errors.New("could not marshal union type CreateLedgerRequestConfig: all fields are null")
 }
 
 type CreateLedgerRequest struct {
 	// Storage driver name (defaults to sqlite-mattn).
-	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
+	// and pebble (github.com/cockroachdb/pebble)
 	//
 	Driver *CreateLedgerRequestDriver `default:"sqlite-mattn" json:"driver"`
-	// Driver-specific configuration (optional - DSN is auto-generated for both drivers)
+	// Driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
 	Config *CreateLedgerRequestConfig `json:"config,omitempty"`
 	// Optional metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`

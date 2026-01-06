@@ -22,12 +22,6 @@ import (
 )
 
 var _ = Describe("Ledger Deletion", func() {
-	type serviceWithClient struct {
-		service     *testservice.Service
-		client      *client.Formance
-		raftDataDir string
-	}
-
 	var (
 		ctx     context.Context
 		servers []serviceWithClient

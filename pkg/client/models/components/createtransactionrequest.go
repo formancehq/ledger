@@ -13,7 +13,7 @@ type CreateTransactionRequest struct {
 	// Transaction timestamp (ISO 8601 format). If not provided, current time is used.
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 	// Transaction metadata
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Transaction reference
 	Reference *string `json:"reference,omitempty"`
 	// List of postings for the transaction (required if script is not provided)
@@ -52,7 +52,7 @@ func (o *CreateTransactionRequest) GetTimestamp() *time.Time {
 	return o.Timestamp
 }
 
-func (o *CreateTransactionRequest) GetMetadata() map[string]any {
+func (o *CreateTransactionRequest) GetMetadata() map[string]string {
 	if o == nil {
 		return nil
 	}

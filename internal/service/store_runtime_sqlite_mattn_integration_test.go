@@ -11,10 +11,7 @@ import (
 )
 
 func TestSQLiteRuntimeStoreIntegration(t *testing.T) {
-	TestRuntimeStoreIntegrationCommon(t, func(t *testing.T) interface {
-		RuntimeStore
-		LogWriter
-	} {
+	TestRuntimeStoreIntegrationCommon(t, func(t *testing.T) RuntimeStore {
 		return createSQLiteRuntimeStore(t)
 	})
 }
@@ -24,15 +21,11 @@ func createSQLiteRuntimeStore(t *testing.T) *SQLiteRuntimeStore {
 	runtimeDSN := fmt.Sprintf("file:%s/test-runtime.db", tmpDir)
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	
+
 	// Create runtime store (stores balances and metadata only)
 	runtimeStore, err := NewSQLiteMattnRuntimeStore(ctx, runtimeDSN, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = runtimeStore.Close() })
-	
+
 	return runtimeStore
 }
-
-
-
-

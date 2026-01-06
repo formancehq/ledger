@@ -85,8 +85,8 @@ paths:
       summary: Create a new ledger
       description: |
         Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
-        sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) 
-        and sqlite-modern (modernc.org/sqlite). Each ledger has its own Raft group for data consistency.
+        sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), 
+        sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble). Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
         - Ledgers
@@ -450,15 +450,18 @@ components:
           enum:
           - sqlite-modern
           - sqlite-mattn
+          - pebble
           default: sqlite-mattn
           description: |
             Storage driver name (defaults to sqlite-mattn). 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
+            and pebble (github.com/cockroachdb/pebble)
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
-          description: Driver-specific configuration (optional - DSN is auto-generated for both drivers)
+            - $ref: '#/components/schemas/PebbleConfig'
+          description: Driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
         metadata:
           type: object
           additionalProperties:
@@ -513,14 +516,16 @@ components:
           description: Name of the ledger
         driver:
           type: string
-          enum: [sqlite-mattn, sqlite-modern]
+          enum: [sqlite-mattn, sqlite-modern, pebble]
           description: |
             Storage driver name. 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
+            and pebble (github.com/cockroachdb/pebble)
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
+            - $ref: '#/components/schemas/PebbleConfig'
           description: Driver-specific configuration
         metadata:
           type: object
@@ -557,7 +562,8 @@ components:
           description: Transaction timestamp (ISO 8601 format). If not provided, current time is used.
         metadata:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: string
           description: Transaction metadata
         reference:
           type: string
@@ -1077,6 +1083,12 @@ components:
     SQLiteModernConfig:
       type: object
       description: SQLite Modern driver configuration (modernc.org/sqlite) - empty object, DSN is automatically generated
+      properties: {}
+      example: {}
+
+    PebbleConfig:
+      type: object
+      description: Pebble driver configuration (github.com/cockroachdb/pebble) - empty object, data directory is automatically generated
       properties: {}
       example: {}
 

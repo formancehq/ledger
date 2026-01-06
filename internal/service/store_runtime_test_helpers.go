@@ -14,22 +14,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRuntimeStoreIntegrationCommon runs common tests for runtime stores (RuntimeStore + LogWriter)
-func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T) interface {
-	RuntimeStore
-	LogWriter
-}) {
+// TestRuntimeStoreIntegrationCommon runs common tests for runtime stores
+func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T) RuntimeStore) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 	ledgerName := "test-ledger"
 
-	t.Run("InsertLogs", func(t *testing.T) {
+	t.Run("Update", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 
 		testLogs := createTestLogs(t, ledgerName)
-		err := store.InsertLogs(ctx, testLogs...)
+		update, err := LogsToRuntimeUpdate(testLogs)
+		require.NoError(t, err)
+		err = store.Update(ctx, update)
 		require.NoError(t, err)
 	})
 
@@ -38,8 +37,10 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		store := createStore(t)
 		testLogs := createTestLogs(t, ledgerName)
 
-		// Insert logs
-		err := store.InsertLogs(ctx, testLogs...)
+		// Update runtime store
+		update, err := LogsToRuntimeUpdate(testLogs)
+		require.NoError(t, err)
+		err = store.Update(ctx, update)
 		require.NoError(t, err)
 
 		balances, err := store.GetBalances(ctx, map[string][]string{
@@ -58,8 +59,10 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		store := createStore(t)
 		testLogs := createTestLogs(t, ledgerName)
 
-		// Insert logs
-		err := store.InsertLogs(ctx, testLogs...)
+		// Update runtime store
+		update, err := LogsToRuntimeUpdate(testLogs)
+		require.NoError(t, err)
+		err = store.Update(ctx, update)
 		require.NoError(t, err)
 
 		// Test GetAccountMetadata for multiple accounts
@@ -152,7 +155,9 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 			}(),
 		}
 
-		err := store.InsertLogs(ctx, logs...)
+		update, err := LogsToRuntimeUpdate(logs)
+		require.NoError(t, err)
+		err = store.Update(ctx, update)
 		require.NoError(t, err)
 
 		// Get account metadata and verify
@@ -174,8 +179,10 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		store := createStore(t)
 		testLogs := createTestLogs(t, ledgerName)
 
-		// Insert logs
-		err := store.InsertLogs(ctx, testLogs...)
+		// Update runtime store
+		update, err := LogsToRuntimeUpdate(testLogs)
+		require.NoError(t, err)
+		err = store.Update(ctx, update)
 		require.NoError(t, err)
 
 		// Test with existing idempotency key
@@ -197,11 +204,12 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		require.Equal(t, uint64(0), logID)
 	})
 
-	t.Run("InsertLogsEmpty", func(t *testing.T) {
+	t.Run("UpdateEmpty", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 
-		err := store.InsertLogs(ctx)
+		update := RuntimeUpdate{}
+		err := store.Update(ctx, update)
 		require.NoError(t, err)
 	})
 }

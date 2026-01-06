@@ -281,11 +281,16 @@ func (m *mockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) e
 		m.counter++
 		log.Id = m.counter
 	}
-	// Insert logs into both stores
+	// Insert logs into log store
 	if err := m.logStore.InsertLogs(ctx, logs...); err != nil {
 		return err
 	}
-	return m.runtimeStore.InsertLogs(ctx, logs...)
+	// Update runtime store
+	update, err := LogsToRuntimeUpdate(logs)
+	if err != nil {
+		return err
+	}
+	return m.runtimeStore.Update(ctx, update)
 }
 
 // createSQLiteStores creates separate log and runtime stores for testing

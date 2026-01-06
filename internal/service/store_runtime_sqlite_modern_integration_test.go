@@ -11,10 +11,7 @@ import (
 )
 
 func TestSQLiteRuntimeStoreModernIntegration(t *testing.T) {
-	TestRuntimeStoreIntegrationCommon(t, func(t *testing.T) interface {
-		RuntimeStore
-		LogWriter
-	} {
+	TestRuntimeStoreIntegrationCommon(t, func(t *testing.T) RuntimeStore {
 		return createSQLiteModernRuntimeStore(t)
 	})
 }
@@ -32,6 +29,7 @@ func createSQLiteModernRuntimeStore(t *testing.T) *SQLiteRuntimeStore {
 	
 	return runtimeStore
 }
+
 
 
 

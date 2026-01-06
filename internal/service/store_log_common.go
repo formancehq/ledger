@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -87,27 +88,6 @@ func accumulateAccountsFromTransaction(
 	}
 }
 
-// accumulateAccountsFromRevertedTransaction accumulates account updates from a reverted transaction
-func accumulateAccountsFromRevertedTransaction(
-	revertedTransaction *ledgerpb.RevertedTransaction,
-	dateStr string,
-) {
-	postings := revertedTransaction.RevertedTransaction.Postings
-
-	// Get unique accounts from postings
-	accounts := make(map[string]bool)
-	for _, posting := range postings {
-		if posting == nil {
-			continue
-		}
-		if posting.Source != "" {
-			accounts[posting.Source] = true
-		}
-		if posting.Destination != "" {
-			accounts[posting.Destination] = true
-		}
-	}
-}
 
 // accumulateMetadataFromSetMetadata accumulates metadata updates from SET_METADATA log
 func accumulateMetadataFromSetMetadata(
@@ -144,5 +124,85 @@ func accumulateMetadataFromDeleteMetadata(
 		// Accumulate deletion for batch processing
 		accountMetadataDeletes[accountAddr] = append(accountMetadataDeletes[accountAddr], deletedMetadata.Key)
 	}
+}
+
+// LogsToRuntimeUpdate converts logs to RuntimeUpdate by aggregating balance differences,
+// metadata updates, and idempotency keys from the logs.
+// This is the canonical implementation used by both the FSM and tests.
+func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
+	if len(logs) == 0 {
+		return RuntimeUpdate{}, nil
+	}
+
+	// Accumulate balance differences for all logs
+	balanceDiffs := make(map[string]map[string]*big.Int)
+
+	// Accumulate metadata operations for batch processing
+	accountMetadataBatch := make(map[string]map[string]interface{})
+	accountMetadataDeletes := make(map[string][]string)
+
+	// Accumulate idempotency entries for batch processing
+	idempotencyKeys := make(map[string]IdempotencyEntry)
+
+	for _, log := range logs {
+		// Validate log data
+		if log.Data == nil {
+			return RuntimeUpdate{}, fmt.Errorf("log data is nil for id %d", log.Id)
+		}
+
+		// Accumulate idempotency entry if present
+		if log.IdempotencyKey != "" && log.Id != 0 {
+			idempotencyKeys[log.IdempotencyKey] = IdempotencyEntry{
+				Hash:  log.IdempotencyHash,
+				LogID: log.Id,
+			}
+		}
+
+		// Accumulate balance differences and update accounts based on log type
+		switch payload := log.Data.Payload.(type) {
+		case *ledgerpb.LogPayload_CreatedTransaction:
+			if payload.CreatedTransaction != nil && payload.CreatedTransaction.Transaction != nil {
+				// Accumulate balance differences
+				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
+				// Accumulate account and metadata updates for batch processing
+				accumulateAccountsFromTransaction(accountMetadataBatch, payload.CreatedTransaction)
+			}
+		case *ledgerpb.LogPayload_RevertedTransaction:
+			if payload.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction != nil {
+				// Reverse postings for balance update (subtract from destination, add to source)
+				reversedPostings := make([]*ledgerpb.Posting, len(payload.RevertedTransaction.RevertedTransaction.Postings))
+				for i, posting := range payload.RevertedTransaction.RevertedTransaction.Postings {
+					if posting != nil {
+						reversedPostings[i] = &ledgerpb.Posting{
+							Source:      posting.Destination,
+							Destination: posting.Source,
+							Asset:       posting.Asset,
+							Amount:      posting.Amount,
+						}
+					}
+				}
+				// Accumulate balance differences (reversed)
+				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
+			}
+		case *ledgerpb.LogPayload_SavedMetadata:
+			if payload.SavedMetadata != nil {
+				// Accumulate metadata updates for batch processing
+				accumulateMetadataFromSetMetadata(accountMetadataBatch, payload.SavedMetadata)
+			}
+		case *ledgerpb.LogPayload_DeletedMetadata:
+			if payload.DeletedMetadata != nil {
+				// Accumulate metadata deletions for batch processing
+				accumulateMetadataFromDeleteMetadata(accountMetadataDeletes, payload.DeletedMetadata)
+			}
+		}
+	}
+
+	return RuntimeUpdate{
+		BalanceDiffs:           balanceDiffs,
+		AccountMetadata:        accountMetadataBatch,
+		AccountMetadataDeletes: accountMetadataDeletes,
+		IdempotencyKeys:        idempotencyKeys,
+		LastProcessedLogID:     logs[len(logs)-1].Id,
+	}, nil
 }
 

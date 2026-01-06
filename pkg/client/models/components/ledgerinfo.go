@@ -11,12 +11,14 @@ import (
 )
 
 // Driver - Storage driver name.
-// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
+// and pebble (github.com/cockroachdb/pebble)
 type Driver string
 
 const (
 	DriverSqliteMattn  Driver = "sqlite-mattn"
 	DriverSqliteModern Driver = "sqlite-modern"
+	DriverPebble       Driver = "pebble"
 )
 
 func (e Driver) ToPointer() *Driver {
@@ -31,6 +33,8 @@ func (e *Driver) UnmarshalJSON(data []byte) error {
 	case "sqlite-mattn":
 		fallthrough
 	case "sqlite-modern":
+		fallthrough
+	case "pebble":
 		*e = Driver(v)
 		return nil
 	default:
@@ -43,12 +47,14 @@ type ConfigType string
 const (
 	ConfigTypeSQLiteMattnConfig  ConfigType = "SQLiteMattnConfig"
 	ConfigTypeSQLiteModernConfig ConfigType = "SQLiteModernConfig"
+	ConfigTypePebbleConfig       ConfigType = "PebbleConfig"
 )
 
 // Config - Driver-specific configuration
 type Config struct {
 	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
 	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
+	PebbleConfig       *PebbleConfig       `queryParam:"inline"`
 
 	Type ConfigType
 }
@@ -71,6 +77,15 @@ func CreateConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) Confi
 	}
 }
 
+func CreateConfigPebbleConfig(pebbleConfig PebbleConfig) Config {
+	typ := ConfigTypePebbleConfig
+
+	return Config{
+		PebbleConfig: &pebbleConfig,
+		Type:         typ,
+	}
+}
+
 func (u *Config) UnmarshalJSON(data []byte) error {
 
 	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
@@ -87,6 +102,13 @@ func (u *Config) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	var pebbleConfig PebbleConfig = PebbleConfig{}
+	if err := utils.UnmarshalJSON(data, &pebbleConfig, "", true, true); err == nil {
+		u.PebbleConfig = &pebbleConfig
+		u.Type = ConfigTypePebbleConfig
+		return nil
+	}
+
 	return fmt.Errorf("could not unmarshal `%s` into any supported union types for Config", string(data))
 }
 
@@ -99,6 +121,10 @@ func (u Config) MarshalJSON() ([]byte, error) {
 		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
 	}
 
+	if u.PebbleConfig != nil {
+		return utils.MarshalJSON(u.PebbleConfig, "", true)
+	}
+
 	return nil, errors.New("could not marshal union type Config: all fields are null")
 }
 
@@ -108,7 +134,8 @@ type LedgerInfo struct {
 	// Name of the ledger
 	Name string `json:"name"`
 	// Storage driver name.
-	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3) and sqlite-modern (modernc.org/sqlite)
+	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
+	// and pebble (github.com/cockroachdb/pebble)
 	//
 	Driver Driver `json:"driver"`
 	// Driver-specific configuration

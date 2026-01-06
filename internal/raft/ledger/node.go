@@ -82,6 +82,31 @@ var logStoreFactories = map[string]logStoreFactory{
 		// Combine both stores
 		return runtimeStore, logStore, nil
 	},
+	"pebble": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, ledgerName string, ledgerID uint64, dataDir string) (service.RuntimeStore, service.LogStore, error) {
+		// Pebble data directories are automatically generated based on ledger ID
+		// Config is ignored for Pebble driver
+		// Create data directories: dataDir/runtime and dataDir/logs
+		
+		// Ensure the directory exists
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			return nil, nil, fmt.Errorf("creating directory for pebble database: %w", err)
+		}
+
+		// Create log store (stores logs)
+		logStore, err := service.NewPebbleLogStore(ctx, dataDir, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating log store: %w", err)
+		}
+
+		// Create runtime store (stores balances and metadata)
+		runtimeStore, err := service.NewPebbleRuntimeStore(ctx, dataDir, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
+		}
+
+		// Combine both stores
+		return runtimeStore, logStore, nil
+	},
 }
 
 // CreateLogStore creates a LogStore based on the ledger driver and config
