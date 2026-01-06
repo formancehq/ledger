@@ -7,7 +7,7 @@ import (
 var ledgersCmd = &cobra.Command{
 	Use:          "ledgers",
 	Short:        "Manage ledgers",
-	Long:         "Commands for managing ledgers in buckets",
+	Long:         "Commands for managing ledgers",
 	SilenceUsage: true,
 }
 

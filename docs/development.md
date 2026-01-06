@@ -4,31 +4,34 @@
 
 This guide provides the information needed to contribute to the Ledger v3 POC project, understand the code Structure, and follow project conventions.
 
-## Structure du Projand
+## Project Structure
 
 ```
 ledger-v3-poc/
 ├── cmd/                    # Entry points of the application
 │   ├── server/            # Main server
-│   └── client/            # CLI client
-├── internal/              # Internal code (not exported)
+│   └── client/             # CLI client
+├── internal/               # Internal code (not exported)
 │   ├── application/       # Application module main
-│   ├── raft/              # Implementation Raft
-│   │   ├── system/        # groupe Raft System
-│   │   └── bucket/         # groups Raft de buckets
+│   ├── raft/              # Raft implementation
+│   │   ├── system/        # System Raft group
+│   │   └── ledger/        # Ledger Raft groups
 │   ├── service/           # Business services
-│   ├── HTTP/              # HTTP handlers
+│   ├── http/              # HTTP handlers
 │   ├── grpc/              # gRPC server
-│   └── transport/         # gRPC transport
-├── pkg/                   # Exported packages
-│   ├── client/            # client SDK généré
-│   └── testserver/       # Test helpers
+│   ├── transport/         # gRPC transport
+│   ├── ledgerpb/          # Ledger protobuf types
+│   └── otlplogs/          # OpenTelemetry logs
+├── pkg/                    # Exported packages
+│   ├── client/            # Generated client SDK
+│   └── testserver/        # Test helpers
 ├── proto/                 # Protocol Buffer definitions
+│   └── commands/          # FSM command definitions
 ├── tests/                 # Tests
-│   └── e2e/              # End-to-end tests
+│   └── e2e/               # End-to-end tests
 ├── deployments/           # Deployment configurations
-│   └── chart/            # Helm chart
-└── docs/                 # Technical documentation
+│   └── chart/             # Helm chart
+└── docs/                  # Technical documentation
 ```
 
 ## Conventions de Code
@@ -38,26 +41,31 @@ ledger-v3-poc/
 #### HTTP handlers
 
 Each HTTP handler has its own file:
-- `handlers_create_bucket.go`
-- `handlers_get_bucket.go`
+- `handlers_create_ledger.go`
+- `handlers_get_ledger.go`
+- `handlers_delete_ledger.go`
 - `handlers_create_transaction.go`
+- `handlers_save_account_metadata.go`
+- `handlers_bulk.go`
 - etc.
 
 #### CLI Commands
 
 Each CLI command has its own file:
-- `buckets_create.go`
-- `buckets_list.go`
 - `ledgers_create.go`
-- etc.
+- `ledgers_list.go`
+- `ledgers_get.go`
+- `ledgers_delete.go`
+- `ledgers_raft_state.go`
+- `cluster.go` (contains snapshot and cluster-state commands)
 
-### Nommage
+### Naming
 
-- **Packages** : minuscules, un seul mot
-- **Types** : PascalCase
+- **Packages**: lowercase, single word
+- **Types**: PascalCase
 - **Public functions**: PascalCase
-- **Fonctions privées** : camelCase
-- **Constantes** : PascalCase or UPPER_SNAKE_CASE
+- **Private functions**: camelCase
+- **Constants**: PascalCase or UPPER_SNAKE_CASE
 
 ### Documentation
 
@@ -65,22 +73,22 @@ Each CLI command has its own file:
 - Use `//` for line comments
 - Use `/* */` for block comments (rare)
 
-## Architecture du Code
+## Code Architecture
 
-### injection de Dépendances with fx
+### Dependency Injection with fx
 
-Le projand utilise Uber's `fx` for l'injection de dépendances :
+The project uses Uber's `fx` for dependency injection:
 
 ```go
 func Module() fx.Option {
     return fx.Options(
         fx.Provide(
-            // forrnir des dépendances
+            // Provide dependencies
             system.NewNode,
-            HTTPhandler.NewServer,
+            httphandler.NewServer,
         ),
-        fx.invoke(
-            // Invoke hooks of lifecycle
+        fx.Invoke(
+            // Invoke lifecycle hooks
             func(lc fx.Lifecycle, node *system.Node) {
                 lc.Append(fx.Hook{
                     OnStart: func(ctx context.Context) error {
@@ -133,7 +141,10 @@ func (s *Server) handleNewEndpoint(w http.ResponseWriter, r *http.Request) {
 2. **Register the route** in `internal/http/handler.go`
 
 ```go
-r.Get("/new-endpoint", server.handleNewEndpoint)
+r.With(contentTypeMiddleware).Group(func(r chi.Router) {
+    // ... existing routes ...
+    r.Get("/new-endpoint", server.handleNewEndpoint)
+})
 ```
 
 3. **Add to OpenAPI** in `openapi.yml`
@@ -157,11 +168,14 @@ just generate-sdk
 
 1. **Define the protobuf** in `proto/commands/*.proto`
 
+For system FSM commands, add to `proto/commands/system_commands.proto`:
 ```protobuf
 message NewCommand {
   string field = 1;
 }
 ```
+
+For ledger FSM commands, add to `proto/commands/ledger_commands.proto`.
 
 2. **Regenerate protobufs**
 
@@ -169,7 +183,7 @@ message NewCommand {
 just generate-proto
 ```
 
-3. **Create the function of command** in `internal/raft/*/command.go`
+3. **Create the command function** in `internal/raft/system/command.go` (or `internal/raft/ledger/command.go`)
 
 ```go
 func NewNewCommand(field string) (*raft.Command, error) {
@@ -179,7 +193,7 @@ func NewNewCommand(field string) (*raft.Command, error) {
         return nil, err
     }
     return &raft.Command{
-        ID:   generateID(),
+        ID:   generateRandomID(),
         Type: CommandTypeNew,
         Data: data,
         Date: time.Now(),
@@ -187,7 +201,7 @@ func NewNewCommand(field string) (*raft.Command, error) {
 }
 ```
 
-4. **Add the handler in the FSM** in `internal/raft/*/fsm.go`
+4. **Add the handler in the FSM** in `internal/raft/system/fsm.go` (or `internal/raft/ledger/fsm.go`)
 
 ```go
 func (fsm *FSM) handleNewCommand(cmd raft.Command) error {
@@ -224,11 +238,11 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []ra
 
 ### Test Structure
 
-- **Tests Unit** : in the même package with suffixe `_test.go`
-- **Integration tests** : in `*_integration_test.go`
-- **Tests e2e** : in `tests/e2e/` with tag `//go:build e2e`
+- **Unit tests**: In the same package with suffix `_test.go`
+- **Integration tests**: In `*_integration_test.go`
+- **E2E tests**: In `tests/e2e/` with tag `//go:build e2e`
 
-### Write a Test Unit
+### Write a Unit Test
 
 ```go
 func TestMyFunction(t *testing.T) {
@@ -239,11 +253,11 @@ func TestMyFunction(t *testing.T) {
     result := MyFunction(input)
     
     // Assert
-    Assert.Equal(t, "expected", result)
+    assert.Equal(t, "expected", result)
 }
 ```
 
-### Write a e2e Test
+### Write an E2E Test
 
 ```go
 //go:build e2e
@@ -254,22 +268,22 @@ func TestFeature(t *testing.T) {
     defer cleanupCluster(t, servers)
     
     // Test
-    result, err := servers[0].client.DoSomandhing()
+    result, err := servers[0].client.DoSomething()
     require.NoError(t, err)
-    Assert.NotNil(t, result)
+    assert.NotNil(t, result)
 }
 ```
 
 ### Test Helpers
 
-The package `pkg/testserver` forrnit des helpers for créer test servers :
+The package `pkg/testserver` provides helpers for creating test servers:
 
 ```go
-server := testservice.New(
+server := testserver.New(
     cmdserver.NewRootCommand,
-    testservice.withinstruments(
-        testserver.withNodeID(1),
-        testserver.withHTTPPort(9000),
+    testserver.WithInstruments(
+        testserver.WithNodeID(1),
+        testserver.WithHTTPPort(9000),
     ),
 )
 ```
@@ -278,13 +292,13 @@ server := testservice.New(
 
 ### Structure
 
-- **`proto/common.proto`** : Types communs (Posting, TransAction)
-- **`proto/system.proto`** : Service System (buckets)
-- **`proto/bucket.proto`** : Service bucket (ledgers, transActions)
-- **`proto/commands/`** : Commandes FSM
-  - `commands.proto` : Structure de base
-  - `system_commands.proto` : Commandes System
-  - `bucket_commands.proto` : Commandes bucket
+- **`proto/ledger.proto`**: Common types (Posting, Transaction, Log)
+- **`proto/system.proto`**: System service (ledgers)
+- **`proto/raft_transport.proto`**: Raft transport messages
+- **`proto/commands/`**: FSM commands
+  - `commands.proto`: Base command structure
+  - `system_commands.proto`: System FSM commands (create/delete ledger)
+  - `ledger_commands.proto`: Ledger FSM commands (insert log)
 
 ### Regenerate protobufs
 
@@ -292,8 +306,8 @@ server := testservice.New(
 just generate-proto
 ```
 
-thiste commande :
-1. Generates the code Go from the `.proto`
+This command:
+1. Generates Go code from the `.proto` files
 2. Places the files in the correct directories according to `go_package`
 
 ### Modify a Protobuf
@@ -307,80 +321,80 @@ thiste commande :
 
 ### Modify the API
 
-1. Modifier `openapi.yml`
+1. Modify `openapi.yml`
 2. Validate the YAML
-3. Regenerate the SDK : `just generate-sdk`
+3. Regenerate the SDK: `just generate-sdk`
 4. Update the tests if necessary
 
-### Randry configuration
+### Retry Configuration
 
-La Randry configuration is in `openapi.yml` :
+The retry configuration is in `openapi.yml`:
 
 ```yaml
-x-speakeasy-randries:
+x-speakeasy-retries:
   strategy: backoff
   backoff:
-    initialinterval: 500
-    maxinterval: 60000
+    initialInterval: 500
+    maxInterval: 60000
     maxElapsedTime: 3600000
     exponent: 1.5
   statusCodes:
     - 503
-  randryConnectionErrors: true
+  retryConnectionErrors: true
 ```
 
-## Principles de Design
+## Design Principles
 
-### FSM : No I/O
+### FSM: No I/O
 
-**CRITICAL** : FSMs must never perform I/O (File, Network, database).
+**CRITICAL**: FSMs must never perform I/O (File, Network, database).
 
-**forquoi** :
+**Why**:
 - FSMs must be deterministic
 - I/O introduces non-determinism
-- L'I/O peut échorer, making the FSM unreliable
+- I/O can fail, making the FSM unreliable
 
-**to faire** :
-- Stocker tortes les données in memory in the FSM
-- Perform I/O during creation of snapshot
-- Resttorer from the snapshots at startup
+**What to do**:
+- Store all data in memory in the FSM
+- Perform I/O during snapshot creation
+- Restore from snapshots at startup
 
-### Request forwarding
+### Request Forwarding
 
 When a node receives a write request but is not the leader:
 
 1. Check `IsLeader()`
 2. If not leader, get the leader: `GetLeader()`
 3. If no leader, return `ErrNoLeader`
-4. forwarder to the leader via gRPC
-5. return la réponse
+4. Forward to the leader via gRPC
+5. Return the response
 
 ### Error Handling
 
 - **Business errors**: Return appropriate HTTP codes (400, 404, 409)
-- **Erreurs System** : return 500 or 503 with détails
-- **No leader** : return 503 with `Randry-After`
+- **System errors**: Return 500 or 503 with details
+- **No leader**: Return 503 with `Retry-After`
 
-## ortils de Development
+## Development Tools
 
 ### Justfile
 
-Le projand utilise `just` for thes commandes common :
+The project uses `just` for common commands:
 
 ```bash
 just build          # Compile the application
 just test           # Run tests
-just Docker-up      # Start the cluster Docker
+just docker-up      # Start the Docker cluster
 just generate-proto # Regenerate protobufs
-just generate-sdk    # Regenerate le client SDK
+just generate-sdk   # Regenerate the client SDK
 ```
 
 ### Nix
 
-for un environnement reproducible :
+For a reproducible environment:
 
 ```bash
-nix develop         # Entrer in the environment
+nix develop         # Enter the environment
 nix build           # Build the application
 ```
 
@@ -388,7 +402,7 @@ nix build           # Build the application
 
 #### Logs
 
-Enable logs of debug :
+Enable debug logs:
 
 ```bash
 DEBUG=true go run ./cmd/server ...
@@ -396,11 +410,11 @@ DEBUG=true go run ./cmd/server ...
 
 #### Tracing
 
-OpenTelemandry is intégré. Configure the endpoint OTLP to see the traces.
+OpenTelemetry is integrated. Configure the OTLP endpoint to see traces.
 
 #### Profiling
 
-Use `pprof` for the Profiling :
+Use `pprof` for profiling:
 
 ```bash
 go tool pprof http://localhost:9000/debug/pprof/profile
@@ -410,28 +424,28 @@ go tool pprof http://localhost:9000/debug/pprof/profile
 
 - [ ] Code compiles without errors
 - [ ] Tests pass (Unit, integration, e2e)
-- [ ] Documentation Update if necessary
+- [ ] Documentation updated if necessary
 - [ ] OpenAPI updated if new API
 - [ ] Protobufs regenerated if modified
 - [ ] SDK regenerated if OpenAPI modified
-- [ ] No `time.Sleep` in thes tests (Use `Eventually`)
+- [ ] No `time.Sleep` in tests (Use `Eventually`)
 - [ ] Error handling appropriate
-- [ ] Structured logs with contexte
-- [ ] No I/O in thes FSM
+- [ ] Structured logs with context
+- [ ] No I/O in FSMs
 
 ## References
 
-- [AGENTS.md](../AGENTS.md) : Structure du projand and conventions
-- [Architecture](./architecture.md) : General Architecture
-- [Consensus Raft](./raft-consensus.md) : Raft details
-- [API](./api.md) : API documentation
+- [AGENTS.md](../AGENTS.md): Project structure and conventions
+- [Architecture](./architecture.md): General architecture
+- [Raft Consensus](./raft-consensus.md): Raft details
+- [API](./api.md): API documentation
 
 ## Next Steps
 
-for contribuer effectively :
+To contribute effectively:
 
-1. Read [AGENTS.md](../AGENTS.md) for thes conventions
-2. Explore the code existing to understand the patterns
-3. Write tests for your Feature
-4. Document changes important
+1. Read [AGENTS.md](../AGENTS.md) for conventions
+2. Explore existing code to understand patterns
+3. Write tests for your feature
+4. Document important changes
 

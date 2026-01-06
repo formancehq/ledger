@@ -32,31 +32,28 @@ The documentation should always reflect the current state of the codebase. Outda
 
 The client commands and HTTP handlers are organized into separate files to improve maintainability and code readability.
 
-### Bucket Commands
-
-Bucket management commands are separated into individual files:
-
-- **`buckets.go`** : Main file that defines the parent `buckets` command and initializes all sub-commands
-- **`buckets_create.go`** : `buckets create` command to create a new bucket
-- **`buckets_list.go`** : `buckets list` command to list all buckets
-- **`buckets_get.go`** : `buckets get` command to retrieve bucket information
-- **`buckets_raft_state.go`** : `buckets raft-state` command to retrieve bucket Raft cluster state
-- **`buckets_delete.go`** : `buckets delete` command to delete a bucket
-
 ### Ledger Commands
 
 Ledger management commands are separated into individual files:
 
 - **`ledgers.go`** : Main file that defines the parent `ledgers` command and initializes all sub-commands
-- **`ledgers_create.go`** : `ledgers create` command to create a new ledger in a bucket
-- **`ledgers_list.go`** : `ledgers list` command to list all ledgers in a bucket
+- **`ledgers_create.go`** : `ledgers create` command to create a new ledger
+- **`ledgers_list.go`** : `ledgers list` command to list all ledgers
 - **`ledgers_get.go`** : `ledgers get` command to retrieve a specific ledger
+- **`ledgers_raft_state.go`** : `ledgers raft-state` command to retrieve ledger Raft cluster state
+- **`ledgers_delete.go`** : `ledgers delete` command to delete a ledger
+
+### Cluster Commands
+
+Raft cluster-related commands are separated into individual files:
+
+- **`cluster.go`** : Raft cluster-related commands (`snapshot`, `cluster-state`)
 
 ### Shared Files
 
 - **`main.go`** : Main entry point, defines `rootCmd` and initializes all commands
 - **`common.go`** : Shared functions (SDK client creation, debug HTTP client)
-- **`cluster.go`** : Raft cluster-related commands (`snapshot`, `cluster-state`)
+- **`completions.go`** : Shell completion support
 
 ### Scripts Directory
 
@@ -101,15 +98,13 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 - **`handlers_cluster_state.go`** : `handleClusterState` handler for GET /cluster/state
 - **`handlers_create_ledger.go`** : `handleCreateLedger` handler for POST /{ledgerName}
 - **`handlers_get_ledger.go`** : `handleGetLedger` handler for GET /{ledgerName}
+- **`handlers_delete_ledger.go`** : `handleDeleteLedger` handler for DELETE /{ledgerName}
+- **`handlers_get_ledger_raft_state.go`** : `handleGetLedgerRaftState` handler for GET /{ledgerName}/raft/state
 - **`handlers_list_all_ledgers.go`** : `handleListAllLedgers` handler for GET /
 - **`handlers_create_transaction.go`** : `handleCreateTransaction` handler for POST /{ledgerName}/transactions
-- **`handlers_bulk.go`** : `handleBulk` handler for POST /{ledgerName}/bulk
-- **`handlers_list_buckets.go`** : `handleListBuckets` handler for GET /buckets
-- **`handlers_create_bucket.go`** : `handleCreateBucket` handler for POST /buckets/{bucketName}
-- **`handlers_get_bucket.go`** : `handleGetBucket` handler for GET /buckets/{bucketName}
-- **`handlers_get_bucket_raft_state.go`** : `handleGetBucketRaftState` handler for GET /buckets/{bucketName}/raft/state
-- **`handlers_delete_bucket.go`** : `handleDeleteBucket` handler for DELETE /buckets/{bucketName}
-- **`handlers_create_bucket_snapshot.go`** : `handleCreateBucketSnapshot` handler for POST /buckets/{bucketName}/snapshot
+- **`handlers_save_account_metadata.go`** : `handleSaveAccountMetadata` handler for POST /{ledgerName}/accounts/{address}/metadata
+- **`handlers_bulk.go`** : `handleBulk` handler for POST /{ledgerName}/bulk and POST /{ledgerName}/_bulk
+- **`bulking/`** : Directory containing bulk operation implementation files
 
 ## Conventions
 
@@ -144,65 +139,65 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 
 ## Example: Adding a New Command
 
-To add a new `buckets update` command:
+To add a new `ledgers update` command:
 
-1. Create `buckets_update.go` with:
-   - A struct to hold command options (e.g., `updateBucketOptions`)
-   - Definition of `bucketsUpdateCmd`
+1. Create `ledgers_update.go` with:
+   - A struct to hold command options (e.g., `updateLedgerOptions`)
+   - Definition of `ledgersUpdateCmd`
    - `init()` function to configure flags (bind flags to a local variable in `init()`, not a global)
-   - `runUpdateBucket()` function that extracts flag values and uses the options struct
+   - `runUpdateLedger()` function that extracts flag values and uses the options struct
 
    Example structure:
    ```go
-   type updateBucketOptions struct {
+   type updateLedgerOptions struct {
        name   string
        driver string
    }
 
-   var bucketsUpdateCmd = &cobra.Command{
+   var ledgersUpdateCmd = &cobra.Command{
        Use:   "update",
-       RunE:  runUpdateBucket,
+       RunE:  runUpdateLedger,
    }
 
    func init() {
-       opts := &updateBucketOptions{}
-       bucketsUpdateCmd.Flags().StringVar(&opts.name, "name", "", "Bucket name")
-       bucketsUpdateCmd.Flags().StringVar(&opts.driver, "driver", "", "Driver name")
+       opts := &updateLedgerOptions{}
+       ledgersUpdateCmd.Flags().StringVar(&opts.name, "name", "", "Ledger name")
+       ledgersUpdateCmd.Flags().StringVar(&opts.driver, "driver", "", "Driver name")
    }
 
-   func runUpdateBucket(cmd *cobra.Command, args []string) error {
-       opts := &updateBucketOptions{}
+   func runUpdateLedger(cmd *cobra.Command, args []string) error {
+       opts := &updateLedgerOptions{}
        opts.name, _ = cmd.Flags().GetString("name")
        opts.driver, _ = cmd.Flags().GetString("driver")
        // Use opts...
    }
    ```
 
-2. Modify `buckets.go` to add:
+2. Modify `ledgers.go` to add:
    ```go
-   bucketsCmd.AddCommand(bucketsUpdateCmd)
+   ledgersCmd.AddCommand(ledgersUpdateCmd)
    ```
 
 ## Example: Adding a New HTTP Handler
 
-To add a new `handleUpdateBucket` handler:
+To add a new `handleUpdateLedger` handler:
 
-1. Create `handlers_update_bucket.go` with:
-   - `handleUpdateBucket` function implementation
+1. Create `handlers_update_ledger.go` with:
+   - `handleUpdateLedger` function implementation
    - Any request/response structures specific to this handler (or add to `handlers_types.go` if shared)
    - All necessary imports for the handler
 
 2. Modify `handler.go` in the route registration section to register the route:
    ```go
-   r.Route("/buckets/{bucketName}", func(r chi.Router) {
+   r.With(contentTypeMiddleware).Group(func(r chi.Router) {
        // ... existing routes ...
-       r.Put("/", server.handleUpdateBucket) // PUT /buckets/{bucketName}
+       r.Put("/{ledgerName}", server.handleUpdateLedger) // PUT /{ledgerName}
    })
    ```
 
-**Important**: Follow the "one handler per file" convention. If a handler file contains multiple handlers, split them into separate files. For example, if `handlers_get_bucket.go` contains both `handleGetBucket` and `handleGetBucketRaftState`, create separate files:
-- `handlers_get_bucket.go` for `handleGetBucket`
-- `handlers_get_bucket_raft_state.go` for `handleGetBucketRaftState`
+**Important**: Follow the "one handler per file" convention. If a handler file contains multiple handlers, split them into separate files. For example, if `handlers_get_ledger.go` contains both `handleGetLedger` and `handleGetLedgerRaftState`, create separate files:
+- `handlers_get_ledger.go` for `handleGetLedger`
+- `handlers_get_ledger_raft_state.go` for `handleGetLedgerRaftState`
 
 This structure enables easy maintenance and clear separation of responsibilities.
 
@@ -213,22 +208,19 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 ### File Locations
 
 - **Protocol definitions**: 
-  - `proto/common.proto` - Common types shared across services (Posting, Transaction)
   - `proto/raft_transport.proto` - Raft transport messages
-  - `proto/system.proto` - System service messages (imports common.proto)
-  - `proto/ledger.proto` - Ledger service messages (imports common.proto)
+  - `proto/system.proto` - System service messages
+  - `proto/ledger.proto` - Ledger service messages (contains Posting, Transaction, Log types)
   - `proto/commands/` - Directory containing all FSM command definitions:
     - `proto/commands/commands.proto` - Base command structure for FSM commands
-    - `proto/commands/fsm_commands.proto` - Commands for the main FSM (create/delete bucket)
-    - `proto/commands/bucket_commands.proto` - Commands for bucket FSM (create ledger, insert log, imports common.proto)
+    - `proto/commands/system_commands.proto` - Commands for the system FSM (create/delete ledger)
+    - `proto/commands/ledger_commands.proto` - Commands for ledger FSM (insert log)
 - **Generated code**: 
-  - `internal/service/common.pb.go` - Common protobuf types (Posting, Transaction)
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
-  - `internal/service/system.pb.go` and `internal/service/system_grpc.pb.go` - System service
-  - `internal/service/ledger.pb.go` and `internal/service/ledger_grpc.pb.go` - Ledger service
-  - `internal/service/commands.pb.go` - Base command protobuf types
-  - `internal/raft/fsm/fsm_commands.pb.go` - FSM command protobuf types
-  - `internal/raft/bucketfsm/bucket_commands.pb.go` - Bucket FSM command protobuf types
+  - `internal/raft/commands.pb.go` - Base command protobuf types
+  - `internal/raft/system/system_commands.pb.go` - System FSM command protobuf types
+  - `internal/raft/ledger/ledger_commands.pb.go` - Ledger FSM command protobuf types
+  - `internal/ledgerpb/` - Directory containing ledger protobuf types (ledger.pb.go, ledger_grpc.pb.go, etc.)
 
 ### Regenerating Code
 
@@ -271,13 +263,13 @@ When modifying any `.proto` file:
 To add a new command model (e.g., for a new FSM command):
 
 1. **Add the message definition to the appropriate `.proto` file**:
-   - For main FSM commands: add to `proto/commands/fsm_commands.proto`
-   - For bucket FSM commands: add to `proto/commands/bucket_commands.proto`
+   - For system FSM commands: add to `proto/commands/system_commands.proto`
+   - For ledger FSM commands: add to `proto/commands/ledger_commands.proto`
    - For base command structure: modify `proto/commands/commands.proto` if needed
 
-2. **Example**: Adding a new `UpdateBucketCommand` to `proto/commands/fsm_commands.proto`:
+2. **Example**: Adding a new `UpdateLedgerCommand` to `proto/commands/system_commands.proto`:
    ```protobuf
-   message UpdateBucketCommand {
+   message UpdateLedgerCommand {
      string name = 1;
      google.protobuf.Struct config = 2;
    }
@@ -289,22 +281,22 @@ To add a new command model (e.g., for a new FSM command):
    ```
 
 4. **Update the Go code**:
-   - Create a `NewUpdateBucketCommand` function in `internal/raft/fsm/command.go` that:
+   - Create a `NewUpdateLedgerCommand` function in `internal/raft/system/command.go` that:
      - Converts Go types to protobuf types
      - Marshals the protobuf message
-     - Returns a `*service.Command`
-   - Update `UnmarshalCommandData` in `internal/raft/fsm/command.go` to handle the new command type
-   - Add a handler method in `internal/raft/fsm/fsm.go` (e.g., `HandleUpdateBucket`)
+     - Returns a `*raft.Command`
+   - Update `UnmarshalCommandData` in `internal/raft/system/command.go` to handle the new command type
+   - Add a handler method in `internal/raft/system/fsm.go` (e.g., `HandleUpdateLedger`)
 
 5. **Example implementation**:
    ```go
-   // In internal/raft/fsm/command.go
-   func NewUpdateBucketCommand(name string, config map[string]interface{}) (*service.Command, error) {
+   // In internal/raft/system/command.go
+   func NewUpdateLedgerCommand(name string, config map[string]interface{}) (*raft.Command, error) {
        configStruct, err := structpb.NewStruct(config)
        if err != nil {
            return nil, err
        }
-       cmdProto := &UpdateBucketCommand{
+       cmdProto := &UpdateLedgerCommand{
            Name: name,
            Config: configStruct,
        }
@@ -312,22 +304,22 @@ To add a new command model (e.g., for a new FSM command):
        if err != nil {
            return nil, err
        }
-       return &service.Command{
-           ID:   service.GenerateRandomID(),
-           Type: CommandTypeUpdateBucket,
+       return &raft.Command{
+           ID:   generateRandomID(),
+           Type: CommandTypeUpdateLedger,
            Data: data,
            Date: time.Now(),
        }, nil
    }
    
-   // Update UnmarshalCommandData to handle UpdateBucketCommand
+   // Update UnmarshalCommandData to handle UpdateLedgerCommand
    func UnmarshalCommandData(data []byte, v interface{}) error {
        switch cmd := v.(type) {
-       case *CreateBucketCommand:
+       case *CreateLedgerCommand:
            return proto.Unmarshal(data, cmd)
-       case *DeleteBucketCommand:
+       case *DeleteLedgerCommand:
            return proto.Unmarshal(data, cmd)
-       case *UpdateBucketCommand:
+       case *UpdateLedgerCommand:
            return proto.Unmarshal(data, cmd)
        default:
            return proto.Unmarshal(data, v.(proto.Message))
@@ -375,6 +367,8 @@ The serialization flow:
 
 **Example**: Instead of calling `logReader.GetLogWithIdempotencyKey()` in the FSM, maintain an `idempotencyKeys map[string]IdempotencyKeyInfo` in the FSM state and look up directly from this map.
 
+**Note**: The ledger FSM maintains idempotency keys in memory for fast lookups during transaction processing.
+
 ## Dependency Injection with fx
 
 The application uses Uber's `fx` (functional dependency injection) framework for managing dependencies and lifecycle, following the same patterns as `github.com/formancehq/ledger`.
@@ -383,9 +377,9 @@ The application uses Uber's `fx` (functional dependency injection) framework for
 
 The application is structured using fx modules:
 
-- **`internal/application/module.go`**: Main application module that provides all core dependencies (logger, Raft cluster, ledger service, HTTP server)
-- **`internal/telemetry/module.go`**: OpenTelemetry module that provides tracing infrastructure
-- **`internal/application/app.go`**: Application factory that creates the fx application with all modules
+- **`internal/application/module.go`**: Main application module that provides all core dependencies (logger, Raft cluster, ledger service, HTTP server, gRPC server)
+- **`internal/transport/module.go`**: Transport module that provides gRPC connection pool
+- **`internal/otlplogs/module.go`**: OpenTelemetry logs module for structured logging
 
 ### Module Pattern
 

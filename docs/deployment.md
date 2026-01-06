@@ -292,12 +292,12 @@ config:
     snapshotInterval: "30s"      # Minimum interval between snapshots
 ```
 
-#### Per-Bucket Configuration
+#### Per-Ledger Configuration
 
-Buckets can have their own `snapshotThreshold` :
+Ledgers can have their own `snapshotThreshold`:
 
 ```bash
-curl -X POST http://localhost:9000/buckets/my-bucket \
+curl -X POST http://localhost:9000/my-ledger \
   -H "Content-Type: application/json" \
   -d '{
     "driver": "sqlite",
@@ -356,9 +356,6 @@ resources:
 ```bash
 # System Snapshot
 curl -X POST http://localhost:9000/snapshot
-
-# Bucket snapshot
-curl -X POST http://localhost:9000/buckets/my-bucket/snapshot
 ```
 
 ### Vérification de l'Cluster State
@@ -379,9 +376,9 @@ kubectl cp ledger-v3-poc-0:/tmp/Backup.tar.gz ./Backup.tar.gz
 
 #### Log Backup of Transactions
 
-for SQLite :
+For SQLite:
 ```bash
-kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/buckets/my-bucket/logs.db ".Backup /tmp/Backup.db"
+kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/ledgers/my-ledger/logs.db ".Backup /tmp/Backup.db"
 ```
 
 
@@ -418,7 +415,7 @@ ingress:
 ### Key Metrics
 
 - Cluster state (leader, followers)
-- Number of buckets and ledgers
+- Number of ledgers
 - Number of transactions per second
 - Request latency
 - Storage usage

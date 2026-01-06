@@ -31,40 +31,39 @@ stateDiagram-v2
 
 ### System Raft Group
 
-The system Raft group is the main group that manages bucket creation and deletion. All nodes participate in this group.
+The system Raft group is the main group that manages ledger creation and deletion. All nodes participate in this group.
 
 **Managed Commands**:
-- `CreateBucketCommand`: Create a new bucket
-- `DeleteBucketCommand`: Delete an existing bucket
+- `CreateLedgerCommand`: Create a new ledger
+- `DeleteLedgerCommand`: Delete an existing ledger
 
 **FSM**: `internal/raft/system/fsm.go`
 
-### Bucket Raft Groups
+### Ledger Raft Groups
 
-Each bucket has its own independent Raft group. Bucket groups are created dynamically when a bucket is created.
+Each ledger has its own independent Raft group. Ledger groups are created dynamically when a ledger is created.
 
 **Managed Commands**:
-- `CreateLedgerCommand`: Create a ledger in the bucket
 - `InsertLogCommand`: Insert a log (transaction) into a ledger
 
-**FSM**: `internal/raft/bucket/fsm.go`
+**FSM**: `internal/raft/ledger/fsm.go`
 
 ### Node ID Mapping
 
 To avoid collisions between Raft groups, the system uses special Node ID encoding:
 
 - **System Raft Group**: Node IDs from 1 to 65535 (0x0001 to 0xFFFF)
-- **Bucket Raft Groups**: Node IDs encoded as `(bucketID << 16) | systemNodeID`
+- **Ledger Raft Groups**: Node IDs encoded as `(ledgerID << 16) | systemNodeID`
 
 ```go
-// Encodage d'un Node ID pour un bucket
-func nodeIDFromBucketAndRootNodeID(rootNodeID uint64, bucket BucketInfo) uint64 {
-    return (bucket.ID << 16) | rootNodeID
+// Encoding a Node ID for a ledger
+func nodeIDFromLedgerAndRootNodeID(rootNodeID uint64, ledger LedgerInfo) uint64 {
+    return (ledger.ID << 16) | rootNodeID
 }
 
-// Décodage d'un Node ID de bucket
-func NodeIDFromBucketNodeID(bucketNodeID uint64) uint64 {
-    return bucketNodeID & 0x0000FFFF
+// Decoding a Node ID from a ledger
+func NodeIDFromLedgerNodeID(ledgerNodeID uint64) uint64 {
+    return ledgerNodeID & 0x0000FFFF
 }
 ```
 
@@ -117,7 +116,7 @@ type Node[F FSM] struct {
 `internal/raft/system/multiplexed_transport.go` allows multiplexing multiple Raft groups on a single gRPC transport channel:
 
 - A main channel for the system Raft group
-- One channel per bucket for bucket Raft groups
+- One channel per ledger for ledger Raft groups
 - Automatic message routing to the correct group
 
 ```mermaid
@@ -128,23 +127,23 @@ graph LR
     
     subgraph "Multiplexer"
         Main[Main Channel<br/>System Raft]
-        Bucket1[Bucket 1 Channel]
-        Bucket2[Bucket 2 Channel]
+        Ledger1[Ledger 1 Channel]
+        Ledger2[Ledger 2 Channel]
     end
     
     subgraph "Raft Groups"
         System[System Raft]
-        B1[Bucket 1 Raft]
-        B2[Bucket 2 Raft]
+        L1[Ledger 1 Raft]
+        L2[Ledger 2 Raft]
     end
     
     GRPC --> Main
-    GRPC --> Bucket1
-    GRPC --> Bucket2
+    GRPC --> Ledger1
+    GRPC --> Ledger2
     
     Main --> System
-    Bucket1 --> B1
-    Bucket2 --> B2
+    Ledger1 --> L1
+    Ledger2 --> L2
 ```
 
 ## Raft Configuration
@@ -316,7 +315,7 @@ Reads can be served locally without going through Raft:
 
 To deepen your understanding:
 
-1. [Buckets and Ledgers](./buckets-ledgers.md) - How buckets use Raft
+1. [Ledgers](./buckets-ledgers.md) - How ledgers use Raft
 2. [Storage and Persistence](./storage.md) - Raft storage implementation
 3. [Data Flows](./data-flows.md) - Detailed Raft operation flows
 

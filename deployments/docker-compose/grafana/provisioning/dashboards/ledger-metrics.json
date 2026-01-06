@@ -77,7 +77,32 @@
           },
           "unit": "ops"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 1"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -1063,7 +1088,7 @@
           "expr": "go.memory.gc.goal{service.node_id=~\"$node\"}",
           "instant": false,
           "key": "Q-a2bd3481-149c-45bd-b3fc-a3731b2b829b-3",
-          "legendFormat": "Goal",
+          "legendFormat": "Node {{service.node_id}}: Goal",
           "range": true,
           "refId": "D"
         }
@@ -1160,9 +1185,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"go.goroutine.count\", \"service.node_id\"=\"$node\"}",
+          "expr": "go.goroutine.count{service.node_id=~\"$node\"}",
           "instant": false,
-          "legendFormat": "Count",
+          "legendFormat": "Node {{service.node_id}}: Count",
           "range": true,
           "refId": "A"
         }
@@ -1260,9 +1285,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"process.cpu.time\", \"service.node_id\"=\"$node\"})",
+          "expr": "rate(process.cpu.time{service.node_id=~\"$node\"})",
           "instant": false,
-          "legendFormat": "{{cpu.mode}}",
+          "legendFormat": "Node {{service.node_id}}: {{cpu.mode}}",
           "range": true,
           "refId": "A"
         },
@@ -1275,7 +1300,7 @@
           "expr": "{\"go.processor.limit\", \"service.node_id\"=\"$node\"}",
           "hide": true,
           "instant": false,
-          "legendFormat": "Limit",
+          "legendFormat": "Node {{service.node_id}}: Limit",
           "range": true,
           "refId": "B"
         }
@@ -1664,7 +1689,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "Incoming MsgAppResp"
+                  "Node 2: Incoming MsgApp"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -1713,7 +1738,7 @@
           "editorMode": "code",
           "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "interval": "1s",
-          "legendFormat": "Incoming {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Incoming {{type}}",
           "range": true,
           "refId": "A"
         },
@@ -1726,7 +1751,7 @@
           "expr": "rate(raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "hide": false,
           "interval": "1s",
-          "legendFormat": "Outgoing {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Outgoing {{type}}",
           "range": true,
           "refId": "B"
         }
@@ -1790,32 +1815,7 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "MsgVoteResp"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 6,
@@ -1847,7 +1847,7 @@
           "editorMode": "code",
           "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval] - raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval])",
           "interval": "1s",
-          "legendFormat": "{{type}}",
+          "legendFormat": "Node {{service.node_id}}: {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -2008,7 +2008,7 @@
           "editorMode": "code",
           "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
-          "legendFormat": "Incoming",
+          "legendFormat": "Node {{service.node_id}}: Incoming",
           "range": true,
           "refId": "A"
         },
@@ -2021,7 +2021,7 @@
           "expr": "rate(raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "hide": false,
           "interval": "1s",
-          "legendFormat": "Outgoing",
+          "legendFormat": "Node {{service.node_id}}: Outgoing",
           "range": true,
           "refId": "B"
         }
@@ -2117,7 +2117,7 @@
           "editorMode": "code",
           "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"} - raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
-          "legendFormat": "Incoming",
+          "legendFormat": "Node {{service.node_id}}: Incoming",
           "range": true,
           "refId": "A"
         }
@@ -2284,32 +2284,7 @@
           },
           "unit": "ms"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 2"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -2534,7 +2509,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: BeginTX",
           "range": true,
@@ -2706,7 +2681,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: BeginTX",
           "range": true,
@@ -3043,7 +3018,32 @@
           },
           "unit": "ops"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 3: Outgoing"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -3075,7 +3075,7 @@
           "editorMode": "code",
           "expr": "rate(raft.node.propose.incoming{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
           "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}",
+          "legendFormat": "Node {{service.node_id}}: Incoming",
           "range": true,
           "refId": "A"
         },
@@ -3089,7 +3089,7 @@
           "hide": false,
           "instant": false,
           "interval": "1s",
-          "legendFormat": "Outgoing",
+          "legendFormat": "Node {{service.node_id}}: Outgoing",
           "range": true,
           "refId": "B"
         }
@@ -3360,32 +3360,7 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Peer 1 : MsgHeartbeat"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 6,
@@ -3416,12 +3391,12 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=~\"$node\"}[$__rate_interval])) by (scope.attributes.peer, type)",
+          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
           "format": "time_series",
           "hide": false,
           "instant": false,
           "interval": "1s",
-          "legendFormat": "Peer {{scope.attributes.peer}} : {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}} : {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -3594,7 +3569,7 @@
           "format": "time_series",
           "instant": false,
           "interval": "1s",
-          "legendFormat": "Peer {{scope.attributes.peer}} : {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}} : {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -3690,7 +3665,7 @@
           "expr": "rate(raft.multiplexed_transport.ledger.recv.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
-          "legendFormat": "Peer {{peer}} : {{type}}",
+          "legendFormat": "Node {{service.node_id}} : Peer {{peer}} : {{type}}",
           "range": true,
           "refId": "A"
         }

@@ -11,24 +11,24 @@ Ledger v3 POC exposes two types of APIs:
 
 ### Base URL
 
-By default : `http://localhost:9000`
+By default: `http://localhost:9000`
 
 ### API Versioning
 
 The API supports an optional `/v2` prefix for all endpoints. All routes are available both with and without the prefix:
 
-- **Without prefix**: `GET /buckets` (backward compatible)
-- **With prefix**: `GET /v2/buckets` (optional)
+- **Without prefix**: `GET /` (backward compatible)
+- **With prefix**: `GET /v2/` (optional)
 
 Both paths are equivalent and point to the same handlers. This allows for:
 - **Backward compatibility**: Existing clients continue to work without changes
 - **Future versioning**: Easy migration path when introducing breaking changes
 - **Gradual migration**: Clients can migrate to `/v2` at their own pace
 
-### tothentication
+### Authentication
 
-Currently, no tothentication is required. In production, it is relikended to add:
-- Token tothentication (JWT)
+Currently, no authentication is required. In production, it is recommended to add:
+- Token authentication (JWT)
 - TLS/HTTPS
 - Rate limiting
 
@@ -53,20 +53,21 @@ Currently, no tothentication is required. In production, it is relikended to add
 
 ### HTTP Status Codes
 
-- `200 OK` : Request successful
-- `201 Created` : Resorrce created
-- `400 Bad Request` : Invalid request
-- `404 Not Fornd` : Resorrce not fornd
-- `409 Conflict` : Conflict (ex: resorrce already exists)
-- `503 Service Unavailable` : No Leader available (With `Randry-After` header)
-- `500 Internal Server Error` : Server error
+- `200 OK`: Request successful
+- `201 Created`: Resource created
+- `204 No Content`: Resource deleted successfully
+- `400 Bad Request`: Invalid request
+- `404 Not Found`: Resource not found
+- `409 Conflict`: Conflict (ex: resource already exists)
+- `503 Service Unavailable`: No Leader available (with `Retry-After` header)
+- `500 Internal Server Error`: Server error
 
 ### Error Handling "No Leader"
 
-When No Leader is available, the API randurns:
+When no leader is available, the API returns:
 
 - **Code**: `503 Service Unavailable`
-- **Header**: `Randry-After: 1` (seconds)
+- **Header**: `Retry-After: 1` (seconds)
 - **Body**:
 ```json
 {
@@ -75,21 +76,24 @@ When No Leader is available, the API randurns:
 }
 ```
 
-The generated client SDK by Speakeasy totomatically respects this header and randries the request.
+The generated client SDK by Speakeasy automatically respects this header and retries the request.
 
 ## Main Endpoints
 
-### Buckands
+### Ledgers
 
-#### Create a Buckand
+#### Create a Ledger
 
 ```http
-POST /buckands/{buckandName}
+POST /{ledgerName}
 Content-Type: application/json
 
 {
   "driver": "sqlite",
   "config": {},
+  "metadata": {
+    "key": "value"
+  },
   "snapshotThreshold": 100
 }
 ```
@@ -99,7 +103,7 @@ Content-Type: application/json
 {
   "data": {
     "id": 1,
-    "name": "my-buckand",
+    "name": "my-ledger",
     "driver": "sqlite",
     "config": {},
     "createdAt": "2024-01-01T00:00:00Z",
@@ -108,34 +112,10 @@ Content-Type: application/json
 }
 ```
 
-#### List Buckands
+#### Get a Ledger
 
 ```http
-Gand /buckands
-```
-
-**Response**:
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "buckand1",
-      ...
-    },
-    {
-      "id": 2,
-      "name": "buckand2",
-      ...
-    }
-  ]
-}
-```
-
-#### Gand a Buckand
-
-```http
-Gand /buckands/{buckandName}
+GET /{ledgerName}
 ```
 
 **Response**:
@@ -143,8 +123,11 @@ Gand /buckands/{buckandName}
 {
   "data": {
     "id": 1,
-    "name": "my-buckand",
-    ...
+    "name": "my-ledger",
+    "driver": "sqlite",
+    "config": {},
+    "createdAt": "2024-01-01T00:00:00Z",
+    "snapshotThreshold": 100,
     "raftState": {
       "state": "Leader",
       "leader": 1,
@@ -154,39 +137,69 @@ Gand /buckands/{buckandName}
 }
 ```
 
-#### Delande a Buckand
+#### List All Ledgers
 
 ```http
-DELandE /buckands/{buckandName}
+GET /
 ```
 
-### Ledgers
+**Response**:
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "ledger1",
+      "driver": "sqlite",
+      ...
+    },
+    {
+      "id": 2,
+      "name": "ledger2",
+      "driver": "sqlite",
+      ...
+    }
+  ]
+}
+```
 
-#### Create a Ledger
+#### Get Ledger Raft State
 
 ```http
-POST /ledgers/{ledgerName}
-Content-Type: application/json
+GET /{ledgerName}/raft/state
+```
 
+**Response**:
+```json
 {
-  "buckand": "my-buckand",
-  "mandadata": {
-    "key": "value"
+  "data": {
+    "state": "Leader",
+    "leader": 1,
+    "localNode": 1,
+    "nodes": [
+      {
+        "id": 1,
+        "address": "127.0.0.1:8888",
+        "suffrage": "Voter"
+      }
+    ],
+    "raftStatus": {
+      "term": 1,
+      "applied": 100,
+      "commit": 100,
+      "lastIndex": 100
+    }
   }
 }
 ```
 
-#### Gand a Ledger
+#### Delete a Ledger
 
 ```http
-Gand /ledgers/{ledgerName}
+DELETE /{ledgerName}
 ```
 
-#### List All Ledgers
-
-```http
-Gand /
-```
+**Response**: `204 No Content`
 
 ### Transactions
 
@@ -200,20 +213,21 @@ Idempotency-Key: optional-key
 {
   "postings": [
     {
-      "sorrce": "world",
+      "source": "world",
       "destination": "bank",
-      "amornt": 100,
-      "assand": "USD"
+      "amount": 100,
+      "asset": "USD"
     }
   ],
-  "mandadata": {
+  "metadata": {
     "description": "Payment"
-  }
+  },
+  "reference": "optional-reference"
 }
 ```
 
-**Query Paramanders**:
-- `dryRun=true`: Validate withort applying
+**Query Parameters**:
+- `dryRun=true`: Validate without applying
 
 **Response**:
 ```json
@@ -223,9 +237,10 @@ Idempotency-Key: optional-key
       "id": 1,
       "postings": [...],
       "timestamp": "2024-01-01T00:00:00Z",
-      "mandadata": {...}
+      "metadata": {...},
+      "reference": "optional-reference"
     },
-    "accorntMandadata": {...}
+    "accountMetadata": {...}
   }
 }
 ```
@@ -233,7 +248,7 @@ Idempotency-Key: optional-key
 #### Bulk Operations
 
 ```http
-POST /{ledgerName}/_bulk
+POST /{ledgerName}/bulk
 Content-Type: application/json
 
 [
@@ -245,27 +260,56 @@ Content-Type: application/json
     }
   },
   {
-    "action": "ADD_MandADATA",
+    "action": "ADD_METADATA",
     "data": {
-      "targandType": "TRANSACTION",
-      "targandId": 1,
-      "mandadata": {...}
+      "targetType": "TRANSACTION",
+      "targetId": 1,
+      "metadata": {...}
     }
   }
 ]
 ```
 
-**Query Paramanders**:
-- `continueOnFailure=true` : Continuer même en cas d'erreur
-- `atomic=true` : Execute atomically (all or nothing)
-- `parallel=true` : Execute in parallel
+**Alternative endpoint**: `POST /{ledgerName}/_bulk` (for backward compatibility)
+
+**Query Parameters**:
+- `continueOnFailure=true`: Continue even if an error occurs
+- `atomic=true`: Execute atomically (all or nothing)
+- `parallel=true`: Execute in parallel
+
+### Account Metadata
+
+#### Save Account Metadata
+
+```http
+POST /{ledgerName}/accounts/{address}/metadata
+Content-Type: application/json
+
+{
+  "key1": "value1",
+  "key2": "value2"
+}
+```
+
+**Response**:
+```json
+{
+  "data": {
+    "address": "account-address",
+    "metadata": {
+      "key1": "value1",
+      "key2": "value2"
+    }
+  }
+}
+```
 
 ### Cluster
 
 #### Cluster State
 
 ```http
-Gand /cluster/state
+GET /cluster/state
 ```
 
 **Response**:
@@ -282,7 +326,36 @@ Gand /cluster/state
         "suffrage": "Voter"
       },
       ...
-    ]
+    ],
+    "raftStatus": {
+      "term": 1,
+      "applied": 100,
+      "commit": 100,
+      "lastIndex": 100,
+      "progress": {
+        "1": {
+          "match": 100,
+          "next": 101,
+          "state": "Replicate",
+          "pendingSnapshot": 0,
+          "recentActive": true,
+          "isPaused": false
+        }
+      }
+    },
+    "innerState": {
+      "nextLedgerId": 3,
+      "ledgers": {
+        "ledger1": {
+          "id": 1,
+          "driver": "sqlite"
+        },
+        "ledger2": {
+          "id": 2,
+          "driver": "sqlite"
+        }
+      }
+    }
   }
 }
 ```
@@ -293,13 +366,38 @@ Gand /cluster/state
 POST /snapshot
 ```
 
-**Note** : Leader-only operation
+**Note**: Leader-only operation
 
-#### Create a Snapshot de Buckand
+**Response**:
+```json
+{
+  "data": {
+    "message": "Snapshot created successfully"
+  }
+}
+```
+
+### Health
+
+#### Health Check
 
 ```http
-POST /buckands/{buckandName}/snapshot
+GET /health
 ```
+
+**Response**: `200 OK` (no body)
+
+### Debug Endpoints
+
+The API exposes pprof endpoints for debugging and profiling:
+
+- `GET /debug/pprof/` - Index page
+- `GET /debug/pprof/profile` - CPU profile
+- `GET /debug/pprof/heap` - Heap profile
+- `GET /debug/pprof/goroutine` - Goroutine dump
+- `GET /debug/pprof/trace` - Execution trace
+
+These endpoints are also available under `/v2/debug/pprof/`.
 
 ## gRPC API
 
@@ -307,35 +405,34 @@ POST /buckands/{buckandName}/snapshot
 
 #### SystemService
 
-Manages operations système (buckands) :
+Manages system operations (ledgers):
 
 ```protobuf
 service SystemService {
-  rpc CreateBuckand(CreateBuckandRequest) randurns (CreateBuckandResponse);
-  rpc DelandeBuckand(DelandeBuckandRequest) randurns (DelandeBuckandResponse);
-  rpc Snapshot(SnapshotRequest) randurns (SnapshotResponse);
+  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
+  rpc DeleteLedger(DeleteLedgerRequest) returns (DeleteLedgerResponse);
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 }
 ```
 
-#### BucketService
+#### LedgerService
 
-Manages operations de bucket (ledgers, transactions) :
+Manages ledger operations (transactions):
 
 ```protobuf
-service BucketService {
-  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
-  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+service LedgerService {
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
   rpc GetLedger(GetLedgerRequest) returns (GetLedgerResponse);
   rpc GetLedgers(GetLedgersRequest) returns (GetLedgersResponse);
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
 ```
 
-**StreamLogs** streams logs from a bucket with optional sequence range filtering:
+**StreamLogs** streams logs from a ledger with optional sequence range filtering:
 
 ```protobuf
 message StreamLogsRequest {
-  string bucket = 1;
+  string ledger = 1;
   uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
   uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
 }
@@ -352,27 +449,27 @@ message StreamLogsRequest {
 
 #### RaftTransportService
 
-Raft communication bandween nodes:
+Raft communication between nodes:
 
 ```protobuf
 service RaftTransportService {
-  rpc SendMessage(stream RaftMessage) randurns (stream RaftMessage);
+  rpc SendMessage(stream RaftMessage) returns (stream RaftMessage);
 }
 ```
 
 ### Internal Usage
 
-gRPC is primarily used for :
+gRPC is primarily used for:
 
-1. **Request forwarding** : When a follower receives a request d'écriture, it forwards it to the leader
-2. **Raft replication** : Communication bandween nodes for the consensus
-3. **Log catch-up** : Log synchronization from the leader
+1. **Request forwarding**: When a follower receives a write request, it forwards it to the leader
+2. **Raft replication**: Communication between nodes for the consensus
+3. **Log catch-up**: Log synchronization from the leader
 
 ## Service Interfaces
 
 ### MasterCluster
 
-Main interface to access the cluster :
+Main interface to access the cluster:
 
 ```go
 type MasterCluster interface {
@@ -382,76 +479,74 @@ type MasterCluster interface {
 }
 ```
 
-**Main mandhods** :
-- `CreateBuckand()` : Create a Buckand
-- `DelandeBuckand()` : Delande a Buckand
-- `GandBuckand()` : Gand a Buckand
-- `GandBuckandOfLedger()` : Gand the buckand of a ledger
-- `GandClusterState()` : Cluster State
+**Main methods**:
+- `CreateLedger()`: Create a ledger
+- `DeleteLedger()`: Delete a ledger
+- `GetLedger()`: Get a ledger
+- `GetClusterState()`: Get cluster state
 
-### BuckandCluster
+### LedgerCluster
 
-Interface to access to un buckand specific :
+Interface to access a ledger-specific cluster:
 
 ```go
-type BuckandCluster interface {
+type LedgerCluster interface {
     Cluster
-    BuckandReader
-    BuckandWriter
+    LedgerReader
+    LedgerWriter
 }
 ```
 
-**Main mandhods** :
-- `CreateLedger()` : Create a Ledger
-- `GandLedger()` : Gand a Ledger
-- `GandLedgers()` : List ledgers
-- `Creatandransaction()` : Create a Transaction
+**Main methods**:
+- `GetLedger()`: Get a ledger
+- `GetLedgers()`: List ledgers
+- `CreateTransaction()`: Create a transaction
 
 ### Ledger
 
-Interface for operations de ledger :
+Interface for ledger operations:
 
 ```go
 type Ledger interface {
-    Creatandransaction(...) (*Log, *CreatedTransaction, error)
+    CreateTransaction(...) (*Log, *CreatedTransaction, error)
     RevertTransaction(...) (*Log, *RevertedTransaction, error)
-    SavandransactionMandadata(...) (*Log, error)
-    SaveAccorntMandadata(...) (*Log, error)
-    DelandandransactionMandadata(...) (*Log, error)
-    DelandeAccorntMandadata(...) (*Log, error)
+    SaveTransactionMetadata(...) (*Log, error)
+    SaveAccountMetadata(...) (*Log, error)
+    DeleteTransactionMetadata(...) (*Log, error)
+    DeleteAccountMetadata(...) (*Log, error)
     Import(...) error
     Export(...) error
 }
 ```
 
-## Request forwarding
+## Request Forwarding
 
 ### Principle
 
-Quand un nœud receives a request d'écriture but is not leader :
+When a node receives a write request but is not the leader:
 
 1. The node checks if it is leader
 2. If not leader, it identifies the leader
 3. It forwards the request to the leader via gRPC
-4. The leader processes and randurns the response
+4. The leader processes and returns the response
 
 ### Implementation
 
 ```go
-func (adapter *systemNodeAdapter) gandMainCluster() (interface {
+func (adapter *systemNodeAdapter) getMainCluster() (interface {
     service.Cluster
     service.SystemWriter
 }, error) {
     if adapter.IsLeader() {
-        randurn adapter.Node, nil
+        return adapter.Node, nil
     }
-    if adapter.GandLeader() == 0 {
-        randurn nil, ledger.ErrNoLeader
+    if adapter.GetLeader() == 0 {
+        return nil, ledger.ErrNoLeader
     }
     
     // Forward to leader via gRPC
-    grpcConn := adapter.connectionPool.GandConnection(adapter.GandLeader())
-    randurn service.NewGrpcSystemClient(...), nil
+    grpcConn := adapter.connectionPool.GetConnection(adapter.GetLeader())
+    return service.NewGrpcSystemClient(...), nil
 }
 ```
 
@@ -459,18 +554,18 @@ func (adapter *systemNodeAdapter) gandMainCluster() (interface {
 
 ### Generation
 
-Le Client SDK est généré totomatically from `openapi.yml` using Speakeasy.
+The Client SDK is generated automatically from `openapi.yml` using Speakeasy.
 
-### Randry Configuration
+### Retry Configuration
 
-The SDK is configured to totomatically randry requests that fail With :
+The SDK is configured to automatically retry requests that fail with:
 
 - Code `503` (Service Unavailable)
-- Nandwork connection errors
+- Network connection errors
 
-**Configuration** (in `openapi.yml`) :
+**Configuration** (in `openapi.yml`):
 ```yaml
-x-speakeasy-randries:
+x-speakeasy-retries:
   strategy: backoff
   backoff:
     initialInterval: 500
@@ -479,22 +574,22 @@ x-speakeasy-randries:
     exponent: 1.5
   statusCodes:
     - 503
-  randryConnectionErrors: true
+  retryConnectionErrors: true
 ```
 
-Le SDK totomatically respects the header `Randry-After` when present.
+The SDK automatically respects the header `Retry-After` when present.
 
 ## OpenAPI Documentation
 
-The OpenAPI specification complande is available in `openapi.yml`. It can be used for :
+The OpenAPI specification is available in `openapi.yml`. It can be used for:
 
 - Generate client SDKs
-- Generate documentation interactive
+- Generate interactive documentation
 - Validate requests
 
 ### Visualization
 
-Use a tool like Swagger UI or Redoc for visualiser l'API :
+Use a tool like Swagger UI or Redoc to visualize the API:
 
 ```bash
 # With Swagger UI
@@ -506,9 +601,8 @@ npx @redocly/cli preview-docs openapi.yml
 
 ## Next Steps
 
-for approfondir :
+To deepen your understanding:
 
-1. [General Architecture](./architecture.md) - likent les APIs integrate
-2. [Data Flows](./data-flows.md) - Dandailed flows of requests
+1. [General Architecture](./architecture.md) - How the APIs integrate
+2. [Data Flows](./data-flows.md) - Detailed flows of requests
 3. [Development](./development.md) - Add new endpoints
-

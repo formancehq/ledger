@@ -17,6 +17,11 @@ export const options = {
     http_req_duration: ['p(95)<500'],
     transaction_latency: ['p(95)<500'],
   },
+  stages: [
+    { duration: '10s', target: config.vus },
+    { duration: config.duration, target: config.vus },
+    { duration: '10s', target: 0 },
+  ]
 };
 
 function generateTransaction(iteration) {
