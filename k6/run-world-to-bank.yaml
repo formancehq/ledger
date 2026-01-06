@@ -15,6 +15,6 @@ spec:
     - name: LEDGER_URL
       value: http://ledger-v3-poc.default.svc.cluster.local:9000
     - name: VUS
-      value: "20"
+      value: "40"
     - name: DURATION
       value: "10m"

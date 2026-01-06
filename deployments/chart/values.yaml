@@ -87,6 +87,11 @@ config:
     logs:
       enabled: true
       level: "info"
+      exporter: "otlp"
+      endpoint: ""
+      port: ""
+      insecure: "false"
+      mode: "grpc"
       #format: "json"
     # Additional resource attributes
     attributes: ""

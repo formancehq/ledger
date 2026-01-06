@@ -107,9 +107,9 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.batch_size{service.node_id=\"$node\", scope.name!=\"raft.system\"}[$__rate_interval]))",
+          "expr": "sum(rate(raft.apply_entries.batch_size{service.node_id=~\"$node\", scope.name!=\"raft.system\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
-          "legendFormat": "Transactions/sec",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
@@ -122,6 +122,7 @@
         "type": "prometheus",
         "uid": "P4169E866C3094E38"
       },
+      "description": "RTT latency ",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -136,7 +137,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -150,7 +151,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "never",
+            "showPoints": "auto",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -168,10 +169,14 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           },
-          "unit": "ms"
+          "unit": "µs"
         },
         "overrides": []
       },
@@ -181,7 +186,7 @@
         "x": 12,
         "y": 0
       },
-      "id": 3,
+      "id": 49,
       "options": {
         "legend": {
           "calcs": [],
@@ -200,47 +205,17 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name=\"raft.node.system\"}[30s])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P50",
+          "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}} / Peer {{scope.attributes.peer}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P75",
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P95",
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P99",
-          "refId": "D"
         }
       ],
-      "title": "Raft Apply Entries Duration - Percentiles (P50/P75/P95/P99)",
+      "title": "Ping latency",
       "type": "timeseries"
     },
     {
@@ -329,8 +304,8 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate({\"http.server.request.duration_count\", \"service.node_id\"=\"$node\"}[$__rate_interval])) by (http.response.status_code)",
-          "legendFormat": "__auto",
+          "expr": "sum(rate({\"http.server.request.duration_count\", \"service.node_id\"=~\"$node\"}[$__rate_interval])) by (service.node_id, http.response.status_code)",
+          "legendFormat": "Node {{service.node_id}} : {{http.response.status_code}}",
           "range": true,
           "refId": "A"
         }
@@ -395,207 +370,42 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2 : Used",
+                  "Node 3 : Used"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
         "y": 8
-      },
-      "id": 52,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "refId": "A"
-        }
-      ],
-      "title": "New panel",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "description": "RTT latency ",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "µs"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "id": 49,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Ping latency",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
       },
       "id": 37,
       "options": {
@@ -619,9 +429,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
-          "instant": true,
-          "legendFormat": "Used",
+          "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}} : Used",
           "range": true,
           "refId": "A"
         },
@@ -631,10 +441,10 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
+          "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
           "hide": false,
           "instant": false,
-          "legendFormat": "Free",
+          "legendFormat": "Node {{service.node_id}} : Free",
           "range": true,
           "refId": "B"
         }
@@ -708,7 +518,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 24
+        "y": 16
       },
       "id": 36,
       "options": {
@@ -732,9 +542,11 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"system.memory.usage\", \"service.node_id\"=\"$node\"}",
-          "instant": true,
-          "legendFormat": "{{system.memory.state}}",
+          "exemplar": false,
+          "expr": "{\"system.memory.usage\", \"service.node_id\"=~\"$node\"}",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "Node {{ service.node_id}}: {{system.memory.state}}",
           "range": true,
           "refId": "A"
         }
@@ -808,7 +620,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 24
+        "y": 16
       },
       "id": 42,
       "options": {
@@ -832,9 +644,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"go.memory.allocated\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
-          "instant": true,
-          "legendFormat": "Allocated",
+          "expr": "rate(go.memory.allocated{service.node_id=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Allocated",
           "range": true,
           "refId": "A"
         }
@@ -908,7 +720,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 24
+        "y": 16
       },
       "id": 43,
       "options": {
@@ -932,10 +744,10 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"go.memory.allocations\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
-          "instant": true,
+          "expr": "rate(go.memory.allocations{service.node_id=~\"$node\"}[$__rate_interval])",
+          "instant": false,
           "key": "Q-d3e1e93b-3bc8-4d4b-9fec-a1bb3c2532e8-2",
-          "legendFormat": "Allocations",
+          "legendFormat": "Node {{service.node_id}}: Allocations",
           "range": true,
           "refId": "B"
         }
@@ -1001,40 +813,15 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "binBps"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Transmission"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 29
+        "y": 21
       },
       "id": 38,
       "options": {
@@ -1058,9 +845,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"system.network.io\", \"network.io.direction\"=\"receive\", \"service.node_id\"=\"$node\"})",
-          "instant": true,
-          "legendFormat": "Reception",
+          "expr": "rate(system.network.io{network.io.direction=\"receive\", \"service.node_id\"=~\"$node\"})",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Reception",
           "range": true,
           "refId": "A"
         },
@@ -1070,10 +857,10 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"system.network.io\", \"network.io.direction\"=\"transmit\", \"service.node_id\"=\"$node\"})",
+          "expr": "rate(system.network.io{network.io.direction=\"transmit\", \"service.node_id\"=~\"$node\"})",
           "instant": true,
           "key": "Q-0bb4b159-8753-40fa-8ff6-fc2a2f0f2b01-1",
-          "legendFormat": "Transmission",
+          "legendFormat": "Node {{service.node_id}}: Transmission",
           "range": true,
           "refId": "B"
         }
@@ -1147,7 +934,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 29
+        "y": 21
       },
       "id": 41,
       "options": {
@@ -1171,11 +958,11 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"go.memory.used\", \"service.node_id\"=\"$node\"}",
-          "instant": true,
+          "expr": "{\"go.memory.used\", \"service.node_id\"=~\"$node\"}",
+          "instant": false,
           "interval": "1s",
           "key": "Q-62fe488d-9ee1-43be-b29c-81c24b376f01-2",
-          "legendFormat": "{{go.memory.type}}",
+          "legendFormat": "Node {{service.node_id}}: {{go.memory.type}}",
           "range": true,
           "refId": "C"
         }
@@ -1249,7 +1036,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 29
+        "y": 21
       },
       "id": 44,
       "options": {
@@ -1273,10 +1060,10 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"go.memory.gc.goal\", \"service.node_id\"=\"$node\"}",
-          "instant": true,
+          "expr": "go.memory.gc.goal{service.node_id=~\"$node\"}",
+          "instant": false,
           "key": "Q-a2bd3481-149c-45bd-b3fc-a3731b2b829b-3",
-          "legendFormat": "__auto",
+          "legendFormat": "Goal",
           "range": true,
           "refId": "D"
         }
@@ -1343,263 +1130,13 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "system"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 34
-      },
-      "id": 39,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "rate({\"cpu.time\", \"service.node_id\"=\"$node\"})",
-          "instant": true,
-          "legendFormat": "{{cpu.mode}}",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "{\"go.processor.limit\", \"service.node_id\"=\"$node\"}",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "Limit",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Host CPU time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "clocks"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 8,
-        "y": 34
-      },
-      "id": 45,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "rate({\"process.cpu.time\", \"service.node_id\"=\"$node\"})",
-          "instant": true,
-          "legendFormat": "{{cpu.mode}}",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "{\"go.processor.limit\", \"service.node_id\"=\"$node\"}",
-          "hide": true,
-          "instant": false,
-          "legendFormat": "Limit",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Process CPU time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 34
+        "y": 26
       },
       "id": 40,
       "options": {
@@ -1624,8 +1161,8 @@
           },
           "editorMode": "code",
           "expr": "{\"go.goroutine.count\", \"service.node_id\"=\"$node\"}",
-          "instant": true,
-          "legendFormat": "__auto",
+          "instant": false,
+          "legendFormat": "Count",
           "range": true,
           "refId": "A"
         }
@@ -1634,17 +1171,434 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 26
+      },
+      "id": 45,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "rate({\"process.cpu.time\", \"service.node_id\"=\"$node\"})",
+          "instant": false,
+          "legendFormat": "{{cpu.mode}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "{\"go.processor.limit\", \"service.node_id\"=\"$node\"}",
+          "hide": true,
+          "instant": false,
+          "legendFormat": "Limit",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Process CPU time",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 31
       },
       "id": 18,
       "panels": [],
       "title": "Raft Root",
       "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 32
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "builder",
+          "expr": "{\"raft.node.lead\", \"scope.name\"=\"raft.node.system\"}",
+          "instant": false,
+          "key": "Q-486c9a03-8629-45fa-b923-fbc9a86c0d81-0",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "builder",
+          "expr": "",
+          "instant": false,
+          "key": "Q-ee216182-96c8-4e5d-998d-631dfe5f629c-1",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Leadership status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 32
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.node.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P50",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P75",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P95",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P99",
+          "refId": "D"
+        }
+      ],
+      "title": "Apply entries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 32
+      },
+      "id": 22,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "raft.transport.recv.full{service.node_id=~\"$node\", scope.name=\"raft.transport\"}",
+          "interval": "1s",
+          "legendFormat": "{{scope.name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Transport queue full count",
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -1702,13 +1656,38 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Incoming MsgAppResp"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 40
+        "y": 37
       },
       "id": 11,
       "options": {
@@ -1732,7 +1711,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.recv.incoming{service.node_id=\"$node\", scope.name=\"raft.transport\"}[30s])",
+          "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "interval": "1s",
           "legendFormat": "Incoming {{type}}",
           "range": true,
@@ -1744,7 +1723,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.recv.outgoing{service.node_id=\"$node\", scope.name=\"raft.transport\"}[30s])",
+          "expr": "rate(raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Outgoing {{type}}",
@@ -1819,7 +1798,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "MsgApp"
+                  "MsgVoteResp"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -1842,7 +1821,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 40
+        "y": 37
       },
       "id": 32,
       "options": {
@@ -1866,7 +1845,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.recv.incoming{service.node_id=\"$node\", scope.name=\"raft.transport\"}[$__rate_interval] - raft.transport.recv.outgoing{service.node_id=\"$node\", scope.name=\"raft.transport\"}[$__rate_interval])",
+          "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval] - raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval])",
           "interval": "1s",
           "legendFormat": "{{type}}",
           "range": true,
@@ -1905,9 +1884,9 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 40
+        "y": 37
       },
-      "id": 22,
+      "id": 25,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -1931,14 +1910,14 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "raft.transport.recv.full{service.node_id=\"$node\", scope.name=\"raft.transport\"}",
+          "expr": "raft.transport.unreachable.full{service.node_id=~\"$node\", scope.name=\"raft.transport\"}",
           "interval": "1s",
           "legendFormat": "{{scope.name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Transport queue full count",
+      "title": "Transport Unreachable Channel - Full Messages (by Scope)",
       "type": "gauge"
     },
     {
@@ -2003,7 +1982,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 46
+        "y": 43
       },
       "id": 13,
       "options": {
@@ -2027,7 +2006,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=\"$node\", scope.name=\"raft.transport\"})",
+          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
           "legendFormat": "Incoming",
           "range": true,
@@ -2039,7 +2018,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.unreachable.outgoing{service.node_id=\"$node\", scope.name=\"raft.transport\"})",
+          "expr": "rate(raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Outgoing",
@@ -2112,7 +2091,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 46
+        "y": 43
       },
       "id": 33,
       "options": {
@@ -2136,7 +2115,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=\"$node\", scope.name=\"raft.transport\"} - raft.transport.unreachable.outgoing{service.node_id=\"$node\", scope.name=\"raft.transport\"})",
+          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"} - raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
           "legendFormat": "Incoming",
           "range": true,
@@ -2154,8 +2133,41 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "red",
-            "mode": "fixed"
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
@@ -2164,10 +2176,13 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
-          },
-          "unit": "short"
+          }
         },
         "overrides": []
       },
@@ -2175,41 +2190,30 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 46
+        "y": 43
       },
-      "id": 25,
+      "id": 54,
       "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "raft.transport.unreachable.full{service.node_id=\"$node\", scope.name=\"raft.transport\"}",
-          "interval": "1s",
-          "legendFormat": "{{scope.name}}",
-          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Transport Unreachable Channel - Full Messages (by Scope)",
-      "type": "gauge"
+      "title": "New panel",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -2217,7 +2221,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 48
       },
       "id": 19,
       "panels": [],
@@ -2288,7 +2292,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "P99"
+                  "Node 2"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -2311,7 +2315,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 49
       },
       "id": 20,
       "options": {
@@ -2335,50 +2339,14 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (le))",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
-          "legendFormat": "P50",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name!=\"raft.system\"}[$__rate_interval])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P75",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name!=\"raft.system\"}[$__rate_interval])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P95",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=\"$node\", scope.name!=\"raft.system\"}[$__rate_interval])) by (le))",
-          "interval": "1s",
-          "legendFormat": "P99",
-          "range": true,
-          "refId": "D"
         }
       ],
-      "title": "Raft Apply Entries Duration - Percentiles (P50/P75/P95/P99)",
+      "title": "Applying entries",
       "type": "timeseries"
     },
     {
@@ -2446,7 +2414,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 49
       },
       "id": 21,
       "options": {
@@ -2466,9 +2434,9 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.apply_entries.batch_size_distribution_count\", \"service.node_id\"=\"$node\", \"scope.name\"!=\"raft.node.system\"}[$__rate_interval])",
+          "expr": "rate({\"raft.apply_entries.batch_size_distribution_count\", service.node_id=~\"$node\", \"scope.name\"!=\"raft.node.system\"}[$__rate_interval])",
           "interval": "1s",
-          "legendFormat": "__auto",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
@@ -2539,12 +2507,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 60
+        "y": 57
       },
-      "id": 47,
+      "id": 34,
       "options": {
         "legend": {
           "calcs": [],
@@ -2566,14 +2534,86 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate({\"raft.syncer.create_snapshot.duration_sum\", \"service.node_id\"=\"$node\", \"scope.name\"=\"raft.node.ledger\"}[$__rate_interval])",
-          "instant": true,
-          "legendFormat": "__auto",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: BeginTX",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Conn Exec",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Prepare",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Query",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Rows",
+          "range": true,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Statement Exec",
+          "range": true,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: CommitTX",
+          "range": true,
+          "refId": "H"
         }
       ],
-      "title": "Snapshot creation",
+      "title": "Runtime store SQL latencies",
       "type": "timeseries"
     },
     {
@@ -2639,10 +2679,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 60
+        "y": 57
       },
       "id": 50,
       "options": {
@@ -2666,9 +2706,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "BeginTX",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: BeginTX",
           "range": true,
           "refId": "A"
         },
@@ -2678,9 +2718,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Conn Exec",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Conn Exec",
           "range": true,
           "refId": "C"
         },
@@ -2690,9 +2730,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Prepare",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Prepare",
           "range": true,
           "refId": "D"
         },
@@ -2702,9 +2742,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Query",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Query",
           "range": true,
           "refId": "E"
         },
@@ -2714,9 +2754,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Rows",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Rows",
           "range": true,
           "refId": "F"
         },
@@ -2726,9 +2766,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Statement Exec",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Statement Exec",
           "range": true,
           "refId": "G"
         },
@@ -2738,9 +2778,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "CommitTX",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: CommitTX",
           "range": true,
           "refId": "H"
         }
@@ -2811,12 +2851,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 0,
-        "y": 67
+        "y": 65
       },
-      "id": 34,
+      "id": 47,
       "options": {
         "legend": {
           "calcs": [],
@@ -2838,86 +2878,14 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "BeginTX",
+          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\", \"scope.name\"=\"raft.node.ledger\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Conn Exec",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Prepare",
-          "range": true,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Query",
-          "range": true,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Rows",
-          "range": true,
-          "refId": "F"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "Statement Exec",
-          "range": true,
-          "refId": "G"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": true,
-          "legendFormat": "CommitTX",
-          "range": true,
-          "refId": "H"
         }
       ],
-      "title": "Runtime store SQL latencies",
+      "title": "Log flush",
       "type": "timeseries"
     },
     {
@@ -2982,10 +2950,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 12,
-        "y": 67
+        "y": 65
       },
       "id": 46,
       "options": {
@@ -3009,9 +2977,9 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"raft.transport.sending.pending_response\", \"service.node_id\"=\"$node\"}",
-          "instant": true,
-          "legendFormat": "Peer : {{scope.attributes.peer}}",
+          "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
           "range": true,
           "refId": "A"
         }
@@ -3081,7 +3049,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 75
+        "y": 72
       },
       "id": 2,
       "options": {
@@ -3105,9 +3073,9 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.propose.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])",
+          "expr": "rate(raft.node.propose.incoming{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
           "interval": "1s",
-          "legendFormat": "Incoming",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         },
@@ -3117,7 +3085,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.propose.outgoing{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])",
+          "expr": "rate(raft.node.propose.outgoing{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])",
           "hide": false,
           "instant": false,
           "interval": "1s",
@@ -3191,7 +3159,7 @@
         "h": 6,
         "w": 9,
         "x": 8,
-        "y": 75
+        "y": 72
       },
       "id": 30,
       "options": {
@@ -3215,9 +3183,9 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.propose.incoming{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval] - raft.node.propose.outgoing{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])",
+          "expr": "rate(raft.node.propose.incoming{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval] - raft.node.propose.outgoing{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
           "interval": "1s",
-          "legendFormat": "Incoming",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         },
@@ -3301,7 +3269,7 @@
         "h": 6,
         "w": 7,
         "x": 17,
-        "y": 75
+        "y": 72
       },
       "id": 7,
       "options": {
@@ -3325,9 +3293,9 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "raft.node.propose.full{service.node_id=\"$node\", scope.name!=\"raft.node.system\"}",
+          "expr": "raft.node.propose.full{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}",
           "interval": "1s",
-          "legendFormat": "{{scope.name}}",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
@@ -3400,7 +3368,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "Peer 2 : MsgHeartbeat"
+                  "Peer 1 : MsgHeartbeat"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -3423,7 +3391,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 81
+        "y": 78
       },
       "id": 15,
       "options": {
@@ -3448,7 +3416,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=\"$node\"}[$__rate_interval])) by (scope.attributes.peer, type)",
+          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=~\"$node\"}[$__rate_interval])) by (scope.attributes.peer, type)",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -3489,7 +3457,7 @@
         "h": 13,
         "w": 12,
         "x": 12,
-        "y": 81
+        "y": 78
       },
       "id": 24,
       "options": {
@@ -3522,7 +3490,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum({\"raft.transport.peer.sending.full\", \"service.node_id\"=\"$node\"}[$__rate_interval]) by (peer, type)",
+          "expr": "sum(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval]) by (peer, type)",
           "format": "time_series",
           "instant": false,
           "interval": "1s",
@@ -3591,38 +3559,13 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Peer 2 : MsgHeartbeat"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 87
+        "y": 84
       },
       "id": 31,
       "options": {
@@ -3647,7 +3590,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "{\"raft.transport.peer.sending.inflight\", \"service.node_id\"=\"$node\"}",
+          "expr": "raft.transport.peer.sending.inflight{service.node_id=~\"$node\"}",
           "format": "time_series",
           "instant": false,
           "interval": "1s",
@@ -3718,38 +3661,13 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Peer 1 : MsgHeartbeatResp"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 94
+        "y": 91
       },
       "id": 26,
       "options": {
@@ -3769,7 +3687,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.multiplexed_transport.ledger.recv.incoming\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.multiplexed_transport.ledger.recv.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
           "legendFormat": "Peer {{peer}} : {{type}}",
@@ -3812,7 +3730,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 94
+        "y": 91
       },
       "id": 27,
       "options": {
@@ -3835,7 +3753,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "{\"raft.multiplexed_transport.ledger.recv.full\", \"service.node_id\"=\"$node\"}[$__rate_interval]",
+          "expr": "raft.multiplexed_transport.ledger.recv.full{service.node_id=~\"$node\"}[$__rate_interval]",
           "format": "time_series",
           "instant": false,
           "legendFormat": "Peer {{peer}} : {{type}}",
@@ -3911,7 +3829,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 102
+        "y": 99
       },
       "id": 28,
       "options": {
@@ -3931,7 +3849,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.multiplexed_transport.ledger.unreachable.incoming\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.multiplexed_transport.ledger.unreachable.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
           "legendFormat": "Peer {{peer}}",
@@ -4007,7 +3925,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 102
+        "y": 99
       },
       "id": 29,
       "options": {
@@ -4027,7 +3945,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.multiplexed_transport.ledger.unreachable.full\", \"service.node_id\"=\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.multiplexed_transport.ledger.unreachable.full{service.node_id=~\"$node\"}[$__rate_interval])",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -4047,13 +3965,14 @@
   "templating": {
     "list": [
       {
+        "allValue": ".*",
         "datasource": {
           "type": "prometheus",
           "uid": "VictoriaMetrics"
         },
         "definition": "label_values({\"raft.transport.recv.inflight\"},service.node_id)",
         "description": "Select a node to filter metrics",
-        "includeAll": false,
+        "includeAll": true,
         "label": "Node",
         "name": "node",
         "options": [],
@@ -4077,5 +3996,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 4
+  "version": 2
 }

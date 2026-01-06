@@ -18,6 +18,11 @@ datasources:
         access: proxy
         url: http://tempo.monitoring.svc.cluster.local:3200
         editable: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.monitoring.svc.cluster.local:3100
+        editable: true
 
 # Optionnel: un minimum de ressources
 resources:
@@ -34,14 +39,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: zerossl
   hosts:
-    - grafana.ledger-exp.gfyrag.v2.formance.dev
+    - grafana.ledger-exp.v2.formance.dev
   path: /
   pathType: Prefix
 
   tls:
   - secretName: grafana-tls
     hosts:
-      - grafana.ledger-exp.gfyrag.v2.formance.dev
+      - grafana.ledger-exp.v2.formance.dev
 
 sidecar:
   dashboards:

@@ -27,6 +27,14 @@ config:
       tls:
         insecure: true
 
+    otlphttp/logs:
+      endpoint: "http://loki.monitoring.svc.cluster.local:3100/otlp"
+      tls:
+        insecure: true
+
+    debug:
+      verbosity: detailed
+
   service:
     pipelines:
       metrics:
@@ -37,6 +45,12 @@ config:
         receivers: [otlp]
         processors: [batch]
         exporters: [otlp/tempo]
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters:
+        - otlphttp/logs
+        - debug
 
 ports:
   otlp:

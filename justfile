@@ -144,7 +144,7 @@ k8s-install-k6-operator:
     helm repo add grafana https://grafana.github.io/helm-charts
     helm repo update
     helm upgrade --install k6-operator grafana/k6-operator
-    kubectl delete configmap k6-scripts
+    kubectl delete configmap k6-scripts || true
     kubectl create configmap k6-scripts --from-file ./k6/scripts
 
 k8s-install-tempo:
@@ -152,4 +152,7 @@ k8s-install-tempo:
     helm repo update
     helm upgrade --install tempo grafana/tempo -n monitoring -f ./deployments/k8s/tempo/values.yaml
 
-
+k8s-install-loki:
+    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo update
+    helm upgrade --install loki grafana/loki -n monitoring -f ./deployments/k8s/loki/values.yaml

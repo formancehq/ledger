@@ -27,8 +27,15 @@ config:
       insecure: "true"
       mode: "grpc"
       batch: "true"
-      exporterPushInterval: "1s"
-      runtimeMinimumReadMemStatsInterval: "1s"
+      exporterPushInterval: "5s"
+      runtimeMinimumReadMemStatsInterval: "5s"
+    logs:
+      enabled: true
+      exporter: "otlp"
+      endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
+      port: "4317"
+      insecure: "true"
+      mode: "grpc"
 
 ingress:
   enabled: true
@@ -38,7 +45,7 @@ ingress:
     # kubernetes.io/tls-acme: "true"
     # cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: ledger-exp.gfyrag.v2.formance.dev
+    - host: ledger-exp.v2.formance.dev
       paths:
         - path: /
           pathType: Prefix

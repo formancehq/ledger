@@ -14,7 +14,6 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -27,22 +26,27 @@ type NodeTransport interface {
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node[State any, F FSM[State]] struct {
-	rawNode                        *raft.RawNode
-	logger                         logging.Logger
+	rawNode        *raft.RawNode
+	logger         logging.Logger
+	mu             sync.RWMutex
+	syncer         *syncer[State, F]
+	storage        *WALStorage
+	transport      NodeTransport
+	config         NodeConfig
+	stopped        chan struct{}
+	ctx            context.Context
+	cancel         func()
+	proposeCh      Queue[[]byte]
+	confState      *raftpb.ConfState
+	futures        map[uint64]*applyFuture // Map of command ID -> future
+	lastSoftState  *raft.SoftState
+	isSnapshotting *atomic.Bool
+
 	meter                          metric.Meter
 	applyEntriesHistogram          metric.Float64Histogram
 	applyEntriesBatchSizeCounter   metric.Int64Counter
 	applyEntriesBatchSizeHistogram metric.Int64Histogram
-	mu                             sync.RWMutex
-	futures                        map[uint64]*applyFuture // Map of command ID -> future
-	syncer                         *syncer[State, F]
-	storage                        *WALStorage
-	transport                      NodeTransport
-	config                         NodeConfig
-	stopped                        chan struct{}
-	ctx                            context.Context
-	cancel                         func()
-	proposeCh                      Queue[[]byte]
+	leadCounter                    metric.Int64UpDownCounter
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -91,50 +95,51 @@ func NewNode[State any, F FSM[State]](
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 		),
+		isSnapshotting: &atomic.Bool{},
 	}
 	go node.syncer.run()
 
-	// Create histogram metric for ApplyEntries duration
-	// Use explicit bucket boundaries for better granularity on small values
-	// Buckets: fine-grained for small values (< 100ms), coarser for larger values, max 1s
-	if meter != nil {
-		histogram, err := meter.Float64Histogram("raft.apply_entries.duration",
-			metric.WithDescription("Time spent applying entries to FSM"),
-			metric.WithUnit("ms"),
-			metric.WithExplicitBucketBoundaries(
-				// Fine-grained buckets for small values (0-100ms)
-				0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-				12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
-				60, 70, 80, 90, 100,
-				// Medium buckets (100-500ms)
-				125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
-			),
-		)
-		if err == nil {
-			node.applyEntriesHistogram = histogram
-		}
+	node.applyEntriesHistogram, err = meter.Float64Histogram("raft.apply_entries.duration",
+		metric.WithDescription("Time spent applying entries to FSM"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(
+			// Fine-grained buckets for small values (0-100ms)
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+			12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
+			60, 70, 80, 90, 100,
+			// Medium buckets (100-500ms)
+			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
 
-		// Create inflightCounter metric for ApplyEntries batch size
-		counter, err := meter.Int64Counter("raft.apply_entries.batch_size",
-			metric.WithDescription("Size of batches passed to ApplyEntries"),
-			metric.WithUnit("1"),
-		)
-		if err == nil {
-			node.applyEntriesBatchSizeCounter = counter
-		}
+	// Create inflightCounter metric for ApplyEntries batch size
+	node.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
+		metric.WithDescription("Size of batches passed to ApplyEntries"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
 
-		// Create histogram metric for ApplyEntries batch size distribution
-		// Buckets: 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000+
-		batchSizeHistogram, err := meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
-			metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
-			metric.WithUnit("1"),
-			metric.WithExplicitBucketBoundaries(
-				1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000,
-			),
-		)
-		if err == nil {
-			node.applyEntriesBatchSizeHistogram = batchSizeHistogram
-		}
+	// Create histogram metric for ApplyEntries batch size distribution
+	// Buckets: 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000+
+	node.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
+		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.leadCounter, err = meter.Int64UpDownCounter("raft.node.lead")
+	if err != nil {
+		panic(err)
 	}
 
 	return node, nil
@@ -230,18 +235,11 @@ func (node *Node[State, F]) readyLoop() {
 		_ = node.storage.Close()
 	}()
 
-	var (
-		leader         uint64
-		confState      *raftpb.ConfState
-		isSnapshotting atomic.Bool
-		err            error
-	)
-
 	_, initialConfState, err := node.storage.InitialState()
 	if err != nil {
 		panic(err)
 	}
-	confState = &initialConfState
+	node.confState = &initialConfState
 
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
 
@@ -271,7 +269,7 @@ func (node *Node[State, F]) readyLoop() {
 			}
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
-				leader, confState, err = node.processReady(node.ctx, leader, confState, &isSnapshotting)
+				err := node.processReady(node.ctx)
 				if err != nil {
 					if !errors.Is(err, context.Canceled) {
 						panic(err)
@@ -282,22 +280,43 @@ func (node *Node[State, F]) readyLoop() {
 	}
 }
 
-func (node *Node[State, F]) processReady(
-	ctx context.Context,
-	leader uint64,
-	confState *raftpb.ConfState,
-	isSnapshotting *atomic.Bool,
-) (uint64, *raftpb.ConfState, error) {
+func (node *Node[State, F]) processReady(ctx context.Context) error {
 
 	node.logger.Debugf("Processing ready")
 	rd := node.rawNode.Ready()
+
 	if rd.SoftState != nil {
-		leader = rd.Lead
+		ss := rd.SoftState
+		if node.lastSoftState != nil {
+			status := node.rawNode.Status()
+
+			// leadership loss
+			if node.lastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
+				node.logger.
+					WithFields(map[string]any{
+						"lead": ss.Lead,
+						"term": status.Term,
+					}).
+					Infof("Leadership lost")
+				node.leadCounter.Add(ctx, -1)
+			}
+			// acquire leadership
+			if node.lastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
+				node.logger.
+					WithFields(map[string]any{
+						"lead": ss.Lead,
+						"term": status.Term,
+					}).
+					Infof("Leadership gained")
+				node.leadCounter.Add(ctx, 1)
+			}
+		}
+		node.lastSoftState = ss
 	}
 
 	if len(rd.Entries) > 0 {
 		if err := node.storage.Append(rd.Entries); err != nil {
-			return 0, nil, fmt.Errorf("appending entries to storage: %w", err)
+			return fmt.Errorf("appending entries to storage: %w", err)
 		}
 	}
 
@@ -309,10 +328,10 @@ func (node *Node[State, F]) processReady(
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		node.logger.
 			WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).
-			Infof("Applying snapshot sent from leader")
+			Infof("Applying snapshot sent by leader")
 
 		if err := node.storage.ApplySnapshot(rd.Snapshot); err != nil {
-			return 0, nil, fmt.Errorf("applying snapshot to storage: %w", err)
+			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
@@ -321,7 +340,7 @@ func (node *Node[State, F]) processReady(
 			// todo: since the snapshot is already written in storage at this point
 			// we must be able to detect a crash and restart the restoration process
 			// in case of rawNode recover
-			if err := node.syncer.RestoreSnapshot(context.Background(), leader, rd.Snapshot); err != nil {
+			if err := node.syncer.RestoreSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
 				panic(fmt.Errorf("restoring snapshot in storage: %w", err))
 			}
 		}()
@@ -351,7 +370,7 @@ func (node *Node[State, F]) processReady(
 			// Decode the command to get its ID
 			var cmd Command
 			if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-				return 0, nil, fmt.Errorf("unmarshaling command: %w", err)
+				return fmt.Errorf("unmarshaling command: %w", err)
 			}
 
 			commands = append(commands, cmd)
@@ -367,7 +386,7 @@ func (node *Node[State, F]) processReady(
 			node.logger.
 				WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).
 				Infof("Applying configuration change")
-			confState = node.rawNode.ApplyConfChange(cc)
+			node.confState = node.rawNode.ApplyConfChange(cc)
 		case raftpb.EntryConfChangeV2:
 			var cc raftpb.ConfChangeV2
 			if err := cc.Unmarshal(entry.Data); err != nil {
@@ -380,7 +399,7 @@ func (node *Node[State, F]) processReady(
 				WithFields(map[string]any{"transition": cc.Transition.String()}).
 				Infof("Applying configuration change V2")
 			// ApplyConfChange accepts ConfChangeI interface, which is implemented by both ConfChange and ConfChangeV2
-			confState = node.rawNode.ApplyConfChange(cc)
+			node.confState = node.rawNode.ApplyConfChange(cc)
 		}
 	}
 
@@ -394,20 +413,12 @@ func (node *Node[State, F]) processReady(
 
 	// Record metric if histogram is available and we have commands
 	if node.applyEntriesHistogram != nil && batchSize > 0 {
-		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()),
-			metric.WithAttributes(
-				attribute.Int("commands_count", len(commands)),
-			),
-		)
+		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()))
 	}
 
 	// Record batch size inflightCounter if available
 	if node.applyEntriesBatchSizeCounter != nil && batchSize > 0 {
-		node.applyEntriesBatchSizeCounter.Add(ctx, batchSize,
-			metric.WithAttributes(
-				attribute.Int("batch_size", len(commands)),
-			),
-		)
+		node.applyEntriesBatchSizeCounter.Add(ctx, batchSize)
 	}
 
 	// Record batch size histogram if available
@@ -416,7 +427,7 @@ func (node *Node[State, F]) processReady(
 	}
 
 	if err != nil {
-		return 0, nil, fmt.Errorf("applying entries to FSM: %w", err)
+		return fmt.Errorf("applying entries to FSM: %w", err)
 	}
 
 	for i, result := range results {
@@ -436,13 +447,13 @@ func (node *Node[State, F]) processReady(
 	node.rawNode.Advance(rd)
 
 	// Check if we need to create a snapshot
-	status := node.rawNode.Status()
 	lastSnapshot, err := node.storage.Snapshot()
 	if err != nil {
-		return 0, nil, fmt.Errorf("getting last snapshot: %w", err)
+		return fmt.Errorf("getting last snapshot: %w", err)
 	}
+	status := node.rawNode.Status()
 
-	if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold && !isSnapshotting.Swap(true) {
+	if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold && !node.isSnapshotting.Swap(true) {
 
 		node.logger.WithFields(map[string]any{
 			"applied":           status.Applied,
@@ -452,9 +463,9 @@ func (node *Node[State, F]) processReady(
 		}).Infof("Creating new snapshot for ledger")
 
 		go func() {
-			defer isSnapshotting.Store(false)
+			defer node.isSnapshotting.Store(false)
 
-			err := node.syncer.CreateSnapshot(ctx, status.Applied, confState)
+			err := node.syncer.CreateSnapshot(ctx, status.Applied, node.confState)
 			if err != nil {
 				// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 				if errors.Is(err, ErrSnapOutOfDate) {
@@ -483,7 +494,7 @@ func (node *Node[State, F]) processReady(
 		}()
 	}
 
-	return leader, confState, nil
+	return nil
 }
 
 // Status returns the current status of the rawNode
