@@ -156,11 +156,12 @@ The system exposes several configurable Raft parameters:
 type NodeConfig struct {
     ElectionTick      int           // Election timeout in ticks (default: 10)
     HeartbeatTick     int           // Heartbeat interval in ticks (default: 1)
-    MaxSizePerMsg     uint64        // Max size per message (default: 1MB)
-    MaxInflightMsgs   int           // Max number of in-flight messages (default: 256)
-    TickInterval      time.Duration // Interval between ticks (default: 100ms)
-    SnapshotThreshold uint64        // Number of logs before snapshot
+    MaxSizePerMsg     uint64        // Maximum size per message in bytes (default: 1MB)
+    MaxInflightMsgs   int           // Maximum number of in-flight messages (default: 256)
+    TickInterval      time.Duration // Interval between ticks
+    SnapshotThreshold uint64        // Number of logs before triggering a snapshot
     SnapshotInterval  time.Duration // Minimum interval between snapshots
+    CompactionMargin uint64         // Compaction margin in number of logs
 }
 ```
 
@@ -243,7 +244,7 @@ Raft logs grow indefinitely. Snapshots allow:
 
 Snapshots are created automatically when:
 - The number of logs exceeds `SnapshotThreshold`
-- The interval since the last snapshot exceeds `SnapshotInterval`
+- The interval since the last snapshot exceeds `SnapshotInterval` (**Note:** This feature is currently under implementation)
 
 ### Snapshot Contents
 

@@ -320,7 +320,7 @@ The Balances Store provides persistent storage of account balances for each ledg
 
 **Key characteristics**:
 - **Persistent storage**: Balances are stored in the database, not cached in memory
-- **Automatic updates**: Balances are updated automatically via SQL triggers (SQLite) or direct inserts (ClickHouse)
+- **Automatic updates**: Balances are updated automatically via SQL triggers
 - **Concurrent access**: Locking mechanism ensures safe concurrent access during transactions
 
 ### Structure
@@ -354,14 +354,6 @@ CREATE TABLE balances (
     PRIMARY KEY (account, asset)
 );
 ```
-
-#### ClickHouse
-
-**File**: `internal/service/store_log_clickhouse.go` (if exists)
-
-- Balances stored in a `balances` table with ReplacingMergeTree engine
-- Updates performed via direct INSERT statements
-- Uses `FINAL` keyword to get latest balance versions
 
 ### Locked Balances Store
 

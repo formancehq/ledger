@@ -1,59 +1,43 @@
 # Ledger v3 POC - Raft Cluster
 
-Proof of concept for a basic Raft cluster, inspired by the guidelines from the [formancehq/ledger](https://github.com/formancehq/ledger) repository.
+Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system allows managing ledgers (accounting books) with financial transactions, where each ledger has its own independent Raft group.
 
-## Description
 
-This application allows you to start a Raft cluster with multiple nodes to test distributed consensus. The project uses HashiCorp Raft for the consensus protocol implementation.
+## Documentation
 
-## Project Structure
+For detailed technical documentation, architecture overview, API reference, and development guides, see the [Technical Documentation](./docs/README.md).
 
-```
-.
-├── cmd/
-│   └── server/          # Application entry point
-├── internal/
-│   ├── config/          # Configuration management
-│   └── raft/            # Raft cluster implementation
-├── Dockerfile           # Docker image for the application
-├── docker-compose.yml   # Multi-node cluster configuration
-├── flake.nix            # Nix configuration to pin dependency versions
-├── justfile             # Useful commands
-└── go.mod               # Go dependencies
-```
 
 ## Prerequisites
 
-- Go 1.25 or higher (or use Nix for a reproducible environment)
+- Go 1.25 or higher (provided by Nix)
 - Just (command runner) - [Installation](https://github.com/casey/just)
 - Docker and Docker Compose (for multi-node cluster)
-- Nix with Flakes enabled (optional, for reproducible environment)
+- Nix with Flakes enabled (required)
 
 ## Installation
 
-### With Nix (recommended)
+### With Nix
+
+This project uses Nix flakes for a reproducible development environment. We recommend using `direnv` to automatically load the environment when entering the project directory.
+
+**Prerequisites:**
+- Install [direnv](https://direnv.net/) and [hook it into your shell](https://direnv.net/docs/hook.html)
+- Install Nix with Flakes enabled
+
+**Setup:**
 
 ```bash
 # Generate flake.lock file (first time only)
 nix flake update
 
-# Enter Nix development environment
-nix develop
-
-# Build the application
-nix build
-
-# The binary will be available in ./result/bin/ledger-v3-poc
+# Allow direnv to load the environment (first time only)
+direnv allow
 ```
+
+After setup, `direnv` will automatically load the Nix development environment whenever you `cd` into the project directory. All dependencies (Go, Just, etc.) will be available in your shell.
 
 **Note:** The `flake.lock` file will be automatically generated on first use and should be committed to ensure build reproducibility.
-
-### Without Nix
-
-```bash
-# Download dependencies
-go mod download
-```
 
 ## Usage
 
@@ -82,46 +66,9 @@ just docker-logs
 just docker-down
 ```
 
-### Configuration Options
-
-The application can be configured via:
-- Command line arguments
-- Environment variables (no prefix, use underscores instead of hyphens)
-
-Available options:
-- `--node-id` / `NODE_ID`: Unique node identifier (required)
-- `--bind-addr` / `BIND_ADDR`: Listen address (default: `127.0.0.1:8888`)
-- `--advertise-addr` / `ADVERTISE_ADDR`: Address to advertise to other nodes (defaults to bind-addr)
-- `--data-dir` / `DATA_DIR`: Data storage directory (default: `./data`)
-- `--peers` / `PEERS`: List of peer addresses (comma-separated)
-- `--debug` / `DEBUG`: Enable debug logging (default: `false`)
-
-## Architecture
-
-### FSM (Finite State Machine)
-
-The application implements a minimal FSM that satisfies the Raft interface requirements. The FSM currently has no business logic and simply logs applied entries.
-
-### Storage
-
-- **Log Store**: Stores Raft log entries (BoltDB)
-- **Stable Store**: Stores stable metadata (BoltDB)
-- **Snapshot Store**: Stores filesystem snapshots
+For detailed configuration options, see the [Deployment Guide](./docs/deployment.md).
 
 ## Development
-
-### With Nix
-
-```bash
-# Enter development environment
-nix develop
-
-# All dependencies (Go, Just, etc.) are available
-just build
-just test
-```
-
-### Without Nix
 
 ```bash
 # Build the application
@@ -134,21 +81,6 @@ just test
 just clean
 ```
 
-### Development Environment
+**Note:** With `direnv` configured, the development environment is automatically loaded when you enter the project directory. All dependencies (Go, Just, etc.) are available in your shell.
 
-The `flake.nix` provides a reproducible development environment with:
-- Go 1.25
-- Just
-- gopls (Language Server Protocol for Go)
-- gotools and go-tools (Go development tools)
-
-To use it:
-```bash
-nix develop
-```
-
-## Notes
-
-- All nodes automatically initialize their storage with the cluster configuration when starting with empty storage
-- Nodes must specify addresses of existing peers to join the cluster
-- The cluster requires a majority of nodes to function (3 nodes = tolerance to 1 failure)
+For more information about development, see the [Development Guide](./docs/development.md).

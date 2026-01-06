@@ -35,10 +35,9 @@ sequenceDiagram
         SystemNode-->>Adapter: LedgerInfo
     else Node is Follower
         Adapter->>Adapter: Find leader
-        Adapter->>leader: Forward via gRPC
-        leader->>SystemNode: CreateLedger()
+        Adapter->>SystemNode: Forward via gRPC (to leader)
         Note over SystemNode,Storage: Same as leader path
-        leader-->>Adapter: LedgerInfo
+        SystemNode-->>Adapter: LedgerInfo
     end
     
     Adapter-->>HTTP: LedgerInfo
@@ -103,16 +102,17 @@ sequenceDiagram
         LedgerService->>RuntimeStore: Check Balances
         RuntimeStore-->>LedgerService: Balances OK
         LedgerService->>LedgerService: Validate Transaction
-        LedgerService->>LedgerFSM: Propose InsertLogCommand
-        LedgerFSM->>LedgerFSM: Generate Sequence
-        LedgerFSM->>logstore: Write Log
-        LedgerFSM->>RuntimeStore: Update Balances
+        LedgerService->>LedgerFSM: Propose InsertLogCommand (via Raft)
+        LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
+        LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
+        Note over LedgerFSM,logstore: Logs written to LogStore during snapshot
         LedgerFSM-->>LedgerService: Log with Sequence
         LedgerService-->>LedgerNode: CreatedTransaction
     else Node is Follower
-        LedgerNode->>leader: Forward via gRPC
-        Note over leader,logstore: Same as leader path
-        leader-->>LedgerNode: CreatedTransaction
+        LedgerNode->>LedgerNode: Find leader
+        LedgerNode->>LedgerFSM: Forward via gRPC (to leader)
+        Note over LedgerFSM,logstore: Same as leader path
+        LedgerFSM-->>LedgerNode: CreatedTransaction
     end
     
     LedgerNode-->>HTTP: CreatedTransaction

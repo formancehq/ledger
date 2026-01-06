@@ -25,24 +25,24 @@ graph TB
     subgraph "Multiplexer"
         router[Message router]
         Main[Main Channel<br/>System Raft]
-        bucket1[bucket 1 Channel]
-        bucket2[bucket 2 Channel]
+        Ledger1[Ledger 1 Channel]
+        Ledger2[Ledger 2 Channel]
     end
     
     subgraph "Raft groups"
-        System[System Raft Grorp]
-        B1[bucket 1 Raft Grorp]
-        B2[bucket 2 Raft Grorp]
+        System[System Raft Group]
+        B1[Ledger 1 Raft Group]
+        B2[Ledger 2 Raft Group]
     end
     
     GRPC --> router
     router --> Main
-    router --> bucket1
-    router --> bucket2
+    router --> Ledger1
+    router --> Ledger2
     
     Main --> System
-    bucket1 --> B1
-    bucket2 --> B2
+    Ledger1 --> B1
+    Ledger2 --> B2
 ```
 
 ### Routage des Messages
@@ -188,7 +188,6 @@ During catch-up, the system uses range queries to efficiently stream only the ne
 
 **Implementation**:
 - SQLite: `WHERE id >= ? AND id <= ?`
-- ClickHouse: `WHERE id >= ? AND id <= ?`
 - gRPC: `StreamLogs` with `from_id` and `to_id` parameters
 
 ## Batching des Commandes

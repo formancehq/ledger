@@ -77,162 +77,34 @@ Each CLI command has its own file:
 
 ### Dependency Injection with fx
 
-The project uses Uber's `fx` for dependency injection:
-
-```go
-func Module() fx.Option {
-    return fx.Options(
-        fx.Provide(
-            // Provide dependencies
-            system.NewNode,
-            httphandler.NewServer,
-        ),
-        fx.Invoke(
-            // Invoke lifecycle hooks
-            func(lc fx.Lifecycle, node *system.Node) {
-                lc.Append(fx.Hook{
-                    OnStart: func(ctx context.Context) error {
-                        return node.Start()
-                    },
-                    OnStop: func(ctx context.Context) error {
-                        return node.Stop(ctx)
-                    },
-                })
-            },
-        ),
-    )
-}
-```
+The project uses Uber's `fx` for dependency injection. Components are provided through `fx.Provide()` and lifecycle hooks are registered via `fx.Invoke()`.
 
 ### Lifecycle Management
 
-All components with a lifecycle use `fx.Lifecycle`:
-
-```go
-func NewComponent(lc fx.Lifecycle, deps...) (*Component, error) {
-    component := &Component{...}
-    
-    lc.Append(fx.Hook{
-        OnStart: func(ctx context.Context) error {
-            return component.Start(ctx)
-        },
-        OnStop: func(ctx context.Context) error {
-            return component.Stop(ctx)
-        },
-    })
-    
-    return component, nil
-}
-```
+All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `OnStop` hooks.
 
 ## Adding a New Feature
 
 ### Example: Adding an HTTP Endpoint
 
 1. **Create the handler** in `internal/http/handlers_*.go`
-
-```go
-func (s *Server) handleNewEndpoint(w http.ResponseWriter, r *http.Request) {
-    // Implementation
-    api.Ok(w, response)
-}
-```
-
 2. **Register the route** in `internal/http/handler.go`
-
-```go
-r.With(contentTypeMiddleware).Group(func(r chi.Router) {
-    // ... existing routes ...
-    r.Get("/new-endpoint", server.handleNewEndpoint)
-})
-```
-
 3. **Add to OpenAPI** in `openapi.yml`
-
-```yaml
-/new-endpoint:
-  get:
-    summary: New endpoint
-    responses:
-      '200':
-        description: Success
-```
-
-4. **Regenerate the SDK** (if necessary)
-
-```bash
-just generate-sdk
-```
+4. **Regenerate the SDK** (if necessary) using `just generate-sdk`
 
 ### Example: Adding an FSM Command
 
 1. **Define the protobuf** in `proto/commands/*.proto`
+   - For system FSM commands, add to `proto/commands/system_commands.proto`
+   - For ledger FSM commands, add to `proto/commands/ledger_commands.proto`
 
-For system FSM commands, add to `proto/commands/system_commands.proto`:
-```protobuf
-message NewCommand {
-  string field = 1;
-}
-```
-
-For ledger FSM commands, add to `proto/commands/ledger_commands.proto`.
-
-2. **Regenerate protobufs**
-
-```bash
-just generate-proto
-```
+2. **Regenerate protobufs** using `just generate-proto`
 
 3. **Create the command function** in `internal/raft/system/command.go` (or `internal/raft/ledger/command.go`)
 
-```go
-func NewNewCommand(field string) (*raft.Command, error) {
-    cmdProto := &NewCommand{Field: field}
-    data, err := proto.Marshal(cmdProto)
-    if err != nil {
-        return nil, err
-    }
-    return &raft.Command{
-        ID:   generateRandomID(),
-        Type: CommandTypeNew,
-        Data: data,
-        Date: time.Now(),
-    }, nil
-}
-```
-
 4. **Add the handler in the FSM** in `internal/raft/system/fsm.go` (or `internal/raft/ledger/fsm.go`)
 
-```go
-func (fsm *FSM) handleNewCommand(cmd raft.Command) error {
-    var newCmd NewCommand
-    if err := UnmarshalCommandData(cmd.Data, &newCmd); err != nil {
-        return err
-    }
-    
-    // Process the command
-    // Update the FSM state
-    
-    return nil
-}
-```
-
-5. **Update `ApplyEntries`** to route the command
-
-```go
-func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
-    results := make([]raft.ApplyResult, 0, len(commands))
-    for _, cmd := range commands {
-        switch cmd.Type {
-        case CommandTypeNew:
-            err := fsm.handleNewCommand(cmd)
-            results = append(results, raft.ApplyResult{Error: err})
-        // ...
-        }
-    }
-    return results
-}
-```
+5. **Update `ApplyEntries`** to route the command to the handler
 
 ## Tests
 
@@ -244,49 +116,15 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []ra
 
 ### Write a Unit Test
 
-```go
-func TestMyFunction(t *testing.T) {
-    // Arrange
-    input := "test"
-    
-    // Act
-    result := MyFunction(input)
-    
-    // Assert
-    assert.Equal(t, "expected", result)
-}
-```
+Unit tests follow the Arrange-Act-Assert pattern and are placed in the same package with the `_test.go` suffix.
 
 ### Write an E2E Test
 
-```go
-//go:build e2e
-
-func TestFeature(t *testing.T) {
-    // Setup cluster
-    servers := setupCluster(t, 3)
-    defer cleanupCluster(t, servers)
-    
-    // Test
-    result, err := servers[0].client.DoSomething()
-    require.NoError(t, err)
-    assert.NotNil(t, result)
-}
-```
+E2E tests are placed in `tests/e2e/` with the `//go:build e2e` tag. They typically set up a cluster, run tests, and clean up.
 
 ### Test Helpers
 
-The package `pkg/testserver` provides helpers for creating test servers:
-
-```go
-server := testserver.New(
-    cmdserver.NewRootCommand,
-    testserver.WithInstruments(
-        testserver.WithNodeID(1),
-        testserver.WithHTTPPort(9000),
-    ),
-)
-```
+The package `pkg/testserver` provides helpers for creating test servers with configurable options.
 
 ## Protocol Buffers
 
@@ -302,13 +140,7 @@ server := testserver.New(
 
 ### Regenerate protobufs
 
-```bash
-just generate-proto
-```
-
-This command:
-1. Generates Go code from the `.proto` files
-2. Places the files in the correct directories according to `go_package`
+Use `just generate-proto` to regenerate Go code from `.proto` files. The generated files are placed in the correct directories according to `go_package`.
 
 ### Modify a Protobuf
 
@@ -328,36 +160,27 @@ This command:
 
 ### Retry Configuration
 
-The retry configuration is in `openapi.yml`:
-
-```yaml
-x-speakeasy-retries:
-  strategy: backoff
-  backoff:
-    initialInterval: 500
-    maxInterval: 60000
-    maxElapsedTime: 3600000
-    exponent: 1.5
-  statusCodes:
-    - 503
-  retryConnectionErrors: true
-```
+The retry configuration is defined in `openapi.yml` under `x-speakeasy-retries` with backoff strategy and configurable intervals.
 
 ## Design Principles
 
-### FSM: No I/O
+### FSM: Performance First
 
-**CRITICAL**: FSMs must never perform I/O (File, Network, database).
+**CRITICAL**: FSMs must be fast as they are called in the critical path of Raft consensus.
 
-**Why**:
-- FSMs must be deterministic
-- I/O introduces non-determinism
-- I/O can fail, making the FSM unreliable
+**Why performance matters**:
+- FSMs are invoked synchronously during entry application
+- Slow FSMs block the Raft consensus loop
+- Performance directly impacts transaction throughput and latency
 
-**What to do**:
-- Store all data in memory in the FSM
-- Perform I/O during snapshot creation
-- Restore from snapshots at startup
+**Best practices**:
+- Prefer in-memory operations when possible (orders of magnitude faster)
+- Minimize I/O operations during entry application
+- Use efficient data structures for lookups (maps instead of linear scans)
+- Batch operations when possible
+- Consider async I/O for non-critical operations
+
+**Note**: While I/O is not strictly forbidden, it should be minimized and optimized. The ledger FSM performs I/O to update RuntimeStore, but this is done efficiently and is necessary for maintaining balances.
 
 ### Request Forwarding
 
@@ -379,34 +202,17 @@ When a node receives a write request but is not the leader:
 
 ### Justfile
 
-The project uses `just` for common commands:
-
-```bash
-just build          # Compile the application
-just test           # Run tests
-just docker-up      # Start the Docker cluster
-just generate-proto # Regenerate protobufs
-just generate-sdk   # Regenerate the client SDK
-```
+The project uses `just` for common commands. See the `justfile` for available commands including `build`, `test`, `docker-up`, `generate-proto`, and `generate-sdk`.
 
 ### Nix
 
-For a reproducible environment:
-
-```bash
-nix develop         # Enter the environment
-nix build           # Build the application
-```
+For a reproducible environment, use `nix develop` to enter the environment and `nix build` to build the application.
 
 ### Debugging
 
 #### Logs
 
-Enable debug logs:
-
-```bash
-DEBUG=true go run ./cmd/server ...
-```
+Enable debug logs by setting `DEBUG=true` when running the server.
 
 #### Tracing
 
@@ -414,11 +220,7 @@ OpenTelemetry is integrated. Configure the OTLP endpoint to see traces.
 
 #### Profiling
 
-Use `pprof` for profiling:
-
-```bash
-go tool pprof http://localhost:9000/debug/pprof/profile
-```
+Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profile`.
 
 ## Checklist for a Pull Request
 

@@ -192,10 +192,10 @@ sequenceDiagram
     
     Client->>HTTP: POST /ledgers/{name}/transactions
     HTTP->>LedgerNode: CreateTransaction()
-    LedgerNode->>LedgerFSM: Propose InsertLog Command
-    LedgerFSM->>LedgerFSM: Generate Sequence
-    LedgerFSM->>LogStore: Write Log
-    LedgerFSM->>Storage: Persist Log
+    LedgerNode->>LedgerFSM: Propose InsertLog Command (via Raft)
+    LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
+    LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
+    Note over LedgerFSM,LogStore: Logs written to LogStore during snapshot
     LedgerNode-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
@@ -236,8 +236,8 @@ If no leader is available (e.g., during an election), the system returns a `503 
 ### Ledger Isolation
 
 - Each ledger has its own Raft group
-- Ledger data is stored separately (each ledger has its own LogStore)
-- A ledger can use a different storage driver (SQLite, ClickHouse)
+- Ledger data is stored separately
+- A ledger can use a different storage driver (configurable)
 - Problems in one ledger do not affect others
 
 ### Data Isolation
@@ -255,6 +255,8 @@ The system can be scaled horizontally by adding nodes to the cluster:
 - New nodes join the system Raft group
 - They automatically participate in existing ledger Raft groups
 - Load is distributed across all nodes
+
+**Note:** Horizontal scaling is currently under implementation.
 
 ### Limitations
 

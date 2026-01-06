@@ -38,7 +38,7 @@ Testing strategy, unit tests, integration, and end-to-end tests.
 ## Key Concepts
 
 ### Ledgers
-A **ledger** is an accounting book containing transactions. Each ledger has its own independent Raft group and storage configuration (SQLite, ClickHouse).
+A **ledger** is an accounting book containing transactions. Each ledger has its own independent Raft group and storage configuration.
 
 ### Transactions
 A **transaction** represents an accounting operation with postings (accounting entries) or a Numscript script.
@@ -56,7 +56,6 @@ The system uses **two levels of Raft groups**:
 - **HTTP/REST** : Public API
 - **Protocol Buffers** : Data serialization
 - **SQLite**: Transaction log storage
-- **ClickHouse**: Alternative transaction log storage for production
 - **fx (Uber)** : Dependency injection
 - **OpenTelemetry** : Observability and tracing
 

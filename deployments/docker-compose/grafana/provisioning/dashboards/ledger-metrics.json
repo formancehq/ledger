@@ -1974,7 +1974,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "ops"
         },
         "overrides": []
       },
@@ -2026,7 +2026,7 @@
           "refId": "B"
         }
       ],
-      "title": "Transport Unreachable Channel - Inflight Messages (by Scope)",
+      "title": "Transport Unreachable Channel - Incoming Messages",
       "type": "timeseries"
     },
     {
@@ -2083,7 +2083,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "ops"
         },
         "overrides": []
       },
@@ -2247,7 +2247,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -2261,7 +2261,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "never",
+            "showPoints": "auto",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -2279,12 +2279,43 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           },
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 3: P99",
+                  "Node 2: P99",
+                  "Node 1: P99"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2292,7 +2323,7 @@
         "x": 0,
         "y": 49
       },
-      "id": 20,
+      "id": 55,
       "options": {
         "legend": {
           "calcs": [],
@@ -2309,19 +2340,38 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id)",
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Applying entries",
+      "title": "Applying entries percentiles",
       "type": "timeseries"
     },
     {
@@ -2438,7 +2488,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 0,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -2452,7 +2502,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -2470,10 +2520,6 @@
               {
                 "color": "green",
                 "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
@@ -2487,7 +2533,7 @@
         "x": 0,
         "y": 57
       },
-      "id": 34,
+      "id": 20,
       "options": {
         "legend": {
           "calcs": [],
@@ -2506,89 +2552,17 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P4169E866C3094E38"
+            "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: BeginTX",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: Conn Exec",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: Prepare",
-          "range": true,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: Query",
-          "range": true,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: Rows",
-          "range": true,
-          "refId": "F"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: Statement Exec",
-          "range": true,
-          "refId": "G"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}: CommitTX",
-          "range": true,
-          "refId": "H"
         }
       ],
-      "title": "Runtime store SQL latencies",
+      "title": "Applying entries",
       "type": "timeseries"
     },
     {
@@ -2693,7 +2667,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Conn Exec",
           "range": true,
@@ -2705,7 +2679,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Prepare",
           "range": true,
@@ -2717,7 +2691,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Query",
           "range": true,
@@ -2729,7 +2703,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Rows",
           "range": true,
@@ -2741,7 +2715,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Statement Exec",
           "range": true,
@@ -2753,7 +2727,7 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval]))",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"runtime\"}[$__rate_interval])) by (service.node_id)",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: CommitTX",
           "range": true,
@@ -2826,10 +2800,281 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
         "y": 65
+      },
+      "id": 34,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.begin_tx\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: BeginTX",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Conn Exec",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.prepare\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Prepare",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.conn.query\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Query",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.rows\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Rows",
+          "range": true,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.stmt.exec\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: Statement Exec",
+          "range": true,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({\"db.sql.latency_sum\", method=\"sql.tx.commit\", \"service.node_id\"=~\"$node\", \"store.type\"=\"log-store\"}[$__rate_interval])) by (service.node_id)",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}: CommitTX",
+          "range": true,
+          "refId": "H"
+        }
+      ],
+      "title": "Runtime store SQL latencies",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 65
+      },
+      "id": 46,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Pending responses",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 73
       },
       "id": 47,
       "options": {
@@ -2928,9 +3173,9 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 65
+        "y": 73
       },
-      "id": 46,
+      "id": 57,
       "options": {
         "legend": {
           "calcs": [],
@@ -2951,15 +3196,29 @@
             "type": "prometheus",
             "uid": "P4169E866C3094E38"
           },
-          "editorMode": "code",
-          "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
+          "editorMode": "builder",
+          "expr": "{\"raft.node.lead\", \"scope.name\"!=\"raft.node.system\"}",
           "instant": false,
-          "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
+          "key": "Q-486c9a03-8629-45fa-b923-fbc9a86c0d81-0",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "builder",
+          "expr": "",
+          "instant": false,
+          "key": "Q-ee216182-96c8-4e5d-998d-631dfe5f629c-1",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Pending responses",
+      "title": "Leadership status",
       "type": "timeseries"
     },
     {
@@ -3049,7 +3308,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 72
+        "y": 80
       },
       "id": 2,
       "options": {
@@ -3159,7 +3418,7 @@
         "h": 6,
         "w": 9,
         "x": 8,
-        "y": 72
+        "y": 80
       },
       "id": 30,
       "options": {
@@ -3269,7 +3528,7 @@
         "h": 6,
         "w": 7,
         "x": 17,
-        "y": 72
+        "y": 80
       },
       "id": 7,
       "options": {
@@ -3360,13 +3619,38 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2: Peer 1 : MsgHeartbeatResp"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 86
       },
       "id": 15,
       "options": {
@@ -3432,7 +3716,7 @@
         "h": 13,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 86
       },
       "id": 24,
       "options": {
@@ -3540,7 +3824,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 84
+        "y": 92
       },
       "id": 31,
       "options": {
@@ -3636,13 +3920,38 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2 : Peer 3 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 91
+        "y": 99
       },
       "id": 26,
       "options": {
@@ -3684,6 +3993,7 @@
             "fixedColor": "red",
             "mode": "fixed"
           },
+          "displayName": "${__series.name}",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -3705,7 +4015,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 91
+        "y": 99
       },
       "id": 27,
       "options": {
@@ -3731,7 +4041,8 @@
           "expr": "raft.multiplexed_transport.ledger.recv.full{service.node_id=~\"$node\"}[$__rate_interval]",
           "format": "time_series",
           "instant": false,
-          "legendFormat": "Peer {{peer}} : {{type}}",
+          "interval": "",
+          "legendFormat": "Node {{service.node_id}}: Peer {{peer}} : {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -3804,7 +4115,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "id": 28,
       "options": {
@@ -3827,7 +4138,7 @@
           "expr": "rate(raft.multiplexed_transport.ledger.unreachable.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
-          "legendFormat": "Peer {{peer}}",
+          "legendFormat": "Node {{service.node_id}}: Peer {{peer}}",
           "range": true,
           "refId": "A"
         }
@@ -3900,7 +4211,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 107
       },
       "id": 29,
       "options": {
