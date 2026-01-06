@@ -6,6 +6,7 @@ import { Rate, Trend } from 'k6/metrics';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 import { config } from './config.js';
 import { bulkOperation } from './utils.js';
+import exec from 'k6/execution';
 
 // Custom metrics
 const errorRate = new Rate('errors');
@@ -25,6 +26,8 @@ export const options = {
 };
 
 function generateTransaction(iteration) {
+  const source = `src:${exec.scenario.iterationInTest}`
+  const destination = `dst:${exec.scenario.iterationInTest}`
   return {
     action: 'CREATE_TRANSACTION',
     data: {
@@ -38,8 +41,8 @@ function generateTransaction(iteration) {
             destination = $destination
         )`,
         vars: {
-          destination: `dst:${uuidv4()}`,
-          source: `src:${uuidv4()}`,
+          destination,
+          source,
         },
       },
     },

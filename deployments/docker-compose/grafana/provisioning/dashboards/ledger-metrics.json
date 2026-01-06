@@ -2288,34 +2288,7 @@
           },
           "unit": "ms"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 3: P99",
-                  "Node 2: P99",
-                  "Node 1: P99"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -2433,7 +2406,32 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 1: P95"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2458,12 +2456,43 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
           "editorMode": "code",
-          "expr": "rate({\"raft.apply_entries.batch_size_distribution_count\", service.node_id=~\"$node\", \"scope.name\"!=\"raft.node.system\"}[$__rate_interval])",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
           "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}",
+          "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
-          "refId": "A"
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P4169E866C3094E38"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\", scope.name!=\"raft.node.system\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "D"
         }
       ],
       "title": "Batch size distribution",
@@ -2525,7 +2554,32 @@
           },
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 1"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2562,7 +2616,7 @@
           "refId": "A"
         }
       ],
-      "title": "Applying entries",
+      "title": "Applying entries time passed",
       "type": "timeseries"
     },
     {
@@ -2622,7 +2676,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "ops"
         },
         "overrides": []
       },
@@ -2656,7 +2711,7 @@
           "refId": "A"
         }
       ],
-      "title": "Apply entries rate",
+      "title": "Applying entries rate",
       "type": "timeseries"
     },
     {
@@ -2719,32 +2774,7 @@
           },
           "unit": "ms"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 3: Statement Exec"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -2853,7 +2883,7 @@
           "refId": "H"
         }
       ],
-      "title": "Runtime store SQL latencies",
+      "title": "Runtime store SQL time passed",
       "type": "timeseries"
     },
     {
@@ -3025,7 +3055,7 @@
           "refId": "H"
         }
       ],
-      "title": "Log store SQL latencies",
+      "title": "Log store SQL time passed",
       "type": "timeseries"
     },
     {
@@ -4468,5 +4498,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 1
+  "version": 2
 }

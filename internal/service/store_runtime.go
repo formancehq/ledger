@@ -60,6 +60,7 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 		return nil, fmt.Errorf("preparing getIdempotency statement: %w", err)
 	}
 
+	// todo: update will not work once the max precision will be reached
 	store.stmtInsertBalance, err = db.PrepareContext(ctx, `
 		INSERT INTO balances (account, asset, balance)
 		VALUES (?, ?, ?)
@@ -126,10 +127,11 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 	// Create balances table
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS balances (
+			id INTEGER PRIMARY KEY,
 			account TEXT NOT NULL,
 			asset TEXT NOT NULL,
 			balance TEXT NOT NULL DEFAULT '0',
-			PRIMARY KEY (asset, account)
+			UNIQUE (asset, account)
 		);
 	`)
 	if err != nil {
