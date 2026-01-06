@@ -434,12 +434,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 				parameters.Input.Runtime = template.Runtime
 			}
 		} else {
-			err := newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
-			if ctrl.schemaEnforcementMode == SchemaEnforcementStrict {
-				return nil, err
-			}
-			trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
-			logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
+			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
 		}
 	}
 
@@ -587,7 +582,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.revertTransaction)
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
 	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
@@ -635,7 +630,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
 	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
