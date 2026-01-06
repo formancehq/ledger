@@ -123,7 +123,7 @@ func (req TransactionRequest) ToCore() (*ledgercontroller.CreateTransaction, err
 		}
 
 		runScript = ledgercontroller.TxToScriptData(txData, req.Force)
-	} else if req.Script.Plain != "" || req.Script.Template != "" {
+	} else {
 		runScript = ledgercontroller.RunScript{
 			Script:    req.Script.ToCore(),
 			Timestamp: req.Timestamp,

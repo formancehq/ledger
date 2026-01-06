@@ -424,10 +424,9 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 			err := newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("transactions on this ledger must use a template"))
 			if ctrl.schemaEnforcementMode == SchemaEnforcementStrict {
 				return nil, err
-			} else {
-				trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
-				logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
 			}
+			trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
+			logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
 		}
 		if template, ok := schema.SchemaData.Transactions[parameters.Input.Template]; ok {
 			parameters.Input.Plain = template.Script
@@ -438,10 +437,9 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 			err := newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
 			if ctrl.schemaEnforcementMode == SchemaEnforcementStrict {
 				return nil, err
-			} else {
-				trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
-				logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
 			}
+			trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
+			logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
 		}
 	}
 
