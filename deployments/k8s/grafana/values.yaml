@@ -3,6 +3,16 @@ adminPassword: "admin"   # dev only 🙂
 service:
   type: ClusterIP
 
+grafana.ini:
+  snapshots:
+    external_enabled: false
+  server:
+    root_url: https://grafana.ledger-exp.v2.formance.dev
+    serve_from_sub_path: false
+
+deploymentStrategy:
+  type: Recreate
+
 datasources:
   datasources.yaml:
     apiVersion: 1
@@ -38,6 +48,11 @@ ingress:
   #ingressClassName: nginx
   annotations:
     cert-manager.io/cluster-issuer: zerossl
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "4m"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "8"
+    nginx.ingress.kubernetes.io/proxy-busy-buffers-size: "4m"
+
+
   hosts:
     - grafana.ledger-exp.v2.formance.dev
   path: /
