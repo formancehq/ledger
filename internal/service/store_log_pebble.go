@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"google.golang.org/protobuf/proto"
@@ -30,11 +31,17 @@ const (
 )
 
 // NewPebbleLogStore creates a new PebbleLogStore instance
-func NewPebbleLogStore(ctx context.Context, dataDir string, logger logging.Logger) (*PebbleLogStore, error) {
+func NewPebbleLogStore(
+	dataDir string,
+	logger logging.Logger,
+	meter metric.Meter,
+) (*PebbleLogStore, error) {
 	// Create data directory if it doesn't exist
 	dbPath := filepath.Join(dataDir, "logs")
 
-	opts := &pebble.Options{}
+	opts := &pebble.Options{
+		EventListener: NewPebbleMetricsListener(meter),
+	}
 	db, err := pebble.Open(dbPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble database: %w", err)

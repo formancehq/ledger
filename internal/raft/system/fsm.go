@@ -13,7 +13,6 @@ import (
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 )
@@ -335,12 +334,6 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 	logger.Infof("Creating node...")
 	ledgerDataDir := filepath.Join(fsm.raftConfig.DataDir, "ledgers", ledgerInfo.Name)
 
-	// Create meter for this ledger node
-	ledgerMeter := fsm.meterProvider.Meter("raft.node.ledger", metric.WithInstrumentationAttributes(
-		attribute.Int("id", int(ledgerInfo.GetId())),
-		attribute.String("name", ledgerInfo.Name),
-	))
-
 	group, err := ledgerraft.NewNode(
 		ctx,
 		ledgerInfo,
@@ -383,7 +376,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 				}), nil
 			})
 		},
-		ledgerMeter,
+		fsm.meterProvider,
 	)
 	if err != nil {
 		return fmt.Errorf("creating ledger Raft group: %w", err)

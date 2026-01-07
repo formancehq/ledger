@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -34,11 +36,17 @@ const (
 )
 
 // NewPebbleRuntimeStore creates a new PebbleRuntimeStore instance
-func NewPebbleRuntimeStore(ctx context.Context, dataDir string, logger logging.Logger) (*PebbleRuntimeStore, error) {
+func NewPebbleRuntimeStore(
+	dataDir string,
+	logger logging.Logger,
+	meter metric.Meter,
+) (*PebbleRuntimeStore, error) {
 	// Create data directory if it doesn't exist
 	dbPath := filepath.Join(dataDir, "runtime")
 
-	opts := &pebble.Options{}
+	opts := &pebble.Options{
+		EventListener: NewPebbleMetricsListener(meter),
+	}
 	db, err := pebble.Open(dbPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble database: %w", err)
@@ -81,23 +89,21 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 				// Read current balance
 				currentBalance := big.NewInt(0)
 				value, closer, err := s.db.Get(key)
-				if err != nil && err != pebble.ErrNotFound {
+				if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 					return fmt.Errorf("reading balance for account %s asset %s: %w", account, asset, err)
 				}
 				if err == nil {
-					if len(value) > 0 {
-						if balance, ok := new(big.Int).SetString(string(value), 10); ok {
-							currentBalance = balance
-						}
+					currentBalance = new(big.Int).SetBytes(value)
+					if err := closer.Close(); err != nil {
+						return fmt.Errorf("closing balance reader: %w", err)
 					}
-					closer.Close()
 				}
 
 				// Calculate new balance
-				newBalance := new(big.Int).Add(currentBalance, diff)
+				newBalance := currentBalance.Add(currentBalance, diff)
 
 				// Write new balance to batch
-				if err := batch.Set(key, []byte(newBalance.String()), pebble.Sync); err != nil {
+				if err := batch.Set(key, newBalance.Bytes(), pebble.NoSync); err != nil {
 					return fmt.Errorf("updating balance for account %s asset %s: %w", account, asset, err)
 				}
 			}
@@ -119,7 +125,7 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 				}
 
 				pebbleKey := accountMetadataKey(accountAddr, key)
-				if err := batch.Set(pebbleKey, []byte(valueStr), pebble.Sync); err != nil {
+				if err := batch.Set(pebbleKey, []byte(valueStr), pebble.NoSync); err != nil {
 					return fmt.Errorf("upserting account metadata: %w", err)
 				}
 			}
@@ -131,7 +137,7 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 		for accountAddr, keys := range update.AccountMetadataDeletes {
 			for _, key := range keys {
 				pebbleKey := accountMetadataKey(accountAddr, key)
-				if err := batch.Delete(pebbleKey, pebble.Sync); err != nil {
+				if err := batch.Delete(pebbleKey, pebble.NoSync); err != nil {
 					return fmt.Errorf("deleting account metadata key: %w", err)
 				}
 			}
@@ -152,7 +158,7 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 			}
 
 			pebbleKey := idempotencyPebbleKey(key)
-			if err := batch.Set(pebbleKey, data, pebble.Sync); err != nil {
+			if err := batch.Set(pebbleKey, data, pebble.NoSync); err != nil {
 				return fmt.Errorf("inserting idempotency entry for key %s: %w", key, err)
 			}
 		}
@@ -162,13 +168,13 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 	if update.LastProcessedLogID > 0 {
 		value := fmt.Sprintf("%d", update.LastProcessedLogID)
 		key := []byte(keyLastProcessedLogID)
-		if err := batch.Set(key, []byte(value), pebble.Sync); err != nil {
+		if err := batch.Set(key, []byte(value), pebble.NoSync); err != nil {
 			return fmt.Errorf("updating last processed log ID: %w", err)
 		}
 	}
 
 	// Commit the batch
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}
 
@@ -216,19 +222,16 @@ func (s *PebbleRuntimeStore) GetBalances(ctx context.Context, balanceQuery map[s
 		for _, asset := range assets {
 			key := balanceKey(account, asset)
 			value, closer, err := s.db.Get(key)
-			if err != nil && err != pebble.ErrNotFound {
-				closer.Close()
+			if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 				return nil, fmt.Errorf("querying balance: %w", err)
 			}
 
 			if err == nil {
-				balance, ok := new(big.Int).SetString(string(value), 10)
-				if !ok {
-					closer.Close()
-					return nil, fmt.Errorf("invalid balance string: %s", string(value))
+				balance := new(big.Int).SetBytes(value)
+				if err := closer.Close(); err != nil {
+					return nil, fmt.Errorf("closing balance reader: %w", err)
 				}
 				result[account][asset] = balance
-				closer.Close()
 			} else {
 				// Asset doesn't exist, set zero balance
 				result[account][asset] = big.NewInt(0)
