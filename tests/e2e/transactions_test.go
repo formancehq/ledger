@@ -40,6 +40,8 @@ var _ = Describe("Transactions", func() {
 
 			server := testservice.New(cmdserver.NewRootCommand,
 				testservice.WithInstruments(
+					testservice.DebugInstrumentation(debug),
+					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
 					testserver.WithHTTPPort(9300+i),
 					testserver.WithDataDir(raftTmpDir),
@@ -100,30 +102,38 @@ var _ = Describe("Transactions", func() {
 	Context("When creating ledgers and transactions with different drivers", func() {
 		// Table-driven test: define test cases for each driver
 		type driverTestCase struct {
-			driverName         string
-			driverEnum         components.CreateLedgerRequestDriver
-			driverResponseEnum components.Driver
-			description        string
+			driverName                     string
+			logStoreDriverEnum             components.CreateLedgerRequestLogStoreDriver
+			runtimeStoreDriverEnum         components.CreateLedgerRequestRuntimeStoreDriver
+			logStoreDriverResponseEnum     components.LogStoreDriver
+			runtimeStoreDriverResponseEnum components.RuntimeStoreDriver
+			description                    string
 		}
 
 		testCases := []driverTestCase{
 			{
-				driverName:         "sqlite-mattn",
-				driverEnum:         components.CreateLedgerRequestDriverSqliteMattn,
-				driverResponseEnum: components.DriverSqliteMattn,
-				description:        "SQLite Mattn driver (github.com/mattn/go-sqlite3)",
+				driverName:                     "sqlite-mattn",
+				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverSqliteMattn,
+				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+				logStoreDriverResponseEnum:     components.LogStoreDriverSqliteMattn,
+				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverSqliteMattn,
+				description:                    "SQLite Mattn driver (github.com/mattn/go-sqlite3)",
 			},
 			{
-				driverName:         "sqlite-modern",
-				driverEnum:         components.CreateLedgerRequestDriverSqliteModern,
-				driverResponseEnum: components.DriverSqliteModern,
-				description:        "SQLite Modern driver (modernc.org/sqlite)",
+				driverName:                     "sqlite-modern",
+				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverSqliteModern,
+				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverSqliteModern,
+				logStoreDriverResponseEnum:     components.LogStoreDriverSqliteModern,
+				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverSqliteModern,
+				description:                    "SQLite Modern driver (modernc.org/sqlite)",
 			},
 			{
-				driverName:         "pebble",
-				driverEnum:         components.CreateLedgerRequestDriverPebble,
-				driverResponseEnum: components.DriverPebble,
-				description:        "Pebble driver (github.com/cockroachdb/pebble)",
+				driverName:                     "pebble",
+				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverPebble,
+				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverPebble,
+				logStoreDriverResponseEnum:     components.LogStoreDriverPebble,
+				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverPebble,
+				description:                    "Pebble driver (github.com/cockroachdb/pebble)",
 			},
 		}
 
@@ -154,14 +164,16 @@ var _ = Describe("Transactions", func() {
 					resp, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							Driver: tc.driverEnum.ToPointer(),
+							LogStoreDriver:     tc.logStoreDriverEnum,
+							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed(), "Failed to create ledger with driver %s", tc.driverName)
 					Expect(resp).NotTo(BeNil())
 					Expect(resp.GetCreateLedgerResponse()).NotTo(BeNil())
 					Expect(resp.GetCreateLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(resp.GetCreateLedgerResponse().Data.Driver).To(Equal(tc.driverResponseEnum))
+					Expect(resp.GetCreateLedgerResponse().Data.LogStoreDriver).To(Equal(tc.logStoreDriverResponseEnum))
+					Expect(resp.GetCreateLedgerResponse().Data.RuntimeStoreDriver).To(Equal(tc.runtimeStoreDriverResponseEnum))
 
 					// Verify the ledger can be retrieved
 					ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
@@ -169,7 +181,8 @@ var _ = Describe("Transactions", func() {
 					})
 					Expect(err).To(Succeed())
 					Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(ledger.GetGetLedgerResponse().Data.Driver).To(Equal(tc.driverResponseEnum))
+					Expect(ledger.GetGetLedgerResponse().Data.LogStoreDriver).To(Equal(tc.logStoreDriverResponseEnum))
+					Expect(ledger.GetGetLedgerResponse().Data.RuntimeStoreDriver).To(Equal(tc.runtimeStoreDriverResponseEnum))
 				})
 
 				It("Should create a transaction on the ledger", func() {
@@ -177,7 +190,8 @@ var _ = Describe("Transactions", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							Driver: tc.driverEnum.ToPointer(),
+							LogStoreDriver:     tc.logStoreDriverEnum,
+							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())
@@ -203,7 +217,8 @@ var _ = Describe("Transactions", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							Driver: tc.driverEnum.ToPointer(),
+							LogStoreDriver:     tc.logStoreDriverEnum,
+							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())
@@ -243,7 +258,8 @@ var _ = Describe("Transactions", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							Driver: tc.driverEnum.ToPointer(),
+							LogStoreDriver:     tc.logStoreDriverEnum,
+							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())

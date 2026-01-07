@@ -40,21 +40,31 @@ func NewSystemServiceServer(logger logging.Logger, cluster *system.Node) service
 
 func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *service.CreateLedgerRequest) (*service.CreateLedgerResponse, error) {
 	impl.logger.
-		WithFields(map[string]any{"name": req.Name, "driver": req.Driver}).
+		WithFields(map[string]any{"name": req.Name, "log_store_driver": req.LogStoreDriver, "runtime_store_driver": req.RuntimeStoreDriver}).
 		Infof("CreateLedger request received")
 
 	if req.Name == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	if req.Driver == "" {
-		return nil, fmt.Errorf("ledger driver is required")
+	if req.LogStoreDriver == "" {
+		return nil, fmt.Errorf("log store driver is required")
 	}
 
-	// Convert protobuf Struct to map[string]interface{}
-	config := make(map[string]interface{})
-	if req.Config != nil {
-		config = req.Config.AsMap()
+	if req.RuntimeStoreDriver == "" {
+		return nil, fmt.Errorf("runtime store driver is required")
+	}
+
+	// Convert log store config protobuf Struct to map[string]interface{}
+	var logStoreConfig map[string]interface{}
+	if req.LogStoreConfig != nil {
+		logStoreConfig = req.LogStoreConfig.AsMap()
+	}
+
+	// Convert runtime store config protobuf Struct to map[string]interface{}
+	var runtimeStoreConfig map[string]interface{}
+	if req.RuntimeStoreConfig != nil {
+		runtimeStoreConfig = req.RuntimeStoreConfig.AsMap()
 	}
 
 	// Convert metadata
@@ -74,19 +84,21 @@ func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *serv
 		snapshotThreshold = &req.SnapshotThreshold
 	}
 
-	ledgerInfo, err := impl.systemNode.CreateLedger(ctx, req.Name, req.Driver, config, md, snapshotThreshold)
+	ledgerInfo, err := impl.systemNode.CreateLedger(ctx, req.Name, logStoreConfig, runtimeStoreConfig, md, snapshotThreshold, req.LogStoreDriver, req.RuntimeStoreDriver)
 	if err != nil {
 		return nil, fmt.Errorf("creating ledger: %w", err)
 	}
 
 	resp := &service.CreateLedgerResponse{
-		Id:                ledgerInfo.Id,
-		Name:              ledgerInfo.Name,
-		Config:            ledgerInfo.Config,
-		Driver:            ledgerInfo.Driver,
-		Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
-		CreatedAt:         ledgerInfo.CreatedAt,
-		SnapshotThreshold: ledgerInfo.SnapshotThreshold,
+		Id:                  ledgerInfo.Id,
+		Name:                ledgerInfo.Name,
+		LogStoreDriver:      ledgerInfo.LogStoreDriver,
+		RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
+		LogStoreConfig:      ledgerInfo.LogStoreConfig,
+		RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
+		Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
+		CreatedAt:           ledgerInfo.CreatedAt,
+		SnapshotThreshold:  ledgerInfo.SnapshotThreshold,
 	}
 	return resp, nil
 }
@@ -150,13 +162,15 @@ func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, req 
 	ledgersList := make([]*service.CreateLedgerResponse, 0, len(ledgers))
 	for _, ledgerInfo := range ledgers {
 		ledgerResp := &service.CreateLedgerResponse{
-			Id:                ledgerInfo.Id,
-			Name:              ledgerInfo.Name,
-			Config:            ledgerInfo.Config,
-			Driver:            ledgerInfo.Driver,
-			Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
-			CreatedAt:         ledgerInfo.CreatedAt,
-			SnapshotThreshold: ledgerInfo.SnapshotThreshold,
+			Id:                  ledgerInfo.Id,
+			Name:                ledgerInfo.Name,
+			LogStoreDriver:      ledgerInfo.LogStoreDriver,
+			RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
+			LogStoreConfig:      ledgerInfo.LogStoreConfig,
+			RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
+			Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
+			CreatedAt:           ledgerInfo.CreatedAt,
+			SnapshotThreshold:   ledgerInfo.SnapshotThreshold,
 		}
 
 		ledgersList = append(ledgersList, ledgerResp)
@@ -180,13 +194,15 @@ func (impl *SystemServiceServerImpl) GetLedgerInfo(ctx context.Context, req *ser
 	}
 
 	resp := &service.GetLedgerByNameResponse{
-		Id:                ledgerInfo.Id,
-		Name:              ledgerInfo.Name,
-		Config:            ledgerInfo.Config,
-		Driver:            ledgerInfo.Driver,
-		Metadata:          convertMetadataToStruct(ledgerInfo.Metadata),
-		CreatedAt:         ledgerInfo.CreatedAt,
-		SnapshotThreshold: ledgerInfo.SnapshotThreshold,
+		Id:                  ledgerInfo.Id,
+		Name:                ledgerInfo.Name,
+		LogStoreDriver:      ledgerInfo.LogStoreDriver,
+		RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
+		LogStoreConfig:      ledgerInfo.LogStoreConfig,
+		RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
+		Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
+		CreatedAt:           ledgerInfo.CreatedAt,
+		SnapshotThreshold:  ledgerInfo.SnapshotThreshold,
 	}
 
 	return resp, nil

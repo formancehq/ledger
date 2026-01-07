@@ -98,13 +98,15 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 
 	// Create ledger info using protobuf types directly
 	ledgerInfo := &ledgerpb.LedgerInfo{
-		Id:                ledgerID,
-		Name:              createCmd.Name,
-		Driver:            createCmd.Driver,
-		Config:            createCmd.Config,
-		Metadata:          createCmd.Metadata,
-		CreatedAt:         createdAt,
-		SnapshotThreshold: createCmd.SnapshotThreshold,
+		Id:                 ledgerID,
+		Name:               createCmd.Name,
+		LogStoreDriver:     createCmd.LogStoreDriver,
+		RuntimeStoreDriver: createCmd.RuntimeStoreDriver,
+		LogStoreConfig:     createCmd.LogStoreConfig,
+		RuntimeStoreConfig: createCmd.RuntimeStoreConfig,
+		Metadata:           createCmd.Metadata,
+		CreatedAt:          createdAt,
+		SnapshotThreshold:  createCmd.SnapshotThreshold,
 	}
 	fsm.state.Infos[ledgerInfo.Name] = ledgerInfo
 
@@ -318,6 +320,8 @@ func (fsm *FSM) Stop(ctx context.Context) error {
 
 // startLedgerRaftGroupFromFSM starts a Raft group for a ledger using information from the FSM
 func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *ledgerpb.LedgerInfo) error {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
 
 	logger := fsm.logger.WithFields(map[string]any{
 		"ledger": ledgerInfo.GetName(),
@@ -383,9 +387,7 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 	}
 
 	logger.Infof("Storing info...")
-	fsm.mu.Lock()
 	fsm.state.Nodes[ledgerInfo.Name] = group
-	fsm.mu.Unlock()
 
 	logger.Infof("Starting ledger Raft group...")
 	if err := group.Start(ctx); err != nil {

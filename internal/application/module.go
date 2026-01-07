@@ -251,12 +251,12 @@ func (adapter *systemNodeAdapter) ResolveLedger(ctx context.Context, ledgerName 
 	return ledgerNameResolved, ledgerID, nil
 }
 
-func (adapter *systemNodeAdapter) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
+func (adapter *systemNodeAdapter) CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error) {
 	cluster, err := adapter.getMainCluster()
 	if err != nil {
 		return nil, err
 	}
-	return cluster.CreateLedger(ctx, name, driver, config, metadata, snapshotThreshold)
+	return cluster.CreateLedger(ctx, name, logStoreConfig, runtimeStoreConfig, metadata, snapshotThreshold, logStoreDriver, runtimeStoreDriver)
 }
 
 func (adapter *systemNodeAdapter) DeleteLedger(ctx context.Context, name string) error {

@@ -112,7 +112,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 				"count":   len(logs),
 				"latency": time.Since(now),
 			}).
-			Infof("Runtime store updated via FSM")
+			Debugf("Runtime store updated via FSM")
 	}
 
 	return ret, nil

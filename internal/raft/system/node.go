@@ -82,9 +82,9 @@ func (node *Node) Start(ctx context.Context) error {
 }
 
 // CreateLedger creates a new ledger via a FSM command
-func (node *Node) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
+func (node *Node) CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error) {
 	// Create the command
-	cmd, err := NewCreateLedgerCommand(name, driver, config, metadata, snapshotThreshold)
+	cmd, err := NewCreateLedgerCommand(name, logStoreConfig, runtimeStoreConfig, metadata, snapshotThreshold, logStoreDriver, runtimeStoreDriver)
 	if err != nil {
 		return nil, fmt.Errorf("creating create ledger command: %w", err)
 	}
@@ -116,7 +116,7 @@ l:
 	}
 
 	node.logger.
-		WithFields(map[string]any{"name": name, "driver": driver, "commandID": cmd.ID}).
+		WithFields(map[string]any{"name": name, "log_store_driver": logStoreDriver, "runtime_store_driver": runtimeStoreDriver, "commandID": cmd.ID}).
 		Infof("Ledger created on leader")
 
 	// ledgerInfo is already *ledgerpb.LedgerInfo

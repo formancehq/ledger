@@ -46,6 +46,10 @@ func NewPebbleRuntimeStore(
 
 	opts := &pebble.Options{
 		EventListener: NewPebbleMetricsListener(meter),
+		MaxConcurrentCompactions: func() int {
+			return 3
+		},
+		MemTableSize: 1 << 23, // 8 mb
 	}
 	db, err := pebble.Open(dbPath, opts)
 	if err != nil {

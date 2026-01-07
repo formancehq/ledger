@@ -84,9 +84,10 @@ paths:
     post:
       summary: Create a new ledger
       description: |
-        Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
-        sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), 
-        sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble). Each ledger has its own Raft group for data consistency.
+        Creates a new ledger with the specified name, drivers, and configurations. Both logStoreDriver and runtimeStoreDriver are required.
+        Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble).
+        Each store (log store and runtime store) can have its own driver and configuration, allowing for flexible storage setups.
+        Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
         - Ledgers
@@ -443,25 +444,42 @@ components:
   schemas:
     CreateLedgerRequest:
       type: object
-      required: []
+      required:
+        - logStoreDriver
+        - runtimeStoreDriver
       properties:
-        driver:
+        logStoreDriver:
           type: string
           enum:
           - sqlite-modern
           - sqlite-mattn
           - pebble
-          default: sqlite-mattn
           description: |
-            Storage driver name (defaults to sqlite-mattn). 
+            Log store driver name. 
             Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
             and pebble (github.com/cockroachdb/pebble)
-        config:
+        runtimeStoreDriver:
+          type: string
+          enum:
+          - sqlite-modern
+          - sqlite-mattn
+          - pebble
+          description: |
+            Runtime store driver name. 
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
+            and pebble (github.com/cockroachdb/pebble)
+        logStoreConfig:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
             - $ref: '#/components/schemas/PebbleConfig'
-          description: Driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
+          description: Log store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
+        runtimeStoreConfig:
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteMattnConfig'
+            - $ref: '#/components/schemas/SQLiteModernConfig'
+            - $ref: '#/components/schemas/PebbleConfig'
+          description: Runtime store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
         metadata:
           type: object
           additionalProperties:
@@ -504,7 +522,8 @@ components:
       required:
         - id
         - name
-        - driver
+        - logStoreDriver
+        - runtimeStoreDriver
         - createdAt
       properties:
         id:
@@ -514,19 +533,32 @@ components:
         name:
           type: string
           description: Name of the ledger
-        driver:
+        logStoreDriver:
           type: string
           enum: [sqlite-mattn, sqlite-modern, pebble]
           description: |
-            Storage driver name. 
+            Log store driver name. 
             Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
             and pebble (github.com/cockroachdb/pebble)
-        config:
+        runtimeStoreDriver:
+          type: string
+          enum: [sqlite-mattn, sqlite-modern, pebble]
+          description: |
+            Runtime store driver name. 
+            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
+            and pebble (github.com/cockroachdb/pebble)
+        logStoreConfig:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
             - $ref: '#/components/schemas/PebbleConfig'
-          description: Driver-specific configuration
+          description: Log store driver-specific configuration
+        runtimeStoreConfig:
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteMattnConfig'
+            - $ref: '#/components/schemas/SQLiteModernConfig'
+            - $ref: '#/components/schemas/PebbleConfig'
+          description: Runtime store driver-specific configuration
         metadata:
           type: object
           additionalProperties:
@@ -545,6 +577,10 @@ components:
           format: date-time
           nullable: true
           description: Deletion timestamp (always null with hard delete)
+        status:
+          type: string
+          enum: [Active, Deleted]
+          description: Ledger status
 
     CreateTransactionRequest:
       type: object

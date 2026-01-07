@@ -26,10 +26,23 @@ func (g *SystemGRPCClient) Snapshot(ctx context.Context) error {
 	return err
 }
 
-func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, md map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error) {
-	cfg, err := structpb.NewStruct(config)
-	if err != nil {
-		return nil, err
+func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, md map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error) {
+	var logStoreConfigStruct *structpb.Struct
+	if logStoreConfig != nil {
+		var err error
+		logStoreConfigStruct, err = structpb.NewStruct(logStoreConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var runtimeStoreConfigStruct *structpb.Struct
+	if runtimeStoreConfig != nil {
+		var err error
+		runtimeStoreConfigStruct, err = structpb.NewStruct(runtimeStoreConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var mdStruct *structpb.Struct
@@ -39,6 +52,7 @@ func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string
 		for k, v := range md {
 			mdMap[k] = v
 		}
+		var err error
 		mdStruct, err = structpb.NewStruct(mdMap)
 		if err != nil {
 			return nil, err
@@ -46,10 +60,12 @@ func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string
 	}
 
 	req := &CreateLedgerRequest{
-		Name:     name,
-		Driver:   driver,
-		Config:   cfg,
-		Metadata: mdStruct,
+		Name:                name,
+		LogStoreDriver:      logStoreDriver,
+		RuntimeStoreDriver:  runtimeStoreDriver,
+		LogStoreConfig:      logStoreConfigStruct,
+		RuntimeStoreConfig:  runtimeStoreConfigStruct,
+		Metadata:            mdStruct,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		req.SnapshotThreshold = *snapshotThreshold
@@ -65,13 +81,15 @@ func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string
 		metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
 	}
 	return &ledgerpb.LedgerInfo{
-		Id:                ledgerResp.Id,
-		Name:              ledgerResp.Name,
-		Driver:            ledgerResp.Driver,
-		Config:            ledgerResp.Config,
-		Metadata:          metadata,
-		CreatedAt:         ledgerResp.CreatedAt,
-		SnapshotThreshold: ledgerResp.SnapshotThreshold,
+		Id:                  ledgerResp.Id,
+		Name:                ledgerResp.Name,
+		LogStoreDriver:      ledgerResp.LogStoreDriver,
+		RuntimeStoreDriver:  ledgerResp.RuntimeStoreDriver,
+		LogStoreConfig:      ledgerResp.LogStoreConfig,
+		RuntimeStoreConfig:  ledgerResp.RuntimeStoreConfig,
+		Metadata:            metadata,
+		CreatedAt:           ledgerResp.CreatedAt,
+		SnapshotThreshold:  ledgerResp.SnapshotThreshold,
 	}, nil
 }
 
@@ -105,13 +123,15 @@ func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) (map[string]*l
 			metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
 		}
 		result[ledgerResp.Name] = &ledgerpb.LedgerInfo{
-			Id:                ledgerResp.Id,
-			Name:              ledgerResp.Name,
-			Driver:            ledgerResp.Driver,
-			Config:            ledgerResp.Config,
-			Metadata:          metadata,
-			CreatedAt:         ledgerResp.CreatedAt,
-			SnapshotThreshold: ledgerResp.SnapshotThreshold,
+			Id:                  ledgerResp.Id,
+			Name:                ledgerResp.Name,
+			LogStoreDriver:      ledgerResp.LogStoreDriver,
+			RuntimeStoreDriver:  ledgerResp.RuntimeStoreDriver,
+			LogStoreConfig:      ledgerResp.LogStoreConfig,
+			RuntimeStoreConfig:  ledgerResp.RuntimeStoreConfig,
+			Metadata:            metadata,
+			CreatedAt:           ledgerResp.CreatedAt,
+			SnapshotThreshold:   ledgerResp.SnapshotThreshold,
 		}
 	}
 
@@ -129,13 +149,15 @@ func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*led
 		metadata = ledgerpb.StructToMetadata(resp.Metadata)
 	}
 	return &ledgerpb.LedgerInfo{
-		Id:                resp.Id,
-		Name:              resp.Name,
-		Driver:            resp.Driver,
-		Config:            resp.Config,
-		Metadata:          metadata,
-		CreatedAt:         resp.CreatedAt,
-		SnapshotThreshold: resp.SnapshotThreshold,
+		Id:                  resp.Id,
+		Name:                resp.Name,
+		LogStoreDriver:      resp.LogStoreDriver,
+		RuntimeStoreDriver:  resp.RuntimeStoreDriver,
+		LogStoreConfig:      resp.LogStoreConfig,
+		RuntimeStoreConfig:  resp.RuntimeStoreConfig,
+		Metadata:            metadata,
+		CreatedAt:           resp.CreatedAt,
+		SnapshotThreshold:  resp.SnapshotThreshold,
 	}, nil
 }
 

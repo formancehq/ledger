@@ -28,6 +28,16 @@ When implementing new features, fixing bugs, or refactoring code:
 
 The documentation should always reflect the current state of the codebase. Outdated documentation is worse than no documentation.
 
+## JSON Property Naming Convention
+
+**CRITICAL**: All JSON objects in the API must use **camelCase** for property names.
+
+- **All properties in OpenAPI specification** (`openapi.yml`) must be in camelCase
+- **All JSON tags in Go structs** used for HTTP request/response bodies must use camelCase
+- **Examples**: `logStoreDriver`, `runtimeStoreDriver`, `logStoreConfig`, `runtimeStoreConfig`, `snapshotThreshold`, `createdAt`, `deletedAt`, etc.
+
+This convention ensures consistency across the API and matches common JavaScript/TypeScript conventions.
+
 ## File Structure
 
 The client commands and HTTP handlers are organized into separate files to improve maintainability and code readability.

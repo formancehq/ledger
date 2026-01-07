@@ -16,18 +16,34 @@ const (
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateLedgerCommand(name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*raft.Command, error) {
-	// Convert config map to protobuf Struct
-	configStruct, err := structpb.NewStruct(config)
-	if err != nil {
-		return nil, err
+func NewCreateLedgerCommand(name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*raft.Command, error) {
+	// Convert log store config map to protobuf Struct
+	var logStoreConfigStruct *structpb.Struct
+	if logStoreConfig != nil {
+		var err error
+		logStoreConfigStruct, err = structpb.NewStruct(logStoreConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Convert runtime store config map to protobuf Struct
+	var runtimeStoreConfigStruct *structpb.Struct
+	if runtimeStoreConfig != nil {
+		var err error
+		runtimeStoreConfigStruct, err = structpb.NewStruct(runtimeStoreConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cmdProto := &CreateLedgerCommand{
-		Name:     name,
-		Driver:   driver,
-		Config:   configStruct,
-		Metadata: metadata,
+		Name:                name,
+		LogStoreDriver:      logStoreDriver,
+		RuntimeStoreDriver:  runtimeStoreDriver,
+		LogStoreConfig:      logStoreConfigStruct,
+		RuntimeStoreConfig:  runtimeStoreConfigStruct,
+		Metadata:            metadata,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		cmdProto.SnapshotThreshold = *snapshotThreshold

@@ -115,9 +115,10 @@ func main() {
 
 ## CreateLedger
 
-Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
-sqlite-mattn (github.com/mattn/go-sqlite3) will be used by default. Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), 
-sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble). Each ledger has its own Raft group for data consistency.
+Creates a new ledger with the specified name, drivers, and configurations. Both logStoreDriver and runtimeStoreDriver are required.
+Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble).
+Each store (log store and runtime store) can have its own driver and configuration, allowing for flexible storage setups.
+Each ledger has its own Raft group for data consistency.
 
 
 ### Example Usage
@@ -141,7 +142,12 @@ func main() {
     res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
         LedgerName: "<value>",
         CreateLedgerRequest: components.CreateLedgerRequest{
-            Config: client.Pointer(components.CreateCreateLedgerRequestConfigSQLiteMattnConfig(
+            LogStoreDriver: components.CreateLedgerRequestLogStoreDriverPebble,
+            RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+            LogStoreConfig: client.Pointer(components.CreateCreateLedgerRequestLogStoreConfigSQLiteMattnConfig(
+                components.SQLiteMattnConfig{},
+            )),
+            RuntimeStoreConfig: client.Pointer(components.CreateCreateLedgerRequestRuntimeStoreConfigSQLiteMattnConfig(
                 components.SQLiteMattnConfig{},
             )),
         },

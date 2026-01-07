@@ -25,14 +25,16 @@ const (
 
 // CreateLedgerCommand represents the data for a create ledger command
 type CreateLedgerCommand struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                   // Ledger name/ID (required)
-	Driver            string                 `protobuf:"bytes,2,opt,name=driver,proto3" json:"driver,omitempty"`                                                                               // Driver name (required)
-	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`                                                                               // Driver-specific configuration (required)
-	Metadata          map[string]string      `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional metadata
-	SnapshotThreshold uint64                 `protobuf:"varint,5,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`                               // Number of logs before triggering a snapshot (optional, uses global config if not set)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                   // Ledger name/ID (required)
+	LogStoreDriver     string                 `protobuf:"bytes,2,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`                                       // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	RuntimeStoreDriver string                 `protobuf:"bytes,3,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"`                           // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,4,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`                                       // Log store driver-specific configuration
+	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,5,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"`                           // Runtime store driver-specific configuration
+	Metadata           map[string]string      `protobuf:"bytes,6,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional metadata
+	SnapshotThreshold  uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`                               // Number of logs before triggering a snapshot (optional, uses global config if not set)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateLedgerCommand) Reset() {
@@ -72,16 +74,30 @@ func (x *CreateLedgerCommand) GetName() string {
 	return ""
 }
 
-func (x *CreateLedgerCommand) GetDriver() string {
+func (x *CreateLedgerCommand) GetLogStoreDriver() string {
 	if x != nil {
-		return x.Driver
+		return x.LogStoreDriver
 	}
 	return ""
 }
 
-func (x *CreateLedgerCommand) GetConfig() *structpb.Struct {
+func (x *CreateLedgerCommand) GetRuntimeStoreDriver() string {
 	if x != nil {
-		return x.Config
+		return x.RuntimeStoreDriver
+	}
+	return ""
+}
+
+func (x *CreateLedgerCommand) GetLogStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.LogStoreConfig
+	}
+	return nil
+}
+
+func (x *CreateLedgerCommand) GetRuntimeStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.RuntimeStoreConfig
 	}
 	return nil
 }
@@ -287,13 +303,15 @@ var File_commands_system_commands_proto protoreflect.FileDescriptor
 
 const file_commands_system_commands_proto_rawDesc = "" +
 	"\n" +
-	"\x1ecommands/system_commands.proto\x12\ffsm_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\fledger.proto\"\xab\x02\n" +
+	"\x1ecommands/system_commands.proto\x12\ffsm_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\fledger.proto\"\xcc\x03\n" +
 	"\x13CreateLedgerCommand\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06driver\x18\x02 \x01(\tR\x06driver\x12/\n" +
-	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12K\n" +
-	"\bmetadata\x18\x04 \x03(\v2/.fsm_commands.CreateLedgerCommand.MetadataEntryR\bmetadata\x12-\n" +
-	"\x12snapshot_threshold\x18\x05 \x01(\x04R\x11snapshotThreshold\x1a;\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12(\n" +
+	"\x10log_store_driver\x18\x02 \x01(\tR\x0elogStoreDriver\x120\n" +
+	"\x14runtime_store_driver\x18\x03 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
+	"\x10log_store_config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
+	"\x14runtime_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x12K\n" +
+	"\bmetadata\x18\x06 \x03(\v2/.fsm_commands.CreateLedgerCommand.MetadataEntryR\bmetadata\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\")\n" +
@@ -340,17 +358,18 @@ var file_commands_system_commands_proto_goTypes = []any{
 	(*ledgerpb.LedgerInfo)(nil), // 8: ledger.LedgerInfo
 }
 var file_commands_system_commands_proto_depIdxs = []int32{
-	6, // 0: fsm_commands.CreateLedgerCommand.config:type_name -> google.protobuf.Struct
-	4, // 1: fsm_commands.CreateLedgerCommand.metadata:type_name -> fsm_commands.CreateLedgerCommand.MetadataEntry
-	5, // 2: fsm_commands.SystemFSMSnapshot.ledgers:type_name -> fsm_commands.SystemFSMSnapshot.LedgersEntry
-	6, // 3: fsm_commands.BucketInfo.config:type_name -> google.protobuf.Struct
-	7, // 4: fsm_commands.BucketInfo.created_at:type_name -> ledger.Timestamp
-	8, // 5: fsm_commands.SystemFSMSnapshot.LedgersEntry.value:type_name -> ledger.LedgerInfo
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 0: fsm_commands.CreateLedgerCommand.log_store_config:type_name -> google.protobuf.Struct
+	6, // 1: fsm_commands.CreateLedgerCommand.runtime_store_config:type_name -> google.protobuf.Struct
+	4, // 2: fsm_commands.CreateLedgerCommand.metadata:type_name -> fsm_commands.CreateLedgerCommand.MetadataEntry
+	5, // 3: fsm_commands.SystemFSMSnapshot.ledgers:type_name -> fsm_commands.SystemFSMSnapshot.LedgersEntry
+	6, // 4: fsm_commands.BucketInfo.config:type_name -> google.protobuf.Struct
+	7, // 5: fsm_commands.BucketInfo.created_at:type_name -> ledger.Timestamp
+	8, // 6: fsm_commands.SystemFSMSnapshot.LedgersEntry.value:type_name -> ledger.LedgerInfo
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_commands_system_commands_proto_init() }

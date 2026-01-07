@@ -75,14 +75,12 @@ func NewPebbleMetricsListener(m metric.Meter) *pebble.EventListener {
 		panic(err)
 	}
 
-	// Pebble calls these callbacks without a context; we’ll use Background.
-
 	var (
 		stallStart time.Time
-		stallOn bool
+		stallOn    bool
 		stallAttrs []attribute.KeyValue
-		mu sync.Mutex
-		ctx = context.Background()
+		mu         sync.Mutex
+		ctx        = context.Background()
 	)
 
 	return &pebble.EventListener{

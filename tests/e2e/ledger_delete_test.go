@@ -40,6 +40,8 @@ var _ = Describe("Ledger Deletion", func() {
 
 			server := testservice.New(cmdserver.NewRootCommand,
 				testservice.WithInstruments(
+					testservice.DebugInstrumentation(debug),
+					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
 					testserver.WithHTTPPort(9200+i),
 					testserver.WithDataDir(raftTmpDir),
@@ -117,7 +119,8 @@ var _ = Describe("Ledger Deletion", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
+					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
+					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -202,7 +205,8 @@ var _ = Describe("Ledger Deletion", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					Driver: components.CreateLedgerRequestDriverSqliteMattn.ToPointer(),
+					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
+					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())

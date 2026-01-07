@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -51,10 +52,10 @@ type SnapshotStore interface {
 }
 
 type syncer[State any, F FSM[State]] struct {
-	spool                      Spool
-	fsm                        F
-	logger                     logging.Logger
-	createSnapshotHistogram    metric.Float64Histogram
+	spool                   Spool
+	fsm                     F
+	logger                  logging.Logger
+	createSnapshotHistogram metric.Float64Histogram
 
 	status   syncerStatus
 	commands chan any
@@ -64,7 +65,9 @@ type syncer[State any, F FSM[State]] struct {
 
 func (s *syncer[State, F]) run() {
 
-	taskExecutor := newSingleTaskExecutor(s.commands)
+	defer otlplogs.RecoverAndLogPanics(s.logger)
+
+	taskExecutor := newSingleTaskExecutor(s.logger, s.commands)
 	for {
 		select {
 		case stop := <-s.stopCh:
@@ -84,23 +87,27 @@ func (s *syncer[State, F]) run() {
 					taskExecutor.interrupt()
 				}
 
-				taskExecutor.run(context.Background(), cmd.errCh, func(ctx context.Context) (any, error) {
-					startTime := time.Now()
-					data, err := s.fsm.CreateSnapshot(ctx)
-					if err == nil {
-						_, err = s.storage.CreateSnapshot(cmd.applied, cmd.state, data)
-					}
+				taskExecutor.run(
+					context.Background(),
+					cmd.errCh,
+					func(ctx context.Context) (any, error) {
+						startTime := time.Now()
+						data, err := s.fsm.CreateSnapshot(ctx)
+						if err == nil {
+							_, err = s.storage.CreateSnapshot(cmd.applied, cmd.state, data)
+						}
 
-					// Record metric for snapshot creation duration
-					if s.createSnapshotHistogram != nil && err == nil {
-						duration := time.Since(startTime)
-						s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
-					}
+						// Record metric for snapshot creation duration
+						if s.createSnapshotHistogram != nil && err == nil {
+							duration := time.Since(startTime)
+							s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+						}
 
-					return createSnapshotTerminatedCommand{
-						createSnapshotCommand: cmd,
-					}, err
-				})
+						return createSnapshotTerminatedCommand{
+							createSnapshotCommand: cmd,
+						}, err
+					},
+				)
 			case createSnapshotTerminatedCommand:
 				s.status = syncerStatusNormal
 			case restoreSnapshotCommand:
@@ -293,6 +300,7 @@ type singleTaskExecutor struct {
 	cancel      context.CancelFunc
 	terminated  chan struct{}
 	nextChannel chan any
+	logger      logging.Logger
 }
 
 func (t *singleTaskExecutor) run(ctx context.Context, errCh chan error, fn func(ctx context.Context) (any, error)) {
@@ -302,6 +310,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, errCh chan error, fn func(
 		t.ctx, t.cancel = context.WithCancel(ctx)
 
 		go func() {
+			defer otlplogs.RecoverAndLogPanics(t.logger)
 			defer func() {
 				t.cancel()
 				close(t.terminated)
@@ -337,11 +346,12 @@ func (t *singleTaskExecutor) interrupt() {
 	}
 }
 
-func newSingleTaskExecutor(nextChannel chan any) *singleTaskExecutor {
+func newSingleTaskExecutor(logger logging.Logger, nextChannel chan any) *singleTaskExecutor {
 	terminatedChan := make(chan struct{})
 	close(terminatedChan)
 	return &singleTaskExecutor{
 		terminated:  terminatedChan,
 		nextChannel: nextChannel,
+		logger:      logger,
 	}
 }

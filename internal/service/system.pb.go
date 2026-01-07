@@ -192,14 +192,16 @@ func (x *SnapshotResponse) GetMessage() string {
 }
 
 type CreateLedgerRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Driver            string                 `protobuf:"bytes,2,opt,name=driver,proto3" json:"driver,omitempty"`
-	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	Metadata          *structpb.Struct       `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,5,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	LogStoreDriver     string                 `protobuf:"bytes,2,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`             // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	RuntimeStoreDriver string                 `protobuf:"bytes,3,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"` // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,4,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`             // Log store driver-specific configuration
+	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,5,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"` // Runtime store driver-specific configuration
+	Metadata           *structpb.Struct       `protobuf:"bytes,6,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	SnapshotThreshold  uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateLedgerRequest) Reset() {
@@ -239,16 +241,30 @@ func (x *CreateLedgerRequest) GetName() string {
 	return ""
 }
 
-func (x *CreateLedgerRequest) GetDriver() string {
+func (x *CreateLedgerRequest) GetLogStoreDriver() string {
 	if x != nil {
-		return x.Driver
+		return x.LogStoreDriver
 	}
 	return ""
 }
 
-func (x *CreateLedgerRequest) GetConfig() *structpb.Struct {
+func (x *CreateLedgerRequest) GetRuntimeStoreDriver() string {
 	if x != nil {
-		return x.Config
+		return x.RuntimeStoreDriver
+	}
+	return ""
+}
+
+func (x *CreateLedgerRequest) GetLogStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.LogStoreConfig
+	}
+	return nil
+}
+
+func (x *CreateLedgerRequest) GetRuntimeStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.RuntimeStoreConfig
 	}
 	return nil
 }
@@ -268,16 +284,18 @@ func (x *CreateLedgerRequest) GetSnapshotThreshold() uint64 {
 }
 
 type CreateLedgerResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	Driver            string                 `protobuf:"bytes,4,opt,name=driver,proto3" json:"driver,omitempty"`
-	Metadata          *structpb.Struct       `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	CreatedAt         *ledgerpb.Timestamp    `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	LogStoreDriver     string                 `protobuf:"bytes,3,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`             // Log store driver name
+	RuntimeStoreDriver string                 `protobuf:"bytes,4,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"` // Runtime store driver name
+	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,5,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`             // Log store driver-specific configuration
+	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,6,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"` // Runtime store driver-specific configuration
+	Metadata           *structpb.Struct       `protobuf:"bytes,7,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	CreatedAt          *ledgerpb.Timestamp    `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	SnapshotThreshold  uint64                 `protobuf:"varint,9,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateLedgerResponse) Reset() {
@@ -324,18 +342,32 @@ func (x *CreateLedgerResponse) GetName() string {
 	return ""
 }
 
-func (x *CreateLedgerResponse) GetConfig() *structpb.Struct {
+func (x *CreateLedgerResponse) GetLogStoreDriver() string {
 	if x != nil {
-		return x.Config
+		return x.LogStoreDriver
+	}
+	return ""
+}
+
+func (x *CreateLedgerResponse) GetRuntimeStoreDriver() string {
+	if x != nil {
+		return x.RuntimeStoreDriver
+	}
+	return ""
+}
+
+func (x *CreateLedgerResponse) GetLogStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.LogStoreConfig
 	}
 	return nil
 }
 
-func (x *CreateLedgerResponse) GetDriver() string {
+func (x *CreateLedgerResponse) GetRuntimeStoreConfig() *structpb.Struct {
 	if x != nil {
-		return x.Driver
+		return x.RuntimeStoreConfig
 	}
-	return ""
+	return nil
 }
 
 func (x *CreateLedgerResponse) GetMetadata() *structpb.Struct {
@@ -668,16 +700,18 @@ func (x *GetLedgerByNameRequest) GetName() string {
 }
 
 type GetLedgerByNameResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	Driver            string                 `protobuf:"bytes,4,opt,name=driver,proto3" json:"driver,omitempty"`
-	Metadata          *structpb.Struct       `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	CreatedAt         *ledgerpb.Timestamp    `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	LogStoreDriver     string                 `protobuf:"bytes,3,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`             // Log store driver name
+	RuntimeStoreDriver string                 `protobuf:"bytes,4,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"` // Runtime store driver name
+	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,5,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`             // Log store driver-specific configuration
+	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,6,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"` // Runtime store driver-specific configuration
+	Metadata           *structpb.Struct       `protobuf:"bytes,7,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	CreatedAt          *ledgerpb.Timestamp    `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	SnapshotThreshold  uint64                 `protobuf:"varint,9,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GetLedgerByNameResponse) Reset() {
@@ -724,18 +758,32 @@ func (x *GetLedgerByNameResponse) GetName() string {
 	return ""
 }
 
-func (x *GetLedgerByNameResponse) GetConfig() *structpb.Struct {
+func (x *GetLedgerByNameResponse) GetLogStoreDriver() string {
 	if x != nil {
-		return x.Config
+		return x.LogStoreDriver
+	}
+	return ""
+}
+
+func (x *GetLedgerByNameResponse) GetRuntimeStoreDriver() string {
+	if x != nil {
+		return x.RuntimeStoreDriver
+	}
+	return ""
+}
+
+func (x *GetLedgerByNameResponse) GetLogStoreConfig() *structpb.Struct {
+	if x != nil {
+		return x.LogStoreConfig
 	}
 	return nil
 }
 
-func (x *GetLedgerByNameResponse) GetDriver() string {
+func (x *GetLedgerByNameResponse) GetRuntimeStoreConfig() *structpb.Struct {
 	if x != nil {
-		return x.Driver
+		return x.RuntimeStoreConfig
 	}
-	return ""
+	return nil
 }
 
 func (x *GetLedgerByNameResponse) GetMetadata() *structpb.Struct {
@@ -771,22 +819,26 @@ const file_system_proto_rawDesc = "" +
 	"\tleader_id\x18\x01 \x01(\x04R\bleaderId\"\x11\n" +
 	"\x0fSnapshotRequest\",\n" +
 	"\x10SnapshotResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\xd6\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\xf7\x02\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06driver\x18\x02 \x01(\tR\x06driver\x12/\n" +
-	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x123\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12-\n" +
-	"\x12snapshot_threshold\x18\x05 \x01(\x04R\x11snapshotThreshold\"\x99\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12(\n" +
+	"\x10log_store_driver\x18\x02 \x01(\tR\x0elogStoreDriver\x120\n" +
+	"\x14runtime_store_driver\x18\x03 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
+	"\x10log_store_config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
+	"\x14runtime_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x123\n" +
+	"\bmetadata\x18\x06 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\"\xba\x03\n" +
 	"\x14CreateLedgerResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
-	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x16\n" +
-	"\x06driver\x18\x04 \x01(\tR\x06driver\x123\n" +
-	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x120\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12(\n" +
+	"\x10log_store_driver\x18\x03 \x01(\tR\x0elogStoreDriver\x120\n" +
+	"\x14runtime_store_driver\x18\x04 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
+	"\x10log_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
+	"\x14runtime_store_config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x123\n" +
+	"\bmetadata\x18\a \x01(\v2\x17.google.protobuf.StructR\bmetadata\x120\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
-	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\")\n" +
+	"created_at\x18\b \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\t \x01(\x04R\x11snapshotThreshold\")\n" +
 	"\x13DeleteLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"0\n" +
 	"\x14DeleteLedgerResponse\x12\x18\n" +
@@ -802,16 +854,18 @@ const file_system_proto_rawDesc = "" +
 	"\x15GetAllLedgersResponse\x126\n" +
 	"\aledgers\x18\x01 \x03(\v2\x1c.ledger.CreateLedgerResponseR\aledgers\",\n" +
 	"\x16GetLedgerByNameRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x9c\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xbd\x03\n" +
 	"\x17GetLedgerByNameResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
-	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x16\n" +
-	"\x06driver\x18\x04 \x01(\tR\x06driver\x123\n" +
-	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x120\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12(\n" +
+	"\x10log_store_driver\x18\x03 \x01(\tR\x0elogStoreDriver\x120\n" +
+	"\x14runtime_store_driver\x18\x04 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
+	"\x10log_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
+	"\x14runtime_store_config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x123\n" +
+	"\bmetadata\x18\a \x01(\v2\x17.google.protobuf.StructR\bmetadata\x120\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
-	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold2\xb6\x04\n" +
+	"created_at\x18\b \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\t \x01(\x04R\x11snapshotThreshold2\xb6\x04\n" +
 	"\rSystemService\x12=\n" +
 	"\bSnapshot\x12\x17.ledger.SnapshotRequest\x1a\x18.ledger.SnapshotResponse\x12I\n" +
 	"\fCreateLedger\x12\x1b.ledger.CreateLedgerRequest\x1a\x1c.ledger.CreateLedgerResponse\x12I\n" +
@@ -853,34 +907,37 @@ var file_system_proto_goTypes = []any{
 	(*ledgerpb.Timestamp)(nil),          // 15: ledger.Timestamp
 }
 var file_system_proto_depIdxs = []int32{
-	14, // 0: ledger.CreateLedgerRequest.config:type_name -> google.protobuf.Struct
-	14, // 1: ledger.CreateLedgerRequest.metadata:type_name -> google.protobuf.Struct
-	14, // 2: ledger.CreateLedgerResponse.config:type_name -> google.protobuf.Struct
-	14, // 3: ledger.CreateLedgerResponse.metadata:type_name -> google.protobuf.Struct
-	15, // 4: ledger.CreateLedgerResponse.created_at:type_name -> ledger.Timestamp
-	5,  // 5: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.CreateLedgerResponse
-	14, // 6: ledger.GetLedgerByNameResponse.config:type_name -> google.protobuf.Struct
-	14, // 7: ledger.GetLedgerByNameResponse.metadata:type_name -> google.protobuf.Struct
-	15, // 8: ledger.GetLedgerByNameResponse.created_at:type_name -> ledger.Timestamp
-	2,  // 9: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
-	4,  // 10: ledger.SystemService.CreateLedger:input_type -> ledger.CreateLedgerRequest
-	6,  // 11: ledger.SystemService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
-	8,  // 12: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
-	10, // 13: ledger.SystemService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
-	12, // 14: ledger.SystemService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
-	0,  // 15: ledger.SystemService.ResolveLedgerLeader:input_type -> ledger.ResolveLedgerLeaderRequest
-	3,  // 16: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
-	5,  // 17: ledger.SystemService.CreateLedger:output_type -> ledger.CreateLedgerResponse
-	7,  // 18: ledger.SystemService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
-	9,  // 19: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
-	11, // 20: ledger.SystemService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
-	13, // 21: ledger.SystemService.GetLedgerInfo:output_type -> ledger.GetLedgerByNameResponse
-	1,  // 22: ledger.SystemService.ResolveLedgerLeader:output_type -> ledger.ResolveLedgerLeaderResponse
-	16, // [16:23] is the sub-list for method output_type
-	9,  // [9:16] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	14, // 0: ledger.CreateLedgerRequest.log_store_config:type_name -> google.protobuf.Struct
+	14, // 1: ledger.CreateLedgerRequest.runtime_store_config:type_name -> google.protobuf.Struct
+	14, // 2: ledger.CreateLedgerRequest.metadata:type_name -> google.protobuf.Struct
+	14, // 3: ledger.CreateLedgerResponse.log_store_config:type_name -> google.protobuf.Struct
+	14, // 4: ledger.CreateLedgerResponse.runtime_store_config:type_name -> google.protobuf.Struct
+	14, // 5: ledger.CreateLedgerResponse.metadata:type_name -> google.protobuf.Struct
+	15, // 6: ledger.CreateLedgerResponse.created_at:type_name -> ledger.Timestamp
+	5,  // 7: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.CreateLedgerResponse
+	14, // 8: ledger.GetLedgerByNameResponse.log_store_config:type_name -> google.protobuf.Struct
+	14, // 9: ledger.GetLedgerByNameResponse.runtime_store_config:type_name -> google.protobuf.Struct
+	14, // 10: ledger.GetLedgerByNameResponse.metadata:type_name -> google.protobuf.Struct
+	15, // 11: ledger.GetLedgerByNameResponse.created_at:type_name -> ledger.Timestamp
+	2,  // 12: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
+	4,  // 13: ledger.SystemService.CreateLedger:input_type -> ledger.CreateLedgerRequest
+	6,  // 14: ledger.SystemService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
+	8,  // 15: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
+	10, // 16: ledger.SystemService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	12, // 17: ledger.SystemService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
+	0,  // 18: ledger.SystemService.ResolveLedgerLeader:input_type -> ledger.ResolveLedgerLeaderRequest
+	3,  // 19: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
+	5,  // 20: ledger.SystemService.CreateLedger:output_type -> ledger.CreateLedgerResponse
+	7,  // 21: ledger.SystemService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
+	9,  // 22: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
+	11, // 23: ledger.SystemService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
+	13, // 24: ledger.SystemService.GetLedgerInfo:output_type -> ledger.GetLedgerByNameResponse
+	1,  // 25: ledger.SystemService.ResolveLedgerLeader:output_type -> ledger.ResolveLedgerLeaderResponse
+	19, // [19:26] is the sub-list for method output_type
+	12, // [12:19] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_system_proto_init() }

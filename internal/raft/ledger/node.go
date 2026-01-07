@@ -275,14 +275,25 @@ func NewNode(
 		return nil, fmt.Errorf("creating storage for ledger %s: %w", ledgerInfo.GetName(), err)
 	}
 
-	// Convert Config from *structpb.Struct to json.RawMessage
-	var configJSON json.RawMessage
-	if ledgerInfo.Config != nil {
-		configMap := ledgerInfo.Config.AsMap()
+	// Convert LogStoreConfig from *structpb.Struct to json.RawMessage
+	var logStoreConfigJSON json.RawMessage
+	if ledgerInfo.LogStoreConfig != nil {
+		configMap := ledgerInfo.LogStoreConfig.AsMap()
 		var err error
-		configJSON, err = json.Marshal(configMap)
+		logStoreConfigJSON, err = json.Marshal(configMap)
 		if err != nil {
-			return nil, fmt.Errorf("marshaling ledger config: %w", err)
+			return nil, fmt.Errorf("marshaling log store config: %w", err)
+		}
+	}
+
+	// Convert RuntimeStoreConfig from *structpb.Struct to json.RawMessage
+	var runtimeStoreConfigJSON json.RawMessage
+	if ledgerInfo.RuntimeStoreConfig != nil {
+		configMap := ledgerInfo.RuntimeStoreConfig.AsMap()
+		var err error
+		runtimeStoreConfigJSON, err = json.Marshal(configMap)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling runtime store config: %w", err)
 		}
 	}
 
@@ -295,8 +306,8 @@ func NewNode(
 	// Use the same dataDir as the Raft storage (ledger data directory)
 	logStore, err := CreateLogStore(
 		ctx,
-		ledgerInfo.Driver,
-		configJSON,
+		ledgerInfo.GetLogStoreDriver(),
+		logStoreConfigJSON,
 		logger,
 		ledgerInfo.GetName(),
 		ledgerInfo.GetId(),
@@ -310,8 +321,8 @@ func NewNode(
 	// Create runtime store for this ledger based on ledger driver
 	runtimeStore, err := CreateRuntimeStore(
 		ctx,
-		ledgerInfo.Driver,
-		configJSON,
+		ledgerInfo.GetRuntimeStoreDriver(),
+		runtimeStoreConfigJSON,
 		logger,
 		ledgerInfo.GetName(),
 		ledgerInfo.GetId(),

@@ -169,13 +169,14 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 		// Ledgers table
 		pterm.Println()
 		ledgerTableData := pterm.TableData{
-			{"Name", "ID", "Driver"},
+			{"Name", "ID", "Log Store", "Runtime Store"},
 		}
 		for name, ledgerInfo := range innerState.GetLedgers() {
 			ledgerTableData = append(ledgerTableData, []string{
 				name,
 				fmt.Sprintf("%d", ledgerInfo.ID),
-				string(ledgerInfo.Driver),
+				string(ledgerInfo.LogStoreDriver),
+				string(ledgerInfo.RuntimeStoreDriver),
 			})
 		}
 		return pterm.DefaultTable.WithHasHeader().WithData(ledgerTableData).Render()

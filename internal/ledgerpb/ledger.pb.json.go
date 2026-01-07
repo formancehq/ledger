@@ -250,22 +250,28 @@ func (x *RevertedTransactionMemento) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for LedgerInfo
 func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Id                uint64            `json:"id,omitempty"`
-		Name              string            `json:"name,omitempty"`
-		Driver            string            `json:"driver,omitempty"`
-		Config            interface{}       `json:"config,omitempty"`
-		Metadata          map[string]string `json:"metadata,omitempty"`
-		CreatedAt         *Timestamp        `json:"createdAt,omitempty"`
-		SnapshotThreshold uint64            `json:"snapshotThreshold,omitempty"`
-		DeletedAt         *Timestamp        `json:"deletedAt,omitempty"`
+		Id                  uint64            `json:"id,omitempty"`
+		Name                string            `json:"name,omitempty"`
+		LogStoreDriver      string            `json:"logStoreDriver,omitempty"`
+		RuntimeStoreDriver  string            `json:"runtimeStoreDriver,omitempty"`
+		LogStoreConfig      interface{}       `json:"logStoreConfig,omitempty"`
+		RuntimeStoreConfig  interface{}       `json:"runtimeStoreConfig,omitempty"`
+		Metadata            map[string]string `json:"metadata,omitempty"`
+		CreatedAt           *Timestamp        `json:"createdAt,omitempty"`
+		SnapshotThreshold   uint64            `json:"snapshotThreshold,omitempty"`
+		DeletedAt           *Timestamp        `json:"deletedAt,omitempty"`
+		Status              LedgerStatus      `json:"status,omitempty"`
 	}{
-		Id:                x.Id,
-		Name:              x.Name,
-		Driver:            x.Driver,
-		Config:            x.Config,
-		Metadata:          x.Metadata,
-		CreatedAt:         x.CreatedAt,
-		SnapshotThreshold: x.SnapshotThreshold,
-		DeletedAt:         x.DeletedAt,
+		Id:                  x.Id,
+		Name:                x.Name,
+		LogStoreDriver:      x.LogStoreDriver,
+		RuntimeStoreDriver:  x.RuntimeStoreDriver,
+		LogStoreConfig:      x.LogStoreConfig,
+		RuntimeStoreConfig:  x.RuntimeStoreConfig,
+		Metadata:            x.Metadata,
+		CreatedAt:           x.CreatedAt,
+		SnapshotThreshold:  x.SnapshotThreshold,
+		DeletedAt:          x.DeletedAt,
+		Status:              x.Status,
 	})
 }

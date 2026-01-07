@@ -330,11 +330,13 @@ enum LedgerStatus {
 message LedgerInfo {
   uint64 id = 1;                            // Sequential ledger ID
   string name = 2;                          // Ledger name/ID
-  string driver = 3;                        // Driver name (e.g., "sqlite", "s3", etc.)
-  google.protobuf.Struct config = 4;       // Driver-specific configuration
-  map<string, string> metadata = 5;      // Optional metadata
-  Timestamp created_at = 6; // Creation timestamp
-  uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
-  Timestamp deleted_at = 8;                 // Deletion timestamp (always null with hard delete)
-  LedgerStatus status = 9;
+  string log_store_driver = 3;              // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+  string runtime_store_driver = 4;         // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+  google.protobuf.Struct log_store_config = 5;    // Log store driver-specific configuration
+  google.protobuf.Struct runtime_store_config = 6; // Runtime store driver-specific configuration
+  map<string, string> metadata = 7;        // Optional metadata
+  Timestamp created_at = 8;                 // Creation timestamp
+  uint64 snapshot_threshold = 9;           // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  Timestamp deleted_at = 10;                // Deletion timestamp (always null with hard delete)
+  LedgerStatus status = 11;
 }

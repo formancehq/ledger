@@ -149,11 +149,11 @@ persistence:
 # Resource limits and requests
 resources:
   limits:
-    cpu: 1000m
+    cpu: 2000m
     memory: 512Mi
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 2000m
+    memory: 512Mi
 
 # Health check configuration
 livenessProbe:

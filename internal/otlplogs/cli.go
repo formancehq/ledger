@@ -49,5 +49,6 @@ func FXModuleFromFlags(cmd *cobra.Command, defaultFields map[string]any) fx.Opti
 		Output:             cmd.OutOrStdout(),
 		Debug:              service.IsDebug(cmd),
 		FormatJSON:         jsonFormatting,
+		Fields: defaultFields,
 	})
 }

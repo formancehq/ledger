@@ -2,6 +2,7 @@ package otlplogs
 
 import (
 	"io"
+	"runtime/debug"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/sirupsen/logrus"
@@ -61,7 +62,6 @@ func LogsModule(cfg ModuleConfig) fx.Option {
 		ProvideLogsProviderOption(sdklog.WithResource),
 		fx.Decorate(func(_ logging.Logger, loggerProvider log.LoggerProvider) (logging.Logger, error) {
 			l := logrus.New()
-			l.WithFields(cfg.Fields)
 			l.AddHook(&otelLogrusHook{
 				Logger: loggerProvider.Logger("root"),
 			})
@@ -81,8 +81,9 @@ func LogsModule(cfg ModuleConfig) fx.Option {
 			}
 
 			l.SetFormatter(formatter)
+			ret := logging.NewLogrus(l)
 
-			return logging.NewLogrus(l), nil
+			return ret.WithFields(cfg.Fields), nil
 		}),
 	)
 
@@ -116,4 +117,12 @@ func LogsModule(cfg ModuleConfig) fx.Option {
 	}
 
 	return fx.Options(options...)
+}
+
+func RecoverAndLogPanics(logger logging.Logger) {
+	if e := recover(); e != nil {
+		logger.Errorf("Panicked: %v", e)
+		_, _ = logger.Writer().Write(debug.Stack())
+		panic(e)
+	}
 }

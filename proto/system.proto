@@ -43,20 +43,24 @@ message SnapshotResponse {
 
 message CreateLedgerRequest {
   string name = 1;
-  string driver = 2;
-  google.protobuf.Struct config = 3;
-  google.protobuf.Struct metadata = 4;
-  uint64 snapshot_threshold = 5;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  string log_store_driver = 2;              // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+  string runtime_store_driver = 3;         // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+  google.protobuf.Struct log_store_config = 4;     // Log store driver-specific configuration
+  google.protobuf.Struct runtime_store_config = 5; // Runtime store driver-specific configuration
+  google.protobuf.Struct metadata = 6;
+  uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
 message CreateLedgerResponse {
   uint64 id = 1;
   string name = 2;
-  google.protobuf.Struct config = 3;
-  string driver = 4;
-  google.protobuf.Struct metadata = 5;
-  Timestamp created_at = 6;
-  uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (0 means use global config)
+  string log_store_driver = 3;              // Log store driver name
+  string runtime_store_driver = 4;          // Runtime store driver name
+  google.protobuf.Struct log_store_config = 5;    // Log store driver-specific configuration
+  google.protobuf.Struct runtime_store_config = 6; // Runtime store driver-specific configuration
+  google.protobuf.Struct metadata = 7;
+  Timestamp created_at = 8;
+  uint64 snapshot_threshold = 9;  // Number of logs before triggering a snapshot (0 means use global config)
 }
 
 message DeleteLedgerRequest {
@@ -91,9 +95,11 @@ message GetLedgerByNameRequest {
 message GetLedgerByNameResponse {
   uint64 id = 1;
   string name = 2;
-  google.protobuf.Struct config = 3;
-  string driver = 4;
-  google.protobuf.Struct metadata = 5;
-  Timestamp created_at = 6;
-  uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (0 means use global config)
+  string log_store_driver = 3;              // Log store driver name
+  string runtime_store_driver = 4;          // Runtime store driver name
+  google.protobuf.Struct log_store_config = 5;    // Log store driver-specific configuration
+  google.protobuf.Struct runtime_store_config = 6; // Runtime store driver-specific configuration
+  google.protobuf.Struct metadata = 7;
+  Timestamp created_at = 8;
+  uint64 snapshot_threshold = 9;  // Number of logs before triggering a snapshot (0 means use global config)
 }

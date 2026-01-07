@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
@@ -225,6 +226,9 @@ func (node *Node[State, F]) NotifyApplied(commandID uint64, result any, index ui
 
 // readyLoop processes Ready structures from etcd/raft for this bucket group with a specific message channel
 func (node *Node[State, F]) readyLoop() {
+
+	defer otlplogs.RecoverAndLogPanics(node.logger)
+
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
@@ -736,7 +740,6 @@ func (node *Node[State, F]) IsHealthy() bool {
 	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
 }
 
-// todo: stop the syncer too
 func (node *Node[State, F]) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 	node.mu.Lock()

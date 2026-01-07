@@ -18,35 +18,39 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body (driver, config, metadata, snapshotThreshold are optional)
+	// Parse request body (logStoreDriver, runtimeStoreDriver, logStoreConfig, runtimeStoreConfig, metadata, snapshotThreshold)
 	var req struct {
-		Driver            string                 `json:"driver,omitempty"`
-		Config            map[string]interface{} `json:"config,omitempty"`
-		Metadata          map[string]string      `json:"metadata,omitempty"`
-		SnapshotThreshold *uint64                `json:"snapshot_threshold,omitempty"`
+		LogStoreDriver     string                 `json:"logStoreDriver"`
+		RuntimeStoreDriver string                 `json:"runtimeStoreDriver"`
+		LogStoreConfig     map[string]interface{} `json:"logStoreConfig,omitempty"`
+		RuntimeStoreConfig map[string]interface{} `json:"runtimeStoreConfig,omitempty"`
+		Metadata           map[string]string      `json:"metadata,omitempty"`
+		SnapshotThreshold  *uint64                `json:"snapshotThreshold,omitempty"`
 	}
 
 	if r.Body == nil {
-		// Use defaults: sqlite-mattn driver (github.com/mattn/go-sqlite3) with empty config
-		req.Driver = "sqlite-mattn"
-		req.Config = make(map[string]interface{})
-	} else {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-			return
-		}
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("request body is required"))
+		return
 	}
 
-	// Use defaults if not provided
-	if req.Driver == "" {
-		req.Driver = "sqlite-mattn" // Default to sqlite-mattn (github.com/mattn/go-sqlite3)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+		return
 	}
-	if req.Config == nil {
-		req.Config = make(map[string]interface{})
+
+	// Validate required fields
+	if req.LogStoreDriver == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("logStoreDriver is required"))
+		return
+	}
+
+	if req.RuntimeStoreDriver == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("runtimeStoreDriver is required"))
+		return
 	}
 
 	// Create ledger via cluster
-	ledgerInfo, err := s.cluster.CreateLedger(r.Context(), ledgerName, req.Driver, req.Config, req.Metadata, req.SnapshotThreshold)
+	ledgerInfo, err := s.cluster.CreateLedger(r.Context(), ledgerName, req.LogStoreConfig, req.RuntimeStoreConfig, req.Metadata, req.SnapshotThreshold, req.LogStoreDriver, req.RuntimeStoreDriver)
 	if err != nil {
 		handleError(w, r, err)
 		return

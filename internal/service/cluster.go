@@ -24,7 +24,7 @@ type LedgerCluster interface {
 
 type System interface {
 	LeaderOnly
-	CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledgerpb.LedgerInfo, error)
+	CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error)
 	DeleteLedger(ctx context.Context, name string) error
 	GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error)
 	GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
