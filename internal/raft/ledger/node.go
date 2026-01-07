@@ -25,7 +25,18 @@ type logStoreFactory func(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.RuntimeStore, service.LogStore, error)
+) (service.LogStore, error)
+
+// runtimeStoreFactory is a function that creates a RuntimeStore from a JSON config
+type runtimeStoreFactory func(
+	ctx context.Context,
+	configJSON json.RawMessage,
+	logger logging.Logger,
+	ledgerName string,
+	ledgerID uint64,
+	dataDir string,
+	meterProvider metric.MeterProvider,
+) (service.RuntimeStore, error)
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
@@ -37,29 +48,20 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, service.LogStore, error) {
+	) (service.LogStore, error) {
 		// SQLite DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Mattn driver
-		// Create database file paths: dataDir/ledger-{id}-logs.db and dataDir/ledger-{id}-runtime.db
+		// Create database file path: dataDir/ledger-{id}-logs.db
 		logsDBFileName := fmt.Sprintf("ledger-%d-logs.db", ledgerID)
 		logsDBPath := filepath.Join(dataDir, logsDBFileName)
-		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
-		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
 
 		// Create log store (stores logs)
 		logStore, err := service.NewSQLiteMattnLogStore(logsDBPath, logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("creating log store: %w", err)
+			return nil, fmt.Errorf("creating log store: %w", err)
 		}
 
-		// Create runtime store (stores balances and metadata)
-		runtimeStore, err := service.NewSQLiteMattnRuntimeStore(ctx, runtimeDBPath, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
-		}
-
-		// Combine both stores
-		return runtimeStore, logStore, nil
+		return logStore, nil
 	},
 	"sqlite-modern": func(
 		ctx context.Context,
@@ -69,33 +71,23 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, service.LogStore, error) {
+	) (service.LogStore, error) {
 		// SQLite Modern DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Modern driver
-		// Create database file paths: dataDir/ledger-{id}-logs.db and dataDir/ledger-{id}-runtime.db
+		// Create database file path: dataDir/ledger-{id}-logs.db
 		logsDBFileName := fmt.Sprintf("ledger-%d-logs.db", ledgerID)
 		logsDBPath := filepath.Join(dataDir, logsDBFileName)
-		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
-		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
 
 		// Use sqlite driver (modernc.org/sqlite)
 		logsDSN := fmt.Sprintf("file:%s", logsDBPath)
-		runtimeDSN := fmt.Sprintf("file:%s", runtimeDBPath)
 
 		// Create log store (stores logs)
 		logStore, err := service.NewSQLiteModernLogStore(logsDSN, logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("creating log store: %w", err)
+			return nil, fmt.Errorf("creating log store: %w", err)
 		}
 
-		// Create runtime store (stores balances and metadata)
-		runtimeStore, err := service.NewSQLiteModernRuntimeStore(ctx, runtimeDSN, logger)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
-		}
-
-		// Combine both stores
-		return runtimeStore, logStore, nil
+		return logStore, nil
 	},
 	"pebble": func(
 		ctx context.Context,
@@ -105,10 +97,9 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, service.LogStore, error) {
+	) (service.LogStore, error) {
 		// Pebble data directories are automatically generated based on ledger ID
 		// Config is ignored for Pebble driver
-		// Create data directories: dataDir/runtime and dataDir/logs
 
 		logStoreMeter := meterProvider.Meter("peeble.log_store", metric.WithInstrumentationAttributes(
 			attribute.Int("ledger-id", int(ledgerID)),
@@ -117,8 +108,75 @@ var logStoreFactories = map[string]logStoreFactory{
 		// Create log store (stores logs)
 		logStore, err := service.NewPebbleLogStore(dataDir, logger, logStoreMeter)
 		if err != nil {
-			return nil, nil, fmt.Errorf("creating log store: %w", err)
+			return nil, fmt.Errorf("creating log store: %w", err)
 		}
+
+		return logStore, nil
+	},
+}
+
+// runtimeStoreFactories maps driver names to their factory functions
+var runtimeStoreFactories = map[string]runtimeStoreFactory{
+	"sqlite-mattn": func(
+		ctx context.Context,
+		configJSON json.RawMessage,
+		logger logging.Logger,
+		ledgerName string,
+		ledgerID uint64,
+		dataDir string,
+		meterProvider metric.MeterProvider,
+	) (service.RuntimeStore, error) {
+		// SQLite DSN is automatically generated based on ledger ID
+		// Config is ignored for SQLite Mattn driver
+		// Create database file path: dataDir/ledger-{id}-runtime.db
+		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
+		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
+
+		// Create runtime store (stores balances and metadata)
+		runtimeStore, err := service.NewSQLiteMattnRuntimeStore(ctx, runtimeDBPath, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating runtime store: %w", err)
+		}
+
+		return runtimeStore, nil
+	},
+	"sqlite-modern": func(
+		ctx context.Context,
+		configJSON json.RawMessage,
+		logger logging.Logger,
+		ledgerName string,
+		ledgerID uint64,
+		dataDir string,
+		meterProvider metric.MeterProvider,
+	) (service.RuntimeStore, error) {
+		// SQLite Modern DSN is automatically generated based on ledger ID
+		// Config is ignored for SQLite Modern driver
+		// Create database file path: dataDir/ledger-{id}-runtime.db
+		runtimeDBFileName := fmt.Sprintf("ledger-%d-runtime.db", ledgerID)
+		runtimeDBPath := filepath.Join(dataDir, runtimeDBFileName)
+
+		// Use sqlite driver (modernc.org/sqlite)
+		runtimeDSN := fmt.Sprintf("file:%s", runtimeDBPath)
+
+		// Create runtime store (stores balances and metadata)
+		runtimeStore, err := service.NewSQLiteModernRuntimeStore(ctx, runtimeDSN, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating runtime store: %w", err)
+		}
+
+		return runtimeStore, nil
+	},
+	"pebble": func(
+		ctx context.Context,
+		configJSON json.RawMessage,
+		logger logging.Logger,
+		ledgerName string,
+		ledgerID uint64,
+		dataDir string,
+		meterProvider metric.MeterProvider,
+	) (service.RuntimeStore, error) {
+		// Pebble data directories are automatically generated based on ledger ID
+		// Config is ignored for Pebble driver
 
 		runtimeStoreMeter := meterProvider.Meter("peeble.runtime_store", metric.WithInstrumentationAttributes(
 			attribute.Int("ledger-id", int(ledgerID)),
@@ -127,11 +185,10 @@ var logStoreFactories = map[string]logStoreFactory{
 		// Create runtime store (stores balances and metadata)
 		runtimeStore, err := service.NewPebbleRuntimeStore(dataDir, logger, runtimeStoreMeter)
 		if err != nil {
-			return nil, nil, fmt.Errorf("creating runtime store: %w", err)
+			return nil, fmt.Errorf("creating runtime store: %w", err)
 		}
 
-		// Combine both stores
-		return runtimeStore, logStore, nil
+		return runtimeStore, nil
 	},
 }
 
@@ -145,24 +202,44 @@ func CreateLogStore(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.RuntimeStore, service.LogStore, error) {
+) (service.LogStore, error) {
 
-	// Ensure the directory exists
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, nil, fmt.Errorf("creating directory for pebble database: %w", err)
-	}
-
-	factory, exists := logStoreFactories[driver]
+	logStoreFactory, exists := logStoreFactories[driver]
 	if !exists {
-		return nil, nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
+		return nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
 	}
 
-	runtimeStore, logStore, err := factory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir, meterProvider)
+	logStore, err := logStoreFactory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir, meterProvider)
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
+		return nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
 	}
 
-	return runtimeStore, logStore, nil
+	return logStore, nil
+}
+
+// CreateRuntimeStore creates a RuntimeStore based on the ledger driver and config
+func CreateRuntimeStore(
+	ctx context.Context,
+	driver string,
+	configJSON json.RawMessage,
+	logger logging.Logger,
+	ledgerName string,
+	ledgerID uint64,
+	dataDir string,
+	meterProvider metric.MeterProvider,
+) (service.RuntimeStore, error) {
+
+	runtimeStoreFactory, exists := runtimeStoreFactories[driver]
+	if !exists {
+		return nil, fmt.Errorf("unsupported ledger driver for runtime store: %s", driver)
+	}
+
+	runtimeStore, err := runtimeStoreFactory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir, meterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("creating %s runtime store for ledger %s: %w", driver, ledgerName, err)
+	}
+
+	return runtimeStore, nil
 }
 
 // Node represents a Raft group for a specific ledger
@@ -209,9 +286,29 @@ func NewNode(
 		}
 	}
 
+	// Ensure the directory exists
+	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating directory for ledger stores: %w", err)
+	}
+
 	// Create application log store for this ledger based on ledger driver
 	// Use the same dataDir as the Raft storage (ledger data directory)
-	runtimeStore, logStore, err := CreateLogStore(
+	logStore, err := CreateLogStore(
+		ctx,
+		ledgerInfo.Driver,
+		configJSON,
+		logger,
+		ledgerInfo.GetName(),
+		ledgerInfo.GetId(),
+		cfg.DataDir,
+		meterProvider,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create runtime store for this ledger based on ledger driver
+	runtimeStore, err := CreateRuntimeStore(
 		ctx,
 		ledgerInfo.Driver,
 		configJSON,
