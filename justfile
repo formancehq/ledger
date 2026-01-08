@@ -84,7 +84,12 @@ generate-proto:
         proto/commands/system_commands.proto
 
 docker-build:
-    docker build --platform linux/amd64 -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest .
+    docker buildx build \
+        --platform linux/amd64 \
+        --push \
+        -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest \
+        --cache-to type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache,mode=max \
+        --cache-from type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache .
     docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
 
 k8s-install: docker-build
@@ -156,8 +161,3 @@ k8s-install-loki:
     helm repo add grafana https://grafana.github.io/helm-charts
     helm repo update
     helm upgrade --install loki grafana/loki -n monitoring -f ./deployments/k8s/loki/values.yaml
-
-k8s-install-buildkit:
-    helm repo add andrcuns https://andrcuns.github.io/charts
-    helm repo update
-    helm upgrade --install buildkit andrcuns/buildkit-service -n build --create-namespace -f ./deployments/k8s/buildkit/values.yaml

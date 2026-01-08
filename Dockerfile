@@ -8,12 +8,14 @@ RUN apk add --no-cache git make
 COPY go.mod go.sum ./
 COPY pkg/client/go.* pkg/client/
 RUN go mod download
+ENV GOEXPERIMENT=jsonv2
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+RUN go install github.com/mattn/go-sqlite3
 COPY main.go .
 COPY internal internal
 COPY cmd cmd
-ENV GOEXPERIMENT=jsonv2
-ENV CGO_ENABLED=1
-RUN GOOS=linux go build -a -o ledger-v3-poc .
+RUN go build -o ledger-v3-poc .
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
