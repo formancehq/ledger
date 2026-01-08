@@ -2,7 +2,7 @@ package ledgerpb
 
 import (
 	"database/sql/driver"
-	"encoding/json"
+	"encoding/json/v2"
 )
 
 type LogType int16

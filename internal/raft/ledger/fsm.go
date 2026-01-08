@@ -2,7 +2,7 @@ package ledger
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"sync"
@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -34,8 +35,8 @@ type LogStoreWithMetrics interface {
 // FSM represents the finite state machine for a ledger Raft group
 // It manages a single ledger
 type FSM struct {
-	mu                sync.RWMutex         // Protects access to state
-	state             ledgerpb.LedgerState // FSM state
+	mu                sync.RWMutex          // Protects access to state
+	state             *ledgerpb.LedgerState // FSM state
 	logger            logging.Logger
 	runtimeStore      RuntimeStoreWithMetrics
 	logReaderProvider func(uint64) service.LogReader // LogReader to catch up logs from leader via gRPC
@@ -49,12 +50,12 @@ func newFSM(
 	logWriter LogWriterWithMetrics,
 	runtimeStore RuntimeStoreWithMetrics,
 	logReaderProvider func(uint64) service.LogReader,
-	initialState ledgerpb.LedgerState,
+	initialState *ledgerpb.LedgerState,
 ) *FSM {
 	return &FSM{
 		state: initialState,
 		logger: logger.WithFields(map[string]any{
-			"service": "ledgerpb.fsm",
+			"service": "ledger.fsm",
 			"ledger":  initialState.LedgerInfo.GetName(),
 		}),
 		runtimeStore:      runtimeStore,
@@ -186,9 +187,9 @@ func (f *FSM) updateRuntimeStore(ctx context.Context, logs []*ledgerpb.Log) erro
 
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	f.mu.RLock()
-	snapshotData := map[string]interface{}{
-		"ledgerInfo": f.state.LedgerInfo,
-		"lastLogID":  f.state.LastLogId,
+	snapshotData := &ledgerpb.LedgerState{
+		LedgerInfo: f.state.LedgerInfo,
+		LastLogId:  f.state.LastLogId,
 	}
 	logs := f.logs
 	f.mu.RUnlock()
@@ -202,8 +203,8 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	f.logs = f.logs[len(logs):]
 	f.mu.Unlock()
 
-	// Marshal to JSON
-	data, err := json.Marshal(snapshotData)
+	// Marshal to protobuf
+	data, err := proto.Marshal(snapshotData)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling snapshot data: %w", err)
 	}
@@ -215,12 +216,12 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
 	var snapshotData ledgerpb.LedgerState
 
-	if err := json.Unmarshal(snapshot.Data, &snapshotData); err != nil {
+	if err := proto.Unmarshal(snapshot.Data, &snapshotData); err != nil {
 		panic(err)
 	}
 
 	f.mu.Lock()
-	f.state = snapshotData
+	f.state = &snapshotData
 	f.mu.Unlock()
 
 	// todo: we need to restore both stores from the snapshot

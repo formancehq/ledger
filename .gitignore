@@ -45,6 +45,7 @@ performance
 # PProf
 cmd/bench/cpu.prof
 *.prof
+*.pprof
 
 # Build directory (generated files, benchmark results, etc.)
 build/

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -144,7 +145,10 @@ func (c *pebbleLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 	}
 
 	// Read protobuf Log
-	value := c.iter.Value()
+	value, err := c.iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading log value: %w", err)
+	}
 
 	// Unmarshal protobuf Log
 	log := &ledgerpb.Log{}
@@ -204,12 +208,14 @@ func (s *PebbleLogStore) GetLogWithID(ctx context.Context, id uint64) (*ledgerpb
 	key := logKey(id)
 	value, closer, err := s.db.Get(key)
 	if err != nil {
-		if err == pebble.ErrNotFound {
+		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("getting log by id: %w", err)
 	}
-	defer closer.Close()
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	// Unmarshal protobuf Log
 	log := &ledgerpb.Log{}
@@ -235,7 +241,9 @@ func (s *PebbleLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempoten
 		}
 		return nil, fmt.Errorf("getting log by idempotency key: %w", err)
 	}
-	defer closer.Close()
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	// Extract log ID
 	logID := binary.BigEndian.Uint64(idValue)
@@ -254,7 +262,9 @@ func (s *PebbleLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) 
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator: %w", err)
 	}
-	defer iter.Close()
+	defer func() {
+		_ = iter.Close()
+	}()
 
 	// Start from the last key
 	if !iter.Last() {
@@ -266,7 +276,10 @@ func (s *PebbleLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) 
 	}
 
 	// Read protobuf Log
-	value := iter.Value()
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading log value: %w", err)
+	}
 
 	// Unmarshal protobuf Log
 	log := &ledgerpb.Log{}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -12,7 +11,7 @@ import (
 func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
 	}
 
@@ -22,8 +21,6 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return ledger info
-	api.Ok(w, LedgerResponse{
-		LedgerInfo: ledgerInfo,
-	})
+	// Return ledger info wrapped in BaseResponse
+	writeOK(w, ledgerInfo)
 }

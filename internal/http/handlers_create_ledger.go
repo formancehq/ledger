@@ -1,12 +1,11 @@
 package http
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -14,7 +13,7 @@ import (
 func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
 	}
 
@@ -29,23 +28,23 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Body == nil {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("request body is required"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("request body is required"))
 		return
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
 	// Validate required fields
 	if req.LogStoreDriver == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("logStoreDriver is required"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("logStoreDriver is required"))
 		return
 	}
 
 	if req.RuntimeStoreDriver == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("runtimeStoreDriver is required"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("runtimeStoreDriver is required"))
 		return
 	}
 
@@ -56,8 +55,6 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return the ledger info
-	api.Created(w, LedgerResponse{
-		LedgerInfo: ledgerInfo,
-	})
+	// Return the ledger info wrapped in BaseResponse
+	writeCreated(w, ledgerInfo)
 }

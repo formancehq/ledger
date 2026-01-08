@@ -4,29 +4,29 @@ pre-commit: tidy generate-proto generate-sdk lint lint-client
 pc: pre-commit
 
 lint:
-    golangci-lint run --fix --build-tags it,local --timeout 5m
+    GOEXPERIMENT=jsonv2 golangci-lint run --fix --build-tags it,local --timeout 5m
 
 lint-client:
-    golangci-lint run --fix --build-tags it,local --timeout 5m ./cmd/client/...
+    GOEXPERIMENT=jsonv2 golangci-lint run --fix --build-tags it,local --timeout 5m ./cmd/client/...
 
 tidy:
     go mod tidy
 
 # Build the application
 build:
-    go build -o server ./cmd/server
+    GOEXPERIMENT=jsonv2 go build -o server ./cmd/server
 
 # Build the client application
 build-client:
-    go build -o client ./cmd/client
+    GOEXPERIMENT=jsonv2 go build -o client ./cmd/client
 
 # Run the application locally (single node)
 run:
-    go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
+    GOEXPERIMENT=jsonv2 go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
 
 # Run the client application
 run-client:
-    go run ./cmd/client
+    GOEXPERIMENT=jsonv2 go run ./cmd/client
 
 install-client:
     go build -o $GOPATH/bin/ledger-poc-client ./cmd/client
@@ -35,7 +35,7 @@ install-client:
 
 # Run tests
 test:
-    go test ./... -tags it,e2e
+    GOEXPERIMENT=jsonv2 go test ./... -tags it,e2e
 
 # Clean build artifacts
 clean:

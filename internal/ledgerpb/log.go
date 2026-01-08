@@ -1,7 +1,8 @@
 package ledgerpb
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
+	"encoding/json/jsontext"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -72,12 +73,12 @@ func ChainLog(l *Log, previous *Log) *Log {
 // UnmarshalJSON implements json.Unmarshaler for Log
 func (l *Log) UnmarshalJSON(data []byte) error {
 	type auxLog struct {
-		Type            LogType         `json:"type"`
-		Data            json.RawMessage `json:"data"`
-		Date            *time.Time      `json:"date"`
-		IdempotencyKey  string          `json:"idempotencyKey"`
-		IdempotencyHash string          `json:"idempotencyHash"`
-		ID              *uint64         `json:"id"`
+		Type            LogType       `json:"type"`
+		Data            jsontext.Value `json:"data"`
+		Date            *time.Time     `json:"date"`
+		IdempotencyKey  string         `json:"idempotencyKey"`
+		IdempotencyHash string         `json:"idempotencyHash"`
+		ID              *uint64        `json:"id"`
 	}
 	rawLog := auxLog{}
 	if err := json.Unmarshal(data, &rawLog); err != nil {
@@ -95,7 +96,11 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 
 	// Parse LogPayload from JSON using the type from rawLog
 	if len(rawLog.Data) > 0 {
-		payload, err := HydrateLog(rawLog.Type, rawLog.Data)
+		dataBytes, err := json.Marshal(rawLog.Data)
+		if err != nil {
+			return err
+		}
+		payload, err := HydrateLog(rawLog.Type, dataBytes)
 		if err != nil {
 			return err
 		}

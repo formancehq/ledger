@@ -278,14 +278,17 @@ func (s *PebbleRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 			keyStr := string(key)
 			if len(keyStr) > len(prefix) {
 				metadataKey := keyStr[len(prefix):]
-				valueBytes := iter.Value()
+				valueBytes, err := iter.ValueAndErr()
+				if err != nil {
+					return nil, fmt.Errorf("reading metadata value for account %s key %s: %w", account, metadataKey, err)
+				}
 
 				// Metadata values are stored as strings directly
 				valueStr := string(valueBytes)
 				result[account][metadataKey] = valueStr
 			}
 		}
-		iter.Close()
+		_ = iter.Close()
 	}
 
 	return result, nil
@@ -300,12 +303,14 @@ func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	key := idempotencyPebbleKey(idempotencyKey)
 	value, closer, err := s.db.Get(key)
 	if err != nil {
-		if err == pebble.ErrNotFound {
+		if errors.Is(err, pebble.ErrNotFound) {
 			return "", 0, nil
 		}
 		return "", 0, fmt.Errorf("querying idempotency entry: %w", err)
 	}
-	defer closer.Close()
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	// Parse protobuf
 	var idempotencyProto ledgerpb.IdempotencyEntry
@@ -326,7 +331,9 @@ func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 		}
 		return 0, fmt.Errorf("querying last processed log ID: %w", err)
 	}
-	defer closer.Close()
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	// Parse the value as uint64
 	var lastLogID uint64

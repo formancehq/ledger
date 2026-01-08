@@ -2,7 +2,7 @@ package bulking
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -147,10 +147,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 
 		switch req.TargetType {
 		case "ACCOUNT":
-			address := ""
-			if err := json.Unmarshal(req.TargetID, &address); err != nil {
-				return nil, 0, err
-			}
+			address := *req.TargetID.Str
 
 			log, err = b.ledgerCluster.SaveAccountMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 				DryRun:         false,
@@ -161,10 +158,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				},
 			})
 		case "TRANSACTION":
-			transactionID := uint64(0)
-			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
-				return nil, 0, err
-			}
+			transactionID := *req.TargetID.Int
 
 			log, err = b.ledgerCluster.SaveTransactionMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 				DryRun:         false,
@@ -210,7 +204,11 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 		switch req.TargetType {
 		case "ACCOUNT":
 			address := ""
-			if err := json.Unmarshal(req.TargetID, &address); err != nil {
+			targetIDBytes, err := json.Marshal(req.TargetID)
+			if err != nil {
+				return nil, 0, err
+			}
+			if err := json.Unmarshal(targetIDBytes, &address); err != nil {
 				return nil, 0, err
 			}
 
@@ -224,7 +222,11 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			})
 		case "TRANSACTION":
 			transactionID := uint64(0)
-			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
+			targetIDBytes, err := json.Marshal(req.TargetID)
+			if err != nil {
+				return nil, 0, err
+			}
+			if err := json.Unmarshal(targetIDBytes, &transactionID); err != nil {
 				return nil, 0, err
 			}
 

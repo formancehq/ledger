@@ -2,8 +2,6 @@ package http
 
 import (
 	"net/http"
-
-	"github.com/formancehq/go-libs/v3/api"
 )
 
 // SnapshotData represents the response for snapshot operations
@@ -18,7 +16,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, SnapshotData{
+	writeOK(w, SnapshotData{
 		Message: "Snapshot created successfully.",
 	})
 }

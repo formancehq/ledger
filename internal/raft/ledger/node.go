@@ -2,7 +2,7 @@ package ledger
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,12 +14,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/protobuf/proto"
 )
 
 // logStoreFactory is a function that creates a LogStore from a JSON config
 type logStoreFactory func(
 	ctx context.Context,
-	configJSON json.RawMessage,
+	configJSON []byte,
 	logger logging.Logger,
 	ledgerName string,
 	ledgerID uint64,
@@ -30,7 +31,7 @@ type logStoreFactory func(
 // runtimeStoreFactory is a function that creates a RuntimeStore from a JSON config
 type runtimeStoreFactory func(
 	ctx context.Context,
-	configJSON json.RawMessage,
+	configJSON []byte,
 	logger logging.Logger,
 	ledgerName string,
 	ledgerID uint64,
@@ -42,7 +43,7 @@ type runtimeStoreFactory func(
 var logStoreFactories = map[string]logStoreFactory{
 	"sqlite-mattn": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -65,7 +66,7 @@ var logStoreFactories = map[string]logStoreFactory{
 	},
 	"sqlite-modern": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -91,7 +92,7 @@ var logStoreFactories = map[string]logStoreFactory{
 	},
 	"pebble": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -119,7 +120,7 @@ var logStoreFactories = map[string]logStoreFactory{
 var runtimeStoreFactories = map[string]runtimeStoreFactory{
 	"sqlite-mattn": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -142,7 +143,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 	},
 	"sqlite-modern": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -168,7 +169,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 	},
 	"pebble": func(
 		ctx context.Context,
-		configJSON json.RawMessage,
+		configJSON []byte,
 		logger logging.Logger,
 		ledgerName string,
 		ledgerID uint64,
@@ -196,7 +197,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 func CreateLogStore(
 	ctx context.Context,
 	driver string,
-	configJSON json.RawMessage,
+	configJSON []byte,
 	logger logging.Logger,
 	ledgerName string,
 	ledgerID uint64,
@@ -221,7 +222,7 @@ func CreateLogStore(
 func CreateRuntimeStore(
 	ctx context.Context,
 	driver string,
-	configJSON json.RawMessage,
+	configJSON []byte,
 	logger logging.Logger,
 	ledgerName string,
 	ledgerID uint64,
@@ -275,8 +276,8 @@ func NewNode(
 		return nil, fmt.Errorf("creating storage for ledger %s: %w", ledgerInfo.GetName(), err)
 	}
 
-	// Convert LogStoreConfig from *structpb.Struct to json.RawMessage
-	var logStoreConfigJSON json.RawMessage
+	// Convert LogStoreConfig from *structpb.Struct to []byte
+	var logStoreConfigJSON []byte
 	if ledgerInfo.LogStoreConfig != nil {
 		configMap := ledgerInfo.LogStoreConfig.AsMap()
 		var err error
@@ -286,8 +287,8 @@ func NewNode(
 		}
 	}
 
-	// Convert RuntimeStoreConfig from *structpb.Struct to json.RawMessage
-	var runtimeStoreConfigJSON json.RawMessage
+	// Convert RuntimeStoreConfig from *structpb.Struct to []byte
+	var runtimeStoreConfigJSON []byte
 	if ledgerInfo.RuntimeStoreConfig != nil {
 		configMap := ledgerInfo.RuntimeStoreConfig.AsMap()
 		var err error
@@ -333,14 +334,14 @@ func NewNode(
 		return nil, err
 	}
 
-	var state ledgerpb.LedgerState
+	state := &ledgerpb.LedgerState{}
 	snapshot, _ := storage.Snapshot()
 	if snapshot.Metadata.Index > 0 {
-		if err := json.Unmarshal(snapshot.Data, &state); err != nil {
+		if err := proto.Unmarshal(snapshot.Data, state); err != nil {
 			return nil, fmt.Errorf("unmarshaling snapshot data: %w", err)
 		}
 	} else {
-		state = ledgerpb.LedgerState{
+		state = &ledgerpb.LedgerState{
 			LedgerInfo: ledgerInfo,
 		}
 	}

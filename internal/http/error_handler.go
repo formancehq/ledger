@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
@@ -14,13 +13,13 @@ import (
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, ledgerpb.ErrNoLeader) {
 		w.Header().Set("Retry-After", "1")
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
+		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
 		return
 	}
 	var notFoundErr *ledgerpb.NotFoundError
 	if errors.As(err, &notFoundErr) {
-		api.WriteErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 		return
 	}
-	api.InternalServerError(w, r, err)
+	writeInternalServerError(w, r, err)
 }

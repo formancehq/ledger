@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 // handleListAllLedgers handles GET / to list all ledgers
@@ -15,13 +15,11 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to response format
-	ledgersList := make([]LedgerResponse, 0, len(ledgersInfo))
-	for _, ledgerInfo := range ledgersInfo {
-		ledgersList = append(ledgersList, LedgerResponse{
-			LedgerInfo: ledgerInfo,
-		})
+	ret := make([]*ledgerpb.LedgerInfo, 0, len(ledgersInfo))
+	for _, ledger := range ledgersInfo {
+		ret = append(ret, ledger)
 	}
 
-	api.Ok(w, ledgersList)
+	// Return ledgers list wrapped in BaseResponse
+	writeOK(w, ret)
 }

@@ -1,7 +1,8 @@
 package ledgerpb
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
+	"encoding/json/jsontext"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,7 +15,7 @@ import (
 func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
-		TargetID   json.RawMessage   `json:"targetId"`
+		TargetID   jsontext.Value   `json:"targetId"`
 		Metadata   metadata.Metadata `json:"metadata"`
 	}
 	x := X{}
@@ -29,13 +30,21 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):
 		var accountID string
-		err = json.Unmarshal(x.TargetID, &accountID)
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(targetIDBytes, &accountID)
 		if err == nil {
 			sm.TargetId = &SavedMetadata_AccountId{AccountId: accountID}
 		}
 	case strings.ToUpper(MetaTargetTypeTransaction):
 		var txID uint64
-		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		txID, err = strconv.ParseUint(string(targetIDBytes), 10, 64)
 		if err == nil {
 			sm.TargetId = &SavedMetadata_TransactionId{TransactionId: txID}
 		}

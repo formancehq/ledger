@@ -262,10 +262,8 @@ l2:
 		}
 
 		fsm.state.Infos[expectedLedgerName] = expectedLedgerInfo
-		if *expectedLedgerInfo.Status.Enum() == ledgerpb.LedgerStatus_Active {
-			if err := fsm.startLedgerRaftGroupFromFSM(ctx, expectedLedgerInfo); err != nil {
-				return err
-			}
+		if err := fsm.startLedgerRaftGroupFromFSM(ctx, expectedLedgerInfo); err != nil {
+			return err
 		}
 	}
 

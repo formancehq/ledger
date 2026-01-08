@@ -1,7 +1,7 @@
 package ledgerpb
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	libtime "time"
 

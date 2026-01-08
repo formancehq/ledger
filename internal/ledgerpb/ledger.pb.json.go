@@ -1,7 +1,7 @@
 package ledgerpb
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 )
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
@@ -260,7 +260,6 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		CreatedAt          *Timestamp        `json:"createdAt,omitempty"`
 		SnapshotThreshold  uint64            `json:"snapshotThreshold,omitempty"`
 		DeletedAt          *Timestamp        `json:"deletedAt,omitempty"`
-		Status             LedgerStatus      `json:"status,omitempty"`
 	}{
 		Id:                 x.Id,
 		Name:               x.Name,
@@ -272,7 +271,6 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		CreatedAt:          x.CreatedAt,
 		SnapshotThreshold:  x.SnapshotThreshold,
 		DeletedAt:          x.DeletedAt,
-		Status:             x.Status,
 	})
 }
 

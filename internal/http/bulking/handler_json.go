@@ -1,14 +1,10 @@
 package bulking
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"slices"
-
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 type JsonBulkHandler struct {
@@ -19,13 +15,13 @@ type JsonBulkHandler struct {
 
 func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool) {
 	h.bulkElements = make([]BulkElement, 0)
-	if err := json.NewDecoder(r.Body).Decode(&h.bulkElements); err != nil {
-		api.BadRequest(w, "VALIDATION", err)
+	if err := json.UnmarshalRead(r.Body, &h.bulkElements); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 		return nil, nil, false
 	}
 
 	if h.bulkMaxSize != 0 && len(h.bulkElements) > h.bulkMaxSize {
-		api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED", fmt.Errorf("bulk size exceeded, max size is %d", h.bulkMaxSize))
+		writeErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED", fmt.Errorf("bulk size exceeded, max size is %d", h.bulkMaxSize))
 		return nil, nil, false
 	}
 
@@ -46,7 +42,11 @@ func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 		results = append(results, element)
 	}
 
-	writeJSONResponse(w, collectionutils.Map(h.bulkElements, BulkElement.GetAction), results, nil)
+	actions := make([]string, len(h.bulkElements))
+	for i, element := range h.bulkElements {
+		actions[i] = element.GetAction()
+	}
+	writeJSONResponse(w, actions, results, nil)
 }
 
 func NewJSONBulkHandler(bulkMaxSize int) *JsonBulkHandler {
@@ -106,25 +106,44 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 		})
 	}
 
-	if err := json.NewEncoder(w).Encode(ComposedErrorResponse{
-		BaseResponse: api.BaseResponse[[]APIResult]{
-			Data: pointer.For(mappedResults),
-		},
-		ErrorResponse: func() api.ErrorResponse {
-			ret := api.ErrorResponse{}
-			if error != nil {
-				ret.ErrorCode = "VALIDATION"
-				ret.ErrorMessage = error.Error()
-			}
-			return ret
-		}(),
-	}); err != nil {
+	response := BulkResponse{
+		Data: mappedResults,
+	}
+	if error != nil {
+		response.ErrorCode = "VALIDATION"
+		response.ErrorMessage = error.Error()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.MarshalWrite(w, response); err != nil {
 		panic(err)
 	}
 }
 
-type ComposedErrorResponse struct {
-	api.BaseResponse[[]APIResult]
-	api.ErrorResponse
+type BulkResponse struct {
+	Data         []APIResult `json:"data,omitempty"`
+	ErrorCode    string      `json:"errorCode,omitempty"`
+	ErrorMessage string      `json:"errorMessage,omitempty"`
+}
+
+// writeErrorResponse writes an error response with the given status code, error code, and error
+func writeErrorResponse(w http.ResponseWriter, statusCode int, errorCode string, err error) {
+	errorMsg := ""
+	if err != nil {
+		errorMsg = err.Error()
+	}
+	errorResp := struct {
+		ErrorCode    string `json:"errorCode"`
+		ErrorMessage string `json:"errorMessage"`
+	}{
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMsg,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.MarshalWrite(w, errorResp); err != nil {
+		// If encoding fails, we can't write a proper error response
+		return
+	}
 }
 

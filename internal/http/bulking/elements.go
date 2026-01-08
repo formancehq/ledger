@@ -1,7 +1,8 @@
 package bulking
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
@@ -33,11 +34,11 @@ func (b *BulkElement) UnmarshalJSON(data []byte) error {
 	type Aux BulkElement
 	type X struct {
 		Aux
-		Data json.RawMessage `json:"data"`
+		Data jsontext.Value `json:"data"`
 	}
 	x := X{}
 	if err := json.Unmarshal(data, &x); err != nil {
-		return err
+		return fmt.Errorf("error parsing element: %s", err)
 	}
 
 	*b = BulkElement(x.Aux)
@@ -48,7 +49,7 @@ func (b *BulkElement) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
+func UnmarshalBulkElementPayload(action string, data jsontext.Value) (any, error) {
 	var req any
 	switch action {
 	case ActionCreateTransaction:
@@ -62,8 +63,12 @@ func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
-	if err := json.Unmarshal(data, req); err != nil {
-		return nil, fmt.Errorf("error parsing element: %s", err)
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling jsontext.Value: %w", err)
+	}
+	if err := json.Unmarshal(dataBytes, req); err != nil {
+		return nil, fmt.Errorf("error parsing payload: %s", err)
 	}
 
 	return reflect.ValueOf(req).Elem().Interface(), nil
@@ -78,8 +83,35 @@ type BulkElementResult struct {
 
 type AddMetadataRequest struct {
 	TargetType string            `json:"targetType"`
-	TargetID   json.RawMessage   `json:"targetId"`
+	TargetID   UInt64OrString    `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
+}
+
+type UInt64OrString struct {
+	Int   *uint64  `json:"int,omitempty"`
+	Str   *string `json:"str,omitempty"`
+	IsInt bool    `json:"isint"`
+}
+
+func (i UInt64OrString) MarshalJSON() ([]byte, error) {
+	if i.IsInt {
+		return json.Marshal(i.Int)
+	}
+	return json.Marshal(i.Str)
+}
+
+func (i *UInt64OrString) UnmarshalJSON(data []byte) error {
+	var v uint64
+	if err := json.Unmarshal(data, &v); err == nil {
+		i.Int = &v
+		i.IsInt = true
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		i.Str = &s
+	}
+	return nil
 }
 
 type RevertTransactionRequest struct {
@@ -90,9 +122,9 @@ type RevertTransactionRequest struct {
 }
 
 type DeleteMetadataRequest struct {
-	TargetType string          `json:"targetType"`
-	TargetID   json.RawMessage `json:"targetId"`
-	Key        string          `json:"key"`
+	TargetType string        `json:"targetType"`
+	TargetID   jsontext.Value `json:"targetId"`
+	Key        string        `json:"key"`
 }
 
 type TransactionRequest struct {
