@@ -962,6 +962,8 @@ components:
       required:
         - ledgerInfo
         - lastLogID
+        - logStoreMetrics
+        - runtimeStoreMetrics
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
@@ -977,6 +979,7 @@ components:
             Metrics from the log store. Structure varies by driver:
             - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
             - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
+          nullable: false
         runtimeStoreMetrics:
           type: object
           additionalProperties: true
@@ -984,6 +987,7 @@ components:
             Metrics from the runtime store. Structure varies by driver:
             - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
             - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
+          nullable: false
 
     NodeInfo:
       type: object

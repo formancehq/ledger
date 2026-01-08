@@ -138,16 +138,7 @@ var _ = Describe("Simple cluster", func() {
 	})
 	Context("when the leader is down", func() {
 		BeforeEach(func() {
-			Eventually(func(g Gomega) uint64 {
-				state, err := servers[0].client.Cluster.GetClusterState(ctx)
-				g.Expect(err).To(Succeed())
-
-				leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
-
-				return leaderID
-			}).NotTo(BeZero())
-		})
-		BeforeEach(func() {
+			Eventually(servers[leaderID-1]).To(HaveALeader(&leaderID))
 			Expect(servers[leaderID-1].service.Stop(ctx)).To(BeNil())
 		})
 		It("should elect a new leader", func() {
@@ -165,7 +156,15 @@ var _ = Describe("Simple cluster", func() {
 			})
 			Expect(err).To(Succeed())
 		})
-		It("should succeed", func() {})
+		It("should succeed", func() {
+			state, err := servers[0].client.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
+				LedgerName: "ledger0",
+			})
+			Expect(err).To(BeNil())
+
+			Expect(state.LedgerClusterStateResponse.Data.InnerState.LogStoreMetrics).NotTo(BeNil())
+			Expect(state.LedgerClusterStateResponse.Data.InnerState.RuntimeStoreMetrics).NotTo(BeNil())
+		})
 		Context("Then deleting the ledger", func() {
 			BeforeEach(func() {
 				// Note: DeleteLedger endpoint needs to be added to the SDK

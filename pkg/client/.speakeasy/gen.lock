@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 831d7686ccfae4cfed10448bfb0747e6
+  docChecksum: c8cf50c89558732f2c4a23666918e06b
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.43
-  configChecksum: bf5e353750fe0c1125b2f4b58c4d0278
+  releaseVersion: 0.11.45
+  configChecksum: 8a7237a3db1235f31762935e7461abff
 features:
   go:
     additionalDependencies: 0.1.0
@@ -381,7 +381,7 @@ examples:
           ledgerName: "<value>"
       responses:
         "200":
-          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "logStoreDriver": "sqlite-mattn", "runtimeStoreDriver": "pebble", "logStoreConfig": {}, "runtimeStoreConfig": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastLogID": 177169}}}
+          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "logStoreDriver": "sqlite-mattn", "runtimeStoreDriver": "pebble", "logStoreConfig": {}, "runtimeStoreConfig": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastLogID": 177169, "logStoreMetrics": {}, "runtimeStoreMetrics": {"key": "<value>", "key1": "<value>", "key2": "<value>"}}}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

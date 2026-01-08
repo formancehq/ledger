@@ -68,12 +68,30 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	logStoreMetrics, err := structpb.NewValue(f.logWriter.Metrics())
+	rawLogWriterMetrics, err := json.Marshal(f.logWriter.Metrics())
+	if err != nil {
+		panic(err)
+	}
+	mapLogWriterMetrics := make(map[string]interface{})
+	if err := json.Unmarshal(rawLogWriterMetrics, &mapLogWriterMetrics); err != nil {
+		panic(err)
+	}
+
+	logStoreMetrics, err := structpb.NewStruct(mapLogWriterMetrics)
 	if err != nil {
 		panic(err)
 	}
 
-	runtimeStoreMetrics, err := structpb.NewValue(f.runtimeStore.Metrics())
+	rawRuntimeStoreMetrics, err := json.Marshal(f.runtimeStore.Metrics())
+	if err != nil {
+		panic(err)
+	}
+	mapRuntimeStoreMetrics := make(map[string]interface{})
+	if err := json.Unmarshal(rawRuntimeStoreMetrics, &mapRuntimeStoreMetrics); err != nil {
+		panic(err)
+	}
+
+	runtimeStoreMetrics, err := structpb.NewStruct(mapRuntimeStoreMetrics)
 	if err != nil {
 		panic(err)
 	}
@@ -81,8 +99,8 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 	return ledgerpb.LedgerState{
 		LedgerInfo:          f.state.LedgerInfo,
 		LastLogId:           f.state.LastLogId,
-		LogStoreMetrics:     logStoreMetrics.GetStructValue(),
-		RuntimeStoreMetrics: runtimeStoreMetrics.GetStructValue(),
+		LogStoreMetrics:     logStoreMetrics,
+		RuntimeStoreMetrics: runtimeStoreMetrics,
 	}
 }
 

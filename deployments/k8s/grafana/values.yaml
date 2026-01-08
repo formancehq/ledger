@@ -5,6 +5,8 @@ service:
 
 plugins:
   - marcusolsson-json-datasource
+  - yesoreyeram-infinity-datasource
+  - pgillich-tree-panel
 
 grafana.ini:
   snapshots:
@@ -36,6 +38,15 @@ datasources:
         access: proxy
         url: http://loki.monitoring.svc.cluster.local:3100
         editable: true
+      - name: HTTP Infinity
+        uid: http-infinity
+        type: yesoreyeram-infinity-datasource
+        access: proxy
+        editable: true
+        isDefault: false
+        jsonData:
+          allowedHosts:
+          - http://ledger-v3-poc.default.svc.cluster.local:9000
       - name: HTTP JSON API
         uid: http-json-api
         type: marcusolsson-json-datasource

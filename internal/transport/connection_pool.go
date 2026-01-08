@@ -7,7 +7,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding/gzip"
 )
 
 // ConnectionPool manages raw gRPC connections for peers
@@ -40,9 +39,10 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 			},
 			MinConnectTimeout: 0,
 		}),
-		grpc.WithDefaultCallOptions(
-			grpc.UseCompressor(gzip.Name),
-		),
+		// todo: make configurable
+		//grpc.WithDefaultCallOptions(
+		//	grpc.UseCompressor(gzip.Name),
+		//),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection for peer %x: %w", id, err)

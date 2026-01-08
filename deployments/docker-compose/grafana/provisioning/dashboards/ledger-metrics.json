@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 3,
+  "id": 2,
   "links": [],
   "panels": [
     {
@@ -387,33 +387,7 @@
           },
           "unit": "percentunit"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 2 : Used",
-                  "Node 3 : Used"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -1189,6 +1163,7 @@
         "type": "prometheus",
         "uid": "P4169E866C3094E38"
       },
+      "description": "Time passed using the CPU(s)",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1229,8 +1204,9 @@
             }
           },
           "mappings": [],
+          "max": 1,
           "thresholds": {
-            "mode": "absolute",
+            "mode": "percentage",
             "steps": [
               {
                 "color": "green",
@@ -1238,7 +1214,7 @@
               },
               {
                 "color": "red",
-                "value": 80
+                "value": 60
               }
             ]
           },
@@ -1256,8 +1232,8 @@
       "options": {
         "legend": {
           "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
+          "displayMode": "list",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
@@ -1274,7 +1250,10 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "rate(process.cpu.time{service.node_id=~\"$node\"})",
+          "exemplar": false,
+          "expr": "sum by (service.node_id) (\n  rate(process.cpu.time{service.node_id=~\"$node\"})\n)",
+          "format": "time_series",
+          "hide": true,
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: {{cpu.mode}}",
           "range": true,
@@ -1286,12 +1265,24 @@
             "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
-          "expr": "{\"go.processor.limit\", \"service.node_id\"=\"$node\"}",
+          "exemplar": false,
+          "expr": "max by (service.node_id) (\n  go.processor.limit{service.node_id=~\"$node\"}\n)",
           "hide": true,
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Limit",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A/$B",
+          "hide": false,
+          "refId": "C",
+          "type": "math"
         }
       ],
       "title": "Process CPU time",
@@ -2370,32 +2361,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 1: P95"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -3277,32 +3243,7 @@
           },
           "unit": "ops"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 3: Outgoing"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 6,
@@ -3822,32 +3763,7 @@
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 1: Peer 2 : MsgHeartbeat"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
@@ -4123,32 +4039,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 2 : Peer 1 : MsgHeartbeat"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -4866,8 +4757,8 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
-          "legendFormat": "{{db}} {{status}} {{reason}}",
+          "expr": "sum by (service.node_id, db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}}: {{status}} {{reason}}",
           "range": true,
           "refId": "A"
         }
@@ -4962,30 +4853,30 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
-          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p50",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
-          "legendFormat": "p95 ",
+          "expr": "histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p95 ",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
-          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p99",
           "range": true,
           "refId": "C"
         },
         {
           "editorMode": "code",
-          "expr": "sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+          "expr": "sum by (service.node_id, db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
           "hide": true,
-          "legendFormat": "mean {{db}}",
+          "legendFormat": "Node {{service.node_id}}: mean",
           "range": true,
           "refId": "D"
         }
@@ -5079,8 +4970,8 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (db, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
-          "legendFormat": "{{db}} {{reason}}",
+          "expr": "sum by (service.node_id, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}}: {{reason}}",
           "range": true,
           "refId": "A"
         }
@@ -5187,8 +5078,8 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max by (db, reason) ({__name__=\"pebble.write_stall.active\", \"scope.name\"=\"peeble.runtime_store\"})",
-          "legendFormat": "{{db}} / {{reason}}",
+          "expr": "max by (service.node_id, reason) ({__name__=\"pebble.write_stall.active\", \"scope.name\"=\"peeble.runtime_store\"})",
+          "legendFormat": "{{service.node_id}} / {{reason}}",
           "range": true,
           "refId": "A"
         }
@@ -5451,5 +5342,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 5
+  "version": 1
 }

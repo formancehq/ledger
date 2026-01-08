@@ -17,7 +17,7 @@ func (s *Server) handleGetLedgerRaftState(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	ledgerCluster, err := s.cluster.GetLedgerCluster(r.Context(), ledgerName)
+	ledgerCluster, err := s.cluster.GetLedgerClusterLocal(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return

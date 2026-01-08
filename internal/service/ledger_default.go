@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -20,6 +21,8 @@ type DefaultLedger struct {
 	logReader          LogReader
 	logger             logging.Logger
 	runtimeStore       RuntimeStore
+	// todo: use a LRU cache with limits
+	scriptCache sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -326,13 +329,24 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
 
-	// Parse the numscript
-	parseResult := numscript.Parse(script.Plain)
+	// Check cache first
+	scriptKey := script.Plain
+	cached, ok := l.scriptCache.Load(scriptKey)
+	var parseResult numscript.ParseResult
+	if ok {
+		parseResult = cached.(numscript.ParseResult)
+	} else {
+		// Parse the numscript
+		parseResult = numscript.Parse(script.Plain)
 
-	// Check for parsing errors
-	parsingErrors := parseResult.GetParsingErrors()
-	if len(parsingErrors) > 0 {
-		return nil, nil, nil, fmt.Errorf("failed to parse numscript: %s", numscript.ParseErrorsToString(parsingErrors, parseResult.GetSource()))
+		// Check for parsing errors
+		parsingErrors := parseResult.GetParsingErrors()
+		if len(parsingErrors) > 0 {
+			return nil, nil, nil, fmt.Errorf("failed to parse numscript: %s", numscript.ParseErrorsToString(parsingErrors, parseResult.GetSource()))
+		}
+
+		// Cache the parsed result only if parsing succeeded
+		l.scriptCache.Store(scriptKey, parseResult)
 	}
 
 	// Create a store adapter that uses our balance store

@@ -37,6 +37,7 @@ type MasterCluster interface {
 	System
 	LeaderOnly
 	GetClusterState(ctx context.Context) (*ledgerpb.ClusterState[ledgerpb.SystemState], error)
+	// todo: only used by api, we can probably relax the interface
 	GetLedgerCluster(ctx context.Context, name string) (LedgerCluster, error)
 	GetLedgerClusterLocal(ctx context.Context, name string) (LedgerCluster, error)
 }
