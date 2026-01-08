@@ -173,3 +173,51 @@ func HaveALeader(fetchTo *uint64) types.GomegaMatcher {
 var _ types.GomegaMatcher = (*haveALeaderMatcher)(nil)
 
 
+type haveALeaderOnLedgerMatcher struct {
+	fetchTo *uint64
+	ledgerName string
+}
+
+func (h haveALeaderOnLedgerMatcher) Match(actual any) (success bool, err error) {
+	srv, ok := actual.(*serviceWithClient)
+	if !ok {
+		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
+	}
+
+	clusterState, err := srv.client.Ledgers.GetLedgerRaftState(context.Background(), operations.GetLedgerRaftStateRequest{
+		LedgerName: h.ledgerName,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
+		return false, nil
+	}
+
+	leaderID := uint64(*clusterState.LedgerClusterStateResponse.Data.Leader)
+	if h.fetchTo != nil {
+		*h.fetchTo = leaderID
+	}
+
+	return leaderID != 0, nil
+}
+
+func (h haveALeaderOnLedgerMatcher) FailureMessage(actual any) (message string) {
+	return fmt.Sprintf("Expected ledger cluster to have a leader")
+}
+
+func (h haveALeaderOnLedgerMatcher) NegatedFailureMessage(actual any) (message string) {
+	return fmt.Sprintf("Expected ledger cluster not to have a leader")
+}
+
+func HaveALeaderOnLedger(ledgerName string, fetchTo *uint64) types.GomegaMatcher {
+	return haveALeaderOnLedgerMatcher{
+		fetchTo: fetchTo,
+		ledgerName: ledgerName,
+	}
+}
+
+var _ types.GomegaMatcher = (*haveALeaderOnLedgerMatcher)(nil)
+
+

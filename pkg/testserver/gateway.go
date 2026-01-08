@@ -11,20 +11,40 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// MessageInterceptor allows intercepting messages between nodes
+// Return true to allow the message to pass through, false to block it
+type MessageInterceptor interface {
+	// InterceptRequest is called for each outgoing message from a node
+	// fromNodeID: the ID of the node sending the message (1-based)
+	// toNodeID: the ID of the node receiving the message (1-based)
+	// msg: the Raft message being sent
+	// Returns true to allow the message, false to block it
+	InterceptRequest(msg *raftpb.Message) bool
+}
+
+type MessageInterceptorFunc func(msg *raftpb.Message) bool
+
+func (f MessageInterceptorFunc) InterceptRequest(msg *raftpb.Message) bool {
+	return f(msg)
+}
+
 // Gateway is a gRPC gateway that forwards requests to backend nodes
 // Each port forwards to a specific node, allowing network manipulation during tests
 type Gateway struct {
-	logger    logging.Logger
-	ports     []int
-	nodes     []string // node addresses (e.g., "127.0.0.1:8000")
-	servers   []*grpc.Server
-	listeners []net.Listener
-	conns     []*grpc.ClientConn // client connections to backend nodes
-	wg        sync.WaitGroup
+	logger        logging.Logger
+	ports         []int
+	nodes         []string // node addresses (e.g., "127.0.0.1:8000")
+	servers       []*grpc.Server
+	listeners     []net.Listener
+	conns         []*grpc.ClientConn // client connections to backend nodes
+	interceptor   MessageInterceptor
+	interceptorMu sync.RWMutex
+	wg            sync.WaitGroup
 }
 
 // NewGateway creates a new gateway that listens on the given ports and forwards to the given node addresses
@@ -47,11 +67,35 @@ func NewGateway(logger logging.Logger, ports []int, nodes []string) (*Gateway, e
 	}, nil
 }
 
+// SetInterceptor sets the message interceptor for the gateway
+// The interceptor will be called for all messages passing through the gateway
+// Pass nil to remove the interceptor
+func (g *Gateway) SetInterceptor(interceptor MessageInterceptor) {
+	g.interceptorMu.Lock()
+	defer g.interceptorMu.Unlock()
+	g.interceptor = interceptor
+}
+
+// GetInterceptor returns the current message interceptor
+func (g *Gateway) GetInterceptor() MessageInterceptor {
+	g.interceptorMu.RLock()
+	defer g.interceptorMu.RUnlock()
+	return g.interceptor
+}
+
+// RemoveInterceptor removes the message interceptor from the gateway
+// This is equivalent to calling SetInterceptor(nil)
+func (g *Gateway) RemoveInterceptor() {
+	g.interceptorMu.Lock()
+	defer g.interceptorMu.Unlock()
+	g.interceptor = nil
+}
+
 // Start starts the gateway servers on all configured ports
 func (g *Gateway) Start(ctx context.Context) error {
 	for i, port := range g.ports {
 		nodeAddr := g.nodes[i]
-		
+
 		// Create gRPC client connection to the backend node
 		conn, err := grpc.NewClient(nodeAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -72,7 +116,8 @@ func (g *Gateway) Start(ctx context.Context) error {
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: raft.NewRaftTransportServiceClient(conn),
+			client:  raft.NewRaftTransportServiceClient(conn),
+			gateway: g,
 		})
 
 		service.RegisterSystemServiceServer(server, &systemServiceGateway{
@@ -156,8 +201,9 @@ func (g *Gateway) Stop(ctx context.Context) error {
 // raftTransportGateway forwards RaftTransportService calls
 type raftTransportGateway struct {
 	raft.UnimplementedRaftTransportServiceServer
-	logger logging.Logger
-	client raft.RaftTransportServiceClient
+	logger  logging.Logger
+	client  raft.RaftTransportServiceClient
+	gateway *Gateway
 }
 
 func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[raft.SendMessageRequest, raft.SendMessageResponse]) error {
@@ -178,7 +224,7 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 			_ = clientStream.CloseSend()
 		}()
 		for {
-			msg, err := stream.Recv()
+			req, err := stream.Recv()
 			if err != nil {
 				if err != io.EOF {
 					errCh <- fmt.Errorf("failed to receive from client: %w", err)
@@ -187,7 +233,32 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 				}
 				return
 			}
-			if err := clientStream.Send(msg); err != nil {
+			if req.GetRaft() == nil {
+				continue
+			}
+
+			raftMsg := &raftpb.Message{}
+			if err := raftMsg.Unmarshal(req.GetRaft().Message); err != nil {
+				g.logger.WithFields(map[string]any{
+					"error": err,
+				}).Errorf("Failed to unmarshal Raft message for interception")
+				// Continue forwarding even if unmarshal fails
+			} else {
+				// Check interceptor
+				interceptor := g.gateway.GetInterceptor()
+				if interceptor != nil {
+					if !interceptor.InterceptRequest(raftMsg) {
+						g.logger.WithFields(map[string]any{
+							"from_node": raftMsg.From,
+							"to_node":   raftMsg.To,
+							"msg_type":  raftMsg.Type.String(),
+						}).Debugf("Message blocked by interceptor")
+						continue // Skip this message
+					}
+				}
+			}
+
+			if err := clientStream.Send(req); err != nil {
 				errCh <- fmt.Errorf("failed to send to backend: %w", err)
 				return
 			}
@@ -197,7 +268,7 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 	// Forward from backend to client
 	go func() {
 		for {
-			msg, err := clientStream.Recv()
+			resp, err := clientStream.Recv()
 			if err != nil {
 				if err != io.EOF {
 					errCh <- fmt.Errorf("failed to receive from backend: %w", err)
@@ -206,7 +277,13 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 				}
 				return
 			}
-			if err := stream.Send(msg); err != nil {
+
+			// Note: RaftResponseMessage doesn't contain the Raft message itself,
+			// only Success/Error status. Interception of responses would require
+			// tracking request IDs, which is more complex. For now, we only
+			// intercept requests where we have the full Raft message.
+
+			if err := stream.Send(resp); err != nil {
 				errCh <- fmt.Errorf("failed to send to client: %w", err)
 				return
 			}
@@ -316,4 +393,3 @@ func (g *ledgerServiceGateway) StreamLogs(req *ledgerpb.StreamLogsRequest, strea
 		}
 	}
 }
-

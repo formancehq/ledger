@@ -224,7 +224,9 @@ func (m *channelsTransport) Recv() <-chan raftpb.Message {
 
 func (m *channelsTransport) Send(msg raftpb.Message) {
 	target := NodeIDFromLedgerNodeID(msg.To)
-	m.logger.Debugf("Sending message to node: %d (%x)", msg.To, target)
+	m.logger.WithFields(map[string]any{
+		"type": msg.Type,
+	}).Debugf("Sending message to node: %d (%x)", msg.To, target)
 	m.sender.Send(target, msg)
 }
 
@@ -234,6 +236,12 @@ func LedgerIDFromLedgerNodeID(v uint64) uint64 {
 	return (v & 0xFFFF0000) >> 16
 }
 
+// NodeIDFromLedgerNodeID extracts the node ID from a ledger node ID
+// The node ID is stored in the lower 16 bits of the ledger node ID
 func NodeIDFromLedgerNodeID(ledgerNodeID uint64) uint64 {
 	return ledgerNodeID & 0x0000FFFF
+}
+
+func LedgerNodeID(ledgerID uint64, nodeID uint64) uint64 {
+	return (ledgerID << 16) | nodeID
 }
