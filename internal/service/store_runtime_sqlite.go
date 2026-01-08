@@ -507,3 +507,8 @@ func (s *SQLiteRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 
 	return lastLogID, nil
 }
+
+// Metrics returns SQLite database metrics (implements MetricsAware)
+func (s *SQLiteRuntimeStore) Metrics() any {
+	return getSQLiteMetrics(s.db)
+}

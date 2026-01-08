@@ -276,3 +276,8 @@ func (s *PebbleLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) 
 
 	return log, nil
 }
+
+// Metrics returns Pebble database metrics (implements MetricsAware)
+func (s *PebbleLogStore) Metrics() any {
+	return s.db.Metrics()
+}

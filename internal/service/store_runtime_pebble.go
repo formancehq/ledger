@@ -336,3 +336,8 @@ func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 
 	return lastLogID, nil
 }
+
+// Metrics returns Pebble database metrics (implements MetricsAware)
+func (s *PebbleRuntimeStore) Metrics() any {
+	return s.db.Metrics()
+}

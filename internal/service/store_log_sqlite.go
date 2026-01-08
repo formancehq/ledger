@@ -436,3 +436,8 @@ func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledgerpb.Log, error) 
 	}
 	return log, nil
 }
+
+// Metrics returns SQLite database metrics (implements MetricsAware)
+func (s *SQLiteLogStore) Metrics() any {
+	return getSQLiteMetrics(s.db)
+}

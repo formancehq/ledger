@@ -1,0 +1,15 @@
+replicaCount: 1
+
+rootless: true
+
+service:
+  type: ClusterIP
+  port: 1234
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "4"
+    memory: 4Gi

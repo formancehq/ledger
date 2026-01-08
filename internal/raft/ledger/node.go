@@ -25,7 +25,7 @@ type logStoreFactory func(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.LogStore, error)
+) (LogStoreWithMetrics, error)
 
 // runtimeStoreFactory is a function that creates a RuntimeStore from a JSON config
 type runtimeStoreFactory func(
@@ -36,7 +36,7 @@ type runtimeStoreFactory func(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.RuntimeStore, error)
+) (RuntimeStoreWithMetrics, error)
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
@@ -48,7 +48,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.LogStore, error) {
+	) (LogStoreWithMetrics, error) {
 		// SQLite DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Mattn driver
 		// Create database file path: dataDir/ledger-{id}-logs.db
@@ -71,7 +71,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.LogStore, error) {
+	) (LogStoreWithMetrics, error) {
 		// SQLite Modern DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Modern driver
 		// Create database file path: dataDir/ledger-{id}-logs.db
@@ -97,7 +97,7 @@ var logStoreFactories = map[string]logStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.LogStore, error) {
+	) (LogStoreWithMetrics, error) {
 		// Pebble data directories are automatically generated based on ledger ID
 		// Config is ignored for Pebble driver
 
@@ -125,7 +125,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, error) {
+	) (RuntimeStoreWithMetrics, error) {
 		// SQLite DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Mattn driver
 		// Create database file path: dataDir/ledger-{id}-runtime.db
@@ -148,7 +148,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, error) {
+	) (RuntimeStoreWithMetrics, error) {
 		// SQLite Modern DSN is automatically generated based on ledger ID
 		// Config is ignored for SQLite Modern driver
 		// Create database file path: dataDir/ledger-{id}-runtime.db
@@ -174,7 +174,7 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
-	) (service.RuntimeStore, error) {
+	) (RuntimeStoreWithMetrics, error) {
 		// Pebble data directories are automatically generated based on ledger ID
 		// Config is ignored for Pebble driver
 
@@ -202,7 +202,7 @@ func CreateLogStore(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.LogStore, error) {
+) (LogStoreWithMetrics, error) {
 
 	logStoreFactory, exists := logStoreFactories[driver]
 	if !exists {
@@ -227,7 +227,7 @@ func CreateRuntimeStore(
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
-) (service.RuntimeStore, error) {
+) (RuntimeStoreWithMetrics, error) {
 
 	runtimeStoreFactory, exists := runtimeStoreFactories[driver]
 	if !exists {

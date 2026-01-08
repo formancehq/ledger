@@ -970,6 +970,20 @@ components:
           format: uint64
           minimum: 0
           description: Last global id number
+        logStoreMetrics:
+          type: object
+          additionalProperties: true
+          description: |
+            Metrics from the log store. Structure varies by driver:
+            - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
+            - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
+        runtimeStoreMetrics:
+          type: object
+          additionalProperties: true
+          description: |
+            Metrics from the runtime store. Structure varies by driver:
+            - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
+            - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
 
     NodeInfo:
       type: object
@@ -1151,4 +1165,43 @@ components:
         errorMessage:
           type: string
           description: Human-readable error message
+
+    SQLiteStoreMetrics:
+      type: object
+      description: SQLite store metrics structure
+      properties:
+        pageCount:
+          type: integer
+          format: int64
+          description: Number of pages in the database
+        pageSize:
+          type: integer
+          format: int64
+          description: Size of each page in bytes
+        databaseSize:
+          type: integer
+          format: int64
+          description: Total database size in bytes (pageCount * pageSize)
+        freePages:
+          type: integer
+          format: int64
+          description: Number of free pages in the database
+        schemaVersion:
+          type: integer
+          format: int64
+          description: Schema version number
+
+    PebbleStoreMetrics:
+      type: object
+      description: |
+        Pebble store metrics structure. Contains detailed metrics about Pebble database operations including:
+        - Compaction metrics (count, duration, bytes)
+        - Flush metrics (count, duration, bytes)
+        - Write stall metrics (count, duration, active state)
+        - Level statistics
+        - And many other internal metrics
+        
+        The exact structure is defined by Pebble's Metrics type and may vary between versions.
+        Common fields include compaction-related metrics, flush metrics, and level statistics.
+      additionalProperties: true
 

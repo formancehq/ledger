@@ -1928,7 +1928,7 @@
       "type": "gauge"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1936,249 +1936,248 @@
         "y": 43
       },
       "id": 18,
-      "panels": [
+      "panels": [],
+      "title": "Root raft",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 44
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "P4169E866C3094E38"
           },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 8,
-            "x": 0,
-            "y": 406
-          },
-          "id": 53,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "P4169E866C3094E38"
-              },
-              "editorMode": "builder",
-              "expr": "{\"raft.node.lead\", \"scope.name\"=\"raft.node.system\"}",
-              "instant": false,
-              "key": "Q-486c9a03-8629-45fa-b923-fbc9a86c0d81-0",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "P4169E866C3094E38"
-              },
-              "editorMode": "builder",
-              "expr": "",
-              "instant": false,
-              "key": "Q-ee216182-96c8-4e5d-998d-631dfe5f629c-1",
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "B"
-            }
-          ],
-          "title": "Leadership status",
-          "type": "timeseries"
+          "editorMode": "builder",
+          "expr": "{\"raft.node.lead\", \"scope.name\"=\"raft.node.system\"}",
+          "instant": false,
+          "key": "Q-486c9a03-8629-45fa-b923-fbc9a86c0d81-0",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "P4169E866C3094E38"
           },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 8,
-            "x": 8,
-            "y": 406
-          },
-          "id": 3,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.node.system\"}[30s])) by (le))",
-              "interval": "1s",
-              "legendFormat": "P50",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-              "interval": "1s",
-              "legendFormat": "P75",
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-              "interval": "1s",
-              "legendFormat": "P95",
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
-              "interval": "1s",
-              "legendFormat": "P99",
-              "refId": "D"
-            }
-          ],
-          "title": "Apply entries",
-          "type": "timeseries"
+          "editorMode": "builder",
+          "expr": "",
+          "instant": false,
+          "key": "Q-ee216182-96c8-4e5d-998d-631dfe5f629c-1",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Root raft",
-      "type": "row"
+      "title": "Leadership status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 44
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.node.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P50",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P75",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P95",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\", scope.name=\"raft.system\"}[30s])) by (le))",
+          "interval": "1s",
+          "legendFormat": "P99",
+          "refId": "D"
+        }
+      ],
+      "title": "Apply entries",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -2186,7 +2185,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 49
       },
       "id": 19,
       "panels": [],
@@ -2259,7 +2258,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 50
       },
       "id": 55,
       "options": {
@@ -2402,7 +2401,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 50
       },
       "id": 21,
       "options": {
@@ -2550,7 +2549,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 58
       },
       "id": 20,
       "options": {
@@ -2650,7 +2649,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 58
       },
       "id": 59,
       "options": {
@@ -2745,7 +2744,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 66
       },
       "id": 34,
       "options": {
@@ -2917,7 +2916,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 66
       },
       "id": 50,
       "options": {
@@ -3089,7 +3088,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 69
+        "y": 74
       },
       "id": 47,
       "options": {
@@ -3188,7 +3187,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 69
+        "y": 74
       },
       "id": 46,
       "options": {
@@ -3309,7 +3308,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 76
+        "y": 81
       },
       "id": 2,
       "options": {
@@ -3419,7 +3418,7 @@
         "h": 6,
         "w": 9,
         "x": 8,
-        "y": 76
+        "y": 81
       },
       "id": 30,
       "options": {
@@ -3529,7 +3528,7 @@
         "h": 6,
         "w": 7,
         "x": 17,
-        "y": 76
+        "y": 81
       },
       "id": 7,
       "options": {
@@ -3628,7 +3627,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 82
+        "y": 87
       },
       "id": 57,
       "options": {
@@ -3741,7 +3740,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 82
+        "y": 87
       },
       "id": 60,
       "options": {
@@ -3823,13 +3822,38 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 1: Peer 2 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 95
       },
       "id": 15,
       "options": {
@@ -3895,7 +3919,7 @@
         "h": 14,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 95
       },
       "id": 24,
       "options": {
@@ -4003,14 +4027,14 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 97
+        "y": 102
       },
       "id": 31,
       "options": {
         "legend": {
           "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
+          "displayMode": "table",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -4099,20 +4123,45 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2 : Peer 1 : MsgHeartbeat"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 104
+        "y": 109
       },
       "id": 26,
       "options": {
         "legend": {
           "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
+          "displayMode": "table",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -4169,7 +4218,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 104
+        "y": 109
       },
       "id": 27,
       "options": {
@@ -4269,7 +4318,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 112
+        "y": 117
       },
       "id": 28,
       "options": {
@@ -4367,7 +4416,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 112
+        "y": 117
       },
       "id": 29,
       "options": {
@@ -4402,7 +4451,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 120
+        "y": 125
       },
       "id": 5,
       "panels": [],
@@ -4475,7 +4524,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 121
+        "y": 126
       },
       "id": 6,
       "options": {
@@ -4571,7 +4620,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 121
+        "y": 126
       },
       "id": 63,
       "options": {
@@ -4689,7 +4738,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 121
+        "y": 126
       },
       "id": 8,
       "options": {
@@ -4724,7 +4773,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 127
+        "y": 132
       },
       "id": 66,
       "panels": [],
@@ -4797,7 +4846,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 128
+        "y": 133
       },
       "id": 10,
       "options": {
@@ -4893,7 +4942,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 128
+        "y": 133
       },
       "id": 64,
       "options": {
@@ -5010,7 +5059,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 128
+        "y": 133
       },
       "id": 12,
       "options": {
@@ -5045,7 +5094,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 134
+        "y": 139
       },
       "id": 1,
       "panels": [],
@@ -5118,7 +5167,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 135
+        "y": 140
       },
       "id": 61,
       "options": {
@@ -5213,7 +5262,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 135
+        "y": 140
       },
       "id": 62,
       "options": {
@@ -5309,7 +5358,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 135
+        "y": 140
       },
       "id": 4,
       "options": {

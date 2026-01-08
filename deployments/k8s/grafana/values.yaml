@@ -3,6 +3,9 @@ adminPassword: "admin"   # dev only 🙂
 service:
   type: ClusterIP
 
+plugins:
+  - marcusolsson-json-datasource
+
 grafana.ini:
   snapshots:
     external_enabled: false
@@ -33,6 +36,18 @@ datasources:
         access: proxy
         url: http://loki.monitoring.svc.cluster.local:3100
         editable: true
+      - name: HTTP JSON API
+        uid: http-json-api
+        type: marcusolsson-json-datasource
+        access: proxy
+        isDefault: false
+        editable: true
+
+        url: http://ledger-v3-poc.default.svc.cluster.local:8080
+
+        jsonData:
+          # Timeout des requêtes HTTP
+          timeout: 10
 
 # Optionnel: un minimum de ressources
 resources:

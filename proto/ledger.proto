@@ -340,3 +340,10 @@ message LedgerInfo {
   Timestamp deleted_at = 10;                // Deletion timestamp (always null with hard delete)
   LedgerStatus status = 11;
 }
+
+message LedgerState {
+  LedgerInfo ledger_info = 1;
+  uint64 last_log_id = 2;
+  google.protobuf.Struct log_store_metrics = 3;
+  google.protobuf.Struct runtime_store_metrics = 4;
+}

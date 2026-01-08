@@ -156,3 +156,8 @@ k8s-install-loki:
     helm repo add grafana https://grafana.github.io/helm-charts
     helm repo update
     helm upgrade --install loki grafana/loki -n monitoring -f ./deployments/k8s/loki/values.yaml
+
+k8s-install-buildkit:
+    helm repo add andrcuns https://andrcuns.github.io/charts
+    helm repo update
+    helm upgrade --install buildkit andrcuns/buildkit-service -n build --create-namespace -f ./deployments/k8s/buildkit/values.yaml

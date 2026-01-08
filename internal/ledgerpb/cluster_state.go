@@ -59,9 +59,3 @@ type SystemState struct {
 	NextLedgerID uint64                 // Next sequential ledger ID
 	Ledgers      map[string]*LedgerInfo // Map of ledger name -> ledger info
 }
-
-// LedgerState represents the state of the ledger FSM
-type LedgerState struct {
-	LedgerInfo *LedgerInfo `json:"ledgerInfo"`
-	LastLogID  uint64      `json:"lastLogID"`
-}

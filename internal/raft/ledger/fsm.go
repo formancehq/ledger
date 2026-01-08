@@ -13,7 +13,23 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
+
+type RuntimeStoreWithMetrics interface {
+	service.RuntimeStore
+	service.MetricsAware
+}
+
+type LogWriterWithMetrics interface {
+	service.LogWriter
+	service.MetricsAware
+}
+
+type LogStoreWithMetrics interface {
+	service.LogStore
+	service.MetricsAware
+}
 
 // FSM represents the finite state machine for a ledger Raft group
 // It manages a single ledger
@@ -21,17 +37,17 @@ type FSM struct {
 	mu                sync.RWMutex         // Protects access to state
 	state             ledgerpb.LedgerState // FSM state
 	logger            logging.Logger
-	runtimeStore      service.RuntimeStore
+	runtimeStore      RuntimeStoreWithMetrics
 	logReaderProvider func(uint64) service.LogReader // LogReader to catch up logs from leader via gRPC
 	logs              []*ledgerpb.Log
-	logWriter         service.LogWriter
+	logWriter         LogWriterWithMetrics
 }
 
 // newFSM creates a new ledger FSM
 func newFSM(
 	logger logging.Logger,
-	logWriter service.LogWriter,
-	runtimeStore service.RuntimeStore,
+	logWriter LogWriterWithMetrics,
+	runtimeStore RuntimeStoreWithMetrics,
 	logReaderProvider func(uint64) service.LogReader,
 	initialState ledgerpb.LedgerState,
 ) *FSM {
@@ -52,9 +68,21 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
+	logStoreMetrics, err := structpb.NewValue(f.logWriter.Metrics())
+	if err != nil {
+		panic(err)
+	}
+
+	runtimeStoreMetrics, err := structpb.NewValue(f.runtimeStore.Metrics())
+	if err != nil {
+		panic(err)
+	}
+
 	return ledgerpb.LedgerState{
-		LedgerInfo: f.state.LedgerInfo,
-		LastLogID:  f.state.LastLogID,
+		LedgerInfo:          f.state.LedgerInfo,
+		LastLogId:           f.state.LastLogId,
+		LogStoreMetrics:     logStoreMetrics.GetStructValue(),
+		RuntimeStoreMetrics: runtimeStoreMetrics.GetStructValue(),
 	}
 }
 
@@ -67,8 +95,8 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	}
 
 	f.mu.Lock()
-	f.state.LastLogID++
-	insertCmd.Log.Id = f.state.LastLogID
+	f.state.LastLogId++
+	insertCmd.Log.Id = f.state.LastLogId
 	f.logs = append(f.logs, insertCmd.Log)
 	f.mu.Unlock()
 
@@ -142,7 +170,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	f.mu.RLock()
 	snapshotData := map[string]interface{}{
 		"ledgerInfo": f.state.LedgerInfo,
-		"lastLogID":  f.state.LastLogID,
+		"lastLogID":  f.state.LastLogId,
 	}
 	logs := f.logs
 	f.mu.RUnlock()
@@ -184,13 +212,13 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftp
 	}
 
 	// todo: need to check the real state of the log store
-	if lastProcessedLogID < snapshotData.LastLogID {
+	if lastProcessedLogID < snapshotData.LastLogId {
 		f.logger.WithFields(map[string]any{
-			"snapshotLogID": snapshotData.LastLogID,
+			"snapshotLogID": snapshotData.LastLogId,
 			"storeLogID":    lastProcessedLogID,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
-		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, lastProcessedLogID, snapshotData.LastLogID)
+		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, lastProcessedLogID, snapshotData.LastLogId)
 		if err != nil {
 			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
 		}

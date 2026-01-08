@@ -42,6 +42,10 @@ func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], ma
 	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
 }
 
+type MetricsAware interface {
+	Metrics() any
+}
+
 // LogWriter handles log writing operations
 type LogWriter interface {
 	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error

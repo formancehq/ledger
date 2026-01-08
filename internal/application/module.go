@@ -31,12 +31,12 @@ func Module() fx.Option {
 			raft.NewTransport,
 			func(
 				params struct {
-				fx.In
-				Config        system.Config
-				Logger        logging.Logger
-				Transport     *raft.GRPCTransport
-				MeterProvider metric.MeterProvider
-			},
+					fx.In
+					Config        system.Config
+					Logger        logging.Logger
+					Transport     *raft.GRPCTransport
+					MeterProvider metric.MeterProvider
+				},
 			) (*system.Node, error) {
 				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
 			},
@@ -69,11 +69,11 @@ func Module() fx.Option {
 		),
 		fx.Decorate(func(
 			params struct {
-			fx.In
-			Handler       http.Handler
-			MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-			Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-		},
+				fx.In
+				Handler       http.Handler
+				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+			},
 		) http.Handler {
 			// If InMemoryExporter is available, wrap handler to add metrics endpoint
 			if params.Exporter != nil && params.MeterProvider != nil {
