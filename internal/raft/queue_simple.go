@@ -1,5 +1,9 @@
 package raft
 
+import (
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
+)
 
 type SimpleQueue[T any] struct {
 	in  chan T
@@ -23,18 +27,20 @@ func (q *SimpleQueue[T]) Close() {
 	close(q.in)
 }
 
-func NewSimpleQueue[T any](options ...SimpleQueueOption[T]) *SimpleQueue[T] {
+func NewSimpleQueue[T any](logger logging.Logger, options ...SimpleQueueOption[T]) *SimpleQueue[T] {
 	ret := &SimpleQueue[T]{
 		out: make(chan T),
 	}
 	for _, option := range append(defaultSimpleQueueOptions[T](), options...) {
 		option(ret)
 	}
-	go func() {
+
+	otlplogs.Go(func() {
 		for msg := range ret.in {
 			ret.out <- msg
 		}
-	}()
+	}, logger)
+
 	return ret
 }
 

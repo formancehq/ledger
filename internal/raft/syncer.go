@@ -151,9 +151,9 @@ func (s *syncer[State, F]) run() {
 					continue
 				}
 
-				go func() {
+				otlplogs.Go(func() {
 					s.commands <- cmd
-				}()
+				}, s.logger)
 
 			case applyEntriesCommand:
 				switch s.status {
@@ -309,8 +309,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, errCh chan error, fn func(
 		t.terminated = make(chan struct{})
 		t.ctx, t.cancel = context.WithCancel(ctx)
 
-		go func() {
-			defer otlplogs.RecoverAndLogPanics(t.logger)
+		otlplogs.Go(func() {
 			defer func() {
 				t.cancel()
 				close(t.terminated)
@@ -326,7 +325,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, errCh chan error, fn func(
 			}
 
 			t.nextChannel <- next
-		}()
+		}, t.logger)
 	default:
 		panic("already running")
 	}

@@ -4,6 +4,8 @@ import (
 	"reflect"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
@@ -37,6 +39,7 @@ func (pq *PriorityQueue[T]) Close() {
 func NewPriorityQueue[T any](
 	numberOfPriority int,
 	priorityFn func(T) int,
+	logger logging.Logger,
 	options ...PriorityQueueOption[T],
 ) *PriorityQueue[T] {
 	ret := &PriorityQueue[T]{
@@ -48,7 +51,7 @@ func NewPriorityQueue[T any](
 		opt(ret)
 	}
 
-	go func() {
+	otlplogs.Go(func() {
 	l:
 		for {
 			for _, ch := range ret.queues {
@@ -76,7 +79,7 @@ func NewPriorityQueue[T any](
 				ret.out <- recv.Interface().(T)
 			}
 		}
-	}()
+	}, logger)
 
 	return ret
 }

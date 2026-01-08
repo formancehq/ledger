@@ -102,11 +102,11 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, grpcServer *grpcserver.Server, logger logging.Logger) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						go func() {
+						otlplogs.Go(func() {
 							if err := grpcServer.Start(); err != nil {
 								panic(err)
 							}
-						}()
+						})
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,6 +57,7 @@ func NewTransport(
 				func(incoming Incoming) int {
 					return RaftMessagePriority(incoming.Msg)
 				},
+				logger,
 				WithPriorityQueueSize[Incoming](512), //todo: make configurable
 			),
 			WithLogger[Incoming](logger),
@@ -68,7 +70,7 @@ func NewTransport(
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
 			"raft.transport.unreachable",
-			NewSimpleQueue[uint64](),
+			NewSimpleQueue[uint64](logger),
 			WithMeter[uint64](meter),
 			WithLogger[uint64](logger),
 		),
@@ -126,6 +128,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 			NewPriorityQueue[raftpb.Message](
 				5,
 				RaftMessagePriority,
+				logger,
 				WithPriorityQueueSize[raftpb.Message](512),
 			),
 			WithLogger[raftpb.Message](logger),
@@ -298,7 +301,7 @@ type peerConnection struct {
 }
 
 func (conn *peerConnection) loop() {
-	// Retry loop to reconnect if stream is closed
+	defer otlplogs.RecoverAndLogPanics(conn.logger)
 
 	messageID := uint64(0)
 	for {
@@ -342,7 +345,7 @@ func (conn *peerConnection) loop() {
 		pending := make(map[uint64]uint64)
 		lastPing := atomic.Value{}
 		mu := sync.Mutex{}
-		go func() {
+		otlplogs.Go(func() {
 			for {
 				res, err := stream.Recv()
 				if err != nil {
@@ -384,7 +387,7 @@ func (conn *peerConnection) loop() {
 					}
 				}
 			}
-		}()
+		}, conn.logger)
 
 		pingInterval := time.NewTicker(time.Second)
 

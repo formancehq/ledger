@@ -126,3 +126,10 @@ func RecoverAndLogPanics(logger logging.Logger) {
 		panic(e)
 	}
 }
+
+func Go(f func(), logger logging.Logger) {
+	go func() {
+		defer RecoverAndLogPanics(logger)
+		f()
+	}()
+}

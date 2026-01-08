@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,6 +29,8 @@ type multiplexedTransport struct {
 }
 
 func (r *multiplexedTransport) Start() {
+	defer otlplogs.RecoverAndLogPanics(r.logger)
+
 	for {
 		select {
 		case ch := <-r.stopChannel:
@@ -120,6 +123,7 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 			raft.NewPriorityQueue[raftpb.Message](
 				5,
 				raft.RaftMessagePriority,
+				r.logger,
 				raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
 			),
 			raft.WithLogger[raftpb.Message](r.logger),
@@ -132,7 +136,7 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 		),
 		unreachable: raft.NewQueueObserver[uint64](
 			"raft.multiplexed_transport.ledger.unreachable",
-			raft.NewSimpleQueue[uint64](),
+			raft.NewSimpleQueue[uint64](r.logger),
 			raft.WithLogger[uint64](r.logger),
 			raft.WithMeter[uint64](meter),
 			raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
@@ -170,6 +174,7 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 				raft.NewPriorityQueue[raftpb.Message](
 					5,
 					raft.RaftMessagePriority,
+					logger,
 					raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
 				),
 				raft.WithLogger[raftpb.Message](logger),
@@ -182,7 +187,7 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 			),
 			unreachable: raft.NewQueueObserver[uint64](
 				"raft.multiplexed_transport.system.unreachable",
-				raft.NewSimpleQueue[uint64](),
+				raft.NewSimpleQueue[uint64](logger),
 				raft.WithLogger[uint64](logger),
 				raft.WithMeter[uint64](meter),
 				raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {

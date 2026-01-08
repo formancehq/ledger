@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -82,13 +83,13 @@ func NewQueueObserver[T any](
 		panic(err)
 	}
 
-	go func() {
+	otlplogs.Go(func() {
 		for msg := range queue.Recv() {
 			ret.out <- msg
 			ret.outgoing.Add(context.Background(), 1, metric.WithAttributeSet(attribute.NewSet(ret.attributesFn(msg)...)))
 			ret.inflight.Add(context.Background(), -1, metric.WithAttributeSet(attribute.NewSet(ret.attributesFn(msg)...)))
 		}
-	}()
+	}, ret.logger)
 
 	return ret
 }

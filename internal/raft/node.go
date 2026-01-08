@@ -92,7 +92,7 @@ func NewNode[State any, F FSM[State]](
 		config:    cfg,
 		proposeCh: NewQueueObserver[[]byte](
 			"raft.node.propose",
-			NewSimpleQueue[[]byte](),
+			NewSimpleQueue[[]byte](logger),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 		),
@@ -339,14 +339,14 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 
-		go func() {
+		otlplogs.Go(func() {
 			// todo: since the snapshot is already written in storage at this point
 			// we must be able to detect a crash and restart the restoration process
 			// in case of rawNode recover
 			if err := node.syncer.RestoreSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
 				panic(fmt.Errorf("restoring snapshot in storage: %w", err))
 			}
-		}()
+		}, node.logger)
 	}
 
 	// Send messages via transport
@@ -465,7 +465,7 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 			"snapshotThreshold": node.config.SnapshotThreshold,
 		}).Infof("Creating new snapshot for ledger")
 
-		go func() {
+		otlplogs.Go(func() {
 			defer node.isSnapshotting.Store(false)
 
 			err := node.syncer.CreateSnapshot(ctx, status.Applied, node.confState)
@@ -494,7 +494,7 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 			}
 
 			node.logger.Infof("Snapshot created successfully")
-		}()
+		}, node.logger)
 	}
 
 	return nil
