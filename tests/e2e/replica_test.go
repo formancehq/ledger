@@ -25,12 +25,38 @@ var _ = Describe("Simple cluster", func() {
 	var (
 		ctx      context.Context
 		servers  []*serviceWithClient
+		gateway  *testserver.Gateway
 		leaderID uint64
 	)
-	const countInstances = 3
+	const (
+		countInstances   = 3
+		gatewayBasePort  = 7200
+		nodeGRPCBasePort = 8000
+		nodeHTTPBasePort = 9000
+	)
 
 	BeforeEach(func() {
 		ctx = logging.TestingContext()
+
+		// Create gateway that forwards to node gRPC ports
+		gatewayPorts := make([]int, countInstances)
+		nodeAddresses := make([]string, countInstances)
+		for i := range countInstances {
+			gatewayPorts[i] = gatewayBasePort + i
+			nodeAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodeGRPCBasePort+i)
+		}
+
+		var err error
+		gateway, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeAddresses)
+		Expect(err).To(Succeed())
+
+		// Start gateway before starting nodes
+		Expect(gateway.Start(ctx)).To(Succeed())
+		DeferCleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(gateway.Stop(ctx)).To(Succeed())
+		})
 
 		servers = make([]*serviceWithClient, 0, countInstances)
 		for i := range countInstances {
@@ -44,14 +70,11 @@ var _ = Describe("Simple cluster", func() {
 					testservice.DebugInstrumentation(debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
-					testserver.WithHTTPPort(9000+i),
+					testserver.WithHTTPPort(nodeHTTPBasePort+i),
 					testserver.WithDataDir(raftTmpDir),
-					testserver.WithGRPCPort(8000+i),
+					testserver.WithGRPCPort(nodeGRPCBasePort+i),
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
-					//testserver.WithRaftTickInterval(10*time.Millisecond),
-					//testserver.WithRaftHeartbeatTick(10),
-					//testserver.WithRaftElectionTick(100),
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 					testserver.WithPeers(func() []raft.Peer {
 						ret := make([]raft.Peer, 0, countInstances-1)
@@ -59,9 +82,10 @@ var _ = Describe("Simple cluster", func() {
 							if i == j {
 								continue
 							}
+							// Use gateway ports instead of direct node ports
 							ret = append(ret, raft.Peer{
 								ID:      uint64(j + 1),
-								Address: fmt.Sprintf("127.0.0.1:%d", 8000+j),
+								Address: fmt.Sprintf("127.0.0.1:%d", gatewayBasePort+j),
 							})
 						}
 
@@ -74,7 +98,7 @@ var _ = Describe("Simple cluster", func() {
 			servers = append(servers, &serviceWithClient{
 				service: server,
 				client: client.New(
-					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9000+i)),
+					client.WithServerURL(fmt.Sprintf("http://localhost:%d", nodeHTTPBasePort+i)),
 				),
 				raftDataDir: raftTmpDir,
 			})
