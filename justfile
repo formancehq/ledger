@@ -90,7 +90,7 @@ docker-build:
         -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest \
         --cache-to type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache,mode=max \
         --cache-from type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache .
-    docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
+    #docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
 
 k8s-install: docker-build
     helm upgrade --install ledger-v3-poc \

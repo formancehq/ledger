@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	stdtime "time"
@@ -11,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service
@@ -18,10 +21,17 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	r := chi.NewRouter()
 
 	// Apply middlewares
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
-	r.Use(loggingMiddleware(logger))
+	r.Use(
+		middleware.RequestID,
+		middleware.RealIP,
+		otelhttp.NewMiddleware("ledger-http-server",
+			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+		),
+		middleware.RequestLogger(&chiLogFormatter{
+			logger: logger,
+		}),
+		middleware.Recoverer,
+	)
 
 	// Create bulker factory
 	bulkerFactory := bulking.NewDefaultBulkerFactory()
@@ -82,12 +92,7 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	// Register routes with /v2 prefix (optional)
 	r.Route("/v2", registerRoutes)
 
-	// Wrap handler with OpenTelemetry instrumentation
-	handler := otelhttp.NewHandler(r, "ledger-http-server",
-		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-	)
-
-	return handler
+	return r
 }
 
 // contentTypeMiddleware sets Content-Type header for JSON responses
@@ -140,52 +145,45 @@ func (rw *contentTypeResponseWriter) Header() http.Header {
 	return header
 }
 
-// loggingMiddleware logs HTTP requests (chi middleware)
-func loggingMiddleware(logger logging.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := stdtime.Now()
+type chiLogFormatter struct {
+	logger logging.Logger
+}
 
-			// Create a response writer wrapper to capture status code
-			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-			// Call next handler
-			next.ServeHTTP(rw, r)
-
-			// Skip logging for health check and pprof requests
-			if r.URL.Path == "/health" || r.URL.Path == "/v2/health" {
-				return
-			}
-			// Skip pprof routes
-			if len(r.URL.Path) >= 12 && r.URL.Path[:12] == "/debug/pprof" {
-				return
-			}
-			if len(r.URL.Path) >= 15 && r.URL.Path[:15] == "/v2/debug/pprof" {
-				return
-			}
-
-			// Log the request
-			duration := stdtime.Since(start)
-			logger.WithFields(map[string]any{
-				"method":      r.Method,
-				"path":        r.URL.Path,
-				"query":       r.URL.RawQuery,
-				"status":      rw.statusCode,
-				"duration":    duration,
-				"remote_addr": r.RemoteAddr,
-				"user_agent":  r.UserAgent(),
-			}).Infof("HTTP request")
-		})
+func (c chiLogFormatter) NewLogEntry(r *http.Request) middleware.LogEntry {
+	fields := map[string]any{}
+	if span := trace.SpanFromContext(r.Context()); span.SpanContext().IsValid() {
+		fields["trace_id"] = span.SpanContext().TraceID()
+		fields["span_id"] = span.SpanContext().SpanID()
+	}
+	return chiLogEntry{
+		logger: c.logger.WithFields(fields),
+		ctx:    r.Context(),
 	}
 }
 
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
+var _ middleware.LogFormatter = (*chiLogFormatter)(nil)
+
+type chiLogEntry struct {
+	logger logging.Logger
+	ctx    context.Context
 }
 
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
+func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Duration, extra interface{}) {
+	fields := map[string]any{
+		"status":  status,
+		"bytes":   bytes,
+		"elapsed": elapsed,
+	}
+	if extra != nil {
+		fields["extra"] = extra
+	}
+	c.logger.WithFields(fields).Info("HTTP request completed")
+}
+
+func (c chiLogEntry) Panic(v interface{}, stack []byte) {
+	c.logger.Errorf("Panicked: %v", v)
+	_, _ = c.logger.Writer().Write(stack)
+	if span := trace.SpanFromContext(c.ctx); span.SpanContext().IsValid() {
+		span.RecordError(fmt.Errorf("%s", v), trace.WithStackTrace(true))
+	}
 }

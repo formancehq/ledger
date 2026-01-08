@@ -43,7 +43,7 @@ datasources:
         isDefault: false
         editable: true
 
-        url: http://ledger-v3-poc.default.svc.cluster.local:8080
+        url: http://ledger-v3-poc.default.svc.cluster.local:9000
 
         jsonData:
           # Timeout des requêtes HTTP
