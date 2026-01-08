@@ -36,19 +36,27 @@ func (pq *PriorityQueue[T]) Close() {
 	}
 }
 
+type QueueConfig struct {
+	Capacity int
+}
+
 func NewPriorityQueue[T any](
-	numberOfPriority int,
+	config []QueueConfig,
 	priorityFn func(T) int,
 	logger logging.Logger,
 	options ...PriorityQueueOption[T],
 ) *PriorityQueue[T] {
 	ret := &PriorityQueue[T]{
-		queues:     make([]chan T, numberOfPriority),
+		queues:     make([]chan T, len(config)),
 		priorityFn: priorityFn,
 		out:        make(chan T),
 	}
-	for _, opt := range append(defaultPriorityQueueOptions[T](), options...) {
+	for _, opt := range options {
 		opt(ret)
+	}
+
+	for i, queueConfig := range config {
+		ret.queues[i] = make(chan T, queueConfig.Capacity)
 	}
 
 	otlplogs.Go(func() {
@@ -85,20 +93,6 @@ func NewPriorityQueue[T any](
 }
 
 type PriorityQueueOption[T any] func(queue *PriorityQueue[T])
-
-func WithPriorityQueueSize[T any](size int) PriorityQueueOption[T] {
-	return func(ch *PriorityQueue[T]) {
-		for i := range ch.queues {
-			ch.queues[i] = make(chan T, size)
-		}
-	}
-}
-
-func defaultPriorityQueueOptions[T any]() []PriorityQueueOption[T] {
-	return []PriorityQueueOption[T]{
-		WithPriorityQueueSize[T](100),
-	}
-}
 
 func RaftMessagePriority(msg raftpb.Message) int {
 	switch msg.Type {

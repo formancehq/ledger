@@ -13,6 +13,7 @@ import (
 	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
@@ -30,12 +31,12 @@ func Module() fx.Option {
 			raft.NewTransport,
 			func(
 				params struct {
-					fx.In
-					Config        system.Config
-					Logger        logging.Logger
-					Transport     *raft.GRPCTransport
-					MeterProvider metric.MeterProvider
-				},
+				fx.In
+				Config        system.Config
+				Logger        logging.Logger
+				Transport     *raft.GRPCTransport
+				MeterProvider metric.MeterProvider
+			},
 			) (*system.Node, error) {
 				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
 			},
@@ -68,11 +69,11 @@ func Module() fx.Option {
 		),
 		fx.Decorate(func(
 			params struct {
-				fx.In
-				Handler       http.Handler
-				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-			},
+			fx.In
+			Handler       http.Handler
+			MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+			Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+		},
 		) http.Handler {
 			// If InMemoryExporter is available, wrap handler to add metrics endpoint
 			if params.Exporter != nil && params.MeterProvider != nil {
@@ -106,7 +107,7 @@ func Module() fx.Option {
 							if err := grpcServer.Start(); err != nil {
 								panic(err)
 							}
-						})
+						}, logger)
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {

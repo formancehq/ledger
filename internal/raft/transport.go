@@ -53,12 +53,17 @@ func NewTransport(
 		recvCh: NewQueueObserver[Incoming](
 			"raft.transport.recv",
 			NewPriorityQueue[Incoming](
-				5,
+				[]QueueConfig{
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+				},
 				func(incoming Incoming) int {
 					return RaftMessagePriority(incoming.Msg)
 				},
 				logger,
-				WithPriorityQueueSize[Incoming](512), //todo: make configurable
 			),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
@@ -126,10 +131,15 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		sendCh: NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
 			NewPriorityQueue[raftpb.Message](
-				5,
+				[]QueueConfig{
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+				},
 				RaftMessagePriority,
 				logger,
-				WithPriorityQueueSize[raftpb.Message](512),
 			),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),

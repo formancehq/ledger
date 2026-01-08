@@ -121,10 +121,15 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 		recv: raft.NewQueueObserver[raftpb.Message](
 			"raft.multiplexed_transport.ledger.recv",
 			raft.NewPriorityQueue[raftpb.Message](
-				5,
+				[]raft.QueueConfig{
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+					{Capacity: 512},
+				},
 				raft.RaftMessagePriority,
 				r.logger,
-				raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
 			),
 			raft.WithLogger[raftpb.Message](r.logger),
 			raft.WithMeter[raftpb.Message](meter),
@@ -172,10 +177,15 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 			recv: raft.NewQueueObserver[raftpb.Message](
 				"raft.multiplexed_transport.system.recv",
 				raft.NewPriorityQueue[raftpb.Message](
-					5,
+					[]raft.QueueConfig{
+						{Capacity: 512},
+						{Capacity: 512},
+						{Capacity: 512},
+						{Capacity: 512},
+						{Capacity: 512},
+					},
 					raft.RaftMessagePriority,
 					logger,
-					raft.WithPriorityQueueSize[raftpb.Message](512), //todo: make configurable
 				),
 				raft.WithLogger[raftpb.Message](logger),
 				raft.WithMeter[raftpb.Message](meter),
