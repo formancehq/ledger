@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -85,30 +86,17 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 	}()
 
 	// Apply balance differences
+	// Store each diff as a separate entry instead of reading and updating the current balance
 	if len(update.BalanceDiffs) > 0 {
 		for account, assets := range update.BalanceDiffs {
 			for asset, diff := range assets {
-				key := balanceKey(account, asset)
+				// Generate a unique key for this diff using timestamp
+				// Format: balance:{account}:{asset}:{timestamp_nanoseconds}
+				key := balanceDiffKey(account, asset, time.Now().UnixNano())
 
-				// Read current balance
-				currentBalance := big.NewInt(0)
-				value, closer, err := s.db.Get(key)
-				if err != nil && !errors.Is(err, pebble.ErrNotFound) {
-					return fmt.Errorf("reading balance for account %s asset %s: %w", account, asset, err)
-				}
-				if err == nil {
-					currentBalance = new(big.Int).SetBytes(value)
-					if err := closer.Close(); err != nil {
-						return fmt.Errorf("closing balance reader: %w", err)
-					}
-				}
-
-				// Calculate new balance
-				newBalance := currentBalance.Add(currentBalance, diff)
-
-				// Write new balance to batch
-				if err := batch.Set(key, newBalance.Bytes(), pebble.NoSync); err != nil {
-					return fmt.Errorf("updating balance for account %s asset %s: %w", account, asset, err)
+				// Store the diff directly without reading the current balance
+				if err := batch.Set(key, diff.Bytes(), pebble.NoSync); err != nil {
+					return fmt.Errorf("storing balance diff for account %s asset %s: %w", account, asset, err)
 				}
 			}
 		}
@@ -185,9 +173,16 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 	return nil
 }
 
-// balanceKey returns the key for a balance entry
-func balanceKey(account, asset string) []byte {
-	return []byte(fmt.Sprintf("%s%s:%s", keyPrefixBalance, account, asset))
+// balanceDiffKey returns a unique key for a balance diff entry
+// Format: balance:{account}:{asset}:{timestamp}
+func balanceDiffKey(account, asset string, timestamp int64) []byte {
+	return []byte(fmt.Sprintf("%s%s:%s:%d", keyPrefixBalance, account, asset, timestamp))
+}
+
+// balancePrefix returns the prefix for all balance diffs for a given account/asset
+// Format: balance:{account}:{asset}:
+func balancePrefix(account, asset string) []byte {
+	return []byte(fmt.Sprintf("%s%s:%s:", keyPrefixBalance, account, asset))
 }
 
 // accountMetadataKey returns the key for an account metadata entry
@@ -205,6 +200,7 @@ func idempotencyPebbleKey(key string) []byte {
 // ============================================================================
 
 // GetBalances retrieves balances from Pebble (implements RuntimeStore)
+// Sums all balance diffs for each account/asset combination
 func (s *PebbleRuntimeStore) GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
@@ -224,22 +220,38 @@ func (s *PebbleRuntimeStore) GetBalances(ctx context.Context, balanceQuery map[s
 
 		// Query each asset
 		for _, asset := range assets {
-			key := balanceKey(account, asset)
-			value, closer, err := s.db.Get(key)
-			if err != nil && !errors.Is(err, pebble.ErrNotFound) {
-				return nil, fmt.Errorf("querying balance: %w", err)
+			// Initialize balance to zero
+			balance := big.NewInt(0)
+
+			// Iterate over all balance diffs for this account/asset combination
+			prefix := balancePrefix(account, asset)
+			upperBound := append(prefix, 0xFF)
+
+			iter, err := s.db.NewIter(&pebble.IterOptions{
+				LowerBound: prefix,
+				UpperBound: upperBound,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("creating iterator for balance diffs: %w", err)
 			}
 
-			if err == nil {
-				balance := new(big.Int).SetBytes(value)
-				if err := closer.Close(); err != nil {
-					return nil, fmt.Errorf("closing balance reader: %w", err)
+			// Sum all diffs
+			for iter.First(); iter.Valid(); iter.Next() {
+				valueBytes, err := iter.ValueAndErr()
+				if err != nil {
+					_ = iter.Close()
+					return nil, fmt.Errorf("reading balance diff value: %w", err)
 				}
-				result[account][asset] = balance
-			} else {
-				// Asset doesn't exist, set zero balance
-				result[account][asset] = big.NewInt(0)
+
+				diff := new(big.Int).SetBytes(valueBytes)
+				balance = balance.Add(balance, diff)
 			}
+
+			if err := iter.Close(); err != nil {
+				return nil, fmt.Errorf("closing balance diff iterator: %w", err)
+			}
+
+			result[account][asset] = balance
 		}
 	}
 
