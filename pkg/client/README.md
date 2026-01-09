@@ -247,47 +247,9 @@ func main() {
 <!-- Start Server Selection [server] -->
 ## Server Selection
 
-### Select Server by Index
-
-You can override the default server globally using the `WithServerIndex(serverIndex int)` option when initializing the SDK client instance. The selected server will then be used as the default on the operations that use it. This table lists the indexes associated with the available servers:
-
-| #   | Server                  | Description              |
-| --- | ----------------------- | ------------------------ |
-| 0   | `http://localhost:9000` | Local development server |
-| 1   | `http://node-1:9000`    | Docker Compose node-1    |
-
-#### Example
-
-```go
-package main
-
-import (
-	"context"
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"log"
-)
-
-func main() {
-	ctx := context.Background()
-
-	s := client.New(
-		client.WithServerIndex(1),
-	)
-
-	res, err := s.Ledgers.ListAllLedgers(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if res.ListAllLedgersResponse != nil {
-		// handle response
-	}
-}
-
-```
-
 ### Override Server URL Per-Client
 
-The default server can also be overridden globally using the `WithServerURL(serverURL string)` option when initializing the SDK client instance. For example:
+The default server can be overridden globally using the `WithServerURL(serverURL string)` option when initializing the SDK client instance. For example:
 ```go
 package main
 
@@ -301,7 +263,7 @@ func main() {
 	ctx := context.Background()
 
 	s := client.New(
-		client.WithServerURL("http://node-1:9000"),
+		client.WithServerURL("http://localhost:9000"),
 	)
 
 	res, err := s.Ledgers.ListAllLedgers(ctx)

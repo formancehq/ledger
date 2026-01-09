@@ -50,7 +50,72 @@ just run
 go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
 ```
 
-For detailed deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
+### Development Environment with Pulumi
+
+Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, OpenTelemetry Collector, and k6-operator).
+
+**Note:** The Pulumi stack `devenv` deploys to the **ledger-exp** development environment cluster.
+
+**Prerequisites:**
+- [Pulumi CLI](https://www.pulumi.com/docs/get-started/install/) installed
+- Access to the ledger-exp Kubernetes cluster with `kubectl` configured
+- Go 1.21 or higher
+
+**Quick Start:**
+
+```bash
+# Navigate to the Pulumi application directory
+cd deployments/devenv
+
+# Install Go dependencies
+go mod download
+
+# Login to Pulumi (if not already done)
+pulumi login
+
+# Initialize or select the devenv stack
+pulumi stack init devenv
+# or
+pulumi stack select devenv
+
+# Preview the deployment
+pulumi preview
+
+# Deploy the stack
+pulumi up
+```
+
+**Configuration:**
+
+The deployment configuration is stored in `Pulumi.devenv.yaml`. You can customize:
+- Namespace (default: `monitoring`)
+- Helm values for each service (VictoriaMetrics, Grafana, Loki, Tempo, OTLP, Ledger, k6-operator)
+- Grafana dashboards and datasources
+
+**Accessing Services:**
+
+After deployment, services are available on the **ledger-exp** cluster:
+
+**Public URLs (via Ingress):**
+- **Grafana**: https://grafana.ledger-exp.v2.formance.dev
+- **Ledger API**: https://ledger-exp.v2.formance.dev
+
+**Internal Services (via kubectl port-forward):**
+- **Ledger API**: `kubectl port-forward -n monitoring svc/ledger-v3-poc 9000:9000` then http://localhost:9000
+- **VictoriaMetrics**: `kubectl port-forward -n monitoring svc/vm-victoria-metrics-single-server 8428:8428` then http://localhost:8428
+- **Loki**: `kubectl port-forward -n monitoring svc/loki 3100:3100` then http://localhost:3100
+- **Tempo**: `kubectl port-forward -n monitoring svc/tempo 3200:3200` then http://localhost:3200
+
+**Destroying the Environment:**
+
+```bash
+# Remove all resources
+pulumi destroy
+```
+
+For detailed documentation, see the [Pulumi Development Environment README](misc/devenv/README.md).
+
+For other deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
 
 ## Development
 

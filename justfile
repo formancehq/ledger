@@ -64,13 +64,13 @@ generate-proto:
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
-        -I proto \
-        proto/raft_transport.proto \
-        proto/system.proto \
-        proto/ledger.proto \
-        proto/commands/commands.proto \
-        proto/commands/ledger_commands.proto \
-        proto/commands/system_commands.proto
+        -I misc/proto \
+        misc/proto/raft_transport.proto \
+        misc/proto/system.proto \
+        misc/proto/ledger.proto \
+        misc/proto/commands/commands.proto \
+        misc/proto/commands/ledger_commands.proto \
+        misc/proto/commands/system_commands.proto
 
 docker-build:
     docker buildx build \
@@ -106,47 +106,3 @@ k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-v3-poc
     kubectl rollout status statefulset/ledger-v3-poc
 
-k8s-install-victoria-metrics:
-    helm repo add victoria-metrics https://victoriametrics.github.io/helm-charts/
-    helm repo update
-    helm upgrade --install vm victoria-metrics/victoria-metrics-single \
-        -n monitoring \
-        --create-namespace \
-        -f ./deployments/k8s/victoriametrics/values.yaml
-
-k8s-install-otlp-collector:
-    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-    helm repo update
-    helm upgrade --install otel open-telemetry/opentelemetry-collector \
-        -n monitoring \
-        -f ./deployments/k8s/otlp/values.yaml
-
-k8s-install-grafana:
-    helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo update
-    kubectl create configmap grafana-dashboard \
-        -n monitoring \
-        --from-file=./deployments/k8s/grafana/provisioning/dashboards/ledger-metrics.json \
-        -o yaml --dry-run=client \
-        | kubectl label -f - grafana_dashboard=1 --local -o yaml \
-        | kubectl apply -f -
-    helm upgrade --install grafana grafana/grafana \
-        -n monitoring \
-        -f ./deployments/k8s/grafana/values.yaml
-
-k8s-install-k6-operator:
-    helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo update
-    helm upgrade --install k6-operator grafana/k6-operator
-    kubectl delete configmap k6-scripts || true
-    kubectl create configmap k6-scripts --from-file ./k6/scripts
-
-k8s-install-tempo:
-    helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo update
-    helm upgrade --install tempo grafana/tempo -n monitoring -f ./deployments/k8s/tempo/values.yaml
-
-k8s-install-loki:
-    helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo update
-    helm upgrade --install loki grafana/loki -n monitoring -f ./deployments/k8s/loki/values.yaml

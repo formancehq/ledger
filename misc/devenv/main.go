@@ -15,22 +15,34 @@ import (
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
-		// Get namespace from config, default to "monitoring"
-		namespaceName := "monitoring"
-		if ns, ok := ctx.GetConfig("kubernetes:namespace"); ok && ns != "" {
-			namespaceName = ns
-		}
 
 		// Create namespace
-		namespace, err := v1.NewNamespace(ctx, "monitoring", &v1.NamespaceArgs{
+		monitoringNamespace, err := v1.NewNamespace(ctx, "monitoring", &v1.NamespaceArgs{
 			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(namespaceName),
+				Name: pulumi.String("monitoring"),
 			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create namespace: %w", err)
 		}
-		namespaceNameRes := namespace.Metadata.Name()
+
+		benchNamespace, err := v1.NewNamespace(ctx, "bench", &v1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String("bench"),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create namespace: %w", err)
+		}
+
+		ledgerNamespace, err := v1.NewNamespace(ctx, "ledger", &v1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String("ledger"),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create namespace: %w", err)
+		}
 
 		// Helper function to read config objects from Pulumi config
 		cfg := config.New(ctx, "")
@@ -103,10 +115,10 @@ func main() {
 			Name:            pulumi.String("vm"),
 			Chart:           pulumi.String("victoria-metrics-single"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://victoriametrics.github.io/helm-charts/")},
-			Namespace:       namespaceNameRes,
+			Namespace:       monitoringNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(victoriaMetricsValues),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy VictoriaMetrics: %w", err)
 		}
@@ -120,10 +132,10 @@ func main() {
 			Name:            pulumi.String("tempo"),
 			Chart:           pulumi.String("tempo"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       namespaceNameRes,
+			Namespace:       monitoringNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(tempoValues),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Tempo: %w", err)
 		}
@@ -137,10 +149,10 @@ func main() {
 			Name:            pulumi.String("loki"),
 			Chart:           pulumi.String("loki"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       namespaceNameRes,
+			Namespace:       monitoringNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(lokiValues),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Loki: %w", err)
 		}
@@ -154,10 +166,10 @@ func main() {
 			Name:            pulumi.String("otel"),
 			Chart:           pulumi.String("opentelemetry-collector"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://open-telemetry.github.io/opentelemetry-helm-charts")},
-			Namespace:       namespaceNameRes,
+			Namespace:       monitoringNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(otlpValues),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy OpenTelemetry Collector: %w", err)
 		}
@@ -175,7 +187,7 @@ func main() {
 		grafanaDashboard, err := v1.NewConfigMap(ctx, "grafana-dashboard", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("grafana-dashboard"),
-				Namespace: namespaceNameRes,
+				Namespace: monitoringNamespace.Metadata.Name(),
 				Labels: pulumi.StringMap{
 					"grafana_dashboard": pulumi.String("1"),
 				},
@@ -183,7 +195,7 @@ func main() {
 			Data: pulumi.StringMap{
 				"ledger-metrics.json": pulumi.String(string(dashboardJsonBytes)),
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to create Grafana dashboard ConfigMap: %w", err)
 		}
@@ -197,12 +209,12 @@ func main() {
 		grafanaDashboardProvisioning, err := v1.NewConfigMap(ctx, "grafana-dashboard-provisioning", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("grafana-dashboard-provisioning"),
-				Namespace: namespaceNameRes,
+				Namespace: monitoringNamespace.Metadata.Name(),
 			},
 			Data: pulumi.StringMap{
 				"dashboard.yml": pulumi.String(dashboardYml),
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to create Grafana dashboard provisioning ConfigMap: %w", err)
 		}
@@ -216,12 +228,12 @@ func main() {
 		grafanaDatasourceProvisioning, err := v1.NewConfigMap(ctx, "grafana-datasource-provisioning", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("grafana-datasource-provisioning"),
-				Namespace: namespaceNameRes,
+				Namespace: monitoringNamespace.Metadata.Name(),
 			},
 			Data: pulumi.StringMap{
 				"victoriametrics.yml": pulumi.String(datasourceYml),
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to create Grafana datasource provisioning ConfigMap: %w", err)
 		}
@@ -235,11 +247,11 @@ func main() {
 			Name:            pulumi.String("grafana"),
 			Chart:           pulumi.String("grafana"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       namespaceNameRes,
+			Namespace:       monitoringNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(grafanaValues),
 		}, pulumi.DependsOn([]pulumi.Resource{
-			namespace,
+			monitoringNamespace,
 			victoriaMetrics,
 			tempo,
 			loki,
@@ -262,12 +274,12 @@ func main() {
 		ledger, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
 			Name:             pulumi.String("ledger-v3-poc"),
 			Chart:            pulumi.String(chartPath),
-			Namespace:        namespaceNameRes,
+			Namespace:        ledgerNamespace.Metadata.Name(),
 			CreateNamespace:  pulumi.Bool(false),
 			Values:           pulumi.ToMap(ledgerValues),
 			DependencyUpdate: pulumi.Bool(true),
 		}, pulumi.DependsOn([]pulumi.Resource{
-			namespace,
+			monitoringNamespace,
 			otlp,
 		}))
 		if err != nil {
@@ -284,32 +296,32 @@ func main() {
 			Name:            pulumi.String("k6-operator"),
 			Chart:           pulumi.String("k6-operator"),
 			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       namespaceNameRes,
+			Namespace:       benchNamespace.Metadata.Name(),
 			CreateNamespace: pulumi.Bool(false),
 			Values:          pulumi.ToMap(k6OperatorValues),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy k6-operator: %w", err)
 		}
 
 		// Create k6-scripts ConfigMap
-		k6ScriptsFiles, err := readDirectoryFiles("k6/scripts")
+		k6ScriptsFiles, err := readDirectoryFiles("misc/k6/scripts")
 		if err != nil {
 			return fmt.Errorf("failed to read k6 scripts directory: %w", err)
 		}
 		_, err = v1.NewConfigMap(ctx, "k6-scripts", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("k6-scripts"),
-				Namespace: namespaceNameRes,
+				Namespace: benchNamespace.Metadata.Name(),
 			},
 			Data: pulumi.ToStringMap(k6ScriptsFiles),
-		}, pulumi.DependsOn([]pulumi.Resource{namespace, k6Operator}))
+		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace, k6Operator}))
 		if err != nil {
 			return fmt.Errorf("failed to create k6-scripts ConfigMap: %w", err)
 		}
 
 		// Export outputs
-		ctx.Export("namespaceName", namespace.Metadata.Name())
+		ctx.Export("monitoringNamespace", monitoringNamespace.Metadata.Name())
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)
 		ctx.Export("lokiRelease", loki.Name)

@@ -18,8 +18,6 @@ import (
 var ServerList = []string{
 	// Local development server
 	"http://localhost:9000",
-	// Docker Compose node-1
-	"http://node-1:9000",
 }
 
 // HTTPClient provides an interface for supplying the SDK with a custom HTTP client
@@ -114,9 +112,9 @@ func WithTimeout(timeout time.Duration) SDKOption {
 // New creates a new instance of the SDK with the provided options
 func New(opts ...SDKOption) *Formance {
 	sdk := &Formance{
-		SDKVersion: "0.11.53",
+		SDKVersion: "0.11.54",
 		sdkConfiguration: config.SDKConfiguration{
-			UserAgent:  "speakeasy-sdk/go 0.11.53 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
+			UserAgent:  "speakeasy-sdk/go 0.11.54 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
 			ServerList: ServerList,
 		},
 		hooks: hooks.New(),
