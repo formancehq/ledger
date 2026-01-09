@@ -1,0 +1,3 @@
+name: devenv
+runtime: go
+description: Development environment for Ledger v3 POC observability stack

@@ -1,0 +1,4 @@
+bin/
+*.log
+.DS_Store
+vendor/
