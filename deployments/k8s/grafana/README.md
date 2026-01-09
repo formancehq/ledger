@@ -7,13 +7,6 @@ This directory contains the Grafana configuration for visualizing metrics from V
 - `provisioning/datasources/` - Data source configuration (VictoriaMetrics)
 - `provisioning/dashboards/` - Dashboard definitions
 
-## Access
-
-Once Grafana is running, access it at:
-- **URL**: http://localhost:3000
-- **Username**: `admin`
-- **Password**: `admin`
-
 ## Data Source
 
 The VictoriaMetrics data source is automatically configured and set as the default. It connects to VictoriaMetrics at `http://victoria-metrics:8428`.
@@ -52,4 +45,3 @@ histogram_quantile(0.95, sum(rate(raft_apply_entries_duration_bucket[5m])) by (l
 # All metrics with "propose" in the name
 {__name__=~".*propose.*"}
 ```
-

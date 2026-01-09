@@ -44,17 +44,6 @@ clean:
 clean-benchmarks-data:
     rm -rf build
 
-# Start Docker cluster
-docker-up:
-    docker-compose up -d
-
-# Stop Docker cluster
-docker-down:
-    docker-compose down -v
-
-# View logs
-docker-logs:
-    docker-compose logs -f
 
 # Generate SDK from OpenAPI specification using Speakeasy
 generate-sdk:
@@ -137,7 +126,7 @@ k8s-install-grafana:
     helm repo update
     kubectl create configmap grafana-dashboard \
         -n monitoring \
-        --from-file=./deployments/docker-compose/grafana/provisioning/dashboards/ledger-metrics.json \
+        --from-file=./deployments/k8s/grafana/provisioning/dashboards/ledger-metrics.json \
         -o yaml --dry-run=client \
         | kubectl label -f - grafana_dashboard=1 --local -o yaml \
         | kubectl apply -f -

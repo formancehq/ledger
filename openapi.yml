@@ -10,8 +10,6 @@ info:
 servers:
   - url: http://localhost:9000
     description: Local development server
-  - url: http://node-1:9000
-    description: Docker Compose node-1
 
 x-speakeasy-retries:
   strategy: backoff

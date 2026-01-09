@@ -12,7 +12,6 @@ For detailed technical documentation, architecture overview, API reference, and 
 
 - Go 1.25 or higher (provided by Nix)
 - Just (command runner) - [Installation](https://github.com/casey/just)
-- Docker and Docker Compose (for multi-node cluster)
 - Nix with Flakes enabled (required)
 
 ## Installation
@@ -51,22 +50,7 @@ just run
 go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
 ```
 
-### Multi-node cluster with Docker
-
-The Docker Compose configuration uses the current source code directly (mounted as a volume) rather than building an image. This allows for live development and testing.
-
-```bash
-# Start the cluster (3 nodes)
-just docker-up
-
-# View logs
-just docker-logs
-
-# Stop the cluster
-just docker-down
-```
-
-For detailed configuration options, see the [Deployment Guide](./docs/deployment.md).
+For detailed deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
 
 ## Development
 

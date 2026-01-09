@@ -70,7 +70,6 @@ Raft cluster-related commands are separated into individual files:
 Utility scripts are located in the `scripts/` directory at the project root:
 
 - **`scripts/compare-storage.sh`** : Script to compare different storage drivers by running k6 performance tests on each driver and comparing CPU profiles. This script:
-  - Checks and starts docker-compose if necessary
   - Creates a ledger for each storage driver (sqlite-mattn, sqlite-modern)
   - Runs k6 performance tests with CPU profiling enabled
   - Deletes ledgers after each benchmark

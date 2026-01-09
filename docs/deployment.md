@@ -41,56 +41,6 @@ export HTTP_PORT=9000
 go run ./cmd/server
 ```
 
-## Deployment with Docker Compose
-
-### Overview
-
-The file `docker-compose.yml` configures a cluster of 3 nodes for development and testing.
-
-### Architecture
-
-```mermaid
-graph TB
-    subgraph "Docker network"
-        Node1[node-1<br/>leader<br/>Ports: 8888, 9000]
-        Node2[node-2<br/>Follower<br/>Ports: 8889, 9001]
-        Node3[node-3<br/>Follower<br/>Ports: 8890, 9002]
-    end
-    
-    Node1 -.Raft.-> Node2
-    Node2 -.Raft.-> Node3
-    Node3 -.Raft.-> Node1
-```
-
-### Starting
-
-```bash
-# Start the cluster
-just docker-up
-
-# View logs
-just docker-logs
-
-# Stop the cluster
-just docker-down
-```
-
-### Configuration
-
-Each node is configured with:
-- **Node ID**: 1, 2, or 3
-- **Advertise Address**: `node-{id}:8888`
-- **Peers**: List of all nodes
-- **Exposed ports**:
-  - gRPC: 8888, 8889, 8890
-  - HTTP: 9000, 9001, 9002
-
-### Volumes
-
-- **Source code**: Mounted from the current directory
-- **Data**: `./data/node-{id}` for each node
-- **Go modules cache**: Shared volume to speed up builds
-
 ## Kubernetes Deployment with Helm
 
 ### Prerequisites

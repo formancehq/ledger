@@ -88,40 +88,25 @@ check_k6() {
 
 check_k6
 
-# Check if docker-compose is running
-check_docker_compose() {
-    log_info "Checking if docker-compose is running..."
+# Check if ledger service is available
+check_ledger_service() {
+    log_info "Checking if ledger service is available..."
     
-    if docker-compose ps | grep -q "Up"; then
-        log_success "Docker-compose is already running"
-        return 0
-    else
-        log_warning "Docker-compose is not running, starting it..."
-        # Unset DEBUG to avoid polluting docker-compose output
-        DEBUG_SAVED="${DEBUG:-}"
-        unset DEBUG
-        docker-compose up -d > /dev/null 2>&1
-        # Restore DEBUG if it was set
-        if [ -n "${DEBUG_SAVED}" ]; then
-            export DEBUG="${DEBUG_SAVED}"
+    local max_attempts=30
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -sf "${LEDGER_URL}/health" > /dev/null 2>&1; then
+            log_success "Ledger service is available"
+            return 0
         fi
-        
-        log_info "Waiting for services to be healthy..."
-        local max_attempts=300 # Cross compilation can be very long in docker
-        local attempt=0
-        
-        while [ $attempt -lt $max_attempts ]; do
-            if curl -sf "${LEDGER_URL}/health" > /dev/null 2>&1; then
-                log_success "Services are healthy"
-                return 0
-            fi
-            attempt=$((attempt + 1))
-            sleep 2
-        done
-        
-        log_error "Services did not become healthy in time"
-        return 1
-    fi
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    
+    log_error "Ledger service is not available at ${LEDGER_URL}"
+    log_info "Please ensure the ledger service is running before running this script"
+    return 1
 }
 
 # Wait for ledger to be ready
@@ -223,18 +208,6 @@ delete_ledger() {
 clean_data() {
     log_info "Cleaning data before benchmark..."
     
-    # Save and unset DEBUG to avoid polluting docker-compose output and affecting services
-    DEBUG_SAVED="${DEBUG:-}"
-    unset DEBUG
-    
-    # Stop docker-compose services
-    log_info "Stopping docker-compose services..."
-    docker-compose stop > /dev/null 2>&1
-    
-    if [ $? -ne 0 ]; then
-        log_warning "Failed to stop docker-compose services, continuing..."
-    fi
-    
     # Clean data using just clean
     log_info "Running 'just clean' to clean data..."
     (cd "${PROJECT_ROOT}" && just clean) > /dev/null 2>&1
@@ -243,43 +216,21 @@ clean_data() {
         log_warning "Failed to run 'just clean', continuing..."
     fi
     
-    # Small delay to ensure everything is stopped and cleaned before restarting
-    log_info "Waiting 2 seconds before restarting services..."
-    sleep 2
-    
-    # Restart docker-compose services
-    log_info "Restarting docker-compose services..."
-    docker-compose up -d > /dev/null 2>&1
-    
-    if [ $? -ne 0 ]; then
-        log_error "Failed to restart docker-compose services"
-        # Restore DEBUG before returning
-        if [ -n "${DEBUG_SAVED}" ]; then
-            export DEBUG="${DEBUG_SAVED}"
-        fi
-        return 1
-    fi
-    
-    # Restore DEBUG if it was set
-    if [ -n "${DEBUG_SAVED}" ]; then
-        export DEBUG="${DEBUG_SAVED}"
-    fi
-    
-    # Wait for services to be healthy
-    log_info "Waiting for services to be healthy..."
-    local max_attempts=300
+    # Wait for service to be healthy
+    log_info "Waiting for ledger service to be healthy..."
+    local max_attempts=30
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
         if curl -sf "${LEDGER_URL}/health" > /dev/null 2>&1; then
-            log_success "Services are healthy"
+            log_success "Ledger service is healthy"
             return 0
         fi
         attempt=$((attempt + 1))
         sleep 2
     done
     
-    log_error "Services did not become healthy in time"
+    log_error "Ledger service did not become healthy in time"
     return 1
 }
 
@@ -413,6 +364,12 @@ main() {
     log_info "BENCH_SCRIPT: ${BENCH_SCRIPT}"
     if [ "${DEBUG}" = "true" ]; then
         log_info "DEBUG mode: enabled (output will be shown)"
+    fi
+    
+    # Check if ledger service is available
+    if ! check_ledger_service; then
+        log_error "Ledger service is not available. Please start the ledger service before running benchmarks."
+        exit 1
     fi
     
     # Create results directory
