@@ -76,6 +76,9 @@ func NewNode[State any, F FSM[State]](
 	if cfg.SnapshotThreshold == 0 {
 		cfg.SnapshotThreshold = 1000
 	}
+	if cfg.ProposeQueueCapacity == 0 {
+		cfg.ProposeQueueCapacity = 100
+	}
 
 	spool, err := newFileSpool(filepath.Join(cfg.DataDir, "spool"))
 	if err != nil {
@@ -92,7 +95,7 @@ func NewNode[State any, F FSM[State]](
 		config:    cfg,
 		proposeCh: NewQueueObserver[[]byte](
 			"raft.node.propose",
-			NewSimpleQueue[[]byte](logger, 100),
+			NewSimpleQueue[[]byte](logger, cfg.ProposeQueueCapacity),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 			WithDistribution[[]byte](8),

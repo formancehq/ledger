@@ -51,6 +51,7 @@ config:
     maxSizePerMsg: 1048576    # Maximum size per message in bytes (default: 1MB)
     maxInflightMsgs: 256      # Maximum number of in-flight messages (default: 256)
     tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
+    proposeQueueCapacity: 256 # Capacity of the propose queue (default: 100)
   
   # Debug logging
   debug: false

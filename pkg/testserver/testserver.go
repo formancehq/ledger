@@ -104,6 +104,13 @@ func WithRaftCompactionMargin(margin uint64) testservice.InstrumentationFunc {
 	}
 }
 
+func WithRaftProposeQueueCapacity(capacity int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--raft-propose-queue-capacity", fmt.Sprintf("%d", capacity))
+		return nil
+	}
+}
+
 func WithDebug(v bool) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		if v {

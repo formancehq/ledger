@@ -93,6 +93,10 @@ spec:
         - name: RAFT_TICK_INTERVAL
           value: {{ .Values.config.raft.tickInterval | quote }}
         {{- end }}
+        {{- if .Values.config.raft.proposeQueueCapacity }}
+        - name: RAFT_PROPOSE_QUEUE_CAPACITY
+          value: {{ .Values.config.raft.proposeQueueCapacity | quote }}
+        {{- end }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
         # OpenTelemetry metrics configuration
