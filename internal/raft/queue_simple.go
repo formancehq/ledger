@@ -8,9 +8,10 @@ import (
 type SimpleQueue[T any] struct {
 	in  chan T
 	out chan T
+	capacity int
 }
 
-func (q *SimpleQueue[T]) Send(msg T) bool {
+func (q *SimpleQueue[T]) Push(msg T) bool {
 	select {
 	case q.in <- msg:
 		return true
@@ -27,12 +28,15 @@ func (q *SimpleQueue[T]) Close() {
 	close(q.in)
 }
 
-func NewSimpleQueue[T any](logger logging.Logger, options ...SimpleQueueOption[T]) *SimpleQueue[T] {
+func (q *SimpleQueue[T]) Capacity() int {
+	return q.capacity
+}
+
+func NewSimpleQueue[T any](logger logging.Logger, capacity int) *SimpleQueue[T] {
 	ret := &SimpleQueue[T]{
 		out: make(chan T),
-	}
-	for _, option := range append(defaultSimpleQueueOptions[T](), options...) {
-		option(ret)
+		in:  make(chan T, capacity),
+		capacity: capacity,
 	}
 
 	otlplogs.Go(func() {
@@ -42,18 +46,4 @@ func NewSimpleQueue[T any](logger logging.Logger, options ...SimpleQueueOption[T
 	}, logger)
 
 	return ret
-}
-
-type SimpleQueueOption[T any] func(queue *SimpleQueue[T])
-
-func WithSimpleQueueSize[T any](size int) SimpleQueueOption[T] {
-	return func(ch *SimpleQueue[T]) {
-		ch.in = make(chan T, size)
-	}
-}
-
-func defaultSimpleQueueOptions[T any]() []SimpleQueueOption[T] {
-	return []SimpleQueueOption[T]{
-		WithSimpleQueueSize[T](100),
-	}
 }

@@ -10,20 +10,14 @@ import (
 )
 
 type PriorityQueue[T any] struct {
-	queues     []chan T
+	queues     []Queue[T]
 	priorityFn func(T) int
 	out        chan T
 }
 
-func (pq *PriorityQueue[T]) Send(msg T) bool {
-
+func (pq *PriorityQueue[T]) Push(msg T) bool {
 	p := pq.priorityFn(msg)
-	select {
-	case pq.queues[p] <- msg:
-		return true
-	default:
-		return false
-	}
+	return pq.queues[p].Push(msg)
 }
 
 func (pq *PriorityQueue[T]) Recv() <-chan T {
@@ -32,7 +26,7 @@ func (pq *PriorityQueue[T]) Recv() <-chan T {
 
 func (pq *PriorityQueue[T]) Close() {
 	for _, ch := range pq.queues {
-		close(ch)
+		ch.Close()
 	}
 }
 
@@ -41,22 +35,14 @@ type QueueConfig struct {
 }
 
 func NewPriorityQueue[T any](
-	config []QueueConfig,
 	priorityFn func(T) int,
 	logger logging.Logger,
-	options ...PriorityQueueOption[T],
+	queues ...Queue[T],
 ) *PriorityQueue[T] {
 	ret := &PriorityQueue[T]{
-		queues:     make([]chan T, len(config)),
+		queues:     queues,
 		priorityFn: priorityFn,
 		out:        make(chan T),
-	}
-	for _, opt := range options {
-		opt(ret)
-	}
-
-	for i, queueConfig := range config {
-		ret.queues[i] = make(chan T, queueConfig.Capacity)
 	}
 
 	otlplogs.Go(func() {
@@ -64,7 +50,7 @@ func NewPriorityQueue[T any](
 		for {
 			for _, ch := range ret.queues {
 				select {
-				case msg, ok := <-ch:
+				case msg, ok := <-ch.Recv():
 					if !ok {
 						return
 					}
@@ -76,10 +62,10 @@ func NewPriorityQueue[T any](
 
 			// Not performant, but if we are here, we are not under load
 			_, recv, ok := reflect.Select(
-				collectionutils.Map(ret.queues, func(ch chan T) reflect.SelectCase {
+				collectionutils.Map(ret.queues, func(ch Queue[T]) reflect.SelectCase {
 					return reflect.SelectCase{
 						Dir:  reflect.SelectRecv,
-						Chan: reflect.ValueOf(ch),
+						Chan: reflect.ValueOf(ch.Recv()),
 					}
 				}),
 			)
@@ -91,8 +77,6 @@ func NewPriorityQueue[T any](
 
 	return ret
 }
-
-type PriorityQueueOption[T any] func(queue *PriorityQueue[T])
 
 func RaftMessagePriority(msg raftpb.Message) int {
 	switch msg.Type {

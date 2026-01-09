@@ -40,7 +40,7 @@ func (r *multiplexedTransport) Start() {
 			ledgerID := LedgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
 				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.Type)
-				if !r.mainReceptionChannels.recv.Send(incoming.Msg) {
+				if !r.mainReceptionChannels.recv.Push(incoming.Msg) {
 					incoming.Rsp <- fmt.Errorf("main transport channel full")
 				} else {
 					incoming.Rsp <- nil
@@ -53,7 +53,7 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received message from ledger transport: %s", incoming.Msg.Type)
-				if ledger.recv.Send(incoming.Msg) {
+				if ledger.recv.Push(incoming.Msg) {
 					incoming.Rsp <- nil
 				} else {
 					incoming.Rsp <- fmt.Errorf("ledger transport channel full")
@@ -71,7 +71,7 @@ func (r *multiplexedTransport) Start() {
 		case nodeID := <-r.grpcTransport.Unreachable():
 			ledgerID := LedgerIDFromLedgerNodeID(nodeID)
 			if ledgerID == 0 {
-				if !r.mainReceptionChannels.unreachable.Send(nodeID) {
+				if !r.mainReceptionChannels.unreachable.Push(nodeID) {
 					r.logger.Errorf("Main transport channel full, dropping unreachable")
 				}
 				continue
@@ -82,7 +82,7 @@ func (r *multiplexedTransport) Start() {
 			r.mu.RUnlock()
 			if ok {
 				r.logger.Debugf("Received unreachable from ledger transport: %d", nodeID)
-				if !ledger.unreachable.Send(nodeID) {
+				if !ledger.unreachable.Push(nodeID) {
 					r.logger.Errorf("Ledger transport channel full, dropping unreachable")
 				}
 			} else {
@@ -113,24 +113,15 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	meter := r.meterProvider.Meter("raft.multiplexed_transport.ledger", metric.WithInstrumentationAttributes(
-		attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
-	))
+	createQueue := func(capacity, priority int, firstBucketValue float64) raft.Queue[raftpb.Message] {
+		meter := r.meterProvider.Meter("raft.multiplexed_transport.ledger", metric.WithInstrumentationAttributes(
+			attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
+			attribute.Int("priority", priority),
+		))
 
-	channels := receptionsChannels{
-		recv: raft.NewQueueObserver[raftpb.Message](
+		return raft.NewQueueObserver[raftpb.Message](
 			"raft.multiplexed_transport.ledger.recv",
-			raft.NewPriorityQueue[raftpb.Message](
-				[]raft.QueueConfig{
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-				},
-				raft.RaftMessagePriority,
-				r.logger,
-			),
+			raft.NewSimpleQueue[raftpb.Message](r.logger, capacity),
 			raft.WithLogger[raftpb.Message](r.logger),
 			raft.WithMeter[raftpb.Message](meter),
 			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -138,12 +129,31 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 				ret = append(ret, attribute.Int("peer", int(NodeIDFromLedgerNodeID(msg.From))))
 				return ret
 			}),
+			raft.WithFirstBucket[raftpb.Message](firstBucketValue),
+		)
+	}
+
+	channels := receptionsChannels{
+		recv: raft.NewPriorityQueue[raftpb.Message](
+			raft.RaftMessagePriority,
+			r.logger,
+			createQueue(512, 0, 30),
+			createQueue(512, 1, 30),
+			createQueue(512, 2, 30),
+			createQueue(512, 3, 30),
+			createQueue(512, 4, 30),
 		),
 		unreachable: raft.NewQueueObserver[uint64](
 			"raft.multiplexed_transport.ledger.unreachable",
-			raft.NewSimpleQueue[uint64](r.logger),
+			raft.NewSimpleQueue[uint64](r.logger, 100),
 			raft.WithLogger[uint64](r.logger),
-			raft.WithMeter[uint64](meter),
+			raft.WithMeter[uint64](
+				r.meterProvider.Meter("raft.multiplexed_transport.ledger", metric.WithInstrumentationAttributes(
+					attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
+				)),
+			),
+			raft.WithDistribution[uint64](8),
+			raft.WithFirstBucket[uint64](10),
 			raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
 				return []attribute.KeyValue{
 					attribute.Int("peer", int(NodeIDFromLedgerNodeID(peerID))),
@@ -169,42 +179,49 @@ func (r *multiplexedTransport) GetPeerConnection(nodeID uint64) grpc.ClientConnI
 
 func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport, meterProvider metric.MeterProvider) *multiplexedTransport {
 
-	meter := meterProvider.Meter("raft.multiplexed_transport.system")
+	createQueue := func(capacity, priority int, firstBucketValue float64) raft.Queue[raftpb.Message] {
+		meter := meterProvider.Meter("raft.multiplexed_transport.system", metric.WithInstrumentationAttributes(
+			attribute.Int("priority", priority),
+		))
+
+		return raft.NewQueueObserver[raftpb.Message](
+			"raft.multiplexed_transport.ledger.recv",
+			raft.NewSimpleQueue[raftpb.Message](logger, capacity),
+			raft.WithLogger[raftpb.Message](logger),
+			raft.WithMeter[raftpb.Message](meter),
+			raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
+				ret := raft.AddTypeAsAttribute(msg)
+				ret = append(ret, attribute.Int("peer", int(NodeIDFromLedgerNodeID(msg.From))))
+				return ret
+			}),
+			raft.WithFirstBucket[raftpb.Message](firstBucketValue),
+		)
+	}
 
 	return &multiplexedTransport{
 		grpcTransport: grpcTransport,
 		mainReceptionChannels: receptionsChannels{
-			recv: raft.NewQueueObserver[raftpb.Message](
-				"raft.multiplexed_transport.system.recv",
-				raft.NewPriorityQueue[raftpb.Message](
-					[]raft.QueueConfig{
-						{Capacity: 512},
-						{Capacity: 512},
-						{Capacity: 512},
-						{Capacity: 512},
-						{Capacity: 512},
-					},
-					raft.RaftMessagePriority,
-					logger,
-				),
-				raft.WithLogger[raftpb.Message](logger),
-				raft.WithMeter[raftpb.Message](meter),
-				raft.WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
-					ret := raft.AddTypeAsAttribute(msg)
-					ret = append(ret, attribute.Int("peer", int(msg.From)))
-					return ret
-				}),
+			recv: raft.NewPriorityQueue[raftpb.Message](
+				raft.RaftMessagePriority,
+				logger,
+				createQueue(512, 0, 30),
+				createQueue(512, 1, 30),
+				createQueue(512, 2, 30),
+				createQueue(512, 3, 30),
+				createQueue(512, 4, 30),
 			),
 			unreachable: raft.NewQueueObserver[uint64](
 				"raft.multiplexed_transport.system.unreachable",
-				raft.NewSimpleQueue[uint64](logger),
+				raft.NewSimpleQueue[uint64](logger, 100),
 				raft.WithLogger[uint64](logger),
-				raft.WithMeter[uint64](meter),
+				raft.WithMeter[uint64](meterProvider.Meter("raft.multiplexed_transport.system")),
+				raft.WithDistribution[uint64](8),
 				raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
 					return []attribute.KeyValue{
 						attribute.Int("peer", int(peerID)),
 					}
 				}),
+				raft.WithFirstBucket[uint64](10),
 			),
 		},
 		ledgers:       make(map[uint64]receptionsChannels),

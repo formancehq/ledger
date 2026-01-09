@@ -6,9 +6,13 @@ import (
 )
 
 type Queue[T any] interface {
-	Send(msg T) bool
+	Push(msg T) bool
 	Recv() <-chan T
 	Close()
+}
+
+type Capacity interface {
+	Capacity() int
 }
 
 func AddTypeAsAttribute(msg raftpb.Message) []attribute.KeyValue {

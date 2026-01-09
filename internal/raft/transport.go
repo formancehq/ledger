@@ -48,36 +48,47 @@ func NewTransport(
 	meterProvider metric.MeterProvider,
 ) *GRPCTransport {
 	meter := meterProvider.Meter("raft.transport")
-	return &GRPCTransport{
-		connectionPool: connectionPool,
-		recvCh: NewQueueObserver[Incoming](
+
+	createQueue := func(capacity, priority int) Queue[Incoming] {
+
+		meter := meterProvider.Meter("raft.transport", metric.WithInstrumentationAttributes(
+			attribute.Int("priority", priority),
+		))
+
+		return NewQueueObserver[Incoming](
 			"raft.transport.recv",
-			NewPriorityQueue[Incoming](
-				[]QueueConfig{
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-				},
-				func(incoming Incoming) int {
-					return RaftMessagePriority(incoming.Msg)
-				},
-				logger,
-			),
+			NewSimpleQueue[Incoming](logger, 512),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
 				// todo: Add something to separate messages for different groups
 				return AddTypeAsAttribute(t.Msg)
 			}),
+			WithFirstBucket[Incoming](30),
+		)
+	}
+
+	return &GRPCTransport{
+		connectionPool: connectionPool,
+		recvCh: NewPriorityQueue[Incoming](
+			func(incoming Incoming) int {
+				return RaftMessagePriority(incoming.Msg)
+			},
+			logger,
+			createQueue(512, 0),
+			createQueue(512, 1),
+			createQueue(512, 2),
+			createQueue(512, 3),
+			createQueue(512, 4),
 		),
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
 			"raft.transport.unreachable",
-			NewSimpleQueue[uint64](logger),
+			NewSimpleQueue[uint64](logger, 100),
 			WithMeter[uint64](meter),
 			WithLogger[uint64](logger),
+			WithDistribution[uint64](8),
+			WithFirstBucket[uint64](10),
 		),
 		globalMeter:   meter,
 		meterProvider: meterProvider,
@@ -127,20 +138,17 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
-	conn := peerConnection{
-		sendCh: NewQueueObserver[raftpb.Message](
-			"raft.transport.peer.sending",
-			NewPriorityQueue[raftpb.Message](
-				[]QueueConfig{
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-					{Capacity: 512},
-				},
-				RaftMessagePriority,
-				logger,
+	createQueue := func(capacity, priority int) Queue[raftpb.Message] {
+		meter := t.meterProvider.Meter("raft.transport",
+			metric.WithInstrumentationAttributes(
+				attribute.Int("peer", int(id)),
+				attribute.Int("priority", priority),
 			),
+		)
+
+		return NewQueueObserver[raftpb.Message](
+			"raft.transport.peer.sending",
+			NewSimpleQueue[raftpb.Message](logger, 512),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
 			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -148,6 +156,19 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 				ret = append(ret, attribute.Int("peer", int(id)))
 				return ret
 			}),
+			WithFirstBucket[raftpb.Message](30),
+		)
+	}
+
+	conn := peerConnection{
+		sendCh: NewPriorityQueue[raftpb.Message](
+			RaftMessagePriority,
+			logger,
+			createQueue(512, 0),
+			createQueue(512, 1),
+			createQueue(512, 2),
+			createQueue(512, 3),
+			createQueue(512, 4),
 		),
 		closeCh:                make(chan chan struct{}),
 		unreachableCh:          t.unreachableCh,
@@ -167,7 +188,7 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 	peer, exists := t.peers[peerID]
 
 	if exists {
-		if !peer.sendCh.Send(msg) {
+		if !peer.sendCh.Push(msg) {
 			t.logger.
 				WithFields(map[string]any{
 					"peer": fmt.Sprintf("%x", peerID),
@@ -247,7 +268,7 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 
 			// Send message to recvCh for processing
 			rspChan := make(chan error, 1)
-			if !t.recvCh.Send(Incoming{
+			if !t.recvCh.Push(Incoming{
 				Msg: msg,
 				Rsp: rspChan,
 			}) {
@@ -332,7 +353,7 @@ func (conn *peerConnection) loop() {
 				}).
 				Errorf("Failed to create stream to peer")
 			// Report peer as unreachable
-			if !conn.unreachableCh.Send(conn.peerID) {
+			if !conn.unreachableCh.Push(conn.peerID) {
 				conn.logger.Errorf("Unreachable channel full, dropping unreachable")
 			}
 
@@ -393,7 +414,7 @@ func (conn *peerConnection) loop() {
 					if !msg.Raft.Success && ok {
 						conn.logger.
 							Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
-						conn.unreachableCh.Send(nodeID)
+						conn.unreachableCh.Push(nodeID)
 					}
 				}
 			}
@@ -465,7 +486,7 @@ func (conn *peerConnection) loop() {
 					delete(pending, currentMessageID)
 					mu.Unlock()
 					// Report peer as unreachable
-					if !conn.unreachableCh.Send(msg.To) {
+					if !conn.unreachableCh.Push(msg.To) {
 						conn.logger.Errorf("Unreachable channel full, dropping unreachable")
 					}
 					break l
@@ -484,8 +505,8 @@ func (conn *peerConnection) stop(ctx context.Context) error {
 	case conn.closeCh <- ch:
 		select {
 		case <-ch:
-			close(conn.closeCh)
 			conn.sendCh.Close()
+			close(conn.closeCh)
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()

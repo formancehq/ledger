@@ -17,4 +17,4 @@ spec:
     - name: VUS
       value: "100"
     - name: DURATION
-      value: "1h"
+      value: "10m"

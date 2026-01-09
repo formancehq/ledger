@@ -92,9 +92,11 @@ func NewNode[State any, F FSM[State]](
 		config:    cfg,
 		proposeCh: NewQueueObserver[[]byte](
 			"raft.node.propose",
-			NewSimpleQueue[[]byte](logger),
+			NewSimpleQueue[[]byte](logger, 100),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
+			WithDistribution[[]byte](8),
+			WithFirstBucket[[]byte](10),
 		),
 		isSnapshotting: &atomic.Bool{},
 	}
@@ -175,7 +177,7 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 	defer cancel()
 
 	// Propose the command
-	if !node.proposeCh.Send(cmdData) {
+	if !node.proposeCh.Push(cmdData) {
 		return 0, nil, fmt.Errorf("propose channel full")
 	}
 

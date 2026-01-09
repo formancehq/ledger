@@ -1464,7 +1464,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
+          "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: {{type}}",
           "range": true,
@@ -1484,7 +1484,7 @@
           "refId": "B"
         }
       ],
-      "title": "Transport queue incoming messages",
+      "title": "Transport queue load_count messages",
       "type": "timeseries"
     },
     {
@@ -1573,7 +1573,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.recv.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval] - raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval])",
+          "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval] - raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[$__rate_interval])",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: {{type}}",
           "range": true,
@@ -1734,7 +1734,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
+          "expr": "rate(raft.transport.unreachable.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -1843,7 +1843,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.transport.unreachable.incoming{service.node_id=~\"$node\", scope.name=\"raft.transport\"} - raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
+          "expr": "rate(raft.transport.unreachable.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"} - raft.transport.unreachable.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: Incoming",
           "range": true,
@@ -3273,7 +3273,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.propose.incoming{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.node.propose.load_count{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: Incoming",
           "range": true,
@@ -3294,7 +3294,7 @@
           "refId": "B"
         }
       ],
-      "title": "Propose queue incoming messages",
+      "title": "Propose queue load_count messages",
       "type": "timeseries"
     },
     {
@@ -3304,54 +3304,16 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "ops"
+          }
         },
         "overrides": []
       },
@@ -3361,51 +3323,181 @@
         "x": 8,
         "y": 81
       },
-      "id": 30,
+      "id": 68,
       "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
         }
       },
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
           "editorMode": "code",
-          "expr": "rate(raft.node.propose.incoming{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval] - raft.node.propose.outgoing{scope.name!=\"raft.node.system\", service.node_id=~\"$node\"}[$__rate_interval])",
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.node.propose.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)\n",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "editorMode": "code",
-          "expr": "",
-          "hide": false,
-          "instant": false,
-          "interval": "1s",
-          "legendFormat": "Outgoing",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "Propose queue inflight messages",
-      "type": "timeseries"
+      "title": "Propose channel load",
+      "transformations": [
+        {
+          "disabled": true,
+          "id": "reduce",
+          "options": {
+            "includeTimeField": false,
+            "labelsToFields": false,
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "auto",
+            "keepTime": false,
+            "replace": true,
+            "source": "le"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "Field"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "disabled": true,
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "le"
+              }
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false,
+            "window": {
+              "field": "le",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "fixed": ""
+              },
+              "right": {
+                "fixed": ""
+              }
+            },
+            "cumulative": {
+              "field": "Value",
+              "reducer": "sum"
+            },
+            "mode": "binary",
+            "reduce": {
+              "include": [],
+              "reducer": "delta"
+            },
+            "window": {
+              "field": "Value",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        }
+      ],
+      "type": "heatmap"
     },
     {
       "datasource": {
@@ -3794,7 +3886,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.incoming{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
+          "expr": "sum(rate(raft.transport.peer.sending.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -4065,7 +4157,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate(raft.multiplexed_transport.ledger.recv.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.multiplexed_transport.ledger.recv.load_count{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} : Peer {{peer}} : {{type}}",
@@ -4151,56 +4243,15 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
           }
         },
         "overrides": []
@@ -4211,18 +4262,39 @@
         "x": 0,
         "y": 117
       },
-      "id": 28,
+      "id": 67,
       "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
         }
       },
       "pluginVersion": "12.3.1",
@@ -4230,17 +4302,141 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "rate(raft.multiplexed_transport.ledger.unreachable.incoming{service.node_id=~\"$node\"}[$__rate_interval])",
-          "format": "time_series",
+          "expr": "sum(\n  rate(raft.multiplexed_transport.ledger.recv.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"[2-5]\"}[$__rate_interval])\n) by (service.node_id, le)\n",
+          "format": "heatmap",
           "instant": false,
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: Peer {{peer}}",
+          "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Unreachable channel (inflights)",
-      "type": "timeseries"
+      "title": "Applicative reception channel load",
+      "transformations": [
+        {
+          "disabled": true,
+          "id": "reduce",
+          "options": {
+            "includeTimeField": false,
+            "labelsToFields": false,
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "auto",
+            "keepTime": false,
+            "replace": true,
+            "source": "le"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "Field"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "disabled": true,
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "le"
+              }
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false,
+            "window": {
+              "field": "le",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "fixed": ""
+              },
+              "right": {
+                "fixed": ""
+              }
+            },
+            "cumulative": {
+              "field": "Value",
+              "reducer": "sum"
+            },
+            "mode": "binary",
+            "reduce": {
+              "include": [],
+              "reducer": "delta"
+            },
+            "window": {
+              "field": "Value",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        }
+      ],
+      "type": "heatmap"
     },
     {
       "datasource": {
@@ -4337,12 +4533,110 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 125
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "rate(raft.multiplexed_transport.ledger.unreachable.load_count{service.node_id=~\"$node\"}[$__rate_interval])",
+          "format": "time_series",
+          "instant": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Peer {{peer}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Unreachable channel (inflights)",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 125
+        "y": 133
       },
       "id": 5,
       "panels": [],
@@ -4415,7 +4709,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 126
+        "y": 134
       },
       "id": 6,
       "options": {
@@ -4511,7 +4805,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 126
+        "y": 134
       },
       "id": 63,
       "options": {
@@ -4629,7 +4923,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 126
+        "y": 134
       },
       "id": 8,
       "options": {
@@ -4664,7 +4958,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 132
+        "y": 140
       },
       "id": 66,
       "panels": [],
@@ -4737,7 +5031,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 133
+        "y": 141
       },
       "id": 10,
       "options": {
@@ -4833,7 +5127,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 133
+        "y": 141
       },
       "id": 64,
       "options": {
@@ -4950,7 +5244,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 133
+        "y": 141
       },
       "id": 12,
       "options": {
@@ -4985,7 +5279,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 139
+        "y": 147
       },
       "id": 1,
       "panels": [],
@@ -5058,7 +5352,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 140
+        "y": 148
       },
       "id": 61,
       "options": {
@@ -5153,7 +5447,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 140
+        "y": 148
       },
       "id": 62,
       "options": {
@@ -5249,7 +5543,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 140
+        "y": 148
       },
       "id": 4,
       "options": {
@@ -5342,5 +5636,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 1
+  "version": 4
 }
