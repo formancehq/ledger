@@ -6,13 +6,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 )
 
-type Config struct {
+type NodeConfig struct {
 	raft.NodeConfig
 	AdvertiseAddr string
 	BindAddr      string
+	MultiplexedTransportConfig raft.TransportConfig
 }
 
-func (c *Config) Validate() error {
+func (c *NodeConfig) Validate() error {
 	if c.NodeID == 0 {
 		return fmt.Errorf("node-id is required and must be non-zero")
 	}

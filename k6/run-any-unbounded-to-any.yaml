@@ -4,7 +4,7 @@ kind: TestRun
 metadata:
   name: k6-run-any-unbounded-to-any
 spec:
-  parallelism: 5
+  parallelism: 10
   script:
     configMap:
       name: k6-scripts
@@ -15,6 +15,6 @@ spec:
     - name: LEDGER_URL
       value: http://ledger-v3-poc.default.svc.cluster.local:9000
     - name: VUS
-      value: "100"
+      value: "256"
     - name: DURATION
       value: "10m"

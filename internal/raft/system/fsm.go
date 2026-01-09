@@ -29,14 +29,14 @@ type FSM struct {
 	mu                   sync.RWMutex // Protects access to state
 	state                State        // FSM state
 	logger               logging.Logger
-	raftConfig           Config
+	raftConfig           NodeConfig
 	multiplexedTransport *multiplexedTransport
 	meterProvider        metric.MeterProvider
 }
 
 func newFSM(
 	logger logging.Logger,
-	raftConfig Config,
+	raftConfig NodeConfig,
 	multiplexedTransport *multiplexedTransport,
 	meterProvider metric.MeterProvider,
 ) *FSM {
@@ -348,15 +348,16 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo *led
 					Address: from.Address,
 				}
 			}),
-			DataDir:           ledgerDataDir,
-			SnapshotThreshold: snapshotThreshold,
-			SnapshotInterval:  fsm.raftConfig.SnapshotInterval,
-			ElectionTick:      fsm.raftConfig.ElectionTick,
-			HeartbeatTick:     fsm.raftConfig.HeartbeatTick,
-			MaxSizePerMsg:     fsm.raftConfig.MaxSizePerMsg,
-			MaxInflightMsgs:   fsm.raftConfig.MaxInflightMsgs,
-			TickInterval:      fsm.raftConfig.TickInterval,
-			CompactionMargin:  fsm.raftConfig.CompactionMargin,
+			DataDir:              ledgerDataDir,
+			SnapshotThreshold:    snapshotThreshold,
+			SnapshotInterval:     fsm.raftConfig.SnapshotInterval,
+			ElectionTick:         fsm.raftConfig.ElectionTick,
+			HeartbeatTick:        fsm.raftConfig.HeartbeatTick,
+			MaxSizePerMsg:        fsm.raftConfig.MaxSizePerMsg,
+			MaxInflightMsgs:      fsm.raftConfig.MaxInflightMsgs,
+			TickInterval:         fsm.raftConfig.TickInterval,
+			CompactionMargin:     fsm.raftConfig.CompactionMargin,
+			ProposeQueueCapacity: fsm.raftConfig.ProposeQueueCapacity,
 		},
 		logger,
 		func(peerID uint64) service.LogReader {

@@ -32,7 +32,7 @@ func Module() fx.Option {
 			func(
 				params struct {
 					fx.In
-					Config        system.Config
+					Config        system.NodeConfig
 					Logger        logging.Logger
 					Transport     *raft.GRPCTransport
 					MeterProvider metric.MeterProvider
@@ -40,8 +40,11 @@ func Module() fx.Option {
 			) (*system.Node, error) {
 				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
 			},
-			func(cfg Config) system.Config {
+			func(cfg Config) system.NodeConfig {
 				return cfg.RaftConfig
+			},
+			func(cfg Config) raft.TransportConfig {
+				return cfg.TransportConfig
 			},
 			func(systemNode *system.Node, pool *transport.ConnectionPool, logger logging.Logger) service.MasterCluster {
 				return &systemNodeAdapter{
@@ -50,7 +53,7 @@ func Module() fx.Option {
 					logger:         logger,
 				}
 			},
-			func(cfg system.Config, logger logging.Logger) (*grpcserver.Server, error) {
+			func(cfg system.NodeConfig, logger logging.Logger) (*grpcserver.Server, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)

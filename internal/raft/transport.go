@@ -39,6 +39,12 @@ type GRPCTransport struct {
 	logger        logging.Logger
 	globalMeter   metric.Meter
 	meterProvider metric.MeterProvider
+	config        TransportConfig
+}
+
+type TransportConfig struct {
+	Reception []int
+	Send      []int
 }
 
 // NewTransport creates a new transport with a gRPC connection pool and client pool
@@ -46,6 +52,7 @@ func NewTransport(
 	logger logging.Logger,
 	connectionPool *transport.ConnectionPool,
 	meterProvider metric.MeterProvider,
+	config TransportConfig,
 ) *GRPCTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -57,14 +64,13 @@ func NewTransport(
 
 		return NewQueueObserver[Incoming](
 			"raft.transport.recv",
-			NewSimpleQueue[Incoming](logger, 512),
+			NewSimpleQueue[Incoming](logger, capacity),
 			WithLogger[Incoming](logger),
 			WithMeter[Incoming](meter),
 			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
 				// todo: Add something to separate messages for different groups
 				return AddTypeAsAttribute(t.Msg)
 			}),
-			WithFirstBucket[Incoming](30),
 		)
 	}
 
@@ -75,11 +81,7 @@ func NewTransport(
 				return RaftMessagePriority(incoming.Msg)
 			},
 			logger,
-			createQueue(512, 0),
-			createQueue(512, 1),
-			createQueue(512, 2),
-			createQueue(512, 3),
-			createQueue(512, 4),
+			CreateQueues[Incoming](config.Reception, createQueue)...,
 		),
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
@@ -87,12 +89,11 @@ func NewTransport(
 			NewSimpleQueue[uint64](logger, 100),
 			WithMeter[uint64](meter),
 			WithLogger[uint64](logger),
-			WithDistribution[uint64](8),
-			WithFirstBucket[uint64](10),
 		),
 		globalMeter:   meter,
 		meterProvider: meterProvider,
 		logger:        logger,
+		config:        config,
 	}
 }
 
@@ -148,7 +149,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 
 		return NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
-			NewSimpleQueue[raftpb.Message](logger, 512),
+			NewSimpleQueue[raftpb.Message](logger, capacity),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
 			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
@@ -156,7 +157,6 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 				ret = append(ret, attribute.Int("peer", int(id)))
 				return ret
 			}),
-			WithFirstBucket[raftpb.Message](30),
 		)
 	}
 
@@ -164,11 +164,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		sendCh: NewPriorityQueue[raftpb.Message](
 			RaftMessagePriority,
 			logger,
-			createQueue(512, 0),
-			createQueue(512, 1),
-			createQueue(512, 2),
-			createQueue(512, 3),
-			createQueue(512, 4),
+			CreateQueues[raftpb.Message](t.config.Send, createQueue)...,
 		),
 		closeCh:                make(chan chan struct{}),
 		unreachableCh:          t.unreachableCh,

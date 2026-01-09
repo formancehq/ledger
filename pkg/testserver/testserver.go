@@ -111,6 +111,42 @@ func WithRaftProposeQueueCapacity(capacity int) testservice.InstrumentationFunc 
 	}
 }
 
+func WithRaftTransportReceptionQueues(capacities ...int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		for _, cap := range capacities {
+			cfg.AppendArgs("--raft-transport-reception-queues", fmt.Sprintf("%d", cap))
+		}
+		return nil
+	}
+}
+
+func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		for _, cap := range capacities {
+			cfg.AppendArgs("--raft-transport-send-queues", fmt.Sprintf("%d", cap))
+		}
+		return nil
+	}
+}
+
+func WithRaftMultiplexedTransportReceptionQueues(capacities ...int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		for _, cap := range capacities {
+			cfg.AppendArgs("--raft-multiplexed-transport-reception-queues", fmt.Sprintf("%d", cap))
+		}
+		return nil
+	}
+}
+
+func WithRaftMultiplexedTransportSendQueues(capacities ...int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		for _, cap := range capacities {
+			cfg.AppendArgs("--raft-multiplexed-transport-send-queues", fmt.Sprintf("%d", cap))
+		}
+		return nil
+	}
+}
+
 func WithDebug(v bool) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		if v {

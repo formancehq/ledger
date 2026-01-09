@@ -17,6 +17,9 @@ type PriorityQueue[T any] struct {
 
 func (pq *PriorityQueue[T]) Push(msg T) bool {
 	p := pq.priorityFn(msg)
+	if p > len(pq.queues)-1 {
+		p = len(pq.queues) - 1
+	}
 	return pq.queues[p].Push(msg)
 }
 
@@ -30,15 +33,15 @@ func (pq *PriorityQueue[T]) Close() {
 	}
 }
 
-type QueueConfig struct {
-	Capacity int
-}
-
 func NewPriorityQueue[T any](
 	priorityFn func(T) int,
 	logger logging.Logger,
 	queues ...Queue[T],
 ) *PriorityQueue[T] {
+	if len(queues) == 0 {
+		panic("no queues provided")
+	}
+
 	ret := &PriorityQueue[T]{
 		queues:     queues,
 		priorityFn: priorityFn,
@@ -92,4 +95,12 @@ func RaftMessagePriority(msg raftpb.Message) int {
 	default:
 		return 4
 	}
+}
+
+func CreateQueues[T any](queueConfigs []int, factory func(size, index int) Queue[T]) []Queue[T] {
+	ret := make([]Queue[T], 0, len(queueConfigs))
+	for i, queueSize := range queueConfigs {
+		ret = append(ret, factory(queueSize, i))
+	}
+	return ret
 }

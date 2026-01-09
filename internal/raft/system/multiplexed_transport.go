@@ -26,6 +26,7 @@ type multiplexedTransport struct {
 	mu                    sync.RWMutex
 	logger                logging.Logger
 	meterProvider         metric.MeterProvider
+	config                raft.TransportConfig
 }
 
 func (r *multiplexedTransport) Start() {
@@ -113,7 +114,7 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	createQueue := func(capacity, priority int, firstBucketValue float64) raft.Queue[raftpb.Message] {
+	createQueue := func(capacity, priority int) raft.Queue[raftpb.Message] {
 		meter := r.meterProvider.Meter("raft.multiplexed_transport.ledger", metric.WithInstrumentationAttributes(
 			attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
 			attribute.Int("priority", priority),
@@ -129,7 +130,6 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 				ret = append(ret, attribute.Int("peer", int(NodeIDFromLedgerNodeID(msg.From))))
 				return ret
 			}),
-			raft.WithFirstBucket[raftpb.Message](firstBucketValue),
 		)
 	}
 
@@ -137,11 +137,7 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 		recv: raft.NewPriorityQueue[raftpb.Message](
 			raft.RaftMessagePriority,
 			r.logger,
-			createQueue(512, 0, 30),
-			createQueue(512, 1, 30),
-			createQueue(512, 2, 30),
-			createQueue(512, 3, 30),
-			createQueue(512, 4, 30),
+			raft.CreateQueues[raftpb.Message](r.config.Reception, createQueue)...,
 		),
 		unreachable: raft.NewQueueObserver[uint64](
 			"raft.multiplexed_transport.ledger.unreachable",
@@ -152,8 +148,6 @@ func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTran
 					attribute.String("ledger", fmt.Sprintf("%d", ledgerID)),
 				)),
 			),
-			raft.WithDistribution[uint64](8),
-			raft.WithFirstBucket[uint64](10),
 			raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
 				return []attribute.KeyValue{
 					attribute.Int("peer", int(NodeIDFromLedgerNodeID(peerID))),
@@ -177,9 +171,14 @@ func (r *multiplexedTransport) GetPeerConnection(nodeID uint64) grpc.ClientConnI
 	return r.grpcTransport.GetPeerConnection(NodeIDFromLedgerNodeID(nodeID))
 }
 
-func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport, meterProvider metric.MeterProvider) *multiplexedTransport {
+func newMultiplexedTransport(
+	logger logging.Logger,
+	grpcTransport *raft.GRPCTransport,
+	meterProvider metric.MeterProvider,
+	config raft.TransportConfig,
+) *multiplexedTransport {
 
-	createQueue := func(capacity, priority int, firstBucketValue float64) raft.Queue[raftpb.Message] {
+	createQueue := func(capacity, priority int) raft.Queue[raftpb.Message] {
 		meter := meterProvider.Meter("raft.multiplexed_transport.system", metric.WithInstrumentationAttributes(
 			attribute.Int("priority", priority),
 		))
@@ -194,7 +193,6 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 				ret = append(ret, attribute.Int("peer", int(NodeIDFromLedgerNodeID(msg.From))))
 				return ret
 			}),
-			raft.WithFirstBucket[raftpb.Message](firstBucketValue),
 		)
 	}
 
@@ -204,30 +202,25 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 			recv: raft.NewPriorityQueue[raftpb.Message](
 				raft.RaftMessagePriority,
 				logger,
-				createQueue(512, 0, 30),
-				createQueue(512, 1, 30),
-				createQueue(512, 2, 30),
-				createQueue(512, 3, 30),
-				createQueue(512, 4, 30),
+				raft.CreateQueues[raftpb.Message](config.Reception, createQueue)...,
 			),
 			unreachable: raft.NewQueueObserver[uint64](
 				"raft.multiplexed_transport.system.unreachable",
 				raft.NewSimpleQueue[uint64](logger, 100),
 				raft.WithLogger[uint64](logger),
 				raft.WithMeter[uint64](meterProvider.Meter("raft.multiplexed_transport.system")),
-				raft.WithDistribution[uint64](8),
 				raft.WithAttributesFn(func(peerID uint64) []attribute.KeyValue {
 					return []attribute.KeyValue{
 						attribute.Int("peer", int(peerID)),
 					}
 				}),
-				raft.WithFirstBucket[uint64](10),
 			),
 		},
 		ledgers:       make(map[uint64]receptionsChannels),
 		stopChannel:   make(chan chan struct{}),
 		logger:        logger,
 		meterProvider: meterProvider,
+		config:        config,
 	}
 }
 

@@ -177,7 +177,7 @@ func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Dur
 	if extra != nil {
 		fields["extra"] = extra
 	}
-	c.logger.WithFields(fields).Info("HTTP request completed")
+	c.logger.WithFields(fields).Debugf("HTTP request completed")
 }
 
 func (c chiLogEntry) Panic(v interface{}, stack []byte) {

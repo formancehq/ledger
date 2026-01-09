@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"slices"
 	"sync/atomic"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -13,20 +14,20 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func yConcave(x, xMax, yMax, p, offset float64) float64 {
+func yConcave(x, xMax, yMax, p float64) float64 {
 	if x < 0 || xMax <= 0 || p <= 0 {
 		return math.NaN()
 	}
 	t := math.Log(x+1) / math.Log(xMax+1)
-	return offset + (yMax-offset)*math.Pow(t, p)
+	return yMax * math.Pow(t, p)
 }
 
-func logBoundaries(numberOfBuckets, bucketMaxValue int, firstBucketValue float64) []float64 {
+func logBoundaries(numberOfBuckets, bucketMaxValue int) []float64 {
 	ret := make([]float64, numberOfBuckets)
 	for i := range numberOfBuckets {
-		ret[i] = math.Floor(yConcave(float64(i), float64(numberOfBuckets-1), float64(bucketMaxValue), 1, firstBucketValue))
+		ret[i] = math.Floor(yConcave(float64(i), float64(numberOfBuckets-1), float64(bucketMaxValue), 1))
 	}
-	return ret
+	return slices.Compact(ret)
 }
 
 type QueueObserver[T any] struct {
@@ -39,19 +40,25 @@ type QueueObserver[T any] struct {
 	name            string
 	out             chan T
 	inflightCounter atomic.Int32
-	distribution    int
-	firstBucket     float64
 }
 
 func (m *QueueObserver[T]) Push(msg T) bool {
 	if m.queue.Push(msg) {
-		m.histogram.Record(context.Background(), int64(m.inflightCounter.Add(1)))
+		m.histogram.Record(
+			context.Background(),
+			int64(m.inflightCounter.Add(1)),
+			metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)),
+		)
 		return true
 	} else {
 		m.logger.WithFields(map[string]any{
 			"channel": m.name,
 		}).Errorf("Channel full")
-		m.fullCounter.Add(context.Background(), 1, metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)))
+		m.fullCounter.Add(
+			context.Background(),
+			1,
+			metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)),
+		)
 		return false
 	}
 }
@@ -93,7 +100,7 @@ func NewQueueObserver[T any](
 		name+".load",
 		metric.WithUnit("1"),
 		metric.WithExplicitBucketBoundaries(
-			logBoundaries(ret.distribution, queue.Capacity(), ret.firstBucket)...,
+			logBoundaries(12, queue.Capacity())...,
 		),
 	)
 	if err != nil {
@@ -130,18 +137,6 @@ func WithLogger[T any](logger logging.Logger) QueueObserverOption[T] {
 	}
 }
 
-func WithDistribution[T any](distribution int) QueueObserverOption[T] {
-	return func(ch *QueueObserver[T]) {
-		ch.distribution = distribution
-	}
-}
-
-func WithFirstBucket[T any](firstBucket float64) QueueObserverOption[T] {
-	return func(ch *QueueObserver[T]) {
-		ch.firstBucket = firstBucket
-	}
-}
-
 func defaultQueueObserverOptions[T any]() []QueueObserverOption[T] {
 	return []QueueObserverOption[T]{
 		WithAttributesFn(func(t T) []attribute.KeyValue {
@@ -149,7 +144,5 @@ func defaultQueueObserverOptions[T any]() []QueueObserverOption[T] {
 		}),
 		WithMeter[T](noop.Meter{}),
 		WithLogger[T](logging.NewDefaultLogger(os.Stdout, false, false, false)),
-		WithDistribution[T](12),
-		WithFirstBucket[T](1),
 	}
 }

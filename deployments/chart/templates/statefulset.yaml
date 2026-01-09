@@ -97,6 +97,22 @@ spec:
         - name: RAFT_PROPOSE_QUEUE_CAPACITY
           value: {{ .Values.config.raft.proposeQueueCapacity | quote }}
         {{- end }}
+        {{- if .Values.config.raft.transport.receptionQueues }}
+        - name: RAFT_TRANSPORT_RECEPTION_QUEUES
+          value: {{ join "," .Values.config.raft.transport.receptionQueues | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.transport.sendQueues }}
+        - name: RAFT_TRANSPORT_SEND_QUEUES
+          value: {{ join "," .Values.config.raft.transport.sendQueues | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.multiplexedTransport.receptionQueues }}
+        - name: RAFT_MULTIPLEXED_TRANSPORT_RECEPTION_QUEUES
+          value: {{ join "," .Values.config.raft.multiplexedTransport.receptionQueues | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.multiplexedTransport.sendQueues }}
+        - name: RAFT_MULTIPLEXED_TRANSPORT_SEND_QUEUES
+          value: {{ join "," .Values.config.raft.multiplexedTransport.sendQueues | quote }}
+        {{- end }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
         # OpenTelemetry metrics configuration

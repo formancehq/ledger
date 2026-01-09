@@ -52,6 +52,14 @@ config:
     maxInflightMsgs: 256      # Maximum number of in-flight messages (default: 256)
     tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
     proposeQueueCapacity: 256 # Capacity of the propose queue (default: 100)
+    # Transport queue configuration
+    transport:
+      receptionQueues: [10, 1024, 1024]  # Reception queue capacities per priority (default: [10, 512, 512])
+      sendQueues: [10, 1024, 1024]       # Send queue capacities per priority (default: [10, 512, 512])
+    # Multiplexed transport queue configuration
+    multiplexedTransport:
+      receptionQueues: [10, 1024, 1024]  # Multiplexed transport reception queue capacities per priority (default: [10, 512, 512])
+      sendQueues: [10, 1024, 1024]       # Multiplexed transport send queue capacities per priority (default: [10, 512, 512])
   
   # Debug logging
   debug: false
@@ -151,10 +159,10 @@ persistence:
 resources:
   limits:
     cpu: 2000m
-    memory: 512Mi
+    memory: 2048Mi
   requests:
     cpu: 2000m
-    memory: 512Mi
+    memory: 2048Mi
 
 # Health check configuration
 livenessProbe:

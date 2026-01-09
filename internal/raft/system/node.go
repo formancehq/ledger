@@ -15,14 +15,14 @@ import (
 
 type Node struct {
 	*raft.Node[ledgerpb.SystemState, *FSM]
-	raftConfig           Config
-	logger               logging.Logger
+	raftConfig NodeConfig
+	logger     logging.Logger
 	multiplexedTransport *multiplexedTransport
 	meterProvider        metric.MeterProvider
 }
 
 func NewNode(
-	config Config,
+	config NodeConfig,
 	logger logging.Logger,
 	transport *raft.GRPCTransport,
 	meterProvider metric.MeterProvider,
@@ -45,6 +45,7 @@ func NewNode(
 		}),
 		transport,
 		meterProvider,
+		config.MultiplexedTransportConfig,
 	)
 
 	// Create FSM (Finite State Machine)

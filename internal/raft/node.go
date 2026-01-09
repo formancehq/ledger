@@ -98,8 +98,6 @@ func NewNode[State any, F FSM[State]](
 			NewSimpleQueue[[]byte](logger, cfg.ProposeQueueCapacity),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
-			WithDistribution[[]byte](8),
-			WithFirstBucket[[]byte](10),
 		),
 		isSnapshotting: &atomic.Bool{},
 	}
@@ -455,51 +453,55 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 	node.rawNode.Advance(rd)
 
 	// Check if we need to create a snapshot
-	lastSnapshot, err := node.storage.Snapshot()
-	if err != nil {
-		return fmt.Errorf("getting last snapshot: %w", err)
-	}
-	status := node.rawNode.Status()
+	if !node.isSnapshotting.Load() {
+		lastSnapshot, err := node.storage.Snapshot()
+		if err != nil {
+			return fmt.Errorf("getting last snapshot: %w", err)
+		}
+		status := node.rawNode.Status()
 
-	if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold && !node.isSnapshotting.Swap(true) {
+		if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold {
 
-		node.logger.WithFields(map[string]any{
-			"applied":           status.Applied,
-			"term":              status.Term,
-			"commit":            status.Commit,
-			"snapshotThreshold": node.config.SnapshotThreshold,
-		}).Infof("Creating new snapshot for ledger")
+			node.logger.WithFields(map[string]any{
+				"applied":           status.Applied,
+				"term":              status.Term,
+				"commit":            status.Commit,
+				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+				"snapshotThreshold": node.config.SnapshotThreshold,
+			}).Infof("Creating new snapshot")
 
-		otlplogs.Go(func() {
-			defer node.isSnapshotting.Store(false)
+			node.isSnapshotting.Store(true)
+			otlplogs.Go(func() {
+				defer node.isSnapshotting.Store(false)
 
-			err := node.syncer.CreateSnapshot(ctx, status.Applied, node.confState)
-			if err != nil {
-				// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
-				if errors.Is(err, ErrSnapOutOfDate) {
-					node.logger.
-						WithFields(map[string]any{"applied": status.Applied}).
-						Infof("Snapshot already up to date, creating skippde")
-					return
+				err := node.syncer.CreateSnapshot(ctx, status.Applied, node.confState)
+				if err != nil {
+					// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
+					if errors.Is(err, ErrSnapOutOfDate) {
+						node.logger.
+							WithFields(map[string]any{"applied": status.Applied}).
+							Infof("Snapshot already up to date, skipped")
+						return
+					}
+					if errors.Is(err, context.Canceled) {
+						node.logger.
+							WithFields(map[string]any{"applied": status.Applied}).
+							Infof("Snapshot creation cancelled")
+						return
+					}
+
+					panic(fmt.Errorf("creating snapshot in storage: %w", err))
 				}
-				if errors.Is(err, context.Canceled) {
-					node.logger.
-						WithFields(map[string]any{"applied": status.Applied}).
-						Infof("Snapshot creation cancelled")
-					return
+
+				// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+				err = node.storage.Compact(status.Applied - node.config.CompactionMargin)
+				if err != nil {
+					panic("Compacting storage failed: " + err.Error())
 				}
 
-				panic(fmt.Errorf("creating snapshot in storage: %w", err))
-			}
-
-			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-			err = node.storage.Compact(status.Applied - node.config.CompactionMargin)
-			if err != nil {
-				panic("Compacting storage failed: " + err.Error())
-			}
-
-			node.logger.Infof("Snapshot created successfully")
-		}, node.logger)
+				node.logger.Infof("Snapshot created successfully")
+			}, node.logger)
+		}
 	}
 
 	return nil
