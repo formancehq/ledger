@@ -28,8 +28,8 @@ func TestSyncerApplyEntries(t *testing.T) {
 	go syncer.run()
 	t.Cleanup(syncer.stop)
 
-	cmd := Command{
-		Type: "echo",
+	cmd := &Command{
+		Type: CommandType_CreateLedger,
 	}
 
 	fsm.EXPECT().
@@ -83,7 +83,7 @@ func TestSyncerCreateSnapshot(t *testing.T) {
 	case <-snapshotting:
 	}
 
-	cmd := Command{Type: "echo"}
+	cmd := &Command{Type: CommandType_CreateLedger}
 	fsm.EXPECT().
 		ApplyEntries(gomock.Any(), cmd).
 		Return(nil, nil)

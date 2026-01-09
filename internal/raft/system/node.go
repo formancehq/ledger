@@ -15,8 +15,8 @@ import (
 
 type Node struct {
 	*raft.Node[ledgerpb.SystemState, *FSM]
-	raftConfig NodeConfig
-	logger     logging.Logger
+	raftConfig           NodeConfig
+	logger               logging.Logger
 	multiplexedTransport *multiplexedTransport
 	meterProvider        metric.MeterProvider
 }
@@ -117,7 +117,7 @@ l:
 	}
 
 	node.logger.
-		WithFields(map[string]any{"name": name, "log_store_driver": logStoreDriver, "runtime_store_driver": runtimeStoreDriver, "commandID": cmd.ID}).
+		WithFields(map[string]any{"name": name, "log_store_driver": logStoreDriver, "runtime_store_driver": runtimeStoreDriver, "commandID": cmd.Id}).
 		Infof("Ledger created on leader")
 
 	// ledgerInfo is already *ledgerpb.LedgerInfo
@@ -164,7 +164,7 @@ func (node *Node) DeleteLedger(ctx context.Context, name string) error {
 		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
-	node.logger.WithFields(map[string]any{"name": name, "commandID": cmd.ID}).Infof("Ledger deleted via Raft")
+	node.logger.WithFields(map[string]any{"name": name, "commandID": cmd.Id}).Infof("Ledger deleted via Raft")
 	return nil
 }
 

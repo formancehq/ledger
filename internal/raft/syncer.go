@@ -33,7 +33,7 @@ type restoreSnapshotUnspoolCommand struct {
 }
 
 type applyEntriesCommand struct {
-	commands []Command
+	commands []*Command
 	resultCh chan []ApplyResult
 	errCh    chan error
 }
@@ -199,7 +199,7 @@ func (s *syncer[State, F]) CreateSnapshot(ctx context.Context, applied uint64, s
 	}
 }
 
-func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command) ([]ApplyResult, error) {
+func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...*Command) ([]ApplyResult, error) {
 	cmd := applyEntriesCommand{
 		commands: commands,
 		resultCh: make(chan []ApplyResult, 1),

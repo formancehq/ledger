@@ -44,21 +44,21 @@ config:
   
   # Raft configuration
   raft:
-    snapshotThreshold: 5000   # Number of logs before triggering a snapshot
+    snapshotThreshold: 15000   # Number of logs before triggering a snapshot
     snapshotInterval: "30s"   # Minimum interval between snapshots
     electionTick: 10          # Election timeout in ticks (default: 10)
     heartbeatTick: 1          # Heartbeat interval in ticks (default: 1)
-    maxSizePerMsg: 1048576    # Maximum size per message in bytes (default: 1MB)
-    maxInflightMsgs: 256      # Maximum number of in-flight messages (default: 256)
+    maxSizePerMsg: 2097152    # Maximum size per message in bytes (default: 1MB)
+    maxInflightMsgs: 512      # Maximum number of in-flight messages (default: 256)
     tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
-    proposeQueueCapacity: 256 # Capacity of the propose queue (default: 100)
+    proposeQueueCapacity: 512 # Capacity of the propose queue (default: 100)
     # Transport queue configuration
     transport:
-      receptionQueues: [10, 1024, 1024]  # Reception queue capacities per priority (default: [10, 512, 512])
+      receptionQueues: [10, 2048, 2048]  # Reception queue capacities per priority (default: [10, 512, 512])
       sendQueues: [10, 1024, 1024]       # Send queue capacities per priority (default: [10, 512, 512])
     # Multiplexed transport queue configuration
     multiplexedTransport:
-      receptionQueues: [10, 1024, 1024]  # Multiplexed transport reception queue capacities per priority (default: [10, 512, 512])
+      receptionQueues: [10, 2048, 2048]  # Multiplexed transport reception queue capacities per priority (default: [10, 512, 512])
       sendQueues: [10, 1024, 1024]       # Multiplexed transport send queue capacities per priority (default: [10, 512, 512])
   
   # Debug logging
@@ -158,10 +158,10 @@ persistence:
 # Resource limits and requests
 resources:
   limits:
-    cpu: 2000m
+    cpu: 4000m
     memory: 2048Mi
   requests:
-    cpu: 2000m
+    cpu: 4000m
     memory: 2048Mi
 
 # Health check configuration

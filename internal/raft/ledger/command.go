@@ -7,11 +7,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	// CommandTypeInsertLog is the command type for inserting a log
-	CommandTypeInsertLog raft.CommandType = "insert_log"
-)
-
 // NewInsertLogCommand creates a new InsertLogCommand
 func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
 	cmdProto := &InsertLogCommand{
@@ -24,10 +19,10 @@ func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
 	}
 
 	return &raft.Command{
-		ID:   raft.GenerateRandomID(),
-		Type: CommandTypeInsertLog,
+		Id:   raft.GenerateRandomID(),
+		Type: raft.CommandType_InsertLog,
 		Data: data,
-		Date: time.Now(),
+		Date: ledgerpb.NewTimestamp(time.Now()),
 	}, nil
 }
 

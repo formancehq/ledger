@@ -2,16 +2,10 @@ package system
 
 import (
 	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
-)
-
-const (
-	// CommandTypeCreateLedger is the command type for creating a new ledger
-	CommandTypeCreateLedger raft.CommandType = "create_ledger"
-	// CommandTypeDeleteLedger is the command type for deleting a ledger
-	CommandTypeDeleteLedger raft.CommandType = "delete_ledger"
 )
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
@@ -38,12 +32,12 @@ func NewCreateLedgerCommand(name string, logStoreConfig, runtimeStoreConfig map[
 	}
 
 	cmdProto := &CreateLedgerCommand{
-		Name:                name,
-		LogStoreDriver:      logStoreDriver,
-		RuntimeStoreDriver:  runtimeStoreDriver,
-		LogStoreConfig:      logStoreConfigStruct,
-		RuntimeStoreConfig:  runtimeStoreConfigStruct,
-		Metadata:            metadata,
+		Name:               name,
+		LogStoreDriver:     logStoreDriver,
+		RuntimeStoreDriver: runtimeStoreDriver,
+		LogStoreConfig:     logStoreConfigStruct,
+		RuntimeStoreConfig: runtimeStoreConfigStruct,
+		Metadata:           metadata,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		cmdProto.SnapshotThreshold = *snapshotThreshold
@@ -55,10 +49,10 @@ func NewCreateLedgerCommand(name string, logStoreConfig, runtimeStoreConfig map[
 	}
 
 	return &raft.Command{
-		ID:   raft.GenerateRandomID(),
-		Type: CommandTypeCreateLedger,
+		Id:   raft.GenerateRandomID(),
+		Type: raft.CommandType_CreateLedger,
 		Data: data,
-		Date: time.Now(),
+		Date: ledgerpb.NewTimestamp(time.Now()),
 	}, nil
 }
 
@@ -74,10 +68,10 @@ func NewDeleteLedgerCommand(name string) (*raft.Command, error) {
 	}
 
 	return &raft.Command{
-		ID:   raft.GenerateRandomID(),
-		Type: CommandTypeDeleteLedger,
+		Id:   raft.GenerateRandomID(),
+		Type: raft.CommandType_DeleteLedger,
 		Data: data,
-		Date: time.Now(),
+		Date: ledgerpb.NewTimestamp(time.Now()),
 	}, nil
 }
 

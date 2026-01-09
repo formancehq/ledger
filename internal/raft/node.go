@@ -16,6 +16,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/protobuf/proto"
 )
 
 type NodeTransport interface {
@@ -165,10 +166,10 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 
 	// Register the future using command ID
 	node.mu.Lock()
-	node.futures[cmd.ID] = future
+	node.futures[cmd.Id] = future
 	node.mu.Unlock()
 
-	cmdData, err := cmd.MarshalBinary()
+	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
 		return 0, nil, fmt.Errorf("marshaling command: %w", err)
 	}
@@ -185,7 +186,7 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 	select {
 	case err := <-future.ch:
 		node.mu.Lock()
-		delete(node.futures, cmd.ID)
+		delete(node.futures, cmd.Id)
 		node.mu.Unlock()
 		if err != nil {
 			return 0, nil, err
@@ -194,7 +195,7 @@ func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, 
 	case <-ctx.Done():
 		// Timeout - clean up the future
 		node.mu.Lock()
-		delete(node.futures, cmd.ID)
+		delete(node.futures, cmd.Id)
 		node.mu.Unlock()
 		return 0, nil, ctx.Err()
 	}
@@ -360,26 +361,23 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 	// Apply committed entries
 	var (
 		results        []ApplyResult
-		commands       = make([]Command, 0, len(rd.CommittedEntries))
+		commands       = make([]*Command, 0, len(rd.CommittedEntries))
 		commandIndexes = make([]uint64, 0, len(rd.CommittedEntries))
 	)
 	for _, entry := range rd.CommittedEntries {
 		switch entry.Type {
 		case raftpb.EntryNormal:
 			if len(entry.Data) == 0 {
-				node.logger.
-					WithFields(map[string]any{"index": entry.Index}).
-					Debugf("Skipping empty entry")
 				continue
 			}
 
 			// Decode the command to get its ID
 			var cmd Command
-			if err := cmd.UnmarshalBinary(entry.Data); err != nil {
+			if err := proto.Unmarshal(entry.Data, &cmd); err != nil {
 				return fmt.Errorf("unmarshaling command: %w", err)
 			}
 
-			commands = append(commands, cmd)
+			commands = append(commands, &cmd)
 			commandIndexes = append(commandIndexes, entry.Index)
 		case raftpb.EntryConfChange:
 			var cc raftpb.ConfChange
@@ -411,39 +409,30 @@ func (node *Node[State, F]) processReady(ctx context.Context) error {
 
 	// Apply bucket-specific entries to bucket FSM
 	// Measure time spent in ApplyEntries
-	start := time.Now()
-	results, err := node.syncer.ApplyEntries(node.ctx, commands...)
-	duration := time.Since(start)
+	var (
+		err error
+	)
+	if len(commands) > 0 {
+		start := time.Now()
+		results, err = node.syncer.ApplyEntries(node.ctx, commands...)
+		if err != nil {
+			return fmt.Errorf("applying entries to FSM: %w", err)
+		}
+		duration := time.Since(start)
 
-	batchSize := int64(len(commands))
-
-	// Record metric if histogram is available and we have commands
-	if node.applyEntriesHistogram != nil && batchSize > 0 {
 		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()))
-	}
-
-	// Record batch size inflightCounter if available
-	if node.applyEntriesBatchSizeCounter != nil && batchSize > 0 {
-		node.applyEntriesBatchSizeCounter.Add(ctx, batchSize)
-	}
-
-	// Record batch size histogram if available
-	if node.applyEntriesBatchSizeHistogram != nil && batchSize > 0 {
-		node.applyEntriesBatchSizeHistogram.Record(ctx, batchSize)
-	}
-
-	if err != nil {
-		return fmt.Errorf("applying entries to FSM: %w", err)
+		node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(commands)))
+		node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(commands)))
 	}
 
 	for i, result := range results {
-		node.NotifyApplied(commands[i].ID, result.Result, commandIndexes[i], result.Error)
+		node.NotifyApplied(commands[i].Id, result.Result, commandIndexes[i], result.Error)
 		if result.Error != nil {
 			node.logger.
 				WithFields(map[string]any{
 					"error":     result.Error,
 					"index":     commandIndexes[i],
-					"commandID": commands[i].ID,
+					"commandID": commands[i].Id,
 				}).
 				Errorf("Failed to apply entry to bucket FSM")
 		}
@@ -581,6 +570,10 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 		Logger:                    NewLoggerAdapter(node.logger),
 		DisableProposalForwarding: true,
 	}
+
+	node.logger.WithFields(map[string]any{
+		"config": raftConfig,
+	}).Infof("Starting raft node")
 
 	var err error
 	node.rawNode, err = raft.NewRawNode(raftConfig)

@@ -3463,7 +3463,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n  rate(raft.node.propose.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)\n",
+          "expr": "sum(\n  rate(raft.node.propose.load_bucket[$__rate_interval])\n) by (le)\n",
           "format": "heatmap",
           "instant": false,
           "legendFormat": "__auto",
@@ -4011,14 +4011,54 @@
             "mode": "fixed"
           },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
           },
           "fieldMinMax": false,
           "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "ops"
         },
         "overrides": []
@@ -4032,19 +4072,11 @@
       "id": 24,
       "options": {
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
           "showLegend": true
         },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "sort": "desc",
         "tooltip": {
           "hideZeros": false,
           "mode": "single",
@@ -4060,17 +4092,17 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval]) by (service.node_id, peer, type)",
+          "expr": "rate(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
-          "instant": true,
-          "interval": "1s",
+          "instant": false,
+          "interval": "",
           "legendFormat": "Node {{service.node_id}} : Peer {{peer}}: {{type}}",
-          "range": false,
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Send channel full count",
-      "type": "piechart"
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -4098,7 +4130,7 @@
         "x": 0,
         "y": 110
       },
-      "id": 69,
+      "id": 70,
       "options": {
         "calculate": false,
         "cellGap": 1,
@@ -4138,7 +4170,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
           "format": "heatmap",
           "instant": false,
           "legendFormat": "__auto",
@@ -4146,7 +4178,7 @@
           "refId": "A"
         }
       ],
-      "title": "Send channel load (Priority = 2)",
+      "title": "Send channel load (Priority = 1)",
       "transformations": [
         {
           "disabled": true,
@@ -4300,7 +4332,7 @@
         "x": 12,
         "y": 110
       },
-      "id": 70,
+      "id": 69,
       "options": {
         "calculate": false,
         "cellGap": 1,
@@ -4340,7 +4372,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
           "format": "heatmap",
           "instant": false,
           "legendFormat": "__auto",
@@ -4348,7 +4380,7 @@
           "refId": "A"
         }
       ],
-      "title": "Send channel load (Priority = 1)",
+      "title": "Send channel load (Priority = 2)",
       "transformations": [
         {
           "disabled": true,
@@ -4569,7 +4601,7 @@
           "refId": "A"
         }
       ],
-      "title": "Reception channel (inflights)",
+      "title": "Reception channel incoming messages",
       "type": "timeseries"
     },
     {
@@ -4582,6 +4614,40 @@
           "color": {
             "fixedColor": "red",
             "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "displayName": "${__series.name}",
           "mappings": [],
@@ -4609,36 +4675,34 @@
       },
       "id": 27,
       "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "pluginVersion": "12.3.1",
       "targets": [
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "raft.multiplexed_transport.ledger.recv.full{service.node_id=~\"$node\"}[$__rate_interval]",
+          "expr": "rate(raft.multiplexed_transport.ledger.recv.full{service.node_id=~\"$node\"}[$__rate_interval])",
           "format": "time_series",
-          "instant": true,
+          "instant": false,
           "interval": "",
           "legendFormat": "Node {{service.node_id}}: Peer {{peer}} : {{type}}",
-          "range": false,
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Reception channel (full)",
-      "type": "gauge"
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -6242,5 +6306,5 @@
   "timezone": "browser",
   "title": "Ledger Metrics Dashboard",
   "uid": "69a98f8a-dee7-47a8-88e4-e0c86f3c49b9",
-  "version": 4
+  "version": 5
 }

@@ -106,7 +106,7 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 }
 
 // processInsertLog handles the insert log command by storing the log in memory
-func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
+func (f *FSM) processInsertLog(cmd *raft.Command) (*ledgerpb.Log, error) {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
@@ -122,13 +122,13 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledgerpb.Log, error) {
 	return insertCmd.Log, nil
 }
 
-func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raft.ApplyResult, error) {
+func (f *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]raft.ApplyResult, error) {
 	// Assume the majority of commands are logs insertion while allocating
 	ret := make([]raft.ApplyResult, 0, len(commands))
 	logs := make([]*ledgerpb.Log, 0, len(commands))
 	for _, command := range commands {
 		switch command.Type {
-		case CommandTypeInsertLog:
+		case raft.CommandType_InsertLog:
 			log, err := f.processInsertLog(command)
 			if err != nil {
 				ret = append(ret, raft.ApplyResult{

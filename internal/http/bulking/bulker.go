@@ -198,8 +198,9 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 
 	case ActionDeleteMetadata:
 		req := data.Data.(DeleteMetadataRequest)
-		var log *ledgerpb.Log
-		var err error
+		var (
+			log *ledgerpb.Log
+		)
 
 		switch req.TargetType {
 		case "ACCOUNT":
@@ -220,6 +221,9 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 					Key:     req.Key,
 				},
 			})
+			if err != nil {
+				return nil, 0, err
+			}
 		case "TRANSACTION":
 			transactionID := uint64(0)
 			targetIDBytes, err := json.Marshal(req.TargetID)
@@ -238,11 +242,11 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 					Key:           req.Key,
 				},
 			})
+			if err != nil {
+				return nil, 0, err
+			}
 		default:
 			return nil, 0, fmt.Errorf("unsupported target type: %s", req.TargetType)
-		}
-		if err != nil {
-			return nil, 0, err
 		}
 
 		return nil, log.Id, nil

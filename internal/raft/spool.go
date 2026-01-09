@@ -8,12 +8,14 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+
+	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -package raft . Spool
 type Spool interface {
-	AppendCommittedEntries(ctx context.Context, commands ...Command) error
-	Next() (Command, error)
+	AppendCommittedEntries(ctx context.Context, commands ...*Command) error
+	Next() (*Command, error)
 	Reset() error
 	Close() error
 }
@@ -23,7 +25,6 @@ type fileSpool struct {
 	w    *bufio.Writer
 	path string
 
-	// offset du prochain record à lire (pour replay incrémental)
 	readOffset int64
 }
 
@@ -46,9 +47,7 @@ func (s *fileSpool) Close() error {
 	return s.f.Close()
 }
 
-// AppendCommittedEntries écrit des committed entries (déjà ordonnées) dans le spool.
-// À appeler quand storageReady == false, au lieu d'appliquer au FSM.
-func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...Command) error {
+func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*Command) error {
 
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
@@ -61,30 +60,27 @@ func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...Comm
 		}
 	}
 
-	// Flush + fsync pour durabilité (tu peux le faire toutes les N entrées pour perf)
 	if err := s.w.Flush(); err != nil {
 		return err
 	}
 	return s.f.Sync()
 }
 
-// Next lit le prochain record à partir de readOffset, l'avance si la lecture réussit,
-// et retourne la commande ou io.EOF s'il n'y a plus d'éléments à lire.
-func (s *fileSpool) Next() (Command, error) {
+func (s *fileSpool) Next() (*Command, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
-		return Command{}, err
+		return nil, err
 	}
 	r := bufio.NewReaderSize(s.f, 1<<20)
 
 	off := s.readOffset
 	cmd, n, err := readRecord(r)
 	if err == io.EOF {
-		return Command{}, io.EOF
+		return nil, io.EOF
 	}
 	if err != nil {
 		// en cas de crash au milieu d'un record, tu peux choisir :
 		// - de tronquer à off et repartir propre
-		return Command{}, err
+		return nil, err
 	}
 
 	// todo: write somewhere to avoid replaying all commands if the rawNode is restarted
@@ -123,8 +119,8 @@ var (
 	ErrCorrupt = fmt.Errorf("record corrupted")
 )
 
-func writeRecord(w io.Writer, cmd Command) error {
-	payload, err := cmd.MarshalBinary()
+func writeRecord(w io.Writer, cmd *Command) error {
+	payload, err := proto.Marshal(cmd)
 	if err != nil {
 		return err
 	}
@@ -143,30 +139,30 @@ func writeRecord(w io.Writer, cmd Command) error {
 	return err
 }
 
-func readRecord(r *bufio.Reader) (Command, int, error) {
+func readRecord(r *bufio.Reader) (*Command, int, error) {
 	var cmd Command
 
 	hdr := make([]byte, 16)
 	if _, err := io.ReadFull(r, hdr); err != nil {
-		return cmd, 0, err
+		return nil, 0, err
 	}
 	if binary.LittleEndian.Uint32(hdr[0:4]) != 0x53504F4C {
-		return cmd, 0, ErrCorrupt
+		return nil, 0, ErrCorrupt
 	}
 	n := int(binary.LittleEndian.Uint32(hdr[4:8]))
 	wantCRC := binary.LittleEndian.Uint32(hdr[8:12])
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return cmd, 0, err
+		return nil, 0, err
 	}
 	if crc32.ChecksumIEEE(payload) != wantCRC {
-		return cmd, 0, ErrCorrupt
+		return nil, 0, ErrCorrupt
 	}
 
-	if err := cmd.UnmarshalBinary(payload); err != nil {
-		return cmd, 0, err
+	if err := proto.Unmarshal(payload, &cmd); err != nil {
+		return nil, 0, err
 	}
 
-	return cmd, 16 + n, nil
+	return &cmd, 16 + n, nil
 }

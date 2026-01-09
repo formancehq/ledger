@@ -75,7 +75,7 @@ func (fsm *FSM) GetState() ledgerpb.SystemState {
 // Ledgers and logs are now managed by ledger Raft groups.
 
 // handleCreateLedger handles the create ledger command
-func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledgerpb.LedgerInfo, error) {
+func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd *raft.Command) (*ledgerpb.LedgerInfo, error) {
 	var createCmd CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
@@ -93,9 +93,6 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 	fsm.state.NextLedgerID++
 	fsm.mu.Unlock()
 
-	// Convert timestamp
-	createdAt := ledgerpb.NewTimestamp(cmd.Date)
-
 	// Create ledger info using protobuf types directly
 	ledgerInfo := &ledgerpb.LedgerInfo{
 		Id:                 ledgerID,
@@ -105,7 +102,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 		LogStoreConfig:     createCmd.LogStoreConfig,
 		RuntimeStoreConfig: createCmd.RuntimeStoreConfig,
 		Metadata:           createCmd.Metadata,
-		CreatedAt:          createdAt,
+		CreatedAt:          cmd.Date,
 		SnapshotThreshold:  createCmd.SnapshotThreshold,
 	}
 	fsm.state.Infos[ledgerInfo.Name] = ledgerInfo
@@ -119,7 +116,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd raft.Command) (*ledg
 }
 
 // handleDeleteLedger handles the delete ledger command (hard delete)
-func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error {
+func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd *raft.Command) error {
 	var deleteCmd DeleteLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete ledger command")
@@ -153,11 +150,11 @@ func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd raft.Command) error 
 	return nil
 }
 
-func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raft.ApplyResult, error) {
+func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]raft.ApplyResult, error) {
 	ret := make([]raft.ApplyResult, 0, len(commands))
 	for _, cmd := range commands {
 		switch cmd.Type {
-		case CommandTypeCreateLedger:
+		case raft.CommandType_CreateLedger:
 			info, err := fsm.handleCreateLedger(ctx, cmd)
 			if err != nil {
 				ret = append(ret, raft.ApplyResult{
@@ -168,7 +165,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]r
 			ret = append(ret, raft.ApplyResult{
 				Result: info,
 			})
-		case CommandTypeDeleteLedger:
+		case raft.CommandType_DeleteLedger:
 			ret = append(ret, raft.ApplyResult{
 				Error: fsm.handleDeleteLedger(ctx, cmd),
 			})

@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/protoadapt"
 )
 
 type Incoming struct {
@@ -417,6 +419,8 @@ func (conn *peerConnection) loop() {
 		}, conn.logger)
 
 		pingInterval := time.NewTicker(time.Second)
+		opts := proto.MarshalOptions{}
+		buf := make([]byte, 0, 1024*1024*10) // todo: make configurable
 
 	l:
 		for {
@@ -441,7 +445,7 @@ func (conn *peerConnection) loop() {
 					conn.logger.Errorf("Failed to send ping to peer: %v", err)
 				}
 			case msg := <-conn.sendCh.Recv():
-				data, err := msg.Marshal()
+				data, err := opts.MarshalAppend(buf, protoadapt.MessageV2Of(&msg))
 				if err != nil {
 					conn.logger.
 						WithFields(map[string]any{

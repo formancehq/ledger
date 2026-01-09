@@ -338,7 +338,7 @@ func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 	key := []byte(keyLastProcessedLogID)
 	value, closer, err := s.db.Get(key)
 	if err != nil {
-		if err == pebble.ErrNotFound {
+		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("querying last processed log ID: %w", err)

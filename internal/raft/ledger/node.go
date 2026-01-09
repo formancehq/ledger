@@ -415,7 +415,7 @@ func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 		log.Id = logID.(uint64)
 
 		node.logger.
-			WithFields(map[string]any{"commandID": cmd.ID}).
+			WithFields(map[string]any{"commandID": cmd.Id}).
 			Debugf("Log inserted via ledger Raft")
 	}
 
