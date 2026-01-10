@@ -135,18 +135,69 @@ func main() {
 		// Get the config directory for Grafana provisioning files (still needed for dashboards and datasources)
 		k8sConfigPath := filepath.Join("config")
 
-		// Helper function to read JSON files (still needed for dashboard JSON)
-		readJsonFile := func(filePath string) (map[string]interface{}, error) {
-			fullPath := filepath.Join(k8sConfigPath, filePath)
-			data, err := os.ReadFile(fullPath)
+		// Helper function to read all dashboard JSON files from a directory
+		readDashboardFiles := func(dirPath string) ([]struct {
+			name     string
+			filename string
+			content  string
+		}, error) {
+			fullPath := filepath.Join(k8sConfigPath, dirPath)
+			entries, err := os.ReadDir(fullPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read JSON file %s: %w", fullPath, err)
+				return nil, fmt.Errorf("failed to read dashboard directory %s: %w", fullPath, err)
 			}
-			var result map[string]interface{}
-			if err := json.Unmarshal(data, &result); err != nil {
-				return nil, fmt.Errorf("failed to parse JSON file %s: %w", fullPath, err)
+
+			var dashboards []struct {
+				name     string
+				filename string
+				content  string
 			}
-			return result, nil
+
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				// Only process JSON files, skip YAML files
+				if filepath.Ext(entry.Name()) != ".json" {
+					continue
+				}
+
+				filePath := filepath.Join(fullPath, entry.Name())
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read dashboard file %s: %w", filePath, err)
+				}
+
+				// Validate JSON by parsing it
+				var jsonData map[string]interface{}
+				if err := json.Unmarshal(data, &jsonData); err != nil {
+					return nil, fmt.Errorf("failed to parse JSON file %s: %w", filePath, err)
+				}
+
+				// Marshal back to JSON with indentation
+				jsonBytes, err := json.MarshalIndent(jsonData, "", "  ")
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal JSON file %s: %w", filePath, err)
+				}
+
+				// Generate a safe name for the ConfigMap (remove .json extension and sanitize)
+				baseName := entry.Name()
+				configMapName := baseName[:len(baseName)-len(filepath.Ext(baseName))]
+				// Replace dots and other special chars with hyphens for Kubernetes resource names
+				configMapName = filepath.Base(configMapName)
+
+				dashboards = append(dashboards, struct {
+					name     string
+					filename string
+					content  string
+				}{
+					name:     configMapName,
+					filename: entry.Name(),
+					content:  string(jsonBytes),
+				})
+			}
+
+			return dashboards, nil
 		}
 
 		// Helper function to read text files (still needed for provisioning YAML files)
@@ -223,30 +274,32 @@ func main() {
 			return fmt.Errorf("failed to deploy OpenTelemetry Collector: %w", err)
 		}
 
-		// Create Grafana dashboard ConfigMap
+		// Create Grafana dashboard ConfigMaps
 		// The Grafana sidecar will automatically discover ConfigMaps with the label grafana_dashboard="1"
-		dashboardJson, err := readJsonFile("grafana/provisioning/dashboards/ledger-metrics.json")
+		dashboards, err := readDashboardFiles("grafana/provisioning/dashboards")
 		if err != nil {
-			return fmt.Errorf("failed to read dashboard JSON: %w", err)
+			return fmt.Errorf("failed to read dashboard files: %w", err)
 		}
-		dashboardJsonBytes, err := json.MarshalIndent(dashboardJson, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal dashboard JSON: %w", err)
-		}
-		grafanaDashboard, err := v1.NewConfigMap(ctx, "grafana-dashboard", &v1.ConfigMapArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("grafana-dashboard"),
-				Namespace: monitoringNamespace.Metadata.Name(),
-				Labels: pulumi.StringMap{
-					"grafana_dashboard": pulumi.String("1"),
+
+		var grafanaDashboards []pulumi.Resource
+		for _, dashboard := range dashboards {
+			dashboardData := pulumi.StringMap{
+				dashboard.filename: pulumi.String(dashboard.content),
+			}
+			grafanaDashboard, err := v1.NewConfigMap(ctx, fmt.Sprintf("grafana-dashboard-%s", dashboard.name), &v1.ConfigMapArgs{
+				Metadata: &metav1.ObjectMetaArgs{
+					Name:      pulumi.String(fmt.Sprintf("grafana-dashboard-%s", dashboard.name)),
+					Namespace: monitoringNamespace.Metadata.Name(),
+					Labels: pulumi.StringMap{
+						"grafana_dashboard": pulumi.String("1"),
+					},
 				},
-			},
-			Data: pulumi.StringMap{
-				"ledger-metrics.json": pulumi.String(dashboardJsonBytes),
-			},
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
-		if err != nil {
-			return fmt.Errorf("failed to create Grafana dashboard ConfigMap: %w", err)
+				Data: dashboardData,
+			}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+			if err != nil {
+				return fmt.Errorf("failed to create Grafana dashboard ConfigMap %s: %w", dashboard.name, err)
+			}
+			grafanaDashboards = append(grafanaDashboards, grafanaDashboard)
 		}
 
 		// Create Grafana dashboard provisioning ConfigMap
@@ -298,15 +351,14 @@ func main() {
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
 			Namespace:      monitoringNamespace.Metadata.Name(),
 			Values:         pulumi.ToMap(grafanaValues),
-		}, pulumi.DependsOn([]pulumi.Resource{
+		}, pulumi.DependsOn(append([]pulumi.Resource{
 			monitoringNamespace,
 			victoriaMetrics,
 			tempo,
 			loki,
-			grafanaDashboard,
 			grafanaDashboardProvisioning,
 			grafanaDatasourceProvisioning,
-		}))
+		}, grafanaDashboards...)))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
