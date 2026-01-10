@@ -12,6 +12,7 @@ import (
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -45,14 +46,35 @@ func main() {
 			return fmt.Errorf("failed to create namespace: %w", err)
 		}
 
-		// Helper function to read config objects from Pulumi config
+		// Helper function to read config objects from Pulumi config or YAML files
 		cfg := config.New(ctx, "")
 		getConfigObject := func(key string) (map[string]interface{}, error) {
-			var result map[string]interface{}
-			if err := cfg.GetObject(key, &result); err != nil {
+			// First, try to get the config object
+			var configObj map[string]interface{}
+			if err := cfg.GetObject(key, &configObj); err != nil {
 				return nil, fmt.Errorf("failed to get config object %s: %w", key, err)
 			}
-			return result, nil
+
+			// Check if the config contains a "file" key pointing to a YAML file
+			if filePath, ok := configObj["file"].(string); ok {
+				// Read the YAML file
+				// The file path is relative to the devenv directory
+				fullPath := filepath.Join(".", filePath)
+				data, err := os.ReadFile(fullPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read values file %s: %w", fullPath, err)
+				}
+
+				var result map[string]interface{}
+				if err := yaml.Unmarshal(data, &result); err != nil {
+					return nil, fmt.Errorf("failed to parse YAML file %s: %w", fullPath, err)
+				}
+
+				return result, nil
+			}
+
+			// If no "file" key, return the config object as-is (backward compatibility)
+			return configObj, nil
 		}
 
 		// Build Docker image

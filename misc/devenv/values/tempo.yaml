@@ -1,0 +1,17 @@
+persistence:
+  enabled: true
+  size: 10Gi
+service:
+  type: ClusterIP
+tempo:
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: false

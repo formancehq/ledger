@@ -1,0 +1,15 @@
+promscrape:
+  enabled: true
+server:
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+service:
+  type: ClusterIP
