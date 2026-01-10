@@ -53,4 +53,3 @@ export function createTransactionElement(script, vars = {}, idempotencyKey = nul
 
   return element;
 }
-

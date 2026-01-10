@@ -4,25 +4,14 @@
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 import { config } from './shared/config.js';
+import { buildOptions } from './shared/options.js';
 import { bulkOperation } from './shared/utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
 const transactionLatency = new Trend('transaction_latency', true);
 
-// Options are set dynamically in setup() to access environment variables
-export const options = {
-  thresholds: {
-    errors: ['rate<0.1'], // Error rate should be less than 10%
-    http_req_duration: ['p(95)<500'], // 95% of requests should be below 500ms
-    transaction_latency: ['p(95)<500'], // 95% of transactions should be below 500ms
-  },
-  stages: [
-    { duration: '10s', target: config.vus },
-    { duration: config.duration, target: config.vus },
-    { duration: '10s', target: 0 },
-  ]
-};
+export const options = buildOptions(config);
 
 // Generate transaction script
 function generateTransaction(iteration) {
@@ -41,12 +30,13 @@ function generateTransaction(iteration) {
 }
 
 export default function () {
+  const ledgerName = config.ledgerName;
   // Generate transaction
   const element = generateTransaction(__ITER);
   
   // Execute bulk operation
   const startTime = Date.now();
-  const response = bulkOperation(config, config.ledgerName, [element]);
+  const response = bulkOperation(config, ledgerName, [element]);
   const latency = Date.now() - startTime;
   
   transactionLatency.add(latency);
@@ -96,4 +86,3 @@ export function handleSummary(data) {
     'summary.json': JSON.stringify(data),
   };
 }
-

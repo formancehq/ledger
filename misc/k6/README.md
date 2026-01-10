@@ -28,10 +28,14 @@ choco install k6
 Tests are configured via environment variables. The default configuration is in `shared/config.js`:
 
 - `LEDGER_URL`: Base URL of the ledger service (default: `http://localhost:9000`)
-- `LEDGER_NAME`: Name of the ledger to use for tests (default: `test-ledger`)
+- `LEDGER_NAME`: Name of the ledger to use for tests (default: `ledger0`)
+- `LOG_STORE_DRIVER`: Log store driver used when creating the ledger (default: `pebble`)
+- `RUNTIME_STORE_DRIVER`: Runtime store driver used when creating the ledger (default: `pebble`)
 - `DURATION`: Test duration (default: `30s`)
 - `VUS`: Number of virtual users (default: `10`)
 - `MAX_VUS`: Maximum number of virtual users (default: `100`)
+
+When using the Helm chart, ledger creation happens in a pre-install Job and cleanup happens in a Job that waits for the TestRun to finish.
 
 ## Project Structure
 

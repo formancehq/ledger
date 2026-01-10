@@ -54,18 +54,18 @@ go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./dat
 
 Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, OpenTelemetry Collector, and k6-operator).
 
-**Note:** The Pulumi stack `devenv` deploys to the **ledger-exp** development environment cluster.
+**Note:** The Pulumi stack `gfyrag` deploys to the **ledger-exp** development environment cluster.
 
 **Prerequisites:**
 - [Pulumi CLI](https://www.pulumi.com/docs/get-started/install/) installed
 - Access to the ledger-exp Kubernetes cluster with `kubectl` configured
 - Go 1.21 or higher
 
-**Quick Start:**
+**Quick Start (stack: `gfyrag`):**
 
 ```bash
 # Navigate to the Pulumi application directory
-cd deployments/devenv
+cd misc/devenv
 
 # Install Go dependencies
 go mod download
@@ -73,10 +73,10 @@ go mod download
 # Login to Pulumi (if not already done)
 pulumi login
 
-# Initialize or select the devenv stack
-pulumi stack init devenv
+# Initialize or select the gfyrag stack
+pulumi stack init gfyrag
 # or
-pulumi stack select devenv
+pulumi stack select gfyrag
 
 # Preview the deployment
 pulumi preview
@@ -87,7 +87,7 @@ pulumi up
 
 **Configuration:**
 
-The deployment configuration is stored in `Pulumi.devenv.yaml`. You can customize:
+The deployment configuration is stored in `Pulumi.gfyrag.yaml`. You can customize:
 - Namespace (default: `monitoring`)
 - Helm values for each service (VictoriaMetrics, Grafana, Loki, Tempo, OTLP, Ledger, k6-operator)
 - Grafana dashboards and datasources
@@ -111,6 +111,23 @@ After deployment, services are available on the **ledger-exp** cluster:
 ```bash
 # Remove all resources
 pulumi destroy
+```
+
+**Creating a new Pulumi stack:**
+
+```bash
+# Create a new stack
+pulumi stack init <stack-name>
+
+# Copy the default config and adjust values
+cp Pulumi.gfyrag.yaml Pulumi.<stack-name>.yaml
+
+# Edit Pulumi.<stack-name>.yaml and update registry/values as needed
+
+# Select the new stack and deploy
+pulumi stack select <stack-name>
+pulumi preview
+pulumi up
 ```
 
 For detailed documentation, see the [Pulumi Development Environment README](misc/devenv/README.md).

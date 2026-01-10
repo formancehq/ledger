@@ -25,6 +25,18 @@ spec:
     env:
     - name: LEDGER_URL
       value: {{ .Values.runner.env.ledgerUrl }}
+    {{- if .Values.runner.env.ledgerName }}
+    - name: LEDGER_NAME
+      value: {{ .Values.runner.env.ledgerName }}
+    {{- end }}
+    {{- if .Values.runner.env.logStoreDriver }}
+    - name: LOG_STORE_DRIVER
+      value: {{ .Values.runner.env.logStoreDriver }}
+    {{- end }}
+    {{- if .Values.runner.env.runtimeStoreDriver }}
+    - name: RUNTIME_STORE_DRIVER
+      value: {{ .Values.runner.env.runtimeStoreDriver }}
+    {{- end }}
     {{- if .Values.runner.env.stages }}
     - name: K6_STAGES
       value: "{{ .Values.runner.env.stages }}"

@@ -1,0 +1,93 @@
+{{- if .Values.ledgerCleanup.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "k6-run.fullname" . }}-cleanup
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "k6-run.fullname" . }}-cleanup
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+rules:
+  - apiGroups: ["k6.io"]
+    resources: ["testruns"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "k6-run.fullname" . }}-cleanup
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k6-run.fullname" . }}-cleanup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "k6-run.fullname" . }}-cleanup
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "k6-run.fullname" . }}-cleanup
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: {{ .Values.ledgerCleanup.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "k6-run.name" . }}-cleanup
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "k6-run.fullname" . }}-cleanup
+      restartPolicy: OnFailure
+      containers:
+        - name: cleanup
+          image: "{{ .Values.ledgerCleanup.image.repository }}:{{ .Values.ledgerCleanup.image.tag }}"
+          env:
+            - name: NAMESPACE
+              value: {{ .Values.metadata.namespace | default .Release.Namespace }}
+            - name: TESTRUN_NAME
+              value: {{ include "k6-run.fullname" . }}
+            - name: LEDGER_URL
+              value: {{ .Values.runner.env.ledgerUrl }}
+            - name: LEDGER_NAME
+              value: {{ .Values.runner.env.ledgerName }}
+            - name: POLL_INTERVAL
+              value: {{ .Values.ledgerCleanup.pollInterval | quote }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              echo "waiting for TestRun ${TESTRUN_NAME} in ${NAMESPACE}"
+              while true; do
+                stage=$(kubectl -n "$NAMESPACE" get testrun "$TESTRUN_NAME" -o jsonpath='{.status.stage}' 2>/dev/null || true)
+                if [ "$stage" = "finished" ] || [ "$stage" = "error" ] || [ "$stage" = "stopped" ]; then
+                  break
+                fi
+                sleep "$POLL_INTERVAL"
+              done
+              status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
+                -X DELETE \
+                "$LEDGER_URL/$LEDGER_NAME" || true)
+              if [ "$status" = "204" ] || [ "$status" = "404" ]; then
+                echo "ledger deleted"
+              else
+                echo "failed to delete ledger: status=$status" >&2
+                cat /tmp/resp >&2
+              fi
+{{- end }}

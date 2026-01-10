@@ -1,0 +1,49 @@
+{{- if .Values.ledgerJob.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "k6-run.fullname" . }}-ledger-create
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.ledgerJob.backoffLimit }}
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-ledger
+          image: "{{ .Values.ledgerJob.image.repository }}:{{ .Values.ledgerJob.image.tag }}"
+          env:
+            - name: LEDGER_URL
+              value: {{ .Values.runner.env.ledgerUrl }}
+            - name: LEDGER_NAME
+              value: {{ .Values.runner.env.ledgerName }}
+            - name: LOG_STORE_DRIVER
+              value: {{ .Values.runner.env.logStoreDriver }}
+            - name: RUNTIME_STORE_DRIVER
+              value: {{ .Values.runner.env.runtimeStoreDriver }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              payload=$(printf '{"logStoreDriver":"%s","runtimeStoreDriver":"%s"}' "$LOG_STORE_DRIVER" "$RUNTIME_STORE_DRIVER")
+              status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                --data "$payload" \
+                "$LEDGER_URL/$LEDGER_NAME" || true)
+              if [ "$status" = "201" ] || [ "$status" = "409" ]; then
+                exit 0
+              fi
+              echo "failed to create ledger: status=$status" >&2
+              cat /tmp/resp >&2
+              exit 1
+{{- end }}

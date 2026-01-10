@@ -7,7 +7,25 @@ metadata:
 runner:
   env:
     ledgerUrl: "http://ledger-exp.ledger.svc.cluster.local:9000"
+    ledgerName: "ledger0"
+    logStoreDriver: "pebble"
+    runtimeStoreDriver: "pebble"
     stages: ""
   otlp:
     endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local:4317"
 archiveData: ""
+
+ledgerJob:
+  enabled: true
+  image:
+    repository: curlimages/curl
+    tag: "8.7.1"
+  backoffLimit: 2
+
+ledgerCleanup:
+  enabled: true
+  image:
+    repository: alpine/kubectl
+    tag: "1.35.0"
+  pollInterval: 5
+  ttlSecondsAfterFinished: 300
