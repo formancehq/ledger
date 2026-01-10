@@ -71,13 +71,8 @@ k6-install-testrun SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="bench" LEDGER_URL
         HELM_ARGS+=("--set-string" "runner.env.stages={{STAGES}}")
     fi
     
-    # Install TestRun from Helm chart (creates ConfigMap and TestRun)
+    # Install TestRun from Helm chart (creates ConfigMap and TestRun, optionally Job)
     echo "Installing k6 TestRun for ${SCRIPT_NAME}..."
     helm "${HELM_ARGS[@]}"
     
     echo "✓ TestRun installed: ${RELEASE_NAME} in namespace {{NAMESPACE}}"
-
-# Create k6 archive and install TestRun (ConfigMap is created by Helm chart)
-# Usage: just k6-deploy any_unbounded_to_any --parallelism 10 --stages "30s:512,10m:512,30s:0"
-k6-deploy SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="bench" LEDGER_URL="http://ledger-exp.ledger.svc.cluster.local:9000":
-    just k6-install-testrun {{SCRIPT}} {{PARALLELISM}} "{{STAGES}}" {{NAMESPACE}} {{LEDGER_URL}}

@@ -210,4 +210,3 @@ spec:
         requests:
           storage: {{ .Values.persistence.size }}
   {{- end }}
-

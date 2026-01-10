@@ -197,6 +197,16 @@ For Kubernetes deployments using k6-operator, archives are automatically created
 
 **Prerequisites**: Ensure `k6` is installed and available in your PATH before running Pulumi deployment.
 
+## Benchmark Operator
+
+Benchmark reporting is handled by the operator in `misc/benchmark-operator`, which watches `TestRun` objects, creates Grafana snapshots, and emits a JSON report stored in a ConfigMap named `k6-report-<testrun-name>`. When a TestRun is deleted, the operator deletes the report ConfigMap and related snapshots.
+
+```bash
+kubectl get configmap k6-report-<testrun-name> -n <namespace> -o jsonpath='{.data.report\.json}'
+```
+
+The JSON report includes both snapshot URLs and live Grafana URLs with the TestRun time range.
+
 ### Benefits of Archives
 
 - **Dependency bundling**: All dependencies (`shared/config.js`, `shared/utils.js`, etc.) are included
@@ -327,4 +337,3 @@ If error rates are high:
 - [k6 JavaScript API](https://k6.io/docs/javascript-api/)
 - [k6 Metrics](https://k6.io/docs/using-k6/metrics/)
 - [k6 Thresholds](https://k6.io/docs/using-k6/thresholds/)
-

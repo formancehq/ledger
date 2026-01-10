@@ -5,6 +5,8 @@ config:
     secure: AAABAPaMVBEAgJxOclkhhDaUtOnTyy1V0aErxzRr4T2q7at0nL+7h3u5xV8xNNj3nlq+CTo5PRDu9D+cgPvXFA==
   ledger-exp-devenv:grafana:
     file: values/grafana.yaml
+  ledger-exp-devenv:benchmarkOperator:
+    file: values/benchmark-operator.yaml
   ledger-exp-devenv:k6operator:
     file: values/k6operator.yaml
   ledger-exp-devenv:ledger:

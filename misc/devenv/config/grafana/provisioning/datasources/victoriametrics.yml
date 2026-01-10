@@ -2,6 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: VictoriaMetrics
+    uid: VictoriaMetrics
     type: prometheus
     access: proxy
     url: http://victoria-metrics:8428
@@ -13,4 +14,3 @@ datasources:
       prometheusVersion: 2.37.0
       maxSeries: 5000
     version: 1
-

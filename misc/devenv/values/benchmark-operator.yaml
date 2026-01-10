@@ -1,0 +1,17 @@
+enabled: true
+namespace: "bench"
+image:
+  repository: ghcr.io/formancehq/benchmark-operator
+  tag: latest
+  pullSecrets:
+    - zot
+env:
+  GRAFANA_URL: "https://grafana.ledger-exp.v2.formance.dev"
+  GRAFANA_USER: "admin"
+  GRAFANA_PASSWORD: "admin"
+  WATCH_NAMESPACE: "bench"
+  SNAPSHOT_PER_NODE: "true"
+  NODE_METRIC: "raft.node.lead"
+  NODE_LABEL: "service.node_id"
+  DATASOURCE_NAME: "VictoriaMetrics"
+  SNAPSHOT_NAME_PREFIX: "k6-benchmark"

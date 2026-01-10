@@ -82,11 +82,14 @@ The application reads Helm values from the Pulumi configuration file `Pulumi.dev
 - `tempo` - Tempo Helm values
 - `ledger` - Ledger v3 POC Helm values
 - `k6operator` - k6-operator Helm values (optional, defaults to empty)
+- `benchmarkOperator` - Benchmark operator values (optional, defaults to disabled)
 
 Grafana provisioning files (dashboards and datasources) are still read from the `config/grafana/provisioning/` directory:
 
 - `config/grafana/provisioning/dashboards/` - Grafana dashboard definitions
 - `config/grafana/provisioning/datasources/` - Grafana datasource provisioning
+- The VictoriaMetrics datasource uses a fixed `uid` (`VictoriaMetrics`) so dashboards can reference it reliably.
+- The Ledger Metrics dashboard node selector derives values from `raft.node.lead` using `query_result` + regex to keep it reliably populated.
 
 ## Updating Configuration
 
@@ -101,6 +104,16 @@ To update Grafana provisioning files:
 1. Modify the files in `config/grafana/provisioning/`
 2. Run `pulumi preview` to see changes
 3. Run `pulumi up` to apply changes
+
+## Benchmark Operator
+
+The benchmark operator can be deployed via Pulumi to watch `TestRun` objects and generate Grafana snapshots plus a Markdown report.
+
+1. Update `values/benchmark-operator.yaml` to set `enabled: true` and configure Grafana credentials.
+2. Run `pulumi preview` to see changes
+3. Run `pulumi up` to apply changes
+
+The operator is also available as a Helm chart at `misc/benchmark-operator/chart`.
 
 ## Destroying the Stack
 

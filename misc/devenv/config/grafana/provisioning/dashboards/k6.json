@@ -24,7 +24,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -83,7 +83,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -176,7 +176,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -238,7 +238,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -354,7 +354,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -447,7 +447,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$ds"
+        "uid": "VictoriaMetrics"
       },
       "fieldConfig": {
         "defaults": {
@@ -557,12 +557,18 @@
       {
         "current": {
           "text": "VictoriaMetrics",
-          "value": "victoriametrics"
+          "value": "VictoriaMetrics"
         },
         "label": "Datasource",
         "name": "ds",
-        "options": [],
-        "query": "prometheus",
+        "options": [
+          {
+            "text": "VictoriaMetrics",
+            "value": "VictoriaMetrics",
+            "selected": true
+          }
+        ],
+        "query": "VictoriaMetrics",
         "refresh": 1,
         "type": "datasource"
       },
@@ -574,7 +580,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "$ds"
+          "uid": "VictoriaMetrics"
         },
         "definition": "label_values(k6_vus, service.name)",
         "includeAll": true,

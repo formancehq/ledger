@@ -1,0 +1,36 @@
+image:
+  repository: ghcr.io/formancehq/benchmark-operator
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+watchNamespace: ""
+
+env:
+  GRAFANA_URL: ""
+  GRAFANA_USER: ""
+  GRAFANA_PASSWORD: ""
+  SNAPSHOT_PER_NODE: "true"
+  NODE_METRIC: "raft.node.lead"
+  NODE_LABEL: "service.node_id"
+  DATASOURCE_NAME: "VictoriaMetrics"
+  SNAPSHOT_NAME_PREFIX: "k6-benchmark"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
