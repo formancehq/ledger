@@ -1,10 +1,7 @@
 config:
-  devenv:registry: fo.registry.ovh-gra.kers.sh
-  devenv:formance-dev-registry-password:
-    secure: AAABAJWG8vfbacuJL1p7x1s2h92atbvsOuoerOTQQone2SEEvjVc3ImFC0v7U4UiOLu3Us+ovrznuwBhRj4muQ==
-  devenv:formance-dev-registry-username:
-    secure: AAABAAqJRN1HvAAoZ4a4fwR1xhH82F+Ygf6PW41xhkU9uyh6l180qw==
-  devenv:grafana:
+  ledger-exp-devenv:formance-dev-registry-password:
+    secure: AAABAPaMVBEAgJxOclkhhDaUtOnTyy1V0aErxzRr4T2q7at0nL+7h3u5xV8xNNj3nlq+CTo5PRDu9D+cgPvXFA==
+  ledger-exp-devenv:grafana:
     adminPassword: admin
     datasources:
       datasources.yaml:
@@ -97,10 +94,10 @@ config:
         searchNamespace: monitoring
       datasources:
         enabled: true
-  devenv:k6operator:
+  ledger-exp-devenv:k6operator:
     namespace:
       create: false
-  devenv:ledger:
+  ledger-exp-devenv:ledger:
     config:
       bindAddr: 0.0.0.0:8888
       dataDir: /data/raft
@@ -188,7 +185,11 @@ config:
       grpcPort: 8888
       httpPort: 9000
       type: ClusterIP
-  devenv:loki:
+  ledger-exp-devenv:ledger-exp-formance-dev-registry-password:
+    secure: AAABAK2awxYQ7ganrO/Ejx+duAcsREY4Mzv2UxayK1TiqKJoE5c5C4L4O6Ykjvnmd3Ub9/zEPeR88CKz/Y1Igw==
+  ledger-exp-devenv:ledger-exp-formance-dev-registry-username:
+    secure: AAABAFbSv4doXf469x49kIH2r5yGJt5xZr6DaBDlJtAIVI4VR750gg==
+  ledger-exp-devenv:loki:
     backend:
       replicas: 0
     deploymentMode: SingleBinary
@@ -261,7 +262,7 @@ config:
       replicas: 1
     write:
       replicas: 0
-  devenv:otlp:
+  ledger-exp-devenv:otlp:
     config:
       exporters:
         debug:
@@ -318,7 +319,8 @@ config:
         enabled: true
       otlp-http:
         enabled: false
-  devenv:tempo:
+  ledger-exp-devenv:registry: fo.registry.ovh-gra.kers.sh
+  ledger-exp-devenv:tempo:
     persistence:
       enabled: true
       size: 10Gi
@@ -336,7 +338,7 @@ config:
           enabled: true
         http:
           enabled: false
-  devenv:victoriametrics:
+  ledger-exp-devenv:victoriametrics:
     promscrape:
       enabled: true
     server:
@@ -352,3 +354,5 @@ config:
           memory: 256Mi
     service:
       type: ClusterIP
+  ledger-exp-devenv:formance-dev-registry-username:
+    secure: AAABAMLoXL1YUSXws+8z8cBmheRQ8I7I/FdiHNHAioYdIhkXiz1n0Q==

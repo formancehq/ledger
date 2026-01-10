@@ -1,4 +1,4 @@
-name: devenv
+name: ledger-exp-devenv
 runtime:
   name: go
   options:
