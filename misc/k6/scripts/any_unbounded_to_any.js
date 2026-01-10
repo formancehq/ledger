@@ -4,8 +4,8 @@
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
-import { config } from './config.js';
-import { bulkOperation } from './utils.js';
+import { config } from './shared/config.js';
+import { bulkOperation } from './shared/utils.js';
 import exec from 'k6/execution';
 
 // Custom metrics
@@ -50,11 +50,8 @@ function generateTransaction(iteration) {
 }
 
 export function setup() {
-  options.stages = [
-    { duration: '10s', target: config.vus },
-    { duration: config.duration, target: config.vus },
-    { duration: '10s', target: 0 },
-  ];
+  console.info("Start with config: ");
+  console.info(JSON.stringify(options, null, 2));
 }
 
 export default function () {

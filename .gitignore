@@ -52,3 +52,6 @@ build/
 
 # K6 outputs
 summary.json
+
+# K6 archives (generated files)
+misc/k6/archives/

@@ -1,0 +1,11 @@
+# Default values for k6-run chart
+script: ""
+spec:
+  parallelism: 1
+metadata:
+  namespace: ""
+runner:
+  env:
+    ledgerUrl: "http://ledger-exp.ledger.svc.cluster.local:9000"
+    stages: ""
+archiveData: ""

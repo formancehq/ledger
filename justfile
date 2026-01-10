@@ -95,4 +95,3 @@ k8s-describe-pod:
 k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-v3-poc
     kubectl rollout status statefulset/ledger-v3-poc
-

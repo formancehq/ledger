@@ -1,0 +1,83 @@
+
+# Create k6 archive for a test script
+# Usage: just k6-create-archive world_to_bank.js
+k6-create-archive SCRIPT:
+    #!/usr/bin/env bash
+    set -e
+    SCRIPT_NAME="{{SCRIPT}}"
+    SCRIPT_PATH="./scripts/${SCRIPT_NAME}"
+    ARCHIVE_NAME="${SCRIPT_NAME%.js}.tar"
+    ARCHIVE_PATH="./archives/${ARCHIVE_NAME}"
+    
+    # Check if script exists
+    if [ ! -f "${SCRIPT_PATH}" ]; then
+        echo "Error: Script ${SCRIPT_PATH} not found"
+        exit 1
+    fi
+    
+    # Create archives directory if it doesn't exist
+    mkdir -p archives
+    
+    # Generate k6 archive
+    echo "Creating k6 archive for ${SCRIPT_NAME}..."
+    cd scripts
+    k6 archive "${SCRIPT_NAME}" -O "../archives/${ARCHIVE_NAME}"
+    cd ..
+    
+    echo "✓ Archive ${ARCHIVE_NAME} created successfully"
+
+# Install k6 TestRun from Helm chart (creates ConfigMap and TestRun)
+# Usage: just k6-install-testrun any_unbounded_to_any --parallelism 10 --stages "30s:512,10m:512,30s:0"
+k6-install-testrun SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="bench" LEDGER_URL="http://ledger-exp.ledger.svc.cluster.local:9000":
+    #!/usr/bin/env bash
+    set -e
+    SCRIPT_NAME="{{SCRIPT}}"
+    SCRIPT_BASE="${SCRIPT_NAME%.js}"
+    ARCHIVE_NAME="${SCRIPT_BASE}.tar"
+    ARCHIVE_PATH="./archives/${ARCHIVE_NAME}"
+    RELEASE_NAME="k6-run-${SCRIPT_BASE//_/-}"
+    
+    # Check if script exists
+    if [ ! -f "scripts/${SCRIPT_NAME}" ]; then
+        echo "Error: Script scripts/${SCRIPT_NAME} not found"
+        exit 1
+    fi
+    
+    # Check if archive exists, create it if not
+    if [ ! -f "${ARCHIVE_PATH}" ]; then
+        echo "Archive ${ARCHIVE_PATH} not found. Creating it..."
+        just k6-create-archive {{SCRIPT}}
+    fi
+    
+    # Encode archive to base64
+    ARCHIVE_BASE64=$(base64 -i "${ARCHIVE_PATH}" | tr -d '\n')
+    
+    # Build helm install command with values
+    HELM_ARGS=(
+        "upgrade" "--install"
+        "${RELEASE_NAME}"
+        "run-chart"
+        "--namespace" "{{NAMESPACE}}"
+        "--create-namespace"
+        "--set" "script=${SCRIPT_BASE}"
+        "--set" "spec.parallelism={{PARALLELISM}}"
+        "--set" "metadata.namespace={{NAMESPACE}}"
+        "--set" "runner.env.ledgerUrl={{LEDGER_URL}}"
+        "--set" "archiveData=${ARCHIVE_BASE64}"
+    )
+    
+    # Add optional stages if provided
+    if [ -n "{{STAGES}}" ]; then
+        HELM_ARGS+=("--set-string" "runner.env.stages={{STAGES}}")
+    fi
+    
+    # Install TestRun from Helm chart (creates ConfigMap and TestRun)
+    echo "Installing k6 TestRun for ${SCRIPT_NAME}..."
+    helm "${HELM_ARGS[@]}"
+    
+    echo "✓ TestRun installed: ${RELEASE_NAME} in namespace {{NAMESPACE}}"
+
+# Create k6 archive and install TestRun (ConfigMap is created by Helm chart)
+# Usage: just k6-deploy any_unbounded_to_any --parallelism 10 --stages "30s:512,10m:512,30s:0"
+k6-deploy SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="bench" LEDGER_URL="http://ledger-exp.ledger.svc.cluster.local:9000":
+    just k6-install-testrun {{SCRIPT}} {{PARALLELISM}} "{{STAGES}}" {{NAMESPACE}} {{LEDGER_URL}}

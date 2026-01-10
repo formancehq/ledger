@@ -88,13 +88,6 @@ func main() {
 			imageTag = "latest"
 		}
 
-		// Get the project root directory (parent of devenv)
-		// devenv is in misc/devenv, so we need to go up two levels to reach project root
-		projectRoot, err := filepath.Abs("../..")
-		if err != nil {
-			return fmt.Errorf("failed to get project root: %w", err)
-		}
-
 		// Build Docker image using the same parameters as justfile
 		dockerImage, err := dockerbuild.NewImage(ctx, "formancehq/ledger-exp", &dockerbuild.ImageArgs{
 			Context: dockerbuild.BuildContextArgs{
@@ -164,28 +157,6 @@ func main() {
 				return "", fmt.Errorf("failed to read text file %s: %w", fullPath, err)
 			}
 			return string(data), nil
-		}
-
-		// Helper function to read directory and create a map of files
-		readDirectoryFiles := func(dirPath string) (map[string]string, error) {
-			// dirPath is relative to project root (e.g., "k6/scripts")
-			fullPath := filepath.Join(projectRoot, dirPath)
-			files := make(map[string]string)
-			entries, err := os.ReadDir(fullPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read directory %s: %w", fullPath, err)
-			}
-			for _, entry := range entries {
-				if !entry.IsDir() {
-					filePath := filepath.Join(fullPath, entry.Name())
-					data, err := os.ReadFile(filePath)
-					if err != nil {
-						return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
-					}
-					files[entry.Name()] = string(data)
-				}
-			}
-			return files, nil
 		}
 
 		// Deploy VictoriaMetrics
@@ -271,7 +242,7 @@ func main() {
 				},
 			},
 			Data: pulumi.StringMap{
-				"ledger-metrics.json": pulumi.String(string(dashboardJsonBytes)),
+				"ledger-metrics.json": pulumi.String(dashboardJsonBytes),
 			},
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
@@ -381,22 +352,6 @@ func main() {
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy k6-operator: %w", err)
-		}
-
-		// Create k6-scripts ConfigMap
-		k6ScriptsFiles, err := readDirectoryFiles("misc/k6/scripts")
-		if err != nil {
-			return fmt.Errorf("failed to read k6 scripts directory: %w", err)
-		}
-		_, err = v1.NewConfigMap(ctx, "k6-scripts", &v1.ConfigMapArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("k6-scripts"),
-				Namespace: benchNamespace.Metadata.Name(),
-			},
-			Data: pulumi.ToStringMap(k6ScriptsFiles),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace, k6Operator}))
-		if err != nil {
-			return fmt.Errorf("failed to create k6-scripts ConfigMap: %w", err)
 		}
 
 		// Export outputs

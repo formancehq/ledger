@@ -1,0 +1,6 @@
+apiVersion: v2
+name: k6-run
+description: A Helm chart for k6 TestRun resources
+type: application
+version: 0.1.0
+appVersion: "1.0"

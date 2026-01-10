@@ -3,8 +3,8 @@
 
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
-import { config } from './config.js';
-import { bulkOperation } from './utils.js';
+import { config } from './shared/config.js';
+import { bulkOperation } from './shared/utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
