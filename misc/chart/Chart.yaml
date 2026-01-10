@@ -1,5 +1,5 @@
 apiVersion: v2
-name: ledger-v3-poc
+name: ledger-exp
 description: A Helm chart for Ledger v3 POC with Raft consensus cluster
 type: application
 version: 0.1.0

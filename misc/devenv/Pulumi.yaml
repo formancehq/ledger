@@ -1,3 +1,6 @@
 name: devenv
-runtime: go
+runtime:
+  name: go
+  options:
+    buildTarget: ./bin/pulumi
 description: Development environment for Ledger v3 POC observability stack

@@ -1,97 +1,94 @@
 config:
-  victoriametrics:
-    server:
-      persistentVolume:
-        enabled: true
-        size: 10Gi
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    service:
-      type: ClusterIP
-    promscrape:
-      enabled: true
-  grafana:
-    adminPassword: "admin"
-    service:
-      type: ClusterIP
-    plugins:
-      - marcusolsson-json-datasource
-      - yesoreyeram-infinity-datasource
-      - pgillich-tree-panel
-    grafana.ini:
-      snapshots:
-        external_enabled: false
-      server:
-        root_url: https://grafana.ledger-exp.v2.formance.dev
-        serve_from_sub_path: false
-    deploymentStrategy:
-      type: Recreate
+  devenv:registry: fo.registry.ovh-gra.kers.sh
+  devenv:formance-dev-registry-password:
+    secure: AAABAJWG8vfbacuJL1p7x1s2h92atbvsOuoerOTQQone2SEEvjVc3ImFC0v7U4UiOLu3Us+ovrznuwBhRj4muQ==
+  devenv:formance-dev-registry-username:
+    secure: AAABAAqJRN1HvAAoZ4a4fwR1xhH82F+Ygf6PW41xhkU9uyh6l180qw==
+  devenv:grafana:
+    adminPassword: admin
     datasources:
       datasources.yaml:
         apiVersion: 1
         datasources:
-          - name: VictoriaMetrics
-            type: prometheus
-            access: proxy
-            url: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
+          - access: proxy
+            editable: true
             isDefault: true
+            name: VictoriaMetrics
+            type: prometheus
+            url: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
+          - access: proxy
             editable: true
-          - name: Tempo
+            name: Tempo
             type: tempo
-            access: proxy
             url: http://tempo.monitoring.svc.cluster.local:3200
+          - access: proxy
             editable: true
-          - name: Loki
+            name: Loki
             type: loki
-            access: proxy
             url: http://loki.monitoring.svc.cluster.local:3100
-            editable: true
-          - name: HTTP Infinity
-            uid: http-infinity
-            type: yesoreyeram-infinity-datasource
-            access: proxy
+          - access: proxy
             editable: true
             isDefault: false
             jsonData:
               allowedHosts:
                 - http://ledger-v3-poc.default.svc.cluster.local:9000
-          - name: HTTP JSON API
-            uid: http-json-api
-            type: marcusolsson-json-datasource
-            access: proxy
-            isDefault: false
+            name: HTTP Infinity
+            type: yesoreyeram-infinity-datasource
+            uid: http-infinity
+          - access: proxy
             editable: true
-            url: http://ledger-v3-poc.default.svc.cluster.local:9000
+            isDefault: false
             jsonData:
               timeout: 10
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 300m
-        memory: 512Mi
+            name: HTTP JSON API
+            type: marcusolsson-json-datasource
+            uid: http-json-api
+            url: http://ledger-v3-poc.default.svc.cluster.local:9000
+    deploymentStrategy:
+      type: Recreate
+    grafana.ini:
+      server:
+        root_url: https://grafana.ledger-exp.v2.formance.dev
+        serve_from_sub_path: false
+      snapshots:
+        external_enabled: false
     ingress:
-      enabled: true
       annotations:
         cert-manager.io/cluster-issuer: zerossl
-        nginx.ingress.kubernetes.io/proxy-buffer-size: "4m"
+        nginx.ingress.kubernetes.io/proxy-body-size: 10m
+        nginx.ingress.kubernetes.io/proxy-buffer-size: 4m
         nginx.ingress.kubernetes.io/proxy-buffers-number: "8"
-        nginx.ingress.kubernetes.io/proxy-busy-buffers-size: "4m"
-        nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+        nginx.ingress.kubernetes.io/proxy-busy-buffers-size: 4m
+      enabled: true
       hosts:
         - grafana.ledger-exp.v2.formance.dev
       path: /
       pathType: Prefix
       tls:
-        - secretName: grafana-tls
-          hosts:
+        - hosts:
             - grafana.ledger-exp.v2.formance.dev
+          secretName: grafana-tls
+    persistence:
+      accessModes:
+        - ReadWriteOnce
+      enabled: true
+      finalizers:
+        - kubernetes.io/pvc-protection
+      size: 5Gi
+      type: pvc
+    plugins:
+      - marcusolsson-json-datasource
+      - yesoreyeram-infinity-datasource
+      - pgillich-tree-panel
+    resources:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    service:
+      type: ClusterIP
     sidecar:
       dashboards:
         enabled: true
@@ -100,43 +97,103 @@ config:
         searchNamespace: monitoring
       datasources:
         enabled: true
-    persistence:
+  devenv:k6operator:
+    namespace:
+      create: false
+  devenv:ledger:
+    config:
+      bindAddr: 0.0.0.0:8888
+      dataDir: /data/raft
+      debug: false
+      httpPort: 9000
+      monitoring:
+        logs:
+          enabled: true
+          endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+          exporter: otlp
+          insecure: "true"
+          mode: grpc
+          port: "4317"
+        metrics:
+          batch: "true"
+          enabled: true
+          endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+          exporter: otlp
+          exporterPushInterval: 5s
+          insecure: "true"
+          mode: grpc
+          port: "4317"
+          runtimeMinimumReadMemStatsInterval: 5s
+        serviceName: ledger-v3-poc
+        traces:
+          batch: "true"
+          enabled: true
+          endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+          exporter: otlp
+          insecure: "true"
+          mode: grpc
+          port: "4317"
+      raft:
+        electionTick: 10
+        heartbeatTick: 1
+        maxInflightMsgs: 512
+        maxSizePerMsg: 2097152
+        multiplexedTransport:
+          receptionQueues:
+            - 10
+            - 2048
+            - 2048
+          sendQueues:
+            - 10
+            - 1024
+            - 1024
+        proposeQueueCapacity: 512
+        snapshotInterval: 30s
+        snapshotThreshold: 15000
+        tickInterval: 100ms
+        transport:
+          receptionQueues:
+            - 10
+            - 2048
+            - 2048
+          sendQueues:
+            - 10
+            - 1024
+            - 1024
+    headlessService:
       enabled: true
-      type: pvc
-      size: 5Gi
-      accessModes:
-        - ReadWriteOnce
-      finalizers:
-        - kubernetes.io/pvc-protection
-  loki:
-    deploymentMode: SingleBinary
-    singleBinary:
-      replicas: 1
-    read:
-      replicas: 0
-    write:
-      replicas: 0
+    imagePullSecrets:
+      - name: zot
+    ingress:
+      enabled: true
+      hosts:
+        - host: ledger-exp.v2.formance.dev
+          paths:
+            - path: /
+              pathType: Prefix
+      perPod:
+        enabled: true
+    persistence:
+      persistentVolumeClaimRetentionPolicy:
+        whenDeleted: Delete
+    replicaCount: 3
+    resources:
+      limits:
+        cpu: 4000m
+        memory: 2048Mi
+      requests:
+        cpu: 4000m
+        memory: 2048Mi
+    service:
+      grpcPort: 8888
+      httpPort: 9000
+      type: ClusterIP
+  devenv:loki:
     backend:
       replicas: 0
-    persistence:
-      enabled: true
-      size: 10Gi
+    deploymentMode: SingleBinary
     loki:
       auth_enabled: false
-      schemaConfig:
-        configs:
-          - from: "2024-04-01"
-            store: tsdb
-            object_store: filesystem
-            schema: v13
-            index:
-              prefix: loki_index_
-              period: 24h
-      storage:
-        bucketNames:
-          chunks: loki-chunks
-          ruler: loki-ruler
-          admin: loki-admin
       config: |
         auth_enabled: false
 
@@ -178,170 +235,120 @@ config:
                   attributes:
                     - service.name
                     - service.node_id
-        
+
         ruler:
           enable_api: false
-  otlp:
-    mode: deployment
-    image:
-      repository: "otel/opentelemetry-collector-contrib"
+      schemaConfig:
+        configs:
+          - from: "2024-04-01"
+            index:
+              period: 24h
+              prefix: loki_index_
+            object_store: filesystem
+            schema: v13
+            store: tsdb
+      storage:
+        bucketNames:
+          admin: loki-admin
+          chunks: loki-chunks
+          ruler: loki-ruler
+    persistence:
+      enabled: true
+      size: 10Gi
+    read:
+      replicas: 0
+    singleBinary:
+      replicas: 1
+    write:
+      replicas: 0
+  devenv:otlp:
     config:
-      receivers:
-        otlp:
-          protocols:
-            grpc: {}
-      processors:
-        batch: {}
       exporters:
+        debug:
+          verbosity: detailed
+        otlp/tempo:
+          endpoint: tempo.monitoring.svc.cluster.local:4317
+          tls:
+            insecure: true
+        otlphttp/logs:
+          endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp
+          tls:
+            insecure: true
         otlphttp/victoriametrics:
           compression: gzip
           encoding: proto
           metrics_endpoint: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428/opentelemetry/v1/metrics
           tls:
             insecure: true
-        otlp/tempo:
-          endpoint: tempo.monitoring.svc.cluster.local:4317
-          tls:
-            insecure: true
-        otlphttp/logs:
-          endpoint: "http://loki.monitoring.svc.cluster.local:3100/otlp"
-          tls:
-            insecure: true
-        debug:
-          verbosity: detailed
+      processors:
+        batch: {}
+      receivers:
+        otlp:
+          protocols:
+            grpc: {}
       service:
         pipelines:
-          metrics:
-            receivers: [otlp]
-            processors: [batch]
-            exporters: [otlphttp/victoriametrics]
-          traces:
-            receivers: [otlp]
-            processors: [batch]
-            exporters: [otlp/tempo]
           logs:
-            receivers: [otlp]
-            processors: [batch]
             exporters:
               - otlphttp/logs
               - debug
+            processors:
+              - batch
+            receivers:
+              - otlp
+          metrics:
+            exporters:
+              - otlphttp/victoriametrics
+            processors:
+              - batch
+            receivers:
+              - otlp
+          traces:
+            exporters:
+              - otlp/tempo
+            processors:
+              - batch
+            receivers:
+              - otlp
+    image:
+      repository: otel/opentelemetry-collector-contrib
+    mode: deployment
     ports:
       otlp:
         enabled: true
       otlp-http:
         enabled: false
-  tempo:
+  devenv:tempo:
+    persistence:
+      enabled: true
+      size: 10Gi
+    service:
+      type: ClusterIP
     tempo:
       storage:
         trace:
           backend: local
           local:
             path: /var/tempo/traces
-    persistence:
-      enabled: true
-      size: 10Gi
-    service:
-      type: ClusterIP
     traces:
       otlp:
         grpc:
           enabled: true
         http:
           enabled: false
-  ledger:
-    replicaCount: 3
-    image:
-      repository: fo.registry.ovh-gra.kers.sh/formancehq/ledger-v3-poc
-    imagePullSecrets:
-      - name: zot
-
-    config:
-      bindAddr: "0.0.0.0:8888"
-      httpPort: 9000
-      dataDir: "/data/raft"
-      debug: false
-      raft:
-        snapshotThreshold: 15000
-        snapshotInterval: "30s"
-        electionTick: 10
-        heartbeatTick: 1
-        maxSizePerMsg: 2097152
-        maxInflightMsgs: 512
-        tickInterval: "100ms"
-        proposeQueueCapacity: 512
-        transport:
-          receptionQueues: [10, 2048, 2048]
-          sendQueues: [10, 1024, 1024]
-        multiplexedTransport:
-          receptionQueues: [10, 2048, 2048]
-          sendQueues: [10, 1024, 1024]
-
-      monitoring:
-        # Service name for monitoring
-        serviceName: "ledger-v3-poc"
-        # Traces configuration
-        traces:
-          enabled: true
-          exporter: "otlp"
-          endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
-          port: "4317"
-          insecure: "true"
-          mode: "grpc"
-          batch: "true"
-        metrics:
-          enabled: true
-          exporter: "otlp"
-          endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
-          port: "4317"
-          insecure: "true"
-          mode: "grpc"
-          batch: "true"
-          exporterPushInterval: "5s"
-          runtimeMinimumReadMemStatsInterval: "5s"
-        logs:
-          enabled: true
-          exporter: "otlp"
-          endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local"
-          port: "4317"
-          insecure: "true"
-          mode: "grpc"
-
-    ingress:
+  devenv:victoriametrics:
+    promscrape:
       enabled: true
-      #className: ""  # Ingress class name (e.g., "nginx", "traefik")
-      #annotations: {}
-        # kubernetes.io/ingress.class: nginx
-        # kubernetes.io/tls-acme: "true"
-        # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-      hosts:
-        - host: ledger-exp.v2.formance.dev
-          paths:
-            - path: /
-              pathType: Prefix
-      #tls: []
-      # Uncomment to enable per-pod ingress (for accessing individual pods from outside)
-      perPod:
+    server:
+      persistentVolume:
         enabled: true
-      #   annotations:
-      #     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-      #     traefik.ingress.kubernetes.io/router.tls: "true"
-
-    persistence:
-      persistentVolumeClaimRetentionPolicy:
-        whenDeleted: Delete
+        size: 10Gi
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 256Mi
     service:
       type: ClusterIP
-      httpPort: 9000
-      grpcPort: 8888
-    headlessService:
-      enabled: true
-    resources:
-      limits:
-        cpu: 4000m
-        memory: 2048Mi
-      requests:
-        cpu: 4000m
-        memory: 2048Mi
-  k6operator:
-    namespace:
-      create: false

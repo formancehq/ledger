@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -54,11 +55,70 @@ func main() {
 			return result, nil
 		}
 
+		// Build Docker image
+		// Get registry from config or use default
+		registry := cfg.Get("registry")
+		if registry == "" {
+			registry = "ghcr.io"
+		}
+		imageTag := cfg.Get("imageTag")
+		if imageTag == "" {
+			imageTag = "latest"
+		}
+
+		// Get the project root directory (parent of devenv)
+		// devenv is in misc/devenv, so we need to go up two levels to reach project root
+		projectRoot, err := filepath.Abs("../..")
+		if err != nil {
+			return fmt.Errorf("failed to get project root: %w", err)
+		}
+
+		// Build Docker image using the same parameters as justfile
+		dockerImage, err := dockerbuild.NewImage(ctx, "formancehq/ledger-exp", &dockerbuild.ImageArgs{
+			Context: dockerbuild.BuildContextArgs{
+				Location: pulumi.String("../.."),
+			},
+			Builder: dockerbuild.BuilderConfigArgs{
+				Name: pulumi.String("formance-runner"), // todo: make configurable
+			},
+			CacheFrom: dockerbuild.CacheFromArray{
+				dockerbuild.CacheFromArgs{
+					Registry: dockerbuild.CacheFromRegistryArgs{
+						Ref: pulumi.Sprintf("%s/formancehq/ledger-exp:buildcache", registry),
+					},
+				},
+			},
+			CacheTo: dockerbuild.CacheToArray{
+				dockerbuild.CacheToArgs{
+					Registry: dockerbuild.CacheToRegistryArgs{
+						Ref: pulumi.Sprintf("%s/formancehq/ledger-exp:buildcache,mode=max", registry),
+					},
+				},
+			},
+			Dockerfile: dockerbuild.DockerfileArgs{
+				Location: pulumi.String("../../Dockerfile"),
+			},
+			Platforms: dockerbuild.PlatformArray{
+				"linux/amd64",
+			},
+			Push: pulumi.Bool(true),
+			Registries: dockerbuild.RegistryArray{
+				dockerbuild.RegistryArgs{
+					Address:  pulumi.String(registry),
+					Username: config.RequireSecret(ctx, "formance-dev-registry-username"),
+					Password: config.RequireSecret(ctx, "formance-dev-registry-password"),
+				},
+			},
+			Tags: pulumi.StringArray{
+				pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build Docker image: %w", err)
+		}
+
 		// Get the config directory for Grafana provisioning files (still needed for dashboards and datasources)
 		k8sConfigPath := filepath.Join("config")
-		// Get the project root directory (parent of devenv)
-		// devenv is in deployments/devenv, so we need to go up two levels to reach project root
-		projectRoot := filepath.Join("..", "..")
 
 		// Helper function to read JSON files (still needed for dashboard JSON)
 		readJsonFile := func(filePath string) (map[string]interface{}, error) {
@@ -112,12 +172,11 @@ func main() {
 			return fmt.Errorf("failed to read VictoriaMetrics values: %w", err)
 		}
 		victoriaMetrics, err := helm.NewRelease(ctx, "victoriametrics", &helm.ReleaseArgs{
-			Name:            pulumi.String("vm"),
-			Chart:           pulumi.String("victoria-metrics-single"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://victoriametrics.github.io/helm-charts/")},
-			Namespace:       monitoringNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(victoriaMetricsValues),
+			Name:           pulumi.String("vm"),
+			Chart:          pulumi.String("victoria-metrics-single"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://victoriametrics.github.io/helm-charts/")},
+			Namespace:      monitoringNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(victoriaMetricsValues),
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy VictoriaMetrics: %w", err)
@@ -129,12 +188,11 @@ func main() {
 			return fmt.Errorf("failed to read Tempo values: %w", err)
 		}
 		tempo, err := helm.NewRelease(ctx, "tempo", &helm.ReleaseArgs{
-			Name:            pulumi.String("tempo"),
-			Chart:           pulumi.String("tempo"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       monitoringNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(tempoValues),
+			Name:           pulumi.String("tempo"),
+			Chart:          pulumi.String("tempo"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+			Namespace:      monitoringNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(tempoValues),
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Tempo: %w", err)
@@ -146,12 +204,11 @@ func main() {
 			return fmt.Errorf("failed to read Loki values: %w", err)
 		}
 		loki, err := helm.NewRelease(ctx, "loki", &helm.ReleaseArgs{
-			Name:            pulumi.String("loki"),
-			Chart:           pulumi.String("loki"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       monitoringNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(lokiValues),
+			Name:           pulumi.String("loki"),
+			Chart:          pulumi.String("loki"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+			Namespace:      monitoringNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(lokiValues),
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Loki: %w", err)
@@ -163,12 +220,11 @@ func main() {
 			return fmt.Errorf("failed to read OTLP values: %w", err)
 		}
 		otlp, err := helm.NewRelease(ctx, "otel", &helm.ReleaseArgs{
-			Name:            pulumi.String("otel"),
-			Chart:           pulumi.String("opentelemetry-collector"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://open-telemetry.github.io/opentelemetry-helm-charts")},
-			Namespace:       monitoringNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(otlpValues),
+			Name:           pulumi.String("otel"),
+			Chart:          pulumi.String("opentelemetry-collector"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://open-telemetry.github.io/opentelemetry-helm-charts")},
+			Namespace:      monitoringNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(otlpValues),
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy OpenTelemetry Collector: %w", err)
@@ -244,12 +300,11 @@ func main() {
 			return fmt.Errorf("failed to read Grafana values: %w", err)
 		}
 		grafana, err := helm.NewRelease(ctx, "grafana", &helm.ReleaseArgs{
-			Name:            pulumi.String("grafana"),
-			Chart:           pulumi.String("grafana"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       monitoringNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(grafanaValues),
+			Name:           pulumi.String("grafana"),
+			Chart:          pulumi.String("grafana"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+			Namespace:      monitoringNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(grafanaValues),
 		}, pulumi.DependsOn([]pulumi.Resource{
 			monitoringNamespace,
 			victoriaMetrics,
@@ -268,19 +323,22 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("failed to read Ledger values: %w", err)
 		}
+		ledgerValues["image"] = map[string]any{
+			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", registry),
+			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
+		}
 		// Get the chart path (relative to the devenv directory where Pulumi.yaml is)
 		// The chart is in ../chart relative to devenv
 		chartPath := filepath.Join("..", "chart")
 		ledger, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
-			Name:             pulumi.String("ledger-v3-poc"),
+			Name:             pulumi.String("ledger-exp"),
 			Chart:            pulumi.String(chartPath),
 			Namespace:        ledgerNamespace.Metadata.Name(),
-			CreateNamespace:  pulumi.Bool(false),
 			Values:           pulumi.ToMap(ledgerValues),
 			DependencyUpdate: pulumi.Bool(true),
 		}, pulumi.DependsOn([]pulumi.Resource{
-			monitoringNamespace,
 			otlp,
+			dockerImage,
 		}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy Ledger: %w", err)
@@ -293,12 +351,11 @@ func main() {
 			k6OperatorValues = make(map[string]interface{})
 		}
 		k6Operator, err := helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
-			Name:            pulumi.String("k6-operator"),
-			Chart:           pulumi.String("k6-operator"),
-			RepositoryOpts:  &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:       benchNamespace.Metadata.Name(),
-			CreateNamespace: pulumi.Bool(false),
-			Values:          pulumi.ToMap(k6OperatorValues),
+			Name:           pulumi.String("k6-operator"),
+			Chart:          pulumi.String("k6-operator"),
+			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+			Namespace:      benchNamespace.Metadata.Name(),
+			Values:         pulumi.ToMap(k6OperatorValues),
 		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
 		if err != nil {
 			return fmt.Errorf("failed to deploy k6-operator: %w", err)
@@ -322,6 +379,7 @@ func main() {
 
 		// Export outputs
 		ctx.Export("monitoringNamespace", monitoringNamespace.Metadata.Name())
+		ctx.Export("dockerImage", dockerImage.Tags.Index(pulumi.Int(0)))
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)
 		ctx.Export("lokiRelease", loki.Name)

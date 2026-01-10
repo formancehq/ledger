@@ -72,20 +72,10 @@ generate-proto:
         misc/proto/commands/ledger_commands.proto \
         misc/proto/commands/system_commands.proto
 
-docker-build:
-    docker buildx build \
-        --platform linux/amd64 \
-        --push \
-        -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest \
-        --cache-to type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache,mode=max \
-        --cache-from type=registry,ref=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:buildcache .
-    #docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
+# Docker builds are handled via Pulumi
 
-k8s-install: docker-build
-    helm upgrade --install ledger-v3-poc \
-        ./deployments/chart \
-        --set image.repository=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc \
-        --values ./deployments/chart/dev-values.yaml
+k8s-install:
+    cd misc/devenv && pulumi up
 
 k8s-uninstall:
     helm uninstall ledger-v3-poc
