@@ -8,6 +8,9 @@ metadata:
   {{- end }}
 spec:
   parallelism: {{ .Values.spec.parallelism }}
+  {{ if .Values.runner.otlp.endpoint }}
+  arguments: -o opentelemetry
+  {{ end }}
   {{- if .Values.spec.separate }}
   separate: {{ .Values.spec.separate }}
   {{- end }}
@@ -26,3 +29,15 @@ spec:
     - name: K6_STAGES
       value: "{{ .Values.runner.env.stages }}"
     {{- end }}
+    {{ if .Values.runner.otlp.endpoint }}
+    - name: K6_OTEL_GRPC_EXPORTER_ENDPOINT
+      value: {{ .Values.runner.otlp.endpoint }}
+    - name: K6_OTEL_GRPC_EXPORTER_INSECURE
+      value: "true"
+    - name: K6_OTEL_METRICS_FLUSH_INTERVAL
+      value: "5s"
+    - name: K6_OTEL_SERVICE_NAME
+      value: k6-loadtest
+    - name: K6_OTEL_EXPORTER_OTLP_PROTOCOL
+      value: http/protobuf
+    {{ end }}

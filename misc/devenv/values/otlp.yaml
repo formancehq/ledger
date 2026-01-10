@@ -1,7 +1,7 @@
 config:
   exporters:
-    debug:
-      verbosity: detailed
+#    debug:
+#      verbosity: detailed
     otlp/tempo:
       endpoint: tempo.monitoring.svc.cluster.local:4317
       tls:
@@ -22,6 +22,7 @@ config:
     otlp:
       protocols:
         grpc: {}
+        http: {}
   service:
     pipelines:
       logs:
@@ -53,4 +54,4 @@ ports:
   otlp:
     enabled: true
   otlp-http:
-    enabled: false
+    enabled: true
