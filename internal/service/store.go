@@ -98,6 +98,8 @@ type RuntimeUpdate struct {
 	AccountMetadataDeletes map[string][]string
 	// IdempotencyKeys contains idempotency entries to insert: map[key]{hash, logID}
 	IdempotencyKeys map[string]*ledgerpb.IdempotencyEntry
+	// TransactionIDs contains transaction ID to log ID mappings: map[transactionID]logID
+	TransactionIDs map[uint64]uint64
 	// LastProcessedLogID is the ID of the last processed log
 	LastProcessedLogID uint64
 }
@@ -111,6 +113,8 @@ type RuntimeStore interface {
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
 	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
+	// GetLogIDForTransactionID retrieves the log ID for a given transaction ID
+	GetLogIDForTransactionID(ctx context.Context, transactionID uint64) (uint64, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
 }

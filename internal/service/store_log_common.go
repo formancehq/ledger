@@ -137,6 +137,8 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 
 	// Accumulate idempotency entries for batch processing
 	idempotencyKeys := make(map[string]*ledgerpb.IdempotencyEntry)
+	// Accumulate transaction ID to log ID mappings
+	transactionIDs := make(map[uint64]uint64)
 
 	for _, log := range logs {
 		// Validate log data
@@ -160,23 +162,37 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
 				// Accumulate account and metadata updates for batch processing
 				accumulateAccountsFromTransaction(accountMetadataBatch, payload.CreatedTransaction)
+				// Store transaction ID -> log ID mapping
+				if payload.CreatedTransaction.Transaction.Id != 0 {
+					transactionIDs[payload.CreatedTransaction.Transaction.Id] = log.Id
+				}
 			}
 		case *ledgerpb.LogPayload_RevertedTransaction:
-			if payload.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction != nil {
-				// Reverse postings for balance update (subtract from destination, add to source)
-				reversedPostings := make([]*ledgerpb.Posting, len(payload.RevertedTransaction.RevertedTransaction.Postings))
-				for i, posting := range payload.RevertedTransaction.RevertedTransaction.Postings {
-					if posting != nil {
-						reversedPostings[i] = &ledgerpb.Posting{
-							Source:      posting.Destination,
-							Destination: posting.Source,
-							Asset:       posting.Asset,
-							Amount:      posting.Amount,
+			if payload.RevertedTransaction != nil {
+				// Store transaction ID -> log ID mapping for reverted transaction
+				if payload.RevertedTransaction.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction.Id != 0 {
+					transactionIDs[payload.RevertedTransaction.RevertedTransaction.Id] = log.Id
+				}
+				// Store transaction ID -> log ID mapping for revert transaction
+				if payload.RevertedTransaction.RevertTransaction != nil && payload.RevertedTransaction.RevertTransaction.Id != 0 {
+					transactionIDs[payload.RevertedTransaction.RevertTransaction.Id] = log.Id
+				}
+				if payload.RevertedTransaction.RevertedTransaction != nil {
+					// Reverse postings for balance update (subtract from destination, add to source)
+					reversedPostings := make([]*ledgerpb.Posting, len(payload.RevertedTransaction.RevertedTransaction.Postings))
+					for i, posting := range payload.RevertedTransaction.RevertedTransaction.Postings {
+						if posting != nil {
+							reversedPostings[i] = &ledgerpb.Posting{
+								Source:      posting.Destination,
+								Destination: posting.Source,
+								Asset:       posting.Asset,
+								Amount:      posting.Amount,
+							}
 						}
 					}
+					// Accumulate balance differences (reversed)
+					accumulateBalanceDiffs(balanceDiffs, reversedPostings)
 				}
-				// Accumulate balance differences (reversed)
-				accumulateBalanceDiffs(balanceDiffs, reversedPostings)
 			}
 		case *ledgerpb.LogPayload_SavedMetadata:
 			if payload.SavedMetadata != nil {
@@ -196,6 +212,7 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		AccountMetadata:        accountMetadataBatch,
 		AccountMetadataDeletes: accountMetadataDeletes,
 		IdempotencyKeys:        idempotencyKeys,
+		TransactionIDs:         transactionIDs,
 		LastProcessedLogID:     logs[len(logs)-1].Id,
 	}, nil
 }

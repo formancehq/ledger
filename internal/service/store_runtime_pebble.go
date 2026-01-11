@@ -30,21 +30,23 @@ type PebbleRuntimeStore struct {
 	logger logging.Logger
 }
 
-// Key prefixes for Pebble storage
-const (
-	keyPrefixLog             = "log:"
-	keyPrefixLogIdempotency  = "log-idempotency:"
-	keyPrefixBalance         = "balance:"
-	keyPrefixAccountMetadata = "metadata:"
-	keyPrefixIdempotency     = "idempotency:"
+// Key prefixes for Pebble storage (3 bytes max)
+var (
+	keyPrefixLog             = []byte("l")
+	keyPrefixLogIdempotency  = []byte("lid")
+	keyPrefixBalance         = []byte("bal")
+	keyPrefixAccountMetadata = []byte("met")
+	keyPrefixIdempotency     = []byte("idm")
+	keyPrefixTransactionID   = []byte("tid")
 )
 
 // logKey returns the key for a log entry.
 func logKey(id uint64) []byte {
 	// Use big-endian encoding for proper lexicographic ordering
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, id)
-	return append([]byte(keyPrefixLog), key...)
+	key := make([]byte, len(keyPrefixLog)+8)
+	copy(key, keyPrefixLog)
+	binary.BigEndian.PutUint64(key[len(keyPrefixLog):], id)
+	return key
 }
 
 // NewPebbleRuntimeStore creates a new PebbleRuntimeStore instance
@@ -131,7 +133,10 @@ func (s *PebbleRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.L
 
 		// Also create an index by idempotency key if present
 		if log.Idempotency != nil && log.Idempotency.Key != "" {
-			idempotencyKey := []byte(fmt.Sprintf("%s%s", keyPrefixLogIdempotency, log.Idempotency.Key))
+			keyBytes := []byte(log.Idempotency.Key)
+			idempotencyKey := make([]byte, len(keyPrefixLogIdempotency)+len(keyBytes))
+			copy(idempotencyKey, keyPrefixLogIdempotency)
+			copy(idempotencyKey[len(keyPrefixLogIdempotency):], keyBytes)
 			// Store the log ID as value for quick lookup
 			idValue := make([]byte, 8)
 			binary.BigEndian.PutUint64(idValue, log.Id)
@@ -212,6 +217,19 @@ func (s *PebbleRuntimeStore) applyRuntimeUpdate(batch *pebble.Batch, update Runt
 		}
 	}
 
+	// Apply transaction ID to log ID mappings
+	if len(update.TransactionIDs) > 0 {
+		for transactionID, logID := range update.TransactionIDs {
+			pebbleKey := transactionIDPebbleKey(transactionID)
+			// Store log ID as 8-byte big-endian value
+			logIDValue := make([]byte, 8)
+			binary.BigEndian.PutUint64(logIDValue, logID)
+			if err := batch.Set(pebbleKey, logIDValue, pebble.NoSync); err != nil {
+				return fmt.Errorf("inserting transaction ID mapping for transaction %d: %w", transactionID, err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -264,8 +282,13 @@ func (c *pebbleLogCursor) Close() error {
 // to: optional log id to stop at (0 = until end, inclusive).
 func (s *PebbleRuntimeStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	// Set up iterator bounds
-	lowerBound := []byte(keyPrefixLog)
-	upperBound := append([]byte(keyPrefixLog), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	lowerBound := make([]byte, len(keyPrefixLog))
+	copy(lowerBound, keyPrefixLog)
+	upperBound := make([]byte, len(keyPrefixLog)+8)
+	copy(upperBound, keyPrefixLog)
+	for i := len(keyPrefixLog); i < len(upperBound); i++ {
+		upperBound[i] = 0xFF
+	}
 
 	if from > 0 {
 		lowerBound = logKey(from)
@@ -322,9 +345,14 @@ func (s *PebbleRuntimeStore) GetLogWithID(ctx context.Context, id uint64) (*ledg
 
 // GetLastProcessedLogID retrieves the ID of the last inserted log.
 func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64, error) {
+	upperBound := make([]byte, len(keyPrefixLog)+8)
+	copy(upperBound, keyPrefixLog)
+	for i := len(keyPrefixLog); i < len(upperBound); i++ {
+		upperBound[i] = 0xFF
+	}
 	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(keyPrefixLog),
-		UpperBound: append([]byte(keyPrefixLog), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+		LowerBound: keyPrefixLog,
+		UpperBound: upperBound,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("creating iterator: %w", err)
@@ -348,25 +376,86 @@ func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64,
 }
 
 // balanceDiffKey returns a unique key for a balance diff entry
-// Format: balance:{account}:{asset}:{timestamp}
+// Format: bal{account}:{asset}:{timestamp}
 func balanceDiffKey(account, asset string, timestamp int64) []byte {
-	return []byte(fmt.Sprintf("%s%s:%s:%d", keyPrefixBalance, account, asset, timestamp))
+	accountBytes := []byte(account)
+	assetBytes := []byte(asset)
+	// Calculate size: prefix(3) + account + 1(:) + asset + 1(:) + timestamp(8)
+	size := len(keyPrefixBalance) + len(accountBytes) + 1 + len(assetBytes) + 1 + 8
+	key := make([]byte, size)
+	offset := 0
+	copy(key[offset:], keyPrefixBalance)
+	offset += len(keyPrefixBalance)
+	copy(key[offset:], accountBytes)
+	offset += len(accountBytes)
+	key[offset] = ':'
+	offset++
+	copy(key[offset:], assetBytes)
+	offset += len(assetBytes)
+	key[offset] = ':'
+	offset++
+	binary.BigEndian.PutUint64(key[offset:], uint64(timestamp))
+	return key
 }
 
 // balancePrefix returns the prefix for all balance diffs for a given account/asset
-// Format: balance:{account}:{asset}:
+// Format: bal{account}:{asset}:
 func balancePrefix(account, asset string) []byte {
-	return []byte(fmt.Sprintf("%s%s:%s:", keyPrefixBalance, account, asset))
+	accountBytes := []byte(account)
+	assetBytes := []byte(asset)
+	// Calculate size: prefix(3) + account + 1(:) + asset + 1(:)
+	size := len(keyPrefixBalance) + len(accountBytes) + 1 + len(assetBytes) + 1
+	key := make([]byte, size)
+	offset := 0
+	copy(key[offset:], keyPrefixBalance)
+	offset += len(keyPrefixBalance)
+	copy(key[offset:], accountBytes)
+	offset += len(accountBytes)
+	key[offset] = ':'
+	offset++
+	copy(key[offset:], assetBytes)
+	offset += len(assetBytes)
+	key[offset] = ':'
+	return key
 }
 
 // accountMetadataKey returns the key for an account metadata entry
+// Format: met{account}:{key}
 func accountMetadataKey(account, key string) []byte {
-	return []byte(fmt.Sprintf("%s%s:%s", keyPrefixAccountMetadata, account, key))
+	accountBytes := []byte(account)
+	keyBytes := []byte(key)
+	// Calculate size: prefix(3) + account + 1(:) + key
+	size := len(keyPrefixAccountMetadata) + len(accountBytes) + 1 + len(keyBytes)
+	result := make([]byte, size)
+	offset := 0
+	copy(result[offset:], keyPrefixAccountMetadata)
+	offset += len(keyPrefixAccountMetadata)
+	copy(result[offset:], accountBytes)
+	offset += len(accountBytes)
+	result[offset] = ':'
+	offset++
+	copy(result[offset:], keyBytes)
+	return result
 }
 
 // idempotencyPebbleKey returns the key for an idempotency entry
+// Format: idm{key}
 func idempotencyPebbleKey(key string) []byte {
-	return []byte(fmt.Sprintf("%s%s", keyPrefixIdempotency, key))
+	keyBytes := []byte(key)
+	result := make([]byte, len(keyPrefixIdempotency)+len(keyBytes))
+	copy(result, keyPrefixIdempotency)
+	copy(result[len(keyPrefixIdempotency):], keyBytes)
+	return result
+}
+
+// transactionIDPebbleKey returns the key for a transaction ID to log ID mapping
+// Format: tid{transactionID}
+func transactionIDPebbleKey(transactionID uint64) []byte {
+	// Use big-endian encoding for proper lexicographic ordering
+	key := make([]byte, len(keyPrefixTransactionID)+8)
+	copy(key, keyPrefixTransactionID)
+	binary.BigEndian.PutUint64(key[len(keyPrefixTransactionID):], transactionID)
+	return key
 }
 
 // ============================================================================
@@ -448,7 +537,11 @@ func (s *PebbleRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 
 	// Iterate over all accounts and read their metadata
 	for _, account := range accounts {
-		prefix := []byte(fmt.Sprintf("%s%s:", keyPrefixAccountMetadata, account))
+		accountBytes := []byte(account)
+		prefix := make([]byte, len(keyPrefixAccountMetadata)+len(accountBytes)+1)
+		copy(prefix, keyPrefixAccountMetadata)
+		copy(prefix[len(keyPrefixAccountMetadata):], accountBytes)
+		prefix[len(prefix)-1] = ':'
 
 		iter, err := s.db.NewIter(&pebble.IterOptions{
 			LowerBound: prefix,
@@ -460,10 +553,10 @@ func (s *PebbleRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 
 		for iter.First(); iter.Valid(); iter.Next() {
 			key := iter.Key()
-			// Extract metadata key from full key (format: "metadata:account:key")
-			keyStr := string(key)
-			if len(keyStr) > len(prefix) {
-				metadataKey := keyStr[len(prefix):]
+			// Extract metadata key from full key (format: "met{account}:{key}")
+			if len(key) > len(prefix) {
+				metadataKeyBytes := key[len(prefix):]
+				metadataKey := string(metadataKeyBytes)
 				valueBytes, err := iter.ValueAndErr()
 				if err != nil {
 					return nil, fmt.Errorf("reading metadata value for account %s key %s: %w", account, metadataKey, err)
@@ -505,6 +598,33 @@ func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	}
 
 	return idempotencyProto.Hash, idempotencyProto.LogId, nil
+}
+
+// GetLogIDForTransactionID retrieves the log ID for a given transaction ID (implements RuntimeStore)
+func (s *PebbleRuntimeStore) GetLogIDForTransactionID(ctx context.Context, transactionID uint64) (uint64, error) {
+	if transactionID == 0 {
+		return 0, nil
+	}
+
+	key := transactionIDPebbleKey(transactionID)
+	value, closer, err := s.db.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("querying transaction ID mapping: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	// Parse log ID from 8-byte big-endian value
+	if len(value) != 8 {
+		return 0, fmt.Errorf("invalid log ID value length: expected 8 bytes, got %d", len(value))
+	}
+	logID := binary.BigEndian.Uint64(value)
+
+	return logID, nil
 }
 
 // Metrics returns Pebble database metrics (implements MetricsAware)
