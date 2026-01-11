@@ -11,7 +11,7 @@ type HealthData struct {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if !s.cluster.IsHealthy() {
+	if !s.backend.IsHealthy() {
 		writeErrorResponse(w, http.StatusServiceUnavailable, "UNHEALTHY", errors.New("node is not connected to the cluster"))
 		return
 	}

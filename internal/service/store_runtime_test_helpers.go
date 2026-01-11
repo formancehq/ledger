@@ -19,13 +19,12 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	ledgerName := "test-ledger"
 
 	t.Run("Update", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 
-		testLogs := createTestLogs(t, ledgerName)
+		testLogs := createRuntimeTestLogs()
 		update, err := LogsToRuntimeUpdate(testLogs)
 		require.NoError(t, err)
 		err = store.Update(ctx, update)
@@ -35,7 +34,7 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 	t.Run("BalancesCalculation", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
-		testLogs := createTestLogs(t, ledgerName)
+		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
 		update, err := LogsToRuntimeUpdate(testLogs)
@@ -49,15 +48,15 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 			"user":  {"USD"},
 		})
 		require.NoError(t, err)
-		require.Equal(t, big.NewInt(0), balances["world"]["USD"])
-		require.Equal(t, big.NewInt(-50), balances["bank"]["USD"])
+		require.Equal(t, big.NewInt(-100), balances["world"]["USD"])
+		require.Equal(t, big.NewInt(50), balances["bank"]["USD"])
 		require.Equal(t, big.NewInt(50), balances["user"]["USD"])
 	})
 
 	t.Run("GetAccountMetadata", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
-		testLogs := createTestLogs(t, ledgerName)
+		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
 		update, err := LogsToRuntimeUpdate(testLogs)
@@ -177,7 +176,7 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 	t.Run("GetLogForIdempotencyKey", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
-		testLogs := createTestLogs(t, ledgerName)
+		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
 		update, err := LogsToRuntimeUpdate(testLogs)
@@ -212,4 +211,72 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		err := store.Update(ctx, update)
 		require.NoError(t, err)
 	})
+}
+
+func createRuntimeTestLogs() []*ledgerpb.Log {
+	now := libtime.New(time.Now())
+
+	logs := []*ledgerpb.Log{
+		func() *ledgerpb.Log {
+			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
+				Transaction: ledgerpb.NewTransaction().
+					WithPostings(
+						ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+					).
+					WithID(1).
+					WithTimestamp(now),
+				AccountMetadata: map[string]*ledgerpb.Metadata{
+					"bank": {Entries: metadata.Metadata{
+						"account_type": "asset",
+					}},
+				},
+			})
+			log := ledgerpb.NewLog(payload).
+				WithID(1).
+				WithIdempotencyKey("idempotency-key-1").
+				WithDate(now)
+			log.IdempotencyHash = "hash-1"
+			return log
+		}(),
+		func() *ledgerpb.Log {
+			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
+				Transaction: ledgerpb.NewTransaction().
+					WithPostings(
+						ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+					).
+					WithID(2).
+					WithTimestamp(now),
+			})
+			log := ledgerpb.NewLog(payload).
+				WithID(2).
+				WithIdempotencyKey("idempotency-key-2").
+				WithDate(now.Add(time.Second))
+			log.IdempotencyHash = "hash-2"
+			return log
+		}(),
+		func() *ledgerpb.Log {
+			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
+				TargetType: "ACCOUNT",
+				TargetId:   &ledgerpb.SavedMetadata_AccountId{AccountId: "bank"},
+				Metadata: metadata.Metadata{
+					"label": "Bank Account",
+				},
+			})
+			return ledgerpb.NewLog(payload).
+				WithID(3).
+				WithDate(now.Add(2 * time.Second))
+		}(),
+		func() *ledgerpb.Log {
+			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
+				TargetType: "ACCOUNT",
+				TargetId:   &ledgerpb.DeletedMetadata_AccountId{AccountId: "bank"},
+				Key:        "old_key",
+			})
+			return ledgerpb.NewLog(payload).
+				WithID(4).
+				WithDate(now.Add(3 * time.Second))
+		}(),
+	}
+
+	return logs
 }

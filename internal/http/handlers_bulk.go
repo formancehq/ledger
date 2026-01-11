@@ -17,7 +17,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledgerCluster, err := s.cluster.GetLedgerCluster(r.Context(), ledgerName)
+	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return
@@ -46,7 +46,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create bulker and run
-	err = s.bulkerFactory.CreateBulker(ledgerCluster, ledgerName).Run(r.Context(), send, receive,
+	err = s.bulkerFactory.CreateBulker(ledger, ledgerName).Run(r.Context(), send, receive,
 		bulking.BulkingOptions{
 			ContinueOnFailure: queryParamBool(r, "continueOnFailure"),
 			Atomic:            queryParamBool(r, "atomic"),

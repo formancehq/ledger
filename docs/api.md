@@ -431,23 +431,6 @@ GET /cluster/state
 }
 ```
 
-#### Create a Snapshot
-
-```http
-POST /snapshot
-```
-
-**Note**: Leader-only operation
-
-**Response**:
-```json
-{
-  "data": {
-    "message": "Snapshot created successfully"
-  }
-}
-```
-
 ### Health
 
 #### Health Check
@@ -482,7 +465,6 @@ Manages system operations (ledgers):
 service SystemService {
   rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
   rpc DeleteLedger(DeleteLedgerRequest) returns (DeleteLedgerResponse);
-  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 }
 ```
 
@@ -492,9 +474,12 @@ Manages ledger operations (transactions):
 
 ```protobuf
 service LedgerService {
-  rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
-  rpc GetLedger(GetLedgerRequest) returns (GetLedgerResponse);
-  rpc GetLedgers(GetLedgersRequest) returns (GetLedgersResponse);
+  rpc CreateTransaction(CreateTransactionRequest) returns (Log);
+  rpc RevertTransaction(RevertTransactionRequest) returns (Log);
+  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (Log);
+  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (Log);
+  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (Log);
+  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (Log);
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
 ```

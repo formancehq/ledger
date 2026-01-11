@@ -4,102 +4,34 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type SystemGRPCClient struct {
-	client SystemServiceClient
+	client systempb.SystemServiceClient
 }
 
 func (g *SystemGRPCClient) ResolveLedgerLeader(ctx context.Context, ledgerName string) (uint64, error) {
-	ret, err := g.client.ResolveLedgerLeader(ctx, &ResolveLedgerLeaderRequest{LedgerName: ledgerName})
+	ret, err := g.client.ResolveLedgerLeader(ctx, &systempb.ResolveLedgerLeaderRequest{LedgerName: ledgerName})
 	if err != nil {
 		return 0, err
 	}
 	return ret.LeaderId, nil
 }
 
-func (g *SystemGRPCClient) Snapshot(ctx context.Context) error {
-	_, err := g.client.Snapshot(ctx, &SnapshotRequest{})
-	return err
-}
-
-func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, md map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error) {
-	var logStoreConfigStruct *structpb.Struct
-	if logStoreConfig != nil {
-		var err error
-		logStoreConfigStruct, err = structpb.NewStruct(logStoreConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var runtimeStoreConfigStruct *structpb.Struct
-	if runtimeStoreConfig != nil {
-		var err error
-		runtimeStoreConfigStruct, err = structpb.NewStruct(runtimeStoreConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var mdStruct *structpb.Struct
-	if len(md) > 0 {
-		// Convert map[string]string to map[string]interface{}
-		mdMap := make(map[string]interface{})
-		for k, v := range md {
-			mdMap[k] = v
-		}
-		var err error
-		mdStruct, err = structpb.NewStruct(mdMap)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	req := &CreateLedgerRequest{
-		Name:                name,
-		LogStoreDriver:      logStoreDriver,
-		RuntimeStoreDriver:  runtimeStoreDriver,
-		LogStoreConfig:      logStoreConfigStruct,
-		RuntimeStoreConfig:  runtimeStoreConfigStruct,
-		Metadata:            mdStruct,
-	}
-	if snapshotThreshold != nil && *snapshotThreshold > 0 {
-		req.SnapshotThreshold = *snapshotThreshold
-	}
-	ledgerResp, err := g.client.CreateLedger(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert CreateLedgerResponse to LedgerInfo
-	var metadata map[string]string
-	if ledgerResp.Metadata != nil {
-		metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
-	}
-	return &ledgerpb.LedgerInfo{
-		Id:                  ledgerResp.Id,
-		Name:                ledgerResp.Name,
-		LogStoreDriver:      ledgerResp.LogStoreDriver,
-		RuntimeStoreDriver:  ledgerResp.RuntimeStoreDriver,
-		LogStoreConfig:      ledgerResp.LogStoreConfig,
-		RuntimeStoreConfig:  ledgerResp.RuntimeStoreConfig,
-		Metadata:            metadata,
-		CreatedAt:           ledgerResp.CreatedAt,
-		SnapshotThreshold:  ledgerResp.SnapshotThreshold,
-	}, nil
+func (g *SystemGRPCClient) CreateLedger(ctx context.Context, request *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
+	return g.client.CreateLedger(ctx, request)
 }
 
 func (g *SystemGRPCClient) DeleteLedger(ctx context.Context, name string) error {
-	_, err := g.client.DeleteLedger(ctx, &DeleteLedgerRequest{Name: name})
+	_, err := g.client.DeleteLedger(ctx, &systempb.DeleteLedgerRequest{Name: name})
 	return err
 }
 
 func (g *SystemGRPCClient) ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error) {
-	resp, err := g.client.ResolveLedger(ctx, &ResolveLedgerRequest{LedgerName: ledgerName})
+	resp, err := g.client.ResolveLedger(ctx, &systempb.ResolveLedgerRequest{LedgerName: ledgerName})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return "", 0, ledgerpb.NewNotFoundError("%s", err)
@@ -110,59 +42,20 @@ func (g *SystemGRPCClient) ResolveLedger(ctx context.Context, ledgerName string)
 }
 
 func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
-	resp, err := g.client.GetAllLedgersInfo(ctx, &GetAllLedgersRequest{})
+	resp, err := g.client.GetAllLedgersInfo(ctx, &systempb.GetAllLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert []*CreateLedgerResponse to map[string]*ledgerpb.LedgerInfo
-	result := make(map[string]*ledgerpb.LedgerInfo, len(resp.Ledgers))
-	for _, ledgerResp := range resp.Ledgers {
-		var metadata map[string]string
-		if ledgerResp.Metadata != nil {
-			metadata = ledgerpb.StructToMetadata(ledgerResp.Metadata)
-		}
-		result[ledgerResp.Name] = &ledgerpb.LedgerInfo{
-			Id:                  ledgerResp.Id,
-			Name:                ledgerResp.Name,
-			LogStoreDriver:      ledgerResp.LogStoreDriver,
-			RuntimeStoreDriver:  ledgerResp.RuntimeStoreDriver,
-			LogStoreConfig:      ledgerResp.LogStoreConfig,
-			RuntimeStoreConfig:  ledgerResp.RuntimeStoreConfig,
-			Metadata:            metadata,
-			CreatedAt:           ledgerResp.CreatedAt,
-			SnapshotThreshold:   ledgerResp.SnapshotThreshold,
-		}
-	}
-
-	return result, nil
+	return resp.Ledgers, nil
 }
 
 func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	resp, err := g.client.GetLedgerInfo(ctx, &GetLedgerByNameRequest{Name: name})
-	if err != nil {
-		return nil, err
-	}
-
-	var metadata map[string]string
-	if resp.Metadata != nil {
-		metadata = ledgerpb.StructToMetadata(resp.Metadata)
-	}
-	return &ledgerpb.LedgerInfo{
-		Id:                  resp.Id,
-		Name:                resp.Name,
-		LogStoreDriver:      resp.LogStoreDriver,
-		RuntimeStoreDriver:  resp.RuntimeStoreDriver,
-		LogStoreConfig:      resp.LogStoreConfig,
-		RuntimeStoreConfig:  resp.RuntimeStoreConfig,
-		Metadata:            metadata,
-		CreatedAt:           resp.CreatedAt,
-		SnapshotThreshold:  resp.SnapshotThreshold,
-	}, nil
+	return g.client.GetLedgerInfo(ctx, &systempb.GetLedgerByNameRequest{Name: name})
 }
 
 var _ System = (*SystemGRPCClient)(nil)
 
-func NewGrpcSystemClient(client SystemServiceClient) *SystemGRPCClient {
+func NewGrpcSystemClient(client systempb.SystemServiceClient) *SystemGRPCClient {
 	return &SystemGRPCClient{client}
 }

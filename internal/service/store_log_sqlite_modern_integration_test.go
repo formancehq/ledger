@@ -3,23 +3,15 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSQLiteLogStoreModernIntegration(t *testing.T) {
-	TestLogStoreIntegrationCommon(t, func(t *testing.T) interface {
-		LogWriter
-		LogReader
-		GetLogWithID(ctx context.Context, id uint64) (*ledgerpb.Log, error)
-		GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledgerpb.Log, error)
-		GetLastLog(ctx context.Context) (*ledgerpb.Log, error)
-	} {
+	TestLogStoreIntegrationCommon(t, func(t *testing.T) LogStore {
 		return createSQLiteModernLogStore(t)
 	})
 }

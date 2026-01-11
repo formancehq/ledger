@@ -15,7 +15,7 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.cluster.DeleteLedger(r.Context(), ledgerName)
+	err := s.backend.DeleteLedger(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return

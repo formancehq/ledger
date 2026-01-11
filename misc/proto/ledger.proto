@@ -103,30 +103,20 @@ message AccountsVolumes {
 
 // LedgerService provides ledger operations
 service LedgerService {
-  // Snapshot creates a snapshot of the ledger Raft cluster
-  rpc Snapshot(LedgerSnapshotRequest) returns (LedgerSnapshotResponse);
   // CreateTransaction creates a new transaction
-  rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+  rpc CreateTransaction(CreateTransactionRequest) returns (Log);
   // RevertTransaction reverts a transaction
-  rpc RevertTransaction(RevertTransactionRequest) returns (RevertTransactionResponse);
+  rpc RevertTransaction(RevertTransactionRequest) returns (Log);
   // SaveAccountMetadata saves metadata for an account
-  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (SaveAccountMetadataResponse);
+  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (Log);
   // SaveTransactionMetadata saves metadata for a transaction
-  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (SaveTransactionMetadataResponse);
+  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (Log);
   // DeleteAccountMetadata deletes metadata for an account
-  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (DeleteAccountMetadataResponse);
+  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (Log);
   // DeleteTransactionMetadata deletes metadata for a transaction
-  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (DeleteTransactionMetadataResponse);
+  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (Log);
   // StreamLogs streams logs from a ledger, optionally starting from a log ID
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
-}
-
-message LedgerSnapshotRequest {
-  string ledger = 1;
-}
-
-message LedgerSnapshotResponse {
-  string message = 1;
 }
 
 message BigInt {
@@ -151,17 +141,11 @@ message CreateTransactionRequestPayload {
   string reference = 5;
   repeated Posting postings = 6;
   Script script = 9;
-  string runtime = 10;
 }
 
 message CreateTransactionRequest {
   CreateTransactionRequestPayload payload = 1;
   Parameters parameters = 2;
-}
-
-message CreateTransactionResponse {
-  Transaction transaction = 1;
-  map<string, Metadata> account_metadata = 2;
 }
 
 message SaveAccountMetadataRequestPayload {
@@ -172,10 +156,6 @@ message SaveAccountMetadataRequestPayload {
 message SaveAccountMetadataRequest {
   SaveAccountMetadataRequestPayload payload = 1;
   Parameters parameters = 2;
-}
-
-message SaveAccountMetadataResponse {
-  Log log = 1;
 }
 
 message RevertTransactionRequestPayload {
@@ -190,11 +170,6 @@ message RevertTransactionRequest {
   Parameters parameters = 3;
 }
 
-message RevertTransactionResponse {
-  Log log = 1;
-  RevertedTransaction reverted_transaction = 2;
-}
-
 message SaveTransactionMetadataRequestPayload {
   uint64 transaction_id = 2;
   map<string, string> metadata = 3;
@@ -203,10 +178,6 @@ message SaveTransactionMetadataRequestPayload {
 message SaveTransactionMetadataRequest {
   SaveTransactionMetadataRequestPayload payload = 1;
   Parameters parameters = 2;
-}
-
-message SaveTransactionMetadataResponse {
-  Log log = 1;
 }
 
 message DeleteAccountMetadataRequestPayload {
@@ -219,10 +190,6 @@ message DeleteAccountMetadataRequest {
   Parameters parameters = 2;
 }
 
-message DeleteAccountMetadataResponse {
-  Log log = 1;
-}
-
 message DeleteTransactionMetadataRequestPayload {
   uint64 transaction_id = 2;
   string key = 3;
@@ -231,10 +198,6 @@ message DeleteTransactionMetadataRequestPayload {
 message DeleteTransactionMetadataRequest {
   DeleteTransactionMetadataRequestPayload payload = 1;
   Parameters parameters = 2;
-}
-
-message DeleteTransactionMetadataResponse {
-  Log log = 1;
 }
 
 message StreamLogsRequest {

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
@@ -54,7 +55,7 @@ func newFSM(
 }
 
 // GetState returns a copy of the FSM state
-func (fsm *FSM) GetState() ledgerpb.SystemState {
+func (fsm *FSM) GetState() *systempb.State {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
@@ -64,8 +65,8 @@ func (fsm *FSM) GetState() ledgerpb.SystemState {
 		ledgersCopy[k] = v.Info()
 	}
 
-	return ledgerpb.SystemState{
-		NextLedgerID: fsm.state.NextLedgerID,
+	return &systempb.State{
+		NextLedgerId: fsm.state.NextLedgerID,
 		Ledgers:      ledgersCopy,
 	}
 }
@@ -76,7 +77,7 @@ func (fsm *FSM) GetState() ledgerpb.SystemState {
 
 // handleCreateLedger handles the create ledger command
 func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd *raft.Command) (*ledgerpb.LedgerInfo, error) {
-	var createCmd CreateLedgerCommand
+	var createCmd systempb.CreateLedgerRequest
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
 		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
@@ -117,7 +118,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd *raft.Command) (*led
 
 // handleDeleteLedger handles the delete ledger command (hard delete)
 func (fsm *FSM) handleDeleteLedger(ctx context.Context, cmd *raft.Command) error {
-	var deleteCmd DeleteLedgerCommand
+	var deleteCmd systempb.DeleteLedgerRequest
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete ledger command")
 		return fmt.Errorf("unmarshaling delete ledger command: %w", err)
@@ -211,7 +212,7 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	snapshotProto := &SystemFSMSnapshot{
+	snapshotProto := &systempb.SystemFSMSnapshot{
 		Ledgers:      fsm.state.Infos,
 		NextLedgerId: fsm.state.NextLedgerID,
 	}
@@ -228,7 +229,7 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 // RestoreSnapshot restores the FSM from a snapshot
 func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.Snapshot) error {
 	// Unmarshal from protobuf
-	var snapshotProto SystemFSMSnapshot
+	var snapshotProto systempb.SystemFSMSnapshot
 	if err := proto.Unmarshal(snapshot.Data, &snapshotProto); err != nil {
 		return err
 	}

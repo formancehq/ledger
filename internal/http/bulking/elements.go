@@ -134,7 +134,6 @@ type TransactionRequest struct {
 	Reference       string                       `json:"reference,omitempty"`
 	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
-	Runtime         string                       `json:"runtime,omitempty"`
 }
 
 func (req TransactionRequest) ToCore() (*ledgerpb.CreateTransactionRequestPayload, error) {
@@ -159,6 +158,5 @@ func (req TransactionRequest) ToCore() (*ledgerpb.CreateTransactionRequestPayloa
 		Reference:       req.Reference,
 		Metadata:        req.Metadata,
 		AccountMetadata: accountMetadata,
-		Runtime:         req.Runtime,
 	}, nil
 }

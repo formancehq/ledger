@@ -10,11 +10,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"go.opentelemetry.io/otel/metric"
 )
 
 type Node struct {
-	*raft.Node[ledgerpb.SystemState, *FSM]
+	*raft.Node[*systempb.State, *FSM]
 	raftConfig           NodeConfig
 	logger               logging.Logger
 	multiplexedTransport *multiplexedTransport
@@ -83,22 +84,17 @@ func (node *Node) Start(ctx context.Context) error {
 }
 
 // CreateLedger creates a new ledger via a FSM command
-func (node *Node) CreateLedger(ctx context.Context, name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*ledgerpb.LedgerInfo, error) {
-	// Create the command
-	cmd, err := NewCreateLedgerCommand(name, logStoreConfig, runtimeStoreConfig, metadata, snapshotThreshold, logStoreDriver, runtimeStoreDriver)
-	if err != nil {
-		return nil, fmt.Errorf("creating create ledger command: %w", err)
-	}
+func (node *Node) CreateLedger(ctx context.Context, cmd *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 
 	// Apply the command via Raft (waits for application)
-	_, ret, err := node.Apply(cmd, 10*time.Second)
+	_, ret, err := node.Apply(NewCreateLedgerCommand(cmd), 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
 	// Wait for leader to be elected
 	node.logger.Infof("Waiting leader election...")
-	ledgerGroup, err := node.Node.Inner().GetLedger(name)
+	ledgerGroup, err := node.Node.Inner().GetLedger(cmd.Name)
 	if err != nil {
 		return nil, fmt.Errorf("getting ledger group: %w", err)
 	}
@@ -117,7 +113,11 @@ l:
 	}
 
 	node.logger.
-		WithFields(map[string]any{"name": name, "log_store_driver": logStoreDriver, "runtime_store_driver": runtimeStoreDriver, "commandID": cmd.Id}).
+		WithFields(map[string]any{
+			"name": cmd.Name,
+			"log_store_driver": cmd.LogStoreDriver,
+			"runtime_store_driver": cmd.RuntimeStoreDriver,
+		}).
 		Infof("Ledger created on leader")
 
 	// ledgerInfo is already *ledgerpb.LedgerInfo

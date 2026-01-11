@@ -8,28 +8,19 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func convertMetadataToStruct(md map[string]string) *structpb.Struct {
-	if len(md) == 0 {
-		return nil
-	}
-	s, _ := ledgerpb.MetadataToStruct(md)
-	return s
-}
-
 type SystemServiceServerImpl struct {
-	service.UnimplementedSystemServiceServer
+	systempb.UnimplementedSystemServiceServer
 	logger     logging.Logger
 	systemNode *system.Node
 }
 
-func NewSystemServiceServer(logger logging.Logger, cluster *system.Node) service.SystemServiceServer {
+func NewSystemServiceServer(logger logging.Logger, cluster *system.Node) systempb.SystemServiceServer {
 	return &SystemServiceServerImpl{
 		logger: logger.WithFields(map[string]any{
 			"service": "system.grpc-server",
@@ -38,72 +29,15 @@ func NewSystemServiceServer(logger logging.Logger, cluster *system.Node) service
 	}
 }
 
-func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *service.CreateLedgerRequest) (*service.CreateLedgerResponse, error) {
+func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	impl.logger.
 		WithFields(map[string]any{"name": req.Name, "log_store_driver": req.LogStoreDriver, "runtime_store_driver": req.RuntimeStoreDriver}).
 		Infof("CreateLedger request received")
 
-	if req.Name == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	if req.LogStoreDriver == "" {
-		return nil, fmt.Errorf("log store driver is required")
-	}
-
-	if req.RuntimeStoreDriver == "" {
-		return nil, fmt.Errorf("runtime store driver is required")
-	}
-
-	// Convert log store config protobuf Struct to map[string]interface{}
-	var logStoreConfig map[string]interface{}
-	if req.LogStoreConfig != nil {
-		logStoreConfig = req.LogStoreConfig.AsMap()
-	}
-
-	// Convert runtime store config protobuf Struct to map[string]interface{}
-	var runtimeStoreConfig map[string]interface{}
-	if req.RuntimeStoreConfig != nil {
-		runtimeStoreConfig = req.RuntimeStoreConfig.AsMap()
-	}
-
-	// Convert metadata
-	var md map[string]string
-	if req.Metadata != nil {
-		mdMap := req.Metadata.AsMap()
-		md = make(map[string]string)
-		for k, v := range mdMap {
-			if str, ok := v.(string); ok {
-				md[k] = str
-			}
-		}
-	}
-
-	var snapshotThreshold *uint64
-	if req.SnapshotThreshold > 0 {
-		snapshotThreshold = &req.SnapshotThreshold
-	}
-
-	ledgerInfo, err := impl.systemNode.CreateLedger(ctx, req.Name, logStoreConfig, runtimeStoreConfig, md, snapshotThreshold, req.LogStoreDriver, req.RuntimeStoreDriver)
-	if err != nil {
-		return nil, fmt.Errorf("creating ledger: %w", err)
-	}
-
-	resp := &service.CreateLedgerResponse{
-		Id:                  ledgerInfo.Id,
-		Name:                ledgerInfo.Name,
-		LogStoreDriver:      ledgerInfo.LogStoreDriver,
-		RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
-		LogStoreConfig:      ledgerInfo.LogStoreConfig,
-		RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
-		Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
-		CreatedAt:           ledgerInfo.CreatedAt,
-		SnapshotThreshold:  ledgerInfo.SnapshotThreshold,
-	}
-	return resp, nil
+	return impl.systemNode.CreateLedger(ctx, req)
 }
 
-func (impl *SystemServiceServerImpl) DeleteLedger(ctx context.Context, req *service.DeleteLedgerRequest) (*service.DeleteLedgerResponse, error) {
+func (impl *SystemServiceServerImpl) DeleteLedger(ctx context.Context, req *systempb.DeleteLedgerRequest) (*systempb.DeleteLedgerResponse, error) {
 	impl.logger.WithFields(map[string]any{"name": req.Name}).Debugf("DeleteLedger request received")
 
 	if req.Name == "" {
@@ -114,20 +48,10 @@ func (impl *SystemServiceServerImpl) DeleteLedger(ctx context.Context, req *serv
 		return nil, fmt.Errorf("deleting ledger: %w", err)
 	}
 
-	return &service.DeleteLedgerResponse{
-		Message: "Ledger deleted successfully",
-	}, nil
+	return &systempb.DeleteLedgerResponse{}, nil
 }
 
-func (impl *SystemServiceServerImpl) Snapshot(ctx context.Context, req *service.SnapshotRequest) (*service.SnapshotResponse, error) {
-	impl.logger.Debugf("Snapshot request received")
-	if err := impl.systemNode.Snapshot(ctx); err != nil {
-		return nil, fmt.Errorf("snapshotting cluster: %w", err)
-	}
-	return &service.SnapshotResponse{Message: "Snapshotting completed successfully"}, nil
-}
-
-func (impl *SystemServiceServerImpl) ResolveLedger(ctx context.Context, req *service.ResolveLedgerRequest) (*service.ResolveLedgerResponse, error) {
+func (impl *SystemServiceServerImpl) ResolveLedger(ctx context.Context, req *systempb.ResolveLedgerRequest) (*systempb.ResolveLedgerResponse, error) {
 	impl.logger.
 		WithFields(map[string]any{"ledger_name": req.LedgerName}).
 		Debugf("ResolveLedger request received")
@@ -144,13 +68,13 @@ func (impl *SystemServiceServerImpl) ResolveLedger(ctx context.Context, req *ser
 		return nil, fmt.Errorf("resolving ledger '%s': %w", req.LedgerName, err)
 	}
 
-	return &service.ResolveLedgerResponse{
+	return &systempb.ResolveLedgerResponse{
 		LedgerName: ledgerName,
 		LedgerId:   ledgerID,
 	}, nil
 }
 
-func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, req *service.GetAllLedgersRequest) (*service.GetAllLedgersResponse, error) {
+func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *systempb.GetAllLedgersRequest) (*systempb.GetAllLedgersResponse, error) {
 	impl.logger.Debugf("GetAllLedgersInfo request received")
 
 	ledgers, err := impl.systemNode.GetAllLedgersInfo(ctx)
@@ -158,57 +82,22 @@ func (impl *SystemServiceServerImpl) GetAllLedgersInfo(ctx context.Context, req 
 		return nil, fmt.Errorf("getting all ledgers: %w", err)
 	}
 
-	// Convert map[string]*ledgerpb.LedgerInfo to []CreateLedgerResponse
-	ledgersList := make([]*service.CreateLedgerResponse, 0, len(ledgers))
-	for _, ledgerInfo := range ledgers {
-		ledgerResp := &service.CreateLedgerResponse{
-			Id:                  ledgerInfo.Id,
-			Name:                ledgerInfo.Name,
-			LogStoreDriver:      ledgerInfo.LogStoreDriver,
-			RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
-			LogStoreConfig:      ledgerInfo.LogStoreConfig,
-			RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
-			Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
-			CreatedAt:           ledgerInfo.CreatedAt,
-			SnapshotThreshold:   ledgerInfo.SnapshotThreshold,
-		}
-
-		ledgersList = append(ledgersList, ledgerResp)
-	}
-
-	return &service.GetAllLedgersResponse{
-		Ledgers: ledgersList,
+	return &systempb.GetAllLedgersResponse{
+		Ledgers: ledgers,
 	}, nil
 }
 
-func (impl *SystemServiceServerImpl) GetLedgerInfo(ctx context.Context, req *service.GetLedgerByNameRequest) (*service.GetLedgerByNameResponse, error) {
+func (impl *SystemServiceServerImpl) GetLedgerInfo(ctx context.Context, req *systempb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
 	impl.logger.WithFields(map[string]any{"name": req.Name}).Debugf("GetLedgerInfo request received")
 
 	if req.Name == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	ledgerInfo, err := impl.systemNode.GetLedgerInfo(ctx, req.Name)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", req.Name, err)
-	}
-
-	resp := &service.GetLedgerByNameResponse{
-		Id:                  ledgerInfo.Id,
-		Name:                ledgerInfo.Name,
-		LogStoreDriver:      ledgerInfo.LogStoreDriver,
-		RuntimeStoreDriver:  ledgerInfo.RuntimeStoreDriver,
-		LogStoreConfig:      ledgerInfo.LogStoreConfig,
-		RuntimeStoreConfig:  ledgerInfo.RuntimeStoreConfig,
-		Metadata:            convertMetadataToStruct(ledgerInfo.Metadata),
-		CreatedAt:           ledgerInfo.CreatedAt,
-		SnapshotThreshold:  ledgerInfo.SnapshotThreshold,
-	}
-
-	return resp, nil
+	return impl.systemNode.GetLedgerInfo(ctx, req.Name)
 }
 
-func (impl *SystemServiceServerImpl) ResolveLedgerLeader(ctx context.Context, req *service.ResolveLedgerLeaderRequest) (*service.ResolveLedgerLeaderResponse, error) {
+func (impl *SystemServiceServerImpl) ResolveLedgerLeader(ctx context.Context, req *systempb.ResolveLedgerLeaderRequest) (*systempb.ResolveLedgerLeaderResponse, error) {
 	impl.logger.WithFields(map[string]any{"ledger_name": req.LedgerName}).Debugf("ResolveLedgerLeader request received")
 
 	if req.LedgerName == "" {
@@ -220,11 +109,11 @@ func (impl *SystemServiceServerImpl) ResolveLedgerLeader(ctx context.Context, re
 		return nil, fmt.Errorf("getting ledger '%s': %w", req.LedgerName, err)
 	}
 
-	return &service.ResolveLedgerLeaderResponse{
+	return &systempb.ResolveLedgerLeaderResponse{
 		LeaderId: ledgerNode.GetLeader(),
 	}, nil
 }
 
-func RegisterSystemService(server *grpc.Server, systemServiceServer service.SystemServiceServer) {
-	service.RegisterSystemServiceServer(server, systemServiceServer)
+func RegisterSystemService(server *grpc.Server, systemServiceServer systempb.SystemServiceServer) {
+	systempb.RegisterSystemServiceServer(server, systemServiceServer)
 }

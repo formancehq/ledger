@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -17,7 +16,7 @@ import (
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service
-func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handler {
+func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 	r := chi.NewRouter()
 
 	// Apply middlewares
@@ -45,7 +44,7 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	// Create server instance for handlers
 	server := &Server{
 		logger:               logger,
-		cluster:              cluster,
+		backend:              backend,
 		bulkerFactory:        bulkerFactory,
 		bulkHandlerFactories: bulkHandlerFactories,
 	}
@@ -70,7 +69,6 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 
 		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
 			// Register known routes (specific routes first)
-			r.Post("/snapshot", server.handleSnapshot)
 			r.Get("/health", server.handleHealth)
 			r.Get("/cluster/state", server.handleClusterState)
 

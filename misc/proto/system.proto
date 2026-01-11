@@ -5,14 +5,12 @@ package ledger;
 import "google/protobuf/struct.proto";
 import "ledger.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/systempb";
 
 // SystemService provides system operations
 service SystemService {
-  // Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
-  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
   // CreateLedger creates a new ledger
-  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
+  rpc CreateLedger(CreateLedgerRequest) returns (LedgerInfo);
   // DeleteLedger deletes a ledger
   rpc DeleteLedger(DeleteLedgerRequest) returns (DeleteLedgerResponse);
   // ResolveLedger resolves a ledger name to its ID
@@ -20,7 +18,7 @@ service SystemService {
   // GetAllLedgersInfo returns all ledgers info in the cluster
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
   // GetLedgerInfo returns a ledger info by its name
-  rpc GetLedgerInfo(GetLedgerByNameRequest) returns (GetLedgerByNameResponse);
+  rpc GetLedgerInfo(GetLedgerByNameRequest) returns (LedgerInfo);
   // ResolveLedgerLeader
   rpc ResolveLedgerLeader(ResolveLedgerLeaderRequest) returns (ResolveLedgerLeaderResponse);
 }
@@ -33,43 +31,21 @@ message ResolveLedgerLeaderResponse {
   uint64 leader_id = 1;
 }
 
-message SnapshotRequest {
-  // Empty - no parameters needed
-}
-
-message SnapshotResponse {
-  string message = 1;
-}
-
 message CreateLedgerRequest {
   string name = 1;
   string log_store_driver = 2;              // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
   string runtime_store_driver = 3;         // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
   google.protobuf.Struct log_store_config = 4;     // Log store driver-specific configuration
   google.protobuf.Struct runtime_store_config = 5; // Runtime store driver-specific configuration
-  google.protobuf.Struct metadata = 6;
+  map<string, string> metadata = 6;
   uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
-}
-
-message CreateLedgerResponse {
-  uint64 id = 1;
-  string name = 2;
-  string log_store_driver = 3;              // Log store driver name
-  string runtime_store_driver = 4;          // Runtime store driver name
-  google.protobuf.Struct log_store_config = 5;    // Log store driver-specific configuration
-  google.protobuf.Struct runtime_store_config = 6; // Runtime store driver-specific configuration
-  google.protobuf.Struct metadata = 7;
-  Timestamp created_at = 8;
-  uint64 snapshot_threshold = 9;  // Number of logs before triggering a snapshot (0 means use global config)
 }
 
 message DeleteLedgerRequest {
   string name = 1;
 }
 
-message DeleteLedgerResponse {
-  string message = 1;
-}
+message DeleteLedgerResponse {}
 
 message ResolveLedgerRequest {
   string ledger_name = 1;
@@ -85,21 +61,19 @@ message GetAllLedgersRequest {
 }
 
 message GetAllLedgersResponse {
-  repeated CreateLedgerResponse ledgers = 1;
+  map<string, LedgerInfo> ledgers = 1;
 }
 
 message GetLedgerByNameRequest {
   string name = 1;
 }
 
-message GetLedgerByNameResponse {
-  uint64 id = 1;
-  string name = 2;
-  string log_store_driver = 3;              // Log store driver name
-  string runtime_store_driver = 4;          // Runtime store driver name
-  google.protobuf.Struct log_store_config = 5;    // Log store driver-specific configuration
-  google.protobuf.Struct runtime_store_config = 6; // Runtime store driver-specific configuration
-  google.protobuf.Struct metadata = 7;
-  Timestamp created_at = 8;
-  uint64 snapshot_threshold = 9;  // Number of logs before triggering a snapshot (0 means use global config)
+message State {
+  uint64 next_ledger_id = 1;
+  map<string, LedgerInfo> ledgers = 2;
+}
+
+message SystemFSMSnapshot {
+  map<string, ledger.LedgerInfo> ledgers = 1;      // Map of ledger name to ledger info
+  uint64 next_ledger_id = 2;               // Next sequential ledger ID
 }

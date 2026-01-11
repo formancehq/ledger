@@ -4,48 +4,17 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateLedgerCommand(name string, logStoreConfig, runtimeStoreConfig map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64, logStoreDriver, runtimeStoreDriver string) (*raft.Command, error) {
-	// Convert log store config map to protobuf Struct
-	var logStoreConfigStruct *structpb.Struct
-	if logStoreConfig != nil {
-		var err error
-		logStoreConfigStruct, err = structpb.NewStruct(logStoreConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
+func NewCreateLedgerCommand(cmd *systempb.CreateLedgerRequest) *raft.Command {
 
-	// Convert runtime store config map to protobuf Struct
-	var runtimeStoreConfigStruct *structpb.Struct
-	if runtimeStoreConfig != nil {
-		var err error
-		runtimeStoreConfigStruct, err = structpb.NewStruct(runtimeStoreConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	cmdProto := &CreateLedgerCommand{
-		Name:               name,
-		LogStoreDriver:     logStoreDriver,
-		RuntimeStoreDriver: runtimeStoreDriver,
-		LogStoreConfig:     logStoreConfigStruct,
-		RuntimeStoreConfig: runtimeStoreConfigStruct,
-		Metadata:           metadata,
-	}
-	if snapshotThreshold != nil && *snapshotThreshold > 0 {
-		cmdProto.SnapshotThreshold = *snapshotThreshold
-	}
-
-	data, err := proto.Marshal(cmdProto)
+	data, err := proto.Marshal(cmd)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	return &raft.Command{
@@ -53,12 +22,12 @@ func NewCreateLedgerCommand(name string, logStoreConfig, runtimeStoreConfig map[
 		Type: raft.CommandType_CreateLedger,
 		Data: data,
 		Date: ledgerpb.NewTimestamp(time.Now()),
-	}, nil
+	}
 }
 
 // NewDeleteLedgerCommand creates a new DeleteLedgerCommand
 func NewDeleteLedgerCommand(name string) (*raft.Command, error) {
-	cmdProto := &DeleteLedgerCommand{
+	cmdProto := &systempb.DeleteLedgerRequest{
 		Name: name,
 	}
 
@@ -78,9 +47,9 @@ func NewDeleteLedgerCommand(name string) (*raft.Command, error) {
 // UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
 	switch cmd := v.(type) {
-	case *CreateLedgerCommand:
+	case *systempb.CreateLedgerRequest:
 		return proto.Unmarshal(data, cmd)
-	case *DeleteLedgerCommand:
+	case *systempb.DeleteLedgerRequest:
 		return proto.Unmarshal(data, cmd)
 	default:
 		return proto.Unmarshal(data, v.(proto.Message))

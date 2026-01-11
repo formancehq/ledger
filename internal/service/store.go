@@ -47,15 +47,21 @@ type MetricsAware interface {
 }
 
 // LogWriter handles log writing operations
+//
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package service . LogWriter
 type LogWriter interface {
 	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
 }
 
 // LogReader handles log reading operations
+//
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package service . LogReader
 type LogReader interface {
 	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
+	GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error)
 }
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package service . LogStore
 type LogStore interface {
 	LogWriter
 	LogReader
@@ -65,6 +71,20 @@ type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[*ledg
 
 func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	return fn(ctx, from, to)
+}
+
+func (fn LogReaderFn) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	if id == 0 {
+		return nil, nil
+	}
+	cursor, err := fn(ctx, id-1, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+	return cursor.Next(ctx)
 }
 
 // RuntimeUpdate contains all the updates to apply to the runtime store
@@ -89,6 +109,8 @@ type IdempotencyEntry struct {
 }
 
 // RuntimeStore handles runtime queries for balances and account metadata
+//
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package service . RuntimeStore
 type RuntimeStore interface {
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)

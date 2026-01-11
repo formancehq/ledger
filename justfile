@@ -69,8 +69,7 @@ generate-proto:
         misc/proto/system.proto \
         misc/proto/ledger.proto \
         misc/proto/commands/commands.proto \
-        misc/proto/commands/ledger_commands.proto \
-        misc/proto/commands/system_commands.proto
+        misc/proto/commands/ledger_commands.proto
 
 # Docker builds are handled via Pulumi
 

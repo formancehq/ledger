@@ -28,6 +28,15 @@ When implementing new features, fixing bugs, or refactoring code:
 
 The documentation should always reflect the current state of the codebase. Outdated documentation is worse than no documentation.
 
+## OpenAPI and SDK Regeneration
+
+**CRITICAL**: After any change to `openapi.yml`, you MUST regenerate the SDK immediately.
+
+Run:
+```bash
+just generate-sdk
+```
+
 ## JSON Property Naming Convention
 
 **CRITICAL**: All JSON objects in the API must use **camelCase** for property names.

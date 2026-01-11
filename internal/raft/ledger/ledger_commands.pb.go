@@ -10,7 +10,6 @@ import (
 	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -23,59 +22,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// CreateLedgerCommand represents the data for a create ledger command
-type CreateLedgerCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`         // Ledger name/ID (required)
-	Metadata      *structpb.Struct       `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"` // Optional metadata
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CreateLedgerCommand) Reset() {
-	*x = CreateLedgerCommand{}
-	mi := &file_commands_ledger_commands_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CreateLedgerCommand) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CreateLedgerCommand) ProtoMessage() {}
-
-func (x *CreateLedgerCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_commands_ledger_commands_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CreateLedgerCommand.ProtoReflect.Descriptor instead.
-func (*CreateLedgerCommand) Descriptor() ([]byte, []int) {
-	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *CreateLedgerCommand) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *CreateLedgerCommand) GetMetadata() *structpb.Struct {
-	if x != nil {
-		return x.Metadata
-	}
-	return nil
-}
-
 // InsertLogCommand represents the data for an insert log command
 type InsertLogCommand struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -86,7 +32,7 @@ type InsertLogCommand struct {
 
 func (x *InsertLogCommand) Reset() {
 	*x = InsertLogCommand{}
-	mi := &file_commands_ledger_commands_proto_msgTypes[1]
+	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +44,7 @@ func (x *InsertLogCommand) String() string {
 func (*InsertLogCommand) ProtoMessage() {}
 
 func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_commands_ledger_commands_proto_msgTypes[1]
+	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,7 +57,7 @@ func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertLogCommand.ProtoReflect.Descriptor instead.
 func (*InsertLogCommand) Descriptor() ([]byte, []int) {
-	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{1}
+	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *InsertLogCommand) GetLog() *ledgerpb.Log {
@@ -125,10 +71,7 @@ var File_commands_ledger_commands_proto protoreflect.FileDescriptor
 
 const file_commands_ledger_commands_proto_rawDesc = "" +
 	"\n" +
-	"\x1ecommands/ledger_commands.proto\x12\x0fbucket_commands\x1a\x1cgoogle/protobuf/struct.proto\x1a\fledger.proto\"^\n" +
-	"\x13CreateLedgerCommand\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x123\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\"1\n" +
+	"\x1ecommands/ledger_commands.proto\x12\x0fbucket_commands\x1a\fledger.proto\"1\n" +
 	"\x10InsertLogCommand\x12\x1d\n" +
 	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03logB:Z8github.com/formancehq/ledger-v3-poc/internal/raft/ledgerb\x06proto3"
 
@@ -144,21 +87,18 @@ func file_commands_ledger_commands_proto_rawDescGZIP() []byte {
 	return file_commands_ledger_commands_proto_rawDescData
 }
 
-var file_commands_ledger_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_commands_ledger_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_commands_ledger_commands_proto_goTypes = []any{
-	(*CreateLedgerCommand)(nil), // 0: bucket_commands.CreateLedgerCommand
-	(*InsertLogCommand)(nil),    // 1: bucket_commands.InsertLogCommand
-	(*structpb.Struct)(nil),     // 2: google.protobuf.Struct
-	(*ledgerpb.Log)(nil),        // 3: ledger.Log
+	(*InsertLogCommand)(nil), // 0: bucket_commands.InsertLogCommand
+	(*ledgerpb.Log)(nil),     // 1: ledger.Log
 }
 var file_commands_ledger_commands_proto_depIdxs = []int32{
-	2, // 0: bucket_commands.CreateLedgerCommand.metadata:type_name -> google.protobuf.Struct
-	3, // 1: bucket_commands.InsertLogCommand.log:type_name -> ledger.Log
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: bucket_commands.InsertLogCommand.log:type_name -> ledger.Log
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_commands_ledger_commands_proto_init() }
@@ -172,7 +112,7 @@ func file_commands_ledger_commands_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_commands_ledger_commands_proto_rawDesc), len(file_commands_ledger_commands_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -7,39 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var snapshotCmd = &cobra.Command{
-	Use:          "snapshot",
-	Short:        "Create a Raft cluster snapshot",
-	Long:         "Forces the creation of a Raft cluster snapshot on the leader node",
-	RunE:         runSnapshot,
-	SilenceUsage: true,
-}
-
-func runSnapshot(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
-	// Create SDK instance with custom server URL
-	sdk := newSDKClient()
-
-	// Show spinner while creating snapshot
-	spinner, _ := pterm.DefaultSpinner.Start("Creating snapshot...")
-
-	// Call the snapshot endpoint
-	res, err := sdk.Cluster.CreateSnapshot(ctx)
-	if err != nil {
-		spinner.Fail("Snapshot failed")
-		return fmt.Errorf("snapshot failed: %w", err)
-	}
-
-	message := "Snapshot created successfully"
-	if res.SnapshotResponse != nil && res.SnapshotResponse.Data.Message != "" {
-		message = res.SnapshotResponse.Data.Message
-	}
-
-	spinner.Success(message)
-	return nil
-}
-
 var clusterStateCmd = &cobra.Command{
 	Use:          "cluster-state",
 	Short:        "Get the current state of the Raft cluster",

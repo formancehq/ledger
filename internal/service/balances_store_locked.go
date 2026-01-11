@@ -2,107 +2,102 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sort"
 	"sync"
-
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
-// LockedBalancesStore provides locking for concurrent access to volumes
-type LockedBalancesStore interface {
-	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, func(), error)
+var ErrLockUnavailable = errors.New("lock unavailable")
+
+// KeySetLocker provides key-based locking for concurrent access.
+type KeySetLocker interface {
+	LockKeys(ctx context.Context, keys ...string) (func(), error)
+	TryLockKeys(ctx context.Context, keys ...string) (func(), error)
 }
 
-// DefaultLockedBalancesStore is a default implementation of LockedBalancesStore
-// that wraps a RuntimeStore and provides locking for concurrent access
-type DefaultLockedBalancesStore struct {
-	runtimeStore RuntimeStore
-	// locks is a map of mutexes keyed by "account:asset" combination
-	locks map[string]*sync.Mutex
-	// locksMutex protects the locks map itself
+// DefaultKeySetLocker is a default implementation of KeySetLocker.
+type DefaultKeySetLocker struct {
+	// locks is a map of mutexes keyed by lock key.
+	locks map[string]*lockEntry
+	// locksMutex protects the locks map itself.
 	locksMutex sync.RWMutex
 }
 
-// makeLockKey creates a composite key for account and asset
-func makeLockKey(account, asset string) string {
-	return fmt.Sprintf("%s:%s", account, asset)
+type lockEntry struct {
+	mutex    sync.Mutex
+	refCount int
 }
 
-// NewDefaultLockedBalancesStore creates a new DefaultLockedBalancesStore
-func NewDefaultLockedBalancesStore(runtimeStore RuntimeStore) *DefaultLockedBalancesStore {
-	return &DefaultLockedBalancesStore{
-		runtimeStore: runtimeStore,
-		locks:        make(map[string]*sync.Mutex),
+// NewDefaultKeySetLocker creates a new DefaultKeySetLocker.
+func NewDefaultKeySetLocker() *DefaultKeySetLocker {
+	return &DefaultKeySetLocker{
+		locks: make(map[string]*lockEntry),
 	}
 }
 
-// LockBalances locks the requested account:asset combinations and returns balances with a release function
-func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, func(), error) {
-	// Extract all account:asset combinations from the query
-	lockKeys := make([]string, 0)
-	for account, assets := range balanceQuery {
-		for _, asset := range assets {
-			lockKey := makeLockKey(account, asset)
-			lockKeys = append(lockKeys, lockKey)
+// LockKeys locks the requested keys and returns a release function.
+func (s *DefaultKeySetLocker) LockKeys(_ context.Context, keys ...string) (func(), error) {
+	if len(keys) == 0 {
+		return func() {}, nil
+	}
+
+	// Sort lock keys to avoid deadlocks (always lock in the same order).
+	sort.Strings(keys)
+
+	// Lock all requested keys.
+	for _, lockKey := range keys {
+		entry := s.getOrCreateLock(lockKey)
+		entry.mutex.Lock()
+	}
+
+	return func() {
+		s.releaseLocks(keys)
+	}, nil
+}
+
+// TryLockKeys attempts to lock all keys immediately. It returns ErrLockUnavailable if any lock cannot be acquired.
+func (s *DefaultKeySetLocker) TryLockKeys(_ context.Context, keys ...string) (func(), error) {
+	if len(keys) == 0 {
+		return func() {}, nil
+	}
+
+	// Sort lock keys to avoid deadlocks (always lock in the same order).
+	sort.Strings(keys)
+
+	lockedKeys := make([]string, 0, len(keys))
+	for _, lockKey := range keys {
+		entry := s.getOrCreateLock(lockKey)
+		if !entry.mutex.TryLock() {
+			s.decrementLockRef(lockKey)
+			s.releaseLocks(lockedKeys)
+			return nil, ErrLockUnavailable
 		}
-	}
-
-	// Sort lock keys to avoid deadlocks (always lock in the same order)
-	sort.Strings(lockKeys)
-
-	// Lock all requested account:asset combinations
-	lockedKeys := make([]string, 0, len(lockKeys))
-	for _, lockKey := range lockKeys {
-		lock := s.getOrCreateLock(lockKey)
-		lock.Lock()
 		lockedKeys = append(lockedKeys, lockKey)
 	}
 
-	// Get balances from the underlying store
-	balances, err := s.runtimeStore.GetBalances(ctx, balanceQuery)
-	if err != nil {
-		// Release all locks on error
+	return func() {
 		s.releaseLocks(lockedKeys)
-		// Return empty balances, a no-op release function, and the error
-		return ledgerpb.Balances{}, func() {}, err
-	}
-
-	// Return balances and a release function
-	release := func() {
-		s.releaseLocks(lockedKeys)
-	}
-
-	return balances, release, nil
+	}, nil
 }
 
 // getOrCreateLock gets or creates a mutex for the given lock key (account:asset)
-func (s *DefaultLockedBalancesStore) getOrCreateLock(lockKey string) *sync.Mutex {
-	// First, try to read without locking
-	s.locksMutex.RLock()
-	if lock, ok := s.locks[lockKey]; ok {
-		s.locksMutex.RUnlock()
-		return lock
-	}
-	s.locksMutex.RUnlock()
-
-	// Need to create a new lock, acquire write lock
+func (s *DefaultKeySetLocker) getOrCreateLock(lockKey string) *lockEntry {
 	s.locksMutex.Lock()
 	defer s.locksMutex.Unlock()
 
-	// Double-check after acquiring write lock (another goroutine might have created it)
 	if lock, ok := s.locks[lockKey]; ok {
+		lock.refCount++
 		return lock
 	}
 
 	// Create new lock
-	lock := &sync.Mutex{}
+	lock := &lockEntry{refCount: 1}
 	s.locks[lockKey] = lock
 	return lock
 }
 
 // releaseLocks releases all locks for the given lock keys (account:asset combinations)
-func (s *DefaultLockedBalancesStore) releaseLocks(lockKeys []string) {
+func (s *DefaultKeySetLocker) releaseLocks(lockKeys []string) {
 	// Release locks in reverse order (best practice for nested locks)
 	for i := len(lockKeys) - 1; i >= 0; i-- {
 		lockKey := lockKeys[i]
@@ -111,7 +106,21 @@ func (s *DefaultLockedBalancesStore) releaseLocks(lockKeys []string) {
 		s.locksMutex.RUnlock()
 
 		if ok && lock != nil {
-			lock.Unlock()
+			lock.mutex.Unlock()
+			s.decrementLockRef(lockKey)
 		}
+	}
+}
+
+func (s *DefaultKeySetLocker) decrementLockRef(lockKey string) {
+	s.locksMutex.Lock()
+	defer s.locksMutex.Unlock()
+	lock, ok := s.locks[lockKey]
+	if !ok {
+		return
+	}
+	lock.refCount--
+	if lock.refCount <= 0 {
+		delete(s.locks, lockKey)
 	}
 }

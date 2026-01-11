@@ -54,8 +54,3 @@ type NodeInfo struct {
 	Address  string `json:"address"`  // Node address
 	Suffrage string `json:"suffrage"` // Voter or Nonvoter
 }
-
-type SystemState struct {
-	NextLedgerID uint64                 // Next sequential ledger ID
-	Ledgers      map[string]*LedgerInfo // Map of ledger name -> ledger info
-}

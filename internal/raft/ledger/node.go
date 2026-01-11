@@ -22,7 +22,6 @@ type logStoreFactory func(
 	ctx context.Context,
 	configJSON []byte,
 	logger logging.Logger,
-	ledgerName string,
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
@@ -33,7 +32,6 @@ type runtimeStoreFactory func(
 	ctx context.Context,
 	configJSON []byte,
 	logger logging.Logger,
-	ledgerName string,
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
@@ -45,7 +43,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -68,7 +65,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -94,7 +90,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -122,7 +117,6 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -145,7 +139,6 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -171,7 +164,6 @@ var runtimeStoreFactories = map[string]runtimeStoreFactory{
 		ctx context.Context,
 		configJSON []byte,
 		logger logging.Logger,
-		ledgerName string,
 		ledgerID uint64,
 		dataDir string,
 		meterProvider metric.MeterProvider,
@@ -199,7 +191,6 @@ func CreateLogStore(
 	driver string,
 	configJSON []byte,
 	logger logging.Logger,
-	ledgerName string,
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
@@ -210,9 +201,9 @@ func CreateLogStore(
 		return nil, fmt.Errorf("unsupported ledger driver for log store: %s", driver)
 	}
 
-	logStore, err := logStoreFactory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir, meterProvider)
+	logStore, err := logStoreFactory(ctx, configJSON, logger, ledgerID, dataDir, meterProvider)
 	if err != nil {
-		return nil, fmt.Errorf("creating %s log store for ledger %s: %w", driver, ledgerName, err)
+		return nil, fmt.Errorf("creating %s log store for ledger: %w", driver, err)
 	}
 
 	return logStore, nil
@@ -224,7 +215,6 @@ func CreateRuntimeStore(
 	driver string,
 	configJSON []byte,
 	logger logging.Logger,
-	ledgerName string,
 	ledgerID uint64,
 	dataDir string,
 	meterProvider metric.MeterProvider,
@@ -235,9 +225,9 @@ func CreateRuntimeStore(
 		return nil, fmt.Errorf("unsupported ledger driver for runtime store: %s", driver)
 	}
 
-	runtimeStore, err := runtimeStoreFactory(ctx, configJSON, logger, ledgerName, ledgerID, dataDir, meterProvider)
+	runtimeStore, err := runtimeStoreFactory(ctx, configJSON, logger, ledgerID, dataDir, meterProvider)
 	if err != nil {
-		return nil, fmt.Errorf("creating %s runtime store for ledger %s: %w", driver, ledgerName, err)
+		return nil, fmt.Errorf("creating %s runtime store for ledger: %w", driver, err)
 	}
 
 	return runtimeStore, nil
@@ -245,7 +235,7 @@ func CreateRuntimeStore(
 
 // Node represents a Raft group for a specific ledger
 type Node struct {
-	*raft.Node[ledgerpb.LedgerState, *FSM]
+	*raft.Node[*ledgerpb.LedgerState, *FSM]
 	config        raft.NodeConfig
 	logger        logging.Logger
 	defaultLedger *service.DefaultLedger
@@ -310,7 +300,6 @@ func NewNode(
 		ledgerInfo.GetLogStoreDriver(),
 		logStoreConfigJSON,
 		logger,
-		ledgerInfo.GetName(),
 		ledgerInfo.GetId(),
 		cfg.DataDir,
 		meterProvider,
@@ -325,7 +314,6 @@ func NewNode(
 		ledgerInfo.GetRuntimeStoreDriver(),
 		runtimeStoreConfigJSON,
 		logger,
-		ledgerInfo.GetName(),
 		ledgerInfo.GetId(),
 		cfg.DataDir,
 		meterProvider,
@@ -365,14 +353,15 @@ func NewNode(
 		logStore:     logStore,
 	}
 
-	// Create locked volumes store
-	lockedVolumesStore := service.NewDefaultLockedBalancesStore(runtimeStore)
-
 	// Create ledger service for this ledger (will use stores for balance checking and log writing)
 	ret.defaultLedger = service.NewDefaultLedger(
-		ret,
-		lockedVolumesStore,
-		logStore,
+		struct {
+			service.LogReader
+			service.LogWriter
+		}{
+			LogWriter: ret,
+			LogReader: logStore,
+		},
 		runtimeStore,
 		logger,
 	)
@@ -422,36 +411,36 @@ func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	return nil
 }
 
-func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.CreatedTransaction, error) {
-	return node.defaultLedger.CreateTransaction(ctx, ledgerName, parameters)
+func (node *Node) CreateTransaction(ctx context.Context, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.CreateTransaction(ctx, parameters)
 }
 
-func (node *Node) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, *ledgerpb.RevertedTransaction, error) {
-	return node.defaultLedger.RevertTransaction(ctx, ledgerName, parameters)
+func (node *Node) RevertTransaction(ctx context.Context, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.RevertTransaction(ctx, parameters)
 }
 
-func (node *Node) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveTransactionMetadata(ctx, ledgerName, parameters)
+func (node *Node) SaveTransactionMetadata(ctx context.Context, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.SaveTransactionMetadata(ctx, parameters)
 }
 
-func (node *Node) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveAccountMetadata(ctx, ledgerName, parameters)
+func (node *Node) SaveAccountMetadata(ctx context.Context, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.SaveAccountMetadata(ctx, parameters)
 }
 
-func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteTransactionMetadata(ctx, ledgerName, parameters)
+func (node *Node) DeleteTransactionMetadata(ctx context.Context, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.DeleteTransactionMetadata(ctx, parameters)
 }
 
-func (node *Node) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteAccountMetadata(ctx, ledgerName, parameters)
+func (node *Node) DeleteAccountMetadata(ctx context.Context, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.DeleteAccountMetadata(ctx, parameters)
 }
 
-func (node *Node) Import(ctx context.Context, ledgerName string, stream chan *ledgerpb.Log) error {
-	return node.defaultLedger.Import(ctx, ledgerName, stream)
+func (node *Node) Import(ctx context.Context, stream chan *ledgerpb.Log) error {
+	return node.defaultLedger.Import(ctx, stream)
 }
 
-func (node *Node) Export(ctx context.Context, ledgerName string, w service.ExportWriter) error {
-	return node.defaultLedger.Export(ctx, ledgerName, w)
+func (node *Node) Export(ctx context.Context, w service.ExportWriter) error {
+	return node.defaultLedger.Export(ctx, w)
 }
 
 func (node *Node) Info() *ledgerpb.LedgerInfo {
@@ -505,5 +494,3 @@ func (node *Node) DeleteStoreFiles() error {
 	node.logger.WithFields(map[string]any{"dataDir": node.config.DataDir}).Infof("Ledger store files deleted")
 	return nil
 }
-
-var _ service.Ledger = (*Node)(nil)

@@ -395,6 +395,11 @@ func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64, to uint64)
 	}, nil
 }
 
+// GetLogByID retrieves a log by its ID (implements LogReader)
+func (s *SQLiteLogStore) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	return s.GetLogWithID(ctx, id)
+}
+
 // GetLogWithID retrieves a log by its ID
 func (s *SQLiteLogStore) GetLogWithID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
 	row := s.stmtGetLogByID.QueryRowContext(ctx, id)

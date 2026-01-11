@@ -44,7 +44,7 @@ Testing strategy, unit tests, integration, and end-to-end tests.
 A **ledger** is an accounting book containing transactions. Each ledger has its own independent Raft group and storage configuration.
 
 ### Transactions
-A **transaction** represents an accounting operation with postings (accounting entries) or a Numscript script.
+A **transaction** represents an accounting operation with postings (accounting entries) or a Numscript script. This project uses the new Numscript interpreter and does not allow runtime selection.
 
 ### Raft Groups
 The system uses **two levels of Raft groups**:

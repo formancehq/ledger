@@ -65,7 +65,7 @@ func newFSM(
 }
 
 // GetState returns a copy of the FSM state
-func (f *FSM) GetState() ledgerpb.LedgerState {
+func (f *FSM) GetState() *ledgerpb.LedgerState {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -97,7 +97,7 @@ func (f *FSM) GetState() ledgerpb.LedgerState {
 		panic(err)
 	}
 
-	return ledgerpb.LedgerState{
+	return &ledgerpb.LedgerState{
 		LedgerInfo:          f.state.LedgerInfo,
 		LastLogId:           f.state.LastLogId,
 		LogStoreMetrics:     logStoreMetrics,

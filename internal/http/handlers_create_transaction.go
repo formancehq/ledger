@@ -34,14 +34,14 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		Input:          req,
 	}
 
-	ledgerCluster, err := s.cluster.GetLedgerCluster(r.Context(), ledgerName)
+	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
 	// Call ledger service
-	_, createdTx, err := ledgerCluster.CreateTransaction(r.Context(), ledgerName, params)
+	log, err := ledger.CreateTransaction(r.Context(), params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")
 		handleError(w, r, err)
@@ -49,5 +49,5 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the service response directly - JSON encoding will handle it
-	writeCreated(w, createdTx)
+	writeCreated(w, log.Data.Payload.(*ledgerpb.LogPayload_CreatedTransaction).CreatedTransaction)
 }

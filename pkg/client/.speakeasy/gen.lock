@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 8bdb9694cca4cec912eeae70fd6a6dde
+  docChecksum: e54ac8b8fcd8555ed74ffcac89e61ffc
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.55
-  configChecksum: e58bb9ad1be97d147d5dfbad2bdfb3cf
+  releaseVersion: 0.11.58
+  configChecksum: ba8878042bdc38bb8470c0a41cb08957
 features:
   go:
     additionalDependencies: 0.1.0
@@ -53,14 +53,12 @@ generatedFiles:
   - /models/components/raftstatus.go
   - /models/components/reverttransactionrequest.go
   - /models/components/script.go
-  - /models/components/snapshotresponse.go
   - /models/components/sqlitemattnconfig.go
   - /models/components/sqlitemodernconfig.go
   - /models/components/systemstate.go
   - /models/components/transactionresponse.go
   - /models/operations/bulkoperations.go
   - /models/operations/createledger.go
-  - /models/operations/createsnapshot.go
   - /models/operations/createtransaction.go
   - /models/operations/deleteledger.go
   - /models/operations/getclusterstate.go
@@ -115,8 +113,6 @@ generatedFiles:
   - docs/models/components/runtimestoreconfig.md
   - docs/models/components/runtimestoredriver.md
   - docs/models/components/script.md
-  - docs/models/components/snapshotresponse.md
-  - docs/models/components/snapshotresponsedata.md
   - docs/models/components/sqlitemattnconfig.md
   - docs/models/components/sqlitemodernconfig.md
   - docs/models/components/state.md
@@ -130,7 +126,6 @@ generatedFiles:
   - docs/models/operations/bulkoperationsresponse.md
   - docs/models/operations/createledgerrequest.md
   - docs/models/operations/createledgerresponse.md
-  - docs/models/operations/createsnapshotresponse.md
   - docs/models/operations/createtransactionrequest.md
   - docs/models/operations/createtransactionresponse.md
   - docs/models/operations/deleteledgerrequest.md

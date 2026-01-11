@@ -203,6 +203,11 @@ func (s *PebbleLogStore) GetAllLogs(ctx context.Context, from uint64, to uint64)
 	}, nil
 }
 
+// GetLogByID retrieves a log by its ID (implements LogReader)
+func (s *PebbleLogStore) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	return s.GetLogWithID(ctx, id)
+}
+
 // GetLogWithID retrieves a log by its ID
 func (s *PebbleLogStore) GetLogWithID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
 	key := logKey(id)

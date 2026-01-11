@@ -429,13 +429,6 @@ resources:
 
 ## Maintenance
 
-### Manual Creation of Snapshot
-
-```bash
-# System Snapshot
-curl -X POST http://localhost:9000/snapshot
-```
-
 ### Cluster State Verification
 
 ```bash
@@ -561,4 +554,3 @@ To deepen your understanding:
 1. [General Architecture](./architecture.md) - Understand the architecture
 2. [Consensus Raft](./raft-consensus.md) - Optimize Raft parameters
 3. [Storage and Persistence](./storage.md) - Configure storage
-

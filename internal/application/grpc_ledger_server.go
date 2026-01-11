@@ -25,22 +25,7 @@ func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) ledg
 	}
 }
 
-func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *ledgerpb.LedgerSnapshotRequest) (*ledgerpb.LedgerSnapshotResponse, error) {
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.Ledger)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ledgerNode.Snapshot(ctx); err != nil {
-		return nil, err
-	}
-
-	return &ledgerpb.LedgerSnapshotResponse{
-		Message: "Snapshotting completed successfully",
-	}, nil
-}
-
-func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.CreateTransactionResponse, error) {
+func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.Log, error) {
 	impl.logger.WithFields(map[string]any{"reference": req.Payload.Reference}).Debugf("CreateTransaction request received")
 
 	// Create transaction parameters directly from protobuf request
@@ -62,18 +47,12 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 	}
 
 	// Call ledger service
-	_, createdTx, err := ledgerNode.CreateTransaction(ctx, ledgerName, params)
+	log, err := ledgerNode.CreateTransaction(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("creating transaction: %w", err)
 	}
 
-	// createdTx is already *ledgerpb.CreatedTransaction
-	response := &ledgerpb.CreateTransactionResponse{
-		Transaction:     createdTx.Transaction,
-		AccountMetadata: createdTx.AccountMetadata,
-	}
-
-	return response, nil
+	return log, nil
 }
 
 func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest, stream ledgerpb.LedgerService_StreamLogsServer) error {
@@ -112,7 +91,7 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest,
 	return nil
 }
 
-func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.SaveAccountMetadataResponse, error) {
+func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.Log, error) {
 	impl.logger.WithFields(map[string]any{"address": req.Payload.Address}).Debugf("SaveAccountMetadata request received")
 
 	// Validate request
@@ -142,15 +121,12 @@ func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, re
 	}
 
 	// Call ledger service
-	log, err := ledgerNode.SaveAccountMetadata(ctx, ledgerName, params)
+	log, err := ledgerNode.SaveAccountMetadata(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("saving account metadata: %w", err)
 	}
 
-	// log is already *ledgerpb.Log
-	return &ledgerpb.SaveAccountMetadataResponse{
-		Log: log,
-	}, nil
+	return log, nil
 }
 
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) {

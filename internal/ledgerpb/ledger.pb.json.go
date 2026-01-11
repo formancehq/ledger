@@ -67,7 +67,6 @@ func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 		Reference       string               `json:"reference,omitempty"`
 		Postings        []*Posting           `json:"postings,omitempty"`
 		Script          *Script              `json:"script,omitempty"`
-		Runtime         string               `json:"runtime,omitempty"`
 	}{
 		AccountMetadata: x.AccountMetadata,
 		Metadata:        x.Metadata,
@@ -75,18 +74,6 @@ func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 		Reference:       x.Reference,
 		Postings:        x.Postings,
 		Script:          x.Script,
-		Runtime:         x.Runtime,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for CreateTransactionResponse
-func (x *CreateTransactionResponse) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Transaction     *Transaction         `json:"transaction,omitempty"`
-		AccountMetadata map[string]*Metadata `json:"accountMetadata,omitempty"`
-	}{
-		Transaction:     x.Transaction,
-		AccountMetadata: x.AccountMetadata,
 	})
 }
 
@@ -102,17 +89,6 @@ func (x *RevertTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 		Force:           x.Force,
 		AtEffectiveDate: x.AtEffectiveDate,
 		Metadata:        x.Metadata,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for RevertTransactionResponse
-func (x *RevertTransactionResponse) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Log                 *Log                 `json:"log,omitempty"`
-		RevertedTransaction *RevertedTransaction `json:"revertedTransaction,omitempty"`
-	}{
-		Log:                 x.Log,
-		RevertedTransaction: x.RevertedTransaction,
 	})
 }
 

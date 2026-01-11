@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // NewTransactionData creates a new TransactionData with empty metadata
@@ -245,34 +244,6 @@ func (tx *Transaction) VolumeUpdates() []*AccountsVolumes {
 	})
 
 	return ret
-}
-
-// MetadataToStruct converts metadata.Metadata to *structpb.Struct
-func MetadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
-	if len(md) == 0 {
-		return &structpb.Struct{Fields: make(map[string]*structpb.Value)}, nil
-	}
-	fields := make(map[string]*structpb.Value)
-	for k, v := range md {
-		val, err := structpb.NewValue(v)
-		if err != nil {
-			return nil, err
-		}
-		fields[k] = val
-	}
-	return &structpb.Struct{Fields: fields}, nil
-}
-
-// StructToMetadata converts *structpb.Struct to metadata.Metadata
-func StructToMetadata(s *structpb.Struct) metadata.Metadata {
-	if s == nil {
-		return metadata.Metadata{}
-	}
-	md := make(metadata.Metadata)
-	for k, v := range s.Fields {
-		md[k] = v.GetStringValue()
-	}
-	return md
 }
 
 // MarshalJSON implements json.Marshaler for Transaction

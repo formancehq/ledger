@@ -355,15 +355,16 @@ CREATE TABLE balances (
 );
 ```
 
-### Locked Balances Store
+### Key Set Locker
 
 **File**: `internal/service/balances_store_locked.go`
 
-The `DefaultLockedBalancesStore` wraps a `RuntimeStore` and adds locking for concurrent access to balances:
+The `DefaultKeySetLocker` provides key-based locking for concurrent access to balance-related operations:
 
 - **Purpose**: Ensures safe concurrent access to balances during transaction processing
 - **Mechanism**: Uses mutexes keyed by `account:asset` combinations
 - **Behavior**: Locks are acquired before reading balances and released after transaction processing
+- **Cleanup**: Locks are removed from the internal map when no goroutine holds a reference
 - **No caching**: Always reads from the underlying database store
 
 **Note**: This is NOT a cache. It only provides locking - balances are always read from the database.

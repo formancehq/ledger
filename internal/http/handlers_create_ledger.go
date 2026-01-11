@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger
@@ -17,39 +19,22 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body (logStoreDriver, runtimeStoreDriver, logStoreConfig, runtimeStoreConfig, metadata, snapshotThreshold)
-	var req struct {
-		LogStoreDriver     string                 `json:"logStoreDriver"`
-		RuntimeStoreDriver string                 `json:"runtimeStoreDriver"`
-		LogStoreConfig     map[string]interface{} `json:"logStoreConfig,omitempty"`
-		RuntimeStoreConfig map[string]interface{} `json:"runtimeStoreConfig,omitempty"`
-		Metadata           map[string]string      `json:"metadata,omitempty"`
-		SnapshotThreshold  *uint64                `json:"snapshotThreshold,omitempty"`
-	}
-
 	if r.Body == nil {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("request body is required"))
 		return
 	}
 
-	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+	req := &systempb.CreateLedgerRequest{}
+	if err := json.UnmarshalRead(r.Body, &req, json.WithUnmarshalers(json.UnmarshalFunc(protojson.Unmarshal))); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
-
-	// Validate required fields
-	if req.LogStoreDriver == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("logStoreDriver is required"))
-		return
-	}
-
-	if req.RuntimeStoreDriver == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("runtimeStoreDriver is required"))
-		return
-	}
+	req.Name = ledgerName
+	data, _ := json.Marshal(req)
+	fmt.Println(string(data))
 
 	// Create ledger via cluster
-	ledgerInfo, err := s.cluster.CreateLedger(r.Context(), ledgerName, req.LogStoreConfig, req.RuntimeStoreConfig, req.Metadata, req.SnapshotThreshold, req.LogStoreDriver, req.RuntimeStoreDriver)
+	ledgerInfo, err := s.backend.CreateLedger(r.Context(), req)
 	if err != nil {
 		handleError(w, r, err)
 		return

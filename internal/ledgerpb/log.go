@@ -1,8 +1,8 @@
 package ledgerpb
 
 import (
-	"encoding/json/v2"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -73,7 +73,7 @@ func ChainLog(l *Log, previous *Log) *Log {
 // UnmarshalJSON implements json.Unmarshaler for Log
 func (l *Log) UnmarshalJSON(data []byte) error {
 	type auxLog struct {
-		Type            LogType       `json:"type"`
+		Type            LogType        `json:"type"`
 		Data            jsontext.Value `json:"data"`
 		Date            *time.Time     `json:"date"`
 		IdempotencyKey  string         `json:"idempotencyKey"`

@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/systempb"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -120,12 +120,12 @@ func (g *Gateway) Start(ctx context.Context) error {
 			gateway: g,
 		})
 
-		service.RegisterSystemServiceServer(server, &systemServiceGateway{
+		systempb.RegisterSystemServiceServer(server, &systemServiceGateway{
 			logger: g.logger.WithFields(map[string]any{
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: service.NewSystemServiceClient(conn),
+			client: systempb.NewSystemServiceClient(conn),
 		})
 
 		ledgerpb.RegisterLedgerServiceServer(server, &ledgerServiceGateway{
@@ -302,36 +302,32 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 
 // systemServiceGateway forwards SystemService calls
 type systemServiceGateway struct {
-	service.UnimplementedSystemServiceServer
+	systempb.UnimplementedSystemServiceServer
 	logger logging.Logger
-	client service.SystemServiceClient
+	client systempb.SystemServiceClient
 }
 
-func (g *systemServiceGateway) Snapshot(ctx context.Context, req *service.SnapshotRequest) (*service.SnapshotResponse, error) {
-	return g.client.Snapshot(ctx, req)
-}
-
-func (g *systemServiceGateway) CreateLedger(ctx context.Context, req *service.CreateLedgerRequest) (*service.CreateLedgerResponse, error) {
+func (g *systemServiceGateway) CreateLedger(ctx context.Context, req *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	return g.client.CreateLedger(ctx, req)
 }
 
-func (g *systemServiceGateway) DeleteLedger(ctx context.Context, req *service.DeleteLedgerRequest) (*service.DeleteLedgerResponse, error) {
+func (g *systemServiceGateway) DeleteLedger(ctx context.Context, req *systempb.DeleteLedgerRequest) (*systempb.DeleteLedgerResponse, error) {
 	return g.client.DeleteLedger(ctx, req)
 }
 
-func (g *systemServiceGateway) ResolveLedger(ctx context.Context, req *service.ResolveLedgerRequest) (*service.ResolveLedgerResponse, error) {
+func (g *systemServiceGateway) ResolveLedger(ctx context.Context, req *systempb.ResolveLedgerRequest) (*systempb.ResolveLedgerResponse, error) {
 	return g.client.ResolveLedger(ctx, req)
 }
 
-func (g *systemServiceGateway) GetAllLedgersInfo(ctx context.Context, req *service.GetAllLedgersRequest) (*service.GetAllLedgersResponse, error) {
+func (g *systemServiceGateway) GetAllLedgersInfo(ctx context.Context, req *systempb.GetAllLedgersRequest) (*systempb.GetAllLedgersResponse, error) {
 	return g.client.GetAllLedgersInfo(ctx, req)
 }
 
-func (g *systemServiceGateway) GetLedgerInfo(ctx context.Context, req *service.GetLedgerByNameRequest) (*service.GetLedgerByNameResponse, error) {
+func (g *systemServiceGateway) GetLedgerInfo(ctx context.Context, req *systempb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
 	return g.client.GetLedgerInfo(ctx, req)
 }
 
-func (g *systemServiceGateway) ResolveLedgerLeader(ctx context.Context, req *service.ResolveLedgerLeaderRequest) (*service.ResolveLedgerLeaderResponse, error) {
+func (g *systemServiceGateway) ResolveLedgerLeader(ctx context.Context, req *systempb.ResolveLedgerLeaderRequest) (*systempb.ResolveLedgerLeaderResponse, error) {
 	return g.client.ResolveLedgerLeader(ctx, req)
 }
 
@@ -342,31 +338,27 @@ type ledgerServiceGateway struct {
 	client ledgerpb.LedgerServiceClient
 }
 
-func (g *ledgerServiceGateway) Snapshot(ctx context.Context, req *ledgerpb.LedgerSnapshotRequest) (*ledgerpb.LedgerSnapshotResponse, error) {
-	return g.client.Snapshot(ctx, req)
-}
-
-func (g *ledgerServiceGateway) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.CreateTransactionResponse, error) {
+func (g *ledgerServiceGateway) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.Log, error) {
 	return g.client.CreateTransaction(ctx, req)
 }
 
-func (g *ledgerServiceGateway) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.RevertTransactionResponse, error) {
+func (g *ledgerServiceGateway) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.Log, error) {
 	return g.client.RevertTransaction(ctx, req)
 }
 
-func (g *ledgerServiceGateway) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.SaveAccountMetadataResponse, error) {
+func (g *ledgerServiceGateway) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.Log, error) {
 	return g.client.SaveAccountMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.SaveTransactionMetadataResponse, error) {
+func (g *ledgerServiceGateway) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.Log, error) {
 	return g.client.SaveTransactionMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.DeleteAccountMetadataResponse, error) {
+func (g *ledgerServiceGateway) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.Log, error) {
 	return g.client.DeleteAccountMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.DeleteTransactionMetadataResponse, error) {
+func (g *ledgerServiceGateway) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.Log, error) {
 	return g.client.DeleteTransactionMetadata(ctx, req)
 }
 

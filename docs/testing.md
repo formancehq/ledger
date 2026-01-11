@@ -47,6 +47,8 @@ func TestValidatebucketConfig(t *testing.T) {
 
 **Objectif** : Tester l'integration entre composants
 
+Runtime store integration tests are kept separate from log store integration tests and use their own fixtures and log samples to avoid cross-coupling.
+
 **Example** :
 ```go
 //go:build integration
@@ -325,4 +327,3 @@ for approfondir :
 1. [Development](./development.md) - likent écrire du code testable
 2. [Architecture](./architecture.md) - Understand the system to test
 3. [Data Flows](./data-flows.md) - Understand the flows to test
-

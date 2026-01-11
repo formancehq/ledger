@@ -4,10 +4,11 @@
 // - protoc             v5.27.5
 // source: system.proto
 
-package service
+package systempb
 
 import (
 	context "context"
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -19,7 +20,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SystemService_Snapshot_FullMethodName            = "/ledger.SystemService/Snapshot"
 	SystemService_CreateLedger_FullMethodName        = "/ledger.SystemService/CreateLedger"
 	SystemService_DeleteLedger_FullMethodName        = "/ledger.SystemService/DeleteLedger"
 	SystemService_ResolveLedger_FullMethodName       = "/ledger.SystemService/ResolveLedger"
@@ -34,10 +34,8 @@ const (
 //
 // SystemService provides system operations
 type SystemServiceClient interface {
-	// Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
-	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	// CreateLedger creates a new ledger
-	CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*CreateLedgerResponse, error)
+	CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerInfo, error)
 	// DeleteLedger deletes a ledger
 	DeleteLedger(ctx context.Context, in *DeleteLedgerRequest, opts ...grpc.CallOption) (*DeleteLedgerResponse, error)
 	// ResolveLedger resolves a ledger name to its ID
@@ -45,7 +43,7 @@ type SystemServiceClient interface {
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error)
 	// GetLedgerInfo returns a ledger info by its name
-	GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*GetLedgerByNameResponse, error)
+	GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerInfo, error)
 	// ResolveLedgerLeader
 	ResolveLedgerLeader(ctx context.Context, in *ResolveLedgerLeaderRequest, opts ...grpc.CallOption) (*ResolveLedgerLeaderResponse, error)
 }
@@ -58,19 +56,9 @@ func NewSystemServiceClient(cc grpc.ClientConnInterface) SystemServiceClient {
 	return &systemServiceClient{cc}
 }
 
-func (c *systemServiceClient) Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error) {
+func (c *systemServiceClient) CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SnapshotResponse)
-	err := c.cc.Invoke(ctx, SystemService_Snapshot_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *systemServiceClient) CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*CreateLedgerResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateLedgerResponse)
+	out := new(ledgerpb.LedgerInfo)
 	err := c.cc.Invoke(ctx, SystemService_CreateLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -108,9 +96,9 @@ func (c *systemServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllL
 	return out, nil
 }
 
-func (c *systemServiceClient) GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*GetLedgerByNameResponse, error) {
+func (c *systemServiceClient) GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*ledgerpb.LedgerInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetLedgerByNameResponse)
+	out := new(ledgerpb.LedgerInfo)
 	err := c.cc.Invoke(ctx, SystemService_GetLedgerInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -134,10 +122,8 @@ func (c *systemServiceClient) ResolveLedgerLeader(ctx context.Context, in *Resol
 //
 // SystemService provides system operations
 type SystemServiceServer interface {
-	// Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
-	Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	// CreateLedger creates a new ledger
-	CreateLedger(context.Context, *CreateLedgerRequest) (*CreateLedgerResponse, error)
+	CreateLedger(context.Context, *CreateLedgerRequest) (*ledgerpb.LedgerInfo, error)
 	// DeleteLedger deletes a ledger
 	DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error)
 	// ResolveLedger resolves a ledger name to its ID
@@ -145,7 +131,7 @@ type SystemServiceServer interface {
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error)
 	// GetLedgerInfo returns a ledger info by its name
-	GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*GetLedgerByNameResponse, error)
+	GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error)
 	// ResolveLedgerLeader
 	ResolveLedgerLeader(context.Context, *ResolveLedgerLeaderRequest) (*ResolveLedgerLeaderResponse, error)
 	mustEmbedUnimplementedSystemServiceServer()
@@ -158,10 +144,7 @@ type SystemServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSystemServiceServer struct{}
 
-func (UnimplementedSystemServiceServer) Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
-}
-func (UnimplementedSystemServiceServer) CreateLedger(context.Context, *CreateLedgerRequest) (*CreateLedgerResponse, error) {
+func (UnimplementedSystemServiceServer) CreateLedger(context.Context, *CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateLedger not implemented")
 }
 func (UnimplementedSystemServiceServer) DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error) {
@@ -173,7 +156,7 @@ func (UnimplementedSystemServiceServer) ResolveLedger(context.Context, *ResolveL
 func (UnimplementedSystemServiceServer) GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
 }
-func (UnimplementedSystemServiceServer) GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*GetLedgerByNameResponse, error) {
+func (UnimplementedSystemServiceServer) GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLedgerInfo not implemented")
 }
 func (UnimplementedSystemServiceServer) ResolveLedgerLeader(context.Context, *ResolveLedgerLeaderRequest) (*ResolveLedgerLeaderResponse, error) {
@@ -198,24 +181,6 @@ func RegisterSystemServiceServer(s grpc.ServiceRegistrar, srv SystemServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&SystemService_ServiceDesc, srv)
-}
-
-func _SystemService_Snapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SnapshotRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SystemServiceServer).Snapshot(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SystemService_Snapshot_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SystemServiceServer).Snapshot(ctx, req.(*SnapshotRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _SystemService_CreateLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -333,10 +298,6 @@ var SystemService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "ledger.SystemService",
 	HandlerType: (*SystemServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Snapshot",
-			Handler:    _SystemService_Snapshot_Handler,
-		},
 		{
 			MethodName: "CreateLedger",
 			Handler:    _SystemService_CreateLedger_Handler,

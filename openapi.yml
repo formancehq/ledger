@@ -363,35 +363,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /snapshot:
-    post:
-      summary: Create a Raft snapshot
-      description: Forces the creation of a Raft cluster snapshot (leader only)
-      operationId: createSnapshot
-      tags:
-        - Cluster
-      responses:
-        '200':
-          description: Snapshot created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SnapshotResponse'
-        '405':
-          description: Method not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /cluster/state:
     get:
       summary: Get cluster state
@@ -610,9 +581,6 @@ components:
         script:
           $ref: '#/components/schemas/Script'
           description: Numscript script to execute (required if postings is not provided). Cannot be used together with postings.
-        runtime:
-          type: string
-          description: Runtime to use for script execution (e.g., "experimental-interpreter")
         dryRun:
           type: boolean
           default: false
@@ -847,20 +815,6 @@ components:
           description: Amount as a big integer
         asset:
           type: string
-
-    SnapshotResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - message
-          properties:
-            message:
-              type: string
-              description: Success message
 
     ClusterStateResponse:
       type: object
@@ -1206,4 +1160,3 @@ components:
         The exact structure is defined by Pebble's Metrics type and may vary between versions.
         Common fields include compaction-related metrics, flush metrics, and level statistics.
       additionalProperties: true
-

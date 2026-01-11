@@ -89,7 +89,6 @@ func main() {
 
 ### [Cluster](docs/sdks/cluster/README.md)
 
-* [CreateSnapshot](docs/sdks/cluster/README.md#createsnapshot) - Create a Raft snapshot
 * [GetClusterState](docs/sdks/cluster/README.md#getclusterstate) - Get cluster state
 
 

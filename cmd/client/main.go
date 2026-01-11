@@ -53,7 +53,6 @@ func init() {
 	initLedgers()
 
 	// Add commands to root
-	rootCmd.AddCommand(snapshotCmd)
 	rootCmd.AddCommand(clusterStateCmd)
 	rootCmd.AddCommand(ledgersCmd)
 }
