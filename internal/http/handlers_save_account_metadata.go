@@ -34,7 +34,6 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 
 	// Build service.Parameters[*ledgerpb.SaveAccountMetadataRequest]
 	params := service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
-		DryRun:         r.URL.Query().Get("dryRun") == "true",
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 			Address:  address,

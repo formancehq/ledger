@@ -11,25 +11,28 @@ import (
 type logProcessor[INPUT any] struct {
 	operation    string
 	runtimeStore RuntimeStore
-	logStore LogStore
+	logReader    LogReader
+	logFactory   LogFactory
 	keySetLocker KeySetLocker
-	builder      func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.Log, error)
+	builder      func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
 }
 
 func newLogProcessor[INPUT any](
 	operation string,
 	runtimeStore RuntimeStore,
-	logStore LogStore,
+	logStore LogReader,
+	logFactory LogFactory,
 	keySetLocker KeySetLocker,
-	builder func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.Log, error),
+	builder func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
 
 ) *logProcessor[INPUT] {
 	return &logProcessor[INPUT]{
 		operation:    operation,
 		runtimeStore: runtimeStore,
-		logStore:     logStore,
+		logReader:    logStore,
 		keySetLocker: keySetLocker,
 		builder:      builder,
+		logFactory:   logFactory,
 	}
 }
 
@@ -52,12 +55,12 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		}
 
 		if id != 0 {
-			log, err := lp.logStore.GetLogByID(ctx, id)
+			log, err := lp.logReader.GetLogByID(ctx, id)
 			if err != nil {
 				return nil, false, err
 			}
 
-			if ledgerpb.ComputeIdempotencyHash(parameters.Input) != hash {
+			if string(ledgerpb.ComputeIdempotencyHash(parameters.Input)) != string(hash) {
 				return nil, false, ErrIdempotencyKeyConflict
 			}
 
@@ -65,16 +68,16 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		}
 	}
 
-	log, err := lp.builder(ctx, parameters)
+	input, err := lp.builder(ctx, parameters)
 	if err != nil {
 		return nil, false, err
 	}
 
-	if parameters.DryRun {
-		return log, false, nil
-	}
-
-	if err := lp.logStore.InsertLogs(ctx, log); err != nil {
+	log, err := lp.logFactory.CreateLog(ctx, &ledgerpb.Idempotency{
+		Key:  parameters.IdempotencyKey,
+		Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
+	}, input)
+	if err != nil {
 		logging.FromContext(ctx).WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
 		return nil, false, err
 	}

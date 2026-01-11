@@ -88,25 +88,26 @@ func accumulateAccountsFromTransaction(
 	}
 }
 
-
 // accumulateMetadataFromSetMetadata accumulates metadata updates from SET_METADATA log
 func accumulateMetadataFromSetMetadata(
 	accountMetadataBatch map[string]map[string]interface{},
 	savedMetadata *ledgerpb.SavedMetadata,
 ) {
-	if savedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
-		accountAddr := savedMetadata.GetAccountId()
-		if accountAddr == "" {
-			return
-		}
+	if savedMetadata.Target.GetAccount() == nil {
+		return
+	}
 
-		// Accumulate metadata for batch processing
-		if accountMetadataBatch[accountAddr] == nil {
-			accountMetadataBatch[accountAddr] = make(map[string]interface{})
-		}
-		for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
-			accountMetadataBatch[accountAddr][k] = v
-		}
+	accountAddr := savedMetadata.Target.GetAccount().Addr
+	if accountAddr == "" {
+		return
+	}
+
+	// Accumulate metadata for batch processing
+	if accountMetadataBatch[accountAddr] == nil {
+		accountMetadataBatch[accountAddr] = make(map[string]interface{})
+	}
+	for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
+		accountMetadataBatch[accountAddr][k] = v
 	}
 }
 
@@ -115,15 +116,17 @@ func accumulateMetadataFromDeleteMetadata(
 	accountMetadataDeletes map[string][]string,
 	deletedMetadata *ledgerpb.DeletedMetadata,
 ) {
-	if deletedMetadata.TargetType == ledgerpb.MetaTargetTypeAccount {
-		accountAddr := deletedMetadata.GetAccountId()
-		if accountAddr == "" {
-			return
-		}
-
-		// Accumulate deletion for batch processing
-		accountMetadataDeletes[accountAddr] = append(accountMetadataDeletes[accountAddr], deletedMetadata.Key)
+	if deletedMetadata.Target.GetAccount() == nil {
+		return
 	}
+
+	accountAddr := deletedMetadata.Target.GetAccount().GetAddr()
+	if accountAddr == "" {
+		return
+	}
+
+	// Accumulate deletion for batch processing
+	accountMetadataDeletes[accountAddr] = append(accountMetadataDeletes[accountAddr], deletedMetadata.Key)
 }
 
 // LogsToRuntimeUpdate converts logs to RuntimeUpdate by aggregating balance differences,
@@ -142,7 +145,7 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 	accountMetadataDeletes := make(map[string][]string)
 
 	// Accumulate idempotency entries for batch processing
-	idempotencyKeys := make(map[string]IdempotencyEntry)
+	idempotencyKeys := make(map[string]*ledgerpb.IdempotencyEntry)
 
 	for _, log := range logs {
 		// Validate log data
@@ -151,10 +154,10 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		}
 
 		// Accumulate idempotency entry if present
-		if log.IdempotencyKey != "" && log.Id != 0 {
-			idempotencyKeys[log.IdempotencyKey] = IdempotencyEntry{
-				Hash:  log.IdempotencyHash,
-				LogID: log.Id,
+		if log.Idempotency != nil {
+			idempotencyKeys[log.Idempotency.Key] = &ledgerpb.IdempotencyEntry{
+				Hash:  log.Idempotency.Hash,
+				LogId: log.Id,
 			}
 		}
 
@@ -205,4 +208,3 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		LastProcessedLogID:     logs[len(logs)-1].Id,
 	}, nil
 }
-

@@ -25,10 +25,10 @@ type SQLiteLogStore struct {
 	logger logging.Logger
 
 	// Prepared statements
-	stmtGetLogByID            *sql.Stmt
+	stmtGetLogByID             *sql.Stmt
 	stmtGetLogByIdempotencyKey *sql.Stmt
-	stmtGetLastLog            *sql.Stmt
-	stmtInsertLog             *sql.Stmt
+	stmtGetLastLog             *sql.Stmt
+	stmtInsertLog              *sql.Stmt
 }
 
 // NewSQLiteLogStore creates a new SQLiteLogStore instance
@@ -193,19 +193,18 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
 		}
 
-		var idempotencyKey sql.NullString
-		if log.IdempotencyKey != "" {
+		var (
+			idempotencyKey  sql.NullString
+			idempotencyHash sql.Null[[]byte]
+		)
+		if log.Idempotency != nil && log.Idempotency.Key != "" {
 			idempotencyKey = sql.NullString{
-				String: log.IdempotencyKey,
+				String: log.Idempotency.Key,
 				Valid:  true,
 			}
-		}
-
-		var idempotencyHash sql.NullString
-		if log.IdempotencyHash != "" {
-			idempotencyHash = sql.NullString{
-				String: log.IdempotencyHash,
-				Valid:  true,
+			idempotencyHash = sql.Null[[]byte]{
+				V:     log.Idempotency.Hash,
+				Valid: true,
 			}
 		}
 
@@ -255,7 +254,7 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledgerpb.Log, error) {
 	var dataBinary []byte
 	var dateStr sql.NullString
 	var idempotencyKey sql.NullString
-	var idempotencyHash sql.NullString
+	var idempotencyHash sql.Null[[]byte]
 
 	err := row.Scan(&id, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
 	if err != nil {
@@ -287,10 +286,10 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledgerpb.Log, error) {
 
 	// Set idempotency fields
 	if idempotencyKey.Valid {
-		log.IdempotencyKey = idempotencyKey.String
-	}
-	if idempotencyHash.Valid {
-		log.IdempotencyHash = idempotencyHash.String
+		log.Idempotency = &ledgerpb.Idempotency{
+			Key:  idempotencyKey.String,
+			Hash: idempotencyHash.V,
+		}
 	}
 
 	return log, nil
@@ -309,7 +308,7 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 		dataBinary      []byte
 		dateStr         sql.NullString
 		idempotencyKey  sql.NullString
-		idempotencyHash sql.NullString
+		idempotencyHash sql.Null[[]byte]
 	)
 
 	err := c.rows.Scan(&id, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
@@ -342,10 +341,10 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 
 	// Set idempotency fields
 	if idempotencyKey.Valid {
-		log.IdempotencyKey = idempotencyKey.String
-	}
-	if idempotencyHash.Valid {
-		log.IdempotencyHash = idempotencyHash.String
+		log.Idempotency = &ledgerpb.Idempotency{
+			Key:  idempotencyKey.String,
+			Hash: idempotencyHash.V,
+		}
 	}
 
 	return log, nil

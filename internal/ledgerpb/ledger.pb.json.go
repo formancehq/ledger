@@ -1,7 +1,13 @@
 package ledgerpb
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
@@ -49,11 +55,9 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 func (x *Parameters) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Ledger         string `json:"ledger,omitempty"`
-		DryRun         bool   `json:"dryRun,omitempty"`
 		IdempotencyKey string `json:"idempotencyKey,omitempty"`
 	}{
 		Ledger:         x.Ledger,
-		DryRun:         x.DryRun,
 		IdempotencyKey: x.IdempotencyKey,
 	})
 }
@@ -153,24 +157,22 @@ func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler for SavedMetadata
 func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
-	aux := &struct {
+	aux := struct {
 		TargetType    string            `json:"targetType,omitempty"`
 		AccountId     string            `json:"accountId,omitempty"`
 		TransactionId uint64            `json:"transactionId,omitempty"`
 		Metadata      map[string]string `json:"metadata,omitempty"`
 	}{
-		TargetType: x.TargetType,
+		TargetType: x.Target.AsConst(),
 		Metadata:   x.Metadata,
 	}
 
 	// Handle oneof target_id
-	if x.TargetId != nil {
-		switch v := x.TargetId.(type) {
-		case *SavedMetadata_AccountId:
-			aux.AccountId = v.AccountId
-		case *SavedMetadata_TransactionId:
-			aux.TransactionId = v.TransactionId
-		}
+	switch v := x.Target.Target.(type) {
+	case *Target_Account:
+		aux.AccountId = v.Account.Addr
+	case *Target_Transaction:
+		aux.TransactionId = v.Transaction.Id
 	}
 
 	return json.Marshal(aux)
@@ -178,24 +180,22 @@ func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler for DeletedMetadata
 func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
-	aux := &struct {
+	aux := struct {
 		TargetType    string `json:"targetType,omitempty"`
 		AccountId     string `json:"accountId,omitempty"`
 		TransactionId uint64 `json:"transactionId,omitempty"`
 		Key           string `json:"key,omitempty"`
 	}{
-		TargetType: x.TargetType,
+		TargetType: x.Target.AsConst(),
 		Key:        x.Key,
 	}
 
 	// Handle oneof target_id
-	if x.TargetId != nil {
-		switch v := x.TargetId.(type) {
-		case *DeletedMetadata_AccountId:
-			aux.AccountId = v.AccountId
-		case *DeletedMetadata_TransactionId:
-			aux.TransactionId = v.TransactionId
-		}
+	switch v := x.Target.Target.(type) {
+	case *Target_Account:
+		aux.AccountId = v.Account.Addr
+	case *Target_Transaction:
+		aux.TransactionId = v.Transaction.Id
 	}
 
 	return json.Marshal(aux)
@@ -262,4 +262,114 @@ func (x *LedgerState) MarshalJSON() ([]byte, error) {
 		LogStoreMetrics:     x.LogStoreMetrics.AsMap(),
 		RuntimeStoreMetrics: x.RuntimeStoreMetrics.AsMap(),
 	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
+// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
+func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string         `json:"targetType"`
+		TargetID   jsontext.Value `json:"targetId"`
+		Key        string         `json:"key"`
+	}
+	x := X{}
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+
+	dm.Key = x.Key
+
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		var accountID string
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(targetIDBytes, &accountID)
+		if err == nil {
+			dm.Target = &Target{
+				Target: &Target_Account{
+					Account: &TargetAccount{
+						Addr: string(targetIDBytes),
+					},
+				},
+			}
+		}
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		var txID uint64
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		txID, err = strconv.ParseUint(string(targetIDBytes), 10, 64)
+		if err == nil {
+			dm.Target = &Target{
+				Target: &Target_Transaction{
+					Transaction: &TargetTransaction{
+						Id: txID,
+					},
+				},
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
+	}
+	return err
+}
+
+// UnmarshalJSON implements json.Unmarshaler for SavedMetadata
+// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
+func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string            `json:"targetType"`
+		TargetID   jsontext.Value    `json:"targetId"`
+		Metadata   metadata.Metadata `json:"metadata"`
+	}
+	x := X{}
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+
+	sm.Metadata = x.Metadata
+
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		var accountID string
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(targetIDBytes, &accountID)
+		if err == nil {
+			sm.Target = &Target{
+				Target: &Target_Account{
+					Account: &TargetAccount{
+						Addr: string(targetIDBytes),
+					},
+				},
+			}
+		}
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		var txID uint64
+		targetIDBytes, err := json.Marshal(x.TargetID)
+		if err != nil {
+			return err
+		}
+		txID, err = strconv.ParseUint(string(targetIDBytes), 10, 64)
+		if err == nil {
+			sm.Target = &Target{
+				Target: &Target_Transaction{
+					Transaction: &TargetTransaction{
+						Id: txID,
+					},
+				},
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
+	}
+	return err
 }

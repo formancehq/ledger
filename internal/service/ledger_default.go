@@ -13,41 +13,59 @@ import (
 	"github.com/formancehq/numscript"
 )
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source ledger_default.go -destination ledger_default_generated_test.go -package service . LogFactory
+type LogFactory interface {
+	CreateLog(ctx context.Context, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
+}
+
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
 	keySetLocker KeySetLocker
-	logStore     LogStore
+	logReader    LogReader
+	logFactory   LogFactory
 	logger       logging.Logger
 	runtimeStore RuntimeStore
 	// todo: use a LRU cache with limits
-	scriptCache           sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
-	createTransactionLp   *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
-	saveAccountMetadataLp *logProcessor[*ledgerpb.SaveAccountMetadataRequestPayload]
+	scriptCache               sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
+	createTransactionLp       *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
+	saveTransactionMetadataLp *logProcessor[*ledgerpb.SaveTransactionMetadataRequestPayload]
+	saveAccountMetadataLp     *logProcessor[*ledgerpb.SaveAccountMetadataRequestPayload]
 }
 
 // NewDefaultLedger creates a new default ledger service
 func NewDefaultLedger(
-	logStore LogStore,
+	logReader LogReader,
+	logFactory LogFactory,
 	runtimeStore RuntimeStore,
 	logger logging.Logger,
 ) *DefaultLedger {
 	l := &DefaultLedger{
 		keySetLocker: NewDefaultKeySetLocker(),
-		logStore:     logStore,
+		logReader:    logReader,
 		runtimeStore: runtimeStore,
 		logger:       logger,
 	}
 	l.createTransactionLp = newLogProcessor(
 		"CreateTransaction",
 		runtimeStore,
-		logStore,
+		logReader,
+		logFactory,
 		l.keySetLocker,
 		l.createTransaction,
+	)
+	l.saveTransactionMetadataLp = newLogProcessor(
+		"SaveTransactionMetadata",
+		runtimeStore,
+		logReader,
+		logFactory,
+		l.keySetLocker,
+		l.saveTransactionMetadata,
 	)
 	l.saveAccountMetadataLp = newLogProcessor(
 		"SaveAccountMetadata",
 		runtimeStore,
-		logStore,
+		logReader,
+		logFactory,
 		l.keySetLocker,
 		l.saveAccountMetadata,
 	)
@@ -61,9 +79,8 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	return log, err
 }
 
-func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	l.logger.
-		Debugf("Creating transaction")
+func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+	l.logger.Debugf("Creating transaction")
 
 	input := parameters.Input
 
@@ -238,33 +255,17 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 		}
 	}
 
-	// Create CreatedTransaction payload in protobuf
-	createdTx := &ledgerpb.CreatedTransaction{
-		Transaction:     tx,
-		AccountMetadata: accountMetadataProto,
-	}
-
-	// Create log payload
-	logPayload := &ledgerpb.LogPayload{
-		Payload: &ledgerpb.LogPayload_CreatedTransaction{
-			CreatedTransaction: createdTx,
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_AppendTransaction{
+			AppendTransaction: &ledgerpb.AppendTransactionCommand{
+				AccountMetadata: accountMetadataProto,
+				Metadata:        finalMetadata,
+				Timestamp:       parameters.Input.Timestamp,
+				Reference:       parameters.Input.Reference,
+				Postings:        postings,
+			},
 		},
-	}
-
-	// Create protobuf Log
-	log := &ledgerpb.Log{
-		Data: logPayload,
-	}
-
-	// Set date
-	log.Date = ledgerpb.NewTimestamp(*timestamp)
-
-	if parameters.IdempotencyKey != "" {
-		log.IdempotencyKey = parameters.IdempotencyKey
-		log.IdempotencyHash = ledgerpb.ComputeIdempotencyHash(input)
-	}
-
-	return log, nil
+	}, nil
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
@@ -339,9 +340,37 @@ func (l *DefaultLedger) RevertTransaction(ctx context.Context, parameters Parame
 	return nil, ErrNotFound
 }
 
-// SaveTransactionMetadata is not implemented yet
+// SaveTransactionMetadata saves metadata for a transaction
 func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, parameters)
+	return log, err
+}
+
+func (l *DefaultLedger) saveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+	input := parameters.Input
+
+	// Validate input
+	if input.TransactionId == 0 {
+		return nil, fmt.Errorf("transaction id is required")
+	}
+	if input.Metadata == nil {
+		return nil, fmt.Errorf("metadata is required")
+	}
+
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_SaveMetadata{
+			SaveMetadata: &ledgerpb.SaveMetadataCommand{
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Transaction{
+						Transaction: &ledgerpb.TargetTransaction{
+							Id: input.TransactionId,
+						},
+					},
+				},
+				Metadata: input.Metadata,
+			},
+		},
+	}, nil
 }
 
 // SaveAccountMetadata saves metadata for an account
@@ -350,7 +379,7 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, parameters Para
 	return log, err
 }
 
-func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -361,35 +390,20 @@ func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, parameters Para
 		return nil, fmt.Errorf("metadata is required")
 	}
 
-	// Create SavedMetadata payload in protobuf
-	savedMetadata := &ledgerpb.SavedMetadata{
-		TargetType: "ACCOUNT",
-		TargetId: &ledgerpb.SavedMetadata_AccountId{
-			AccountId: input.Address,
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_SaveMetadata{
+			SaveMetadata: &ledgerpb.SaveMetadataCommand{
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{
+						Account: &ledgerpb.TargetAccount{
+							Addr: input.Address,
+						},
+					},
+				},
+				Metadata: input.Metadata,
+			},
 		},
-		Metadata: input.Metadata,
-	}
-
-	// Create log payload
-	logPayload := &ledgerpb.LogPayload{
-		Payload: &ledgerpb.LogPayload_SavedMetadata{
-			SavedMetadata: savedMetadata,
-		},
-	}
-
-	// Create protobuf Log
-	now := time.Now()
-	log := &ledgerpb.Log{
-		Data: logPayload,
-		Date: ledgerpb.NewTimestamp(now),
-	}
-
-	if parameters.IdempotencyKey != "" {
-		log.IdempotencyKey = parameters.IdempotencyKey
-		log.IdempotencyHash = ledgerpb.ComputeIdempotencyHash(input)
-	}
-
-	return log, nil
+	}, nil
 }
 
 // DeleteTransactionMetadata is not implemented yet
@@ -413,7 +427,7 @@ func (l *DefaultLedger) Export(ctx context.Context, w ExportWriter) error {
 }
 
 func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
-	return l.logStore.GetAllLogs(ctx, from, to)
+	return l.logReader.GetAllLogs(ctx, from, to)
 }
 
 type numscriptStoreAdapter struct {

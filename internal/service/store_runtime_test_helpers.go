@@ -129,8 +129,11 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 			// SET_METADATA for the same account
 			func() *ledgerpb.Log {
 				payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
-					TargetType: "ACCOUNT",
-					TargetId:   &ledgerpb.SavedMetadata_AccountId{AccountId: "test-account"},
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "test-account",
+						}},
+					},
 					Metadata: metadata.Metadata{
 						"key3": "value3",
 						"key2": "updated_value2", // This should override key2
@@ -144,9 +147,12 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 			// DELETE_METADATA for the same account
 			func() *ledgerpb.Log {
 				payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
-					TargetType: "ACCOUNT",
-					TargetId:   &ledgerpb.DeletedMetadata_AccountId{AccountId: "test-account"},
-					Key:        "key1",
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "test-account",
+						}},
+					},
+					Key: "key1",
 				})
 				return ledgerpb.NewLog(payload).
 					WithID(3).
@@ -231,12 +237,10 @@ func createRuntimeTestLogs() []*ledgerpb.Log {
 					}},
 				},
 			})
-			log := ledgerpb.NewLog(payload).
+			return ledgerpb.NewLog(payload).
 				WithID(1).
-				WithIdempotencyKey("idempotency-key-1").
+				WithIdempotency("idempotency-key-1", []byte("hash-1")).
 				WithDate(now)
-			log.IdempotencyHash = "hash-1"
-			return log
 		}(),
 		func() *ledgerpb.Log {
 			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
@@ -247,17 +251,18 @@ func createRuntimeTestLogs() []*ledgerpb.Log {
 					WithID(2).
 					WithTimestamp(now),
 			})
-			log := ledgerpb.NewLog(payload).
+			return ledgerpb.NewLog(payload).
 				WithID(2).
-				WithIdempotencyKey("idempotency-key-2").
+				WithIdempotency("idempotency-key-2", []byte("hash-2")).
 				WithDate(now.Add(time.Second))
-			log.IdempotencyHash = "hash-2"
-			return log
 		}(),
 		func() *ledgerpb.Log {
 			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
-				TargetType: "ACCOUNT",
-				TargetId:   &ledgerpb.SavedMetadata_AccountId{AccountId: "bank"},
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+						Addr: "bank",
+					}},
+				},
 				Metadata: metadata.Metadata{
 					"label": "Bank Account",
 				},
@@ -268,9 +273,12 @@ func createRuntimeTestLogs() []*ledgerpb.Log {
 		}(),
 		func() *ledgerpb.Log {
 			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
-				TargetType: "ACCOUNT",
-				TargetId:   &ledgerpb.DeletedMetadata_AccountId{AccountId: "bank"},
-				Key:        "old_key",
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+						Addr: "bank",
+					}},
+				},
+				Key: "old_key",
 			})
 			return ledgerpb.NewLog(payload).
 				WithID(4).

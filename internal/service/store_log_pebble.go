@@ -107,8 +107,8 @@ func (s *PebbleLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) 
 		}
 
 		// Also create an index by idempotency key if present
-		if log.IdempotencyKey != "" {
-			idempotencyKey := []byte(fmt.Sprintf("idempotency:%s", log.IdempotencyKey))
+		if log.Idempotency != nil && log.Idempotency.Key != "" {
+			idempotencyKey := []byte(fmt.Sprintf("idempotency:%s", log.Idempotency.Key))
 			// Store the log ID as value for quick lookup
 			idValue := make([]byte, 8)
 			binary.BigEndian.PutUint64(idValue, log.Id)

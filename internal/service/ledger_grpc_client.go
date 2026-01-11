@@ -27,7 +27,6 @@ func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, parameters Par
 	log, err := g.client.CreateTransaction(ctx, &ledgerpb.CreateTransactionRequest{
 		Parameters: &ledgerpb.Parameters{
 			Ledger:         g.name,
-			DryRun:         parameters.DryRun,
 			IdempotencyKey: parameters.IdempotencyKey,
 		},
 		Payload: parameters.Input,
@@ -44,7 +43,18 @@ func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, parameters Par
 }
 
 func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, err := g.client.SaveTransactionMetadata(ctx, &ledgerpb.SaveTransactionMetadataRequest{
+		Payload: parameters.Input,
+		Parameters: &ledgerpb.Parameters{
+			Ledger:         g.name,
+			IdempotencyKey: parameters.IdempotencyKey,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	return log, nil
 }
 
 func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
@@ -53,7 +63,6 @@ func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, parameters P
 		Payload: parameters.Input,
 		Parameters: &ledgerpb.Parameters{
 			Ledger:         g.name,
-			DryRun:         parameters.DryRun,
 			IdempotencyKey: parameters.IdempotencyKey,
 		},
 	})

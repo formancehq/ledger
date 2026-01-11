@@ -7,7 +7,8 @@ import "ledger.proto";
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/ledger";
 
 // InsertLogCommand represents the data for an insert log command
-message InsertLogCommand {
-  ledger.Log log = 1;
+message CreateLogCommand {
+  ledger.Idempotency idempotency = 1;
+  ledger.CommandInput input = 2;
 }
 

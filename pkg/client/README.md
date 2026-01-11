@@ -103,6 +103,7 @@ func main() {
 ### [Transactions](docs/sdks/transactions/README.md)
 
 * [CreateTransaction](docs/sdks/transactions/README.md#createtransaction) - Create a new transaction
+* [SaveTransactionMetadata](docs/sdks/transactions/README.md#savetransactionmetadata) - Save transaction metadata
 * [BulkOperations](docs/sdks/transactions/README.md#bulkoperations) - Bulk operations
 
 </details>

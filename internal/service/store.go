@@ -97,15 +97,9 @@ type RuntimeUpdate struct {
 	// AccountMetadataDeletes contains metadata keys to delete: map[account][]keys
 	AccountMetadataDeletes map[string][]string
 	// IdempotencyKeys contains idempotency entries to insert: map[key]{hash, logID}
-	IdempotencyKeys map[string]IdempotencyEntry
+	IdempotencyKeys map[string]*ledgerpb.IdempotencyEntry
 	// LastProcessedLogID is the ID of the last processed log
 	LastProcessedLogID uint64
-}
-
-// IdempotencyEntry represents an idempotency key entry
-type IdempotencyEntry struct {
-	Hash  string
-	LogID uint64
 }
 
 // RuntimeStore handles runtime queries for balances and account metadata
@@ -115,7 +109,7 @@ type RuntimeStore interface {
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
-	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error)
+	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
 	// Update applies all runtime updates atomically

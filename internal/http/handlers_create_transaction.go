@@ -29,7 +29,6 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 
 	// Build service.Parameters[*ledgerpb.CreateTransactionRequest]
 	params := service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
-		DryRun:         r.URL.Query().Get("dryRun") == "true",
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input:          req,
 	}

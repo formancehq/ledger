@@ -23,27 +23,28 @@ const (
 )
 
 // InsertLogCommand represents the data for an insert log command
-type InsertLogCommand struct {
+type CreateLogCommand struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Log           *ledgerpb.Log          `protobuf:"bytes,1,opt,name=log,proto3" json:"log,omitempty"`
+	Idempotency   *ledgerpb.Idempotency  `protobuf:"bytes,1,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Input         *ledgerpb.CommandInput `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *InsertLogCommand) Reset() {
-	*x = InsertLogCommand{}
+func (x *CreateLogCommand) Reset() {
+	*x = CreateLogCommand{}
 	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *InsertLogCommand) String() string {
+func (x *CreateLogCommand) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*InsertLogCommand) ProtoMessage() {}
+func (*CreateLogCommand) ProtoMessage() {}
 
-func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
+func (x *CreateLogCommand) ProtoReflect() protoreflect.Message {
 	mi := &file_commands_ledger_commands_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -55,14 +56,21 @@ func (x *InsertLogCommand) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use InsertLogCommand.ProtoReflect.Descriptor instead.
-func (*InsertLogCommand) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreateLogCommand.ProtoReflect.Descriptor instead.
+func (*CreateLogCommand) Descriptor() ([]byte, []int) {
 	return file_commands_ledger_commands_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *InsertLogCommand) GetLog() *ledgerpb.Log {
+func (x *CreateLogCommand) GetIdempotency() *ledgerpb.Idempotency {
 	if x != nil {
-		return x.Log
+		return x.Idempotency
+	}
+	return nil
+}
+
+func (x *CreateLogCommand) GetInput() *ledgerpb.CommandInput {
+	if x != nil {
+		return x.Input
 	}
 	return nil
 }
@@ -71,9 +79,10 @@ var File_commands_ledger_commands_proto protoreflect.FileDescriptor
 
 const file_commands_ledger_commands_proto_rawDesc = "" +
 	"\n" +
-	"\x1ecommands/ledger_commands.proto\x12\x0fbucket_commands\x1a\fledger.proto\"1\n" +
-	"\x10InsertLogCommand\x12\x1d\n" +
-	"\x03log\x18\x01 \x01(\v2\v.ledger.LogR\x03logB:Z8github.com/formancehq/ledger-v3-poc/internal/raft/ledgerb\x06proto3"
+	"\x1ecommands/ledger_commands.proto\x12\x0fbucket_commands\x1a\fledger.proto\"u\n" +
+	"\x10CreateLogCommand\x125\n" +
+	"\vidempotency\x18\x01 \x01(\v2\x13.ledger.IdempotencyR\vidempotency\x12*\n" +
+	"\x05input\x18\x02 \x01(\v2\x14.ledger.CommandInputR\x05inputB:Z8github.com/formancehq/ledger-v3-poc/internal/raft/ledgerb\x06proto3"
 
 var (
 	file_commands_ledger_commands_proto_rawDescOnce sync.Once
@@ -89,16 +98,18 @@ func file_commands_ledger_commands_proto_rawDescGZIP() []byte {
 
 var file_commands_ledger_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_commands_ledger_commands_proto_goTypes = []any{
-	(*InsertLogCommand)(nil), // 0: bucket_commands.InsertLogCommand
-	(*ledgerpb.Log)(nil),     // 1: ledger.Log
+	(*CreateLogCommand)(nil),      // 0: bucket_commands.CreateLogCommand
+	(*ledgerpb.Idempotency)(nil),  // 1: ledger.Idempotency
+	(*ledgerpb.CommandInput)(nil), // 2: ledger.CommandInput
 }
 var file_commands_ledger_commands_proto_depIdxs = []int32{
-	1, // 0: bucket_commands.InsertLogCommand.log:type_name -> ledger.Log
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 0: bucket_commands.CreateLogCommand.idempotency:type_name -> ledger.Idempotency
+	2, // 1: bucket_commands.CreateLogCommand.input:type_name -> ledger.CommandInput
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_commands_ledger_commands_proto_init() }

@@ -361,6 +361,7 @@ Transaction metadata is stored in the log and can be:
 - Added during transaction creation
 - Modified via the API
 - Deleted via the API
+It is not stored in the RuntimeStore.
 
 ### Account Metadata
 

@@ -19,7 +19,6 @@ type Ledger interface {
 }
 
 type Parameters[INPUT any] struct {
-	DryRun         bool   `json:"dryRun,omitempty"`
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 	Input          INPUT  `json:"-"`
 }

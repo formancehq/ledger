@@ -106,20 +106,64 @@ func (f *FSM) GetState() *ledgerpb.LedgerState {
 }
 
 // processInsertLog handles the insert log command by storing the log in memory
-func (f *FSM) processInsertLog(cmd *raft.Command) (*ledgerpb.Log, error) {
-	var insertCmd InsertLogCommand
-	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
+func (f *FSM) processCreateLog(raftCommand *raft.Command) (*ledgerpb.Log, error) {
+	var createCmd CreateLogCommand
+	if err := UnmarshalCommandData(raftCommand.Data, &createCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 		return nil, err
 	}
 
 	f.mu.Lock()
-	f.state.LastLogId++
-	insertCmd.Log.Id = f.state.LastLogId
-	f.logs = append(f.logs, insertCmd.Log)
-	f.mu.Unlock()
+	defer f.mu.Unlock()
 
-	return insertCmd.Log, nil
+	f.state.LastLogId++
+
+	var logPayload *ledgerpb.LogPayload
+	switch cmd := createCmd.Input.Command.(type) {
+	case *ledgerpb.CommandInput_AppendTransaction:
+		f.state.LastTransactionId++
+		timestamp := cmd.AppendTransaction.Timestamp
+		if timestamp == nil || timestamp.Data == 0 {
+			timestamp = raftCommand.Date
+		}
+		logPayload = &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: &ledgerpb.Transaction{
+						Postings:   cmd.AppendTransaction.Postings,
+						Metadata:   cmd.AppendTransaction.Metadata,
+						Timestamp:  timestamp,
+						Reference:  cmd.AppendTransaction.Reference,
+						Id:         f.state.LastTransactionId,
+						InsertedAt: raftCommand.Date,
+						UpdatedAt:  raftCommand.Date,
+					},
+					AccountMetadata: cmd.AppendTransaction.AccountMetadata,
+				},
+			},
+		}
+	case *ledgerpb.CommandInput_SaveMetadata:
+		logPayload = &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_SavedMetadata{
+				SavedMetadata: &ledgerpb.SavedMetadata{
+					Target:   cmd.SaveMetadata.Target,
+					Metadata: cmd.SaveMetadata.Metadata,
+				},
+			},
+		}
+	default:
+		return nil, fmt.Errorf("unhandled command type: %T")
+	}
+
+	log := &ledgerpb.Log{
+		Data:        logPayload,
+		Date:        raftCommand.Date,
+		Idempotency: createCmd.Idempotency,
+		Id:          f.state.LastLogId,
+	}
+	f.logs = append(f.logs, log)
+
+	return log, nil
 }
 
 func (f *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]raft.ApplyResult, error) {
@@ -129,7 +173,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]ra
 	for _, command := range commands {
 		switch command.Type {
 		case raft.CommandType_InsertLog:
-			log, err := f.processInsertLog(command)
+			log, err := f.processCreateLog(command)
 			if err != nil {
 				ret = append(ret, raft.ApplyResult{
 					Error: err,
@@ -137,7 +181,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]ra
 				continue
 			}
 			ret = append(ret, raft.ApplyResult{
-				Result: log.Id,
+				Result: log,
 			})
 			logs = append(logs, log)
 		default:
@@ -188,8 +232,9 @@ func (f *FSM) updateRuntimeStore(ctx context.Context, logs []*ledgerpb.Log) erro
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	f.mu.RLock()
 	snapshotData := &ledgerpb.LedgerState{
-		LedgerInfo: f.state.LedgerInfo,
-		LastLogId:  f.state.LastLogId,
+		LedgerInfo:        f.state.LedgerInfo,
+		LastLogId:         f.state.LastLogId,
+		LastTransactionId: f.state.LastTransactionId,
 	}
 	logs := f.logs
 	f.mu.RUnlock()

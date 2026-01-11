@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: e54ac8b8fcd8555ed74ffcac89e61ffc
+  docChecksum: 8ac9bc81cc67e70b50aaef2f5416f6e4
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.58
-  configChecksum: ba8878042bdc38bb8470c0a41cb08957
+  releaseVersion: 0.11.59
+  configChecksum: bbcb2f903aa2833df7e17118639c2cee
 features:
   go:
     additionalDependencies: 0.1.0
@@ -66,6 +66,7 @@ generatedFiles:
   - /models/operations/getledgerraftstate.go
   - /models/operations/listallledgers.go
   - /models/operations/saveaccountmetadata.go
+  - /models/operations/savetransactionmetadata.go
   - /models/sdkerrors/errorresponse.go
   - USAGE.md
   - accounts.go
@@ -139,6 +140,8 @@ generatedFiles:
   - docs/models/operations/option.md
   - docs/models/operations/saveaccountmetadatarequest.md
   - docs/models/operations/saveaccountmetadataresponse.md
+  - docs/models/operations/savetransactionmetadatarequest.md
+  - docs/models/operations/savetransactionmetadataresponse.md
   - docs/models/sdkerrors/errorresponse.md
   - docs/sdks/accounts/README.md
   - docs/sdks/cluster/README.md
@@ -390,6 +393,23 @@ examples:
           ledgerName: "<value>"
       responses:
         "404":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  saveTransactionMetadata:
+    speakeasy-default-save-transaction-metadata:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          transactionId: 385411
+        query:
+          dryRun: false
+      requestBody:
+        application/json: {"reason": "correction", "source": "support"}
+      responses:
+        "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}

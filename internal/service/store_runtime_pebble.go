@@ -140,11 +140,7 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 	if len(update.IdempotencyKeys) > 0 {
 		for key, entry := range update.IdempotencyKeys {
 			// Store idempotency entry as protobuf
-			idempotencyProto := &ledgerpb.IdempotencyEntry{
-				Hash:  entry.Hash,
-				LogId: entry.LogID,
-			}
-			data, err := proto.Marshal(idempotencyProto)
+			data, err := proto.Marshal(entry)
 			if err != nil {
 				return fmt.Errorf("marshaling idempotency entry: %w", err)
 			}
@@ -307,18 +303,18 @@ func (s *PebbleRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key (implements RuntimeStore)
-func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error) {
+func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error) {
 	if idempotencyKey == "" {
-		return "", 0, nil
+		return nil, 0, nil
 	}
 
 	key := idempotencyPebbleKey(idempotencyKey)
 	value, closer, err := s.db.Get(key)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
-			return "", 0, nil
+			return nil, 0, nil
 		}
-		return "", 0, fmt.Errorf("querying idempotency entry: %w", err)
+		return nil, 0, fmt.Errorf("querying idempotency entry: %w", err)
 	}
 	defer func() {
 		_ = closer.Close()
@@ -327,7 +323,7 @@ func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	// Parse protobuf
 	var idempotencyProto ledgerpb.IdempotencyEntry
 	if err := proto.Unmarshal(value, &idempotencyProto); err != nil {
-		return "", 0, fmt.Errorf("unmarshaling idempotency entry: %w", err)
+		return nil, 0, fmt.Errorf("unmarshaling idempotency entry: %w", err)
 	}
 
 	return idempotencyProto.Hash, idempotencyProto.LogId, nil

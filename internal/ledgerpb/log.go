@@ -8,14 +8,6 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 )
 
-// LogType constants matching internal/log.go
-const (
-	LogTypeSetMetadata         = int32(0) // SET_METADATA
-	LogTypeNewTransaction      = int32(1) // NEW_TRANSACTION
-	LogTypeRevertedTransaction = int32(2) // REVERTED_TRANSACTION
-	LogTypeDeleteMetadata      = int32(3) // DELETE_METADATA
-)
-
 // NewLog creates a new Log from a LogPayload
 func NewLog(payload *LogPayload) *Log {
 	return &Log{
@@ -33,11 +25,15 @@ func (l *Log) WithDate(date time.Time) *Log {
 }
 
 // WithIdempotencyKey sets the idempotency key
-func (l *Log) WithIdempotencyKey(key string) *Log {
+func (l *Log) WithIdempotency(key string, hash []byte) *Log {
 	if l == nil {
 		l = &Log{}
 	}
-	l.IdempotencyKey = key
+	l.Idempotency = &Idempotency{
+		Key: key,
+		Hash: hash,
+	}
+
 	return l
 }
 
@@ -56,11 +52,10 @@ func ChainLog(l *Log, previous *Log) *Log {
 		l = &Log{}
 	}
 	ret := &Log{
-		Data:            l.Data,
-		Date:            l.Date,
-		IdempotencyKey:  l.IdempotencyKey,
-		IdempotencyHash: l.IdempotencyHash,
-		Id:              l.Id,
+		Data:        l.Data,
+		Date:        l.Date,
+		Idempotency: l.Idempotency,
+		Id:          l.Id,
 	}
 	if previous != nil && previous.Id != 0 {
 		ret.Id = previous.Id + 1
@@ -77,7 +72,7 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 		Data            jsontext.Value `json:"data"`
 		Date            *time.Time     `json:"date"`
 		IdempotencyKey  string         `json:"idempotencyKey"`
-		IdempotencyHash string         `json:"idempotencyHash"`
+		IdempotencyHash []byte         `json:"idempotencyHash"`
 		ID              *uint64        `json:"id"`
 	}
 	rawLog := auxLog{}
@@ -88,8 +83,10 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 	if rawLog.Date != nil {
 		l.Date = NewTimestamp(*rawLog.Date)
 	}
-	l.IdempotencyKey = rawLog.IdempotencyKey
-	l.IdempotencyHash = rawLog.IdempotencyHash
+	l.Idempotency = &Idempotency{
+		Key:  rawLog.IdempotencyKey,
+		Hash: rawLog.IdempotencyHash,
+	}
 	if rawLog.ID != nil {
 		l.Id = *rawLog.ID
 	}
@@ -119,15 +116,15 @@ func (l *Log) MarshalJSON() ([]byte, error) {
 		Data            *LogPayload `json:"data"`
 		Date            *time.Time  `json:"date,omitempty"`
 		IdempotencyKey  string      `json:"idempotencyKey,omitempty"`
-		IdempotencyHash string      `json:"idempotencyHash,omitempty"`
+		IdempotencyHash []byte      `json:"idempotencyHash,omitempty"`
 		ID              *uint64     `json:"id,omitempty"`
 	}
 
 	aux := auxLog{
 		Type:            GetLogTypeFromLog(l),
 		Data:            l.Data,
-		IdempotencyKey:  l.IdempotencyKey,
-		IdempotencyHash: l.IdempotencyHash,
+		IdempotencyKey:  l.Idempotency.Key,
+		IdempotencyHash: l.Idempotency.Hash,
 	}
 
 	if l.Date != nil {

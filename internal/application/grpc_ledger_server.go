@@ -30,7 +30,6 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 
 	// Create transaction parameters directly from protobuf request
 	params := service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
-		DryRun:         req.Parameters.DryRun,
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	}
@@ -115,7 +114,6 @@ func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, re
 
 	// Create parameters directly from protobuf request
 	params := service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
-		DryRun:         req.Parameters.DryRun,
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	}
@@ -124,6 +122,43 @@ func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, re
 	log, err := ledgerNode.SaveAccountMetadata(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("saving account metadata: %w", err)
+	}
+
+	return log, nil
+}
+
+func (impl *LedgerServiceServerImpl) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.Log, error) {
+	impl.logger.WithFields(map[string]any{"transaction_id": req.Payload.TransactionId}).Debugf("SaveTransactionMetadata request received")
+
+	// Validate request
+	if req.Payload.TransactionId == 0 {
+		return nil, fmt.Errorf("transaction id is required")
+	}
+	if req.Payload.Metadata == nil {
+		return nil, fmt.Errorf("metadata is required")
+	}
+
+	// Extract ledger name from request
+	ledgerName := req.Parameters.Ledger
+	if ledgerName == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
+	}
+
+	// Create parameters directly from protobuf request
+	params := service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+		IdempotencyKey: req.Parameters.IdempotencyKey,
+		Input:          req.Payload,
+	}
+
+	// Call ledger service
+	log, err := ledgerNode.SaveTransactionMetadata(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("saving transaction metadata: %w", err)
 	}
 
 	return log, nil

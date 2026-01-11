@@ -316,6 +316,20 @@ Idempotency-Key: optional-key
 }
 ```
 
+#### Save Transaction Metadata
+
+```http
+POST /{ledgerName}/transactions/{transactionId}/metadata
+Content-Type: application/json
+
+{
+  "key1": "value1",
+  "key2": "value2"
+}
+```
+
+**Response**: `204 No Content`
+
 #### Bulk Operations
 
 ```http

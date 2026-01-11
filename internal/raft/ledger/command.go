@@ -7,10 +7,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// NewInsertLogCommand creates a new InsertLogCommand
-func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
-	cmdProto := &InsertLogCommand{
-		Log: log,
+// NewCreateLogCommand creates a new command
+func NewCreateLogCommand(input *ledgerpb.CommandInput, idempotency *ledgerpb.Idempotency) (*raft.Command, error) {
+	cmdProto := &CreateLogCommand{
+		Input: input,
+		Idempotency: idempotency,
 	}
 
 	data, err := proto.Marshal(cmdProto)
@@ -29,7 +30,7 @@ func NewInsertLogCommand(log *ledgerpb.Log) (*raft.Command, error) {
 // UnmarshalCommandData unmarshals ledger command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
 	switch cmd := v.(type) {
-	case *InsertLogCommand:
+	case *CreateLogCommand:
 		return proto.Unmarshal(data, cmd)
 	default:
 		return proto.Unmarshal(data, v.(proto.Message))

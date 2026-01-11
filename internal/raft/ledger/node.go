@@ -355,13 +355,8 @@ func NewNode(
 
 	// Create ledger service for this ledger (will use stores for balance checking and log writing)
 	ret.defaultLedger = service.NewDefaultLedger(
-		struct {
-			service.LogReader
-			service.LogWriter
-		}{
-			LogWriter: ret,
-			LogReader: logStore,
-		},
+		logStore,
+		ret,
 		runtimeStore,
 		logger,
 	)
@@ -382,33 +377,25 @@ func NewNode(
 }
 
 // InsertLogs writes logs via Raft (implements LogWriter)
-func (node *Node) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
-	if len(logs) == 0 {
-		return nil
+func (node *Node) CreateLog(ctx context.Context, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+
+	// Create a command to insert the log
+	cmd, err := NewCreateLogCommand(input, idempotency)
+	if err != nil {
+		return nil, fmt.Errorf("creating insert log command: %w", err)
 	}
 
-	// For each log, create a command to insert it via Raft
-	for _, log := range logs {
-		// Create a command to insert the log
-		cmd, err := NewInsertLogCommand(log)
-		if err != nil {
-			return fmt.Errorf("creating insert log command: %w", err)
-		}
-
-		// Apply the command via Raft (waits for application)
-		_, logID, err := node.Apply(cmd, 5*time.Second)
-		if err != nil {
-			return fmt.Errorf("applying insert log command via etcdraft: %w", err)
-		}
-
-		log.Id = logID.(uint64)
-
-		node.logger.
-			WithFields(map[string]any{"commandID": cmd.Id}).
-			Debugf("Log inserted via ledger Raft")
+	// Apply the command via Raft (waits for application)
+	_, log, err := node.Apply(cmd, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
 
-	return nil
+	node.logger.
+		WithFields(map[string]any{"commandID": cmd.Id}).
+		Debugf("Log inserted via ledger Raft")
+
+	return log.(*ledgerpb.Log), nil
 }
 
 func (node *Node) CreateTransaction(ctx context.Context, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {

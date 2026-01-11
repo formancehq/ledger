@@ -258,13 +258,6 @@ paths:
           schema:
             type: string
           description: Account address
-        - name: dryRun
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: If true, the operation is validated but not executed
       requestBody:
         required: true
         content:
@@ -280,6 +273,57 @@ paths:
       responses:
         '204':
           description: Account metadata saved successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{ledgerName}/transactions/{transactionId}/metadata:
+    post:
+      summary: Save transaction metadata
+      description: Saves metadata for a specific transaction in the ledger
+      operationId: saveTransactionMetadata
+      tags:
+        - Transactions
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transaction ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+              description: Metadata key-value pairs
+              example:
+                reason: correction
+                source: support
+      responses:
+        '204':
+          description: Transaction metadata saved successfully
         '400':
           description: Bad request
           content:
@@ -581,10 +625,6 @@ components:
         script:
           $ref: '#/components/schemas/Script'
           description: Numscript script to execute (required if postings is not provided). Cannot be used together with postings.
-        dryRun:
-          type: boolean
-          default: false
-          description: If true, validate the transaction without applying it
         idempotencyKey:
           type: string
           description: Idempotency key to prevent duplicate transactions

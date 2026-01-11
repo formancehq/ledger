@@ -20,10 +20,10 @@ import (
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
 
 type Bulker struct {
-	ledger     service.Ledger
-	ledgerName string
-	parallelism   int
-	tracer        trace.Tracer
+	ledger      service.Ledger
+	ledgerName  string
+	parallelism int
+	tracer      trace.Tracer
 }
 
 func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
@@ -130,7 +130,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 		}
 
 		log, err := b.ledger.CreateTransaction(ctx, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
-			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          rs,
 		})
@@ -150,7 +149,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			address := *req.TargetID.Str
 
 			log, err = b.ledger.SaveAccountMetadata(ctx, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
-				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 					Address:  address,
@@ -161,7 +159,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			transactionID := *req.TargetID.Int
 
 			log, err = b.ledger.SaveTransactionMetadata(ctx, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
-				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 					TransactionId: transactionID,
@@ -181,7 +178,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 		req := data.Data.(RevertTransactionRequest)
 
 		log, err := b.ledger.RevertTransaction(ctx, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
-			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId:   req.ID,
@@ -214,7 +210,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			}
 
 			log, err = b.ledger.DeleteAccountMetadata(ctx, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
-				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 					Address: address,
@@ -235,7 +230,6 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			}
 
 			log, err = b.ledger.DeleteTransactionMetadata(ctx, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
-				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 					TransactionId: transactionID,

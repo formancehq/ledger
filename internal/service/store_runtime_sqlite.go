@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/formancehq/go-libs/v3/logging"
 
 	"context"
@@ -145,7 +147,7 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS idempotency (
 			key TEXT NOT NULL,
-			hash TEXT NOT NULL,
+			hash BYTEA NOT NULL,
 			log_id INTEGER NOT NULL,
 			PRIMARY KEY (key)
 		);
@@ -244,7 +246,7 @@ func (s *SQLiteRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 		}()
 
 		for key, entry := range update.IdempotencyKeys {
-			if _, err := stmt.ExecContext(ctx, key, entry.Hash, entry.LogID); err != nil {
+			if _, err := stmt.ExecContext(ctx, key, entry.Hash, entry.LogId); err != nil {
 				return fmt.Errorf("inserting idempotency entry for key %s: %w", key, err)
 			}
 		}
@@ -468,21 +470,21 @@ func (s *SQLiteRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key (implements RuntimeStore)
-func (s *SQLiteRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) (string, uint64, error) {
+func (s *SQLiteRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error) {
 	if idempotencyKey == "" {
-		return "", 0, nil
+		return nil, 0, nil
 	}
 
-	var hash string
+	var hash []byte
 	var logID uint64
 
 	err := s.stmtGetIdempotency.QueryRowContext(ctx, idempotencyKey).Scan(&hash, &logID)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", 0, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, 0, nil
 		}
-		return "", 0, fmt.Errorf("querying idempotency entry: %w", err)
+		return nil, 0, fmt.Errorf("querying idempotency entry: %w", err)
 	}
 
 	return hash, logID, nil

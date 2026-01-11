@@ -130,8 +130,7 @@ message Script {
 
 message Parameters {
   string ledger = 2;
-  bool dry_run = 7;
-  string idempotency_key = 8;
+  string idempotency_key = 3;
 }
 
 message CreateTransactionRequestPayload {
@@ -213,9 +212,8 @@ message StreamLogsResponse {
 message Log {
   LogPayload data = 1;
   Timestamp date = 2;
-  string idempotency_key = 3;
-  string idempotency_hash = 4;
-  uint64 id = 5;                            // Optional log ID
+  Idempotency idempotency = 3;
+  uint64 id = 4;
 }
 
 message LogPayload {
@@ -237,28 +235,40 @@ message RevertedTransaction {
   Transaction revert_transaction = 2;
 }
 
-message SavedMetadata {
-  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
-  oneof target_id {
-    string account_id = 2;                  // Account address (for ACCOUNT type)
-    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
+message TargetAccount {
+  string addr = 1;
+}
+
+message TargetTransaction {
+  uint64 id = 1;
+}
+
+message Target {
+  oneof target {
+    TargetAccount account = 1;
+    TargetTransaction transaction = 2;
   }
-  map<string, string> metadata = 4;
+}
+
+message SavedMetadata {
+  Target target = 1;
+  map<string, string> metadata = 2;
 }
 
 message DeletedMetadata {
-  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
-  oneof target_id {
-    string account_id = 2;                  // Account address (for ACCOUNT type)
-    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
-  }
-  string key = 4;                           // Metadata key to delete
+  Target target = 1;
+  string key = 2;                           // Metadata key to delete
 }
 
 // IdempotencyEntry represents an idempotency key entry stored in Pebble
 message IdempotencyEntry {
-  string hash = 1;                          // Idempotency hash
+  bytes hash = 1;                          // Idempotency hash
   uint64 log_id = 2;                        // Log ID
+}
+
+message Idempotency {
+  string key = 1;
+  bytes hash = 2;
 }
 
 // TransactionResume represents a simplified transaction for memento purposes
@@ -301,6 +311,39 @@ message LedgerInfo {
 message LedgerState {
   LedgerInfo ledger_info = 1;
   uint64 last_log_id = 2;
-  google.protobuf.Struct log_store_metrics = 3;
-  google.protobuf.Struct runtime_store_metrics = 4;
+  uint64 last_transaction_id = 3;
+  google.protobuf.Struct log_store_metrics = 4;
+  google.protobuf.Struct runtime_store_metrics = 5;
+}
+
+
+message AppendTransactionCommand {
+  map<string, Metadata> account_metadata = 1;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+  repeated Posting postings = 5;
+}
+
+message SaveMetadataCommand {
+  Target target = 1;
+  map<string, string> metadata = 2;
+}
+
+message DeleteMetadataCommand {
+  Target target = 1;
+  map<string, string> metadata = 2;
+}
+
+message RevertTransactionCommand {
+
+}
+
+message CommandInput {
+  oneof command {
+    AppendTransactionCommand append_transaction = 2;
+    SaveMetadataCommand save_metadata = 3;
+    DeleteMetadataCommand delete_metadata = 4;
+    RevertTransactionCommand revert_transaction = 5;
+  }
 }
