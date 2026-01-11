@@ -226,41 +226,42 @@ func (x *RevertedTransactionMemento) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for LedgerInfo
 func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Id                 uint64            `json:"id,omitempty"`
-		Name               string            `json:"name,omitempty"`
-		LogStoreDriver     string            `json:"logStoreDriver,omitempty"`
-		RuntimeStoreDriver string            `json:"runtimeStoreDriver,omitempty"`
-		LogStoreConfig     interface{}       `json:"logStoreConfig,omitempty"`
-		RuntimeStoreConfig interface{}       `json:"runtimeStoreConfig,omitempty"`
-		Metadata           map[string]string `json:"metadata,omitempty"`
-		CreatedAt          *Timestamp        `json:"createdAt,omitempty"`
-		SnapshotThreshold  uint64            `json:"snapshotThreshold,omitempty"`
-		DeletedAt          *Timestamp        `json:"deletedAt,omitempty"`
+		Id                uint64            `json:"id,omitempty"`
+		Name              string            `json:"name,omitempty"`
+		StoreDriver       string            `json:"storeDriver,omitempty"`
+		StoreConfig       interface{}       `json:"storeConfig,omitempty"`
+		Metadata          map[string]string `json:"metadata,omitempty"`
+		CreatedAt         *Timestamp        `json:"createdAt,omitempty"`
+		SnapshotThreshold uint64            `json:"snapshotThreshold,omitempty"`
+		DeletedAt         *Timestamp        `json:"deletedAt,omitempty"`
 	}{
-		Id:                 x.Id,
-		Name:               x.Name,
-		LogStoreDriver:     x.LogStoreDriver,
-		RuntimeStoreDriver: x.RuntimeStoreDriver,
-		LogStoreConfig:     x.LogStoreConfig,
-		RuntimeStoreConfig: x.RuntimeStoreConfig,
-		Metadata:           x.Metadata,
-		CreatedAt:          x.CreatedAt,
-		SnapshotThreshold:  x.SnapshotThreshold,
-		DeletedAt:          x.DeletedAt,
+		Id:                x.Id,
+		Name:              x.Name,
+		StoreDriver:       x.StoreDriver,
+		StoreConfig:       x.StoreConfig,
+		Metadata:          x.Metadata,
+		CreatedAt:         x.CreatedAt,
+		SnapshotThreshold: x.SnapshotThreshold,
+		DeletedAt:         x.DeletedAt,
 	})
 }
 
 func (x *LedgerState) MarshalJSON() ([]byte, error) {
+	var storeMetrics map[string]any
+	if x.StoreMetrics != nil {
+		storeMetrics = x.StoreMetrics.AsMap()
+	}
+
 	return json.Marshal(struct {
-		LedgerInfo          *LedgerInfo    `json:"ledgerInfo,omitempty"`
-		LastLogId           uint64         `json:"lastLogId,omitempty"`
-		LogStoreMetrics     map[string]any `json:"logStoreMetrics,omitempty"`
-		RuntimeStoreMetrics map[string]any `json:"runtimeStoreMetrics,omitempty"`
+		LedgerInfo        *LedgerInfo    `json:"ledgerInfo,omitempty"`
+		LastLogId         uint64         `json:"lastLogId,omitempty"`
+		LastTransactionId uint64         `json:"lastTransactionId,omitempty"`
+		StoreMetrics      map[string]any `json:"storeMetrics,omitempty"`
 	}{
-		LedgerInfo:          x.LedgerInfo,
-		LastLogId:           x.LastLogId,
-		LogStoreMetrics:     x.LogStoreMetrics.AsMap(),
-		RuntimeStoreMetrics: x.RuntimeStoreMetrics.AsMap(),
+		LedgerInfo:        x.LedgerInfo,
+		LastLogId:         x.LastLogId,
+		LastTransactionId: x.LastTransactionId,
+		StoreMetrics:      storeMetrics,
 	})
 }
 

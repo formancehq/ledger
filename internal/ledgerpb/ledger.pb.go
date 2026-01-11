@@ -2642,19 +2642,17 @@ func (x *RevertedTransactionMemento) GetRevertTransaction() *TransactionResume {
 
 // LedgerInfo represents information about a ledger
 type LedgerInfo struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                      // Sequential ledger ID
-	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                                                                   // Ledger name/ID
-	LogStoreDriver     string                 `protobuf:"bytes,3,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`                                       // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-	RuntimeStoreDriver string                 `protobuf:"bytes,4,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"`                           // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,5,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`                                       // Log store driver-specific configuration
-	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,6,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"`                           // Runtime store driver-specific configuration
-	Metadata           map[string]string      `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional metadata
-	CreatedAt          *Timestamp             `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                                                        // Creation timestamp
-	SnapshotThreshold  uint64                 `protobuf:"varint,9,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`                               // Number of logs before triggering a snapshot (optional, uses global config if 0)
-	DeletedAt          *Timestamp             `protobuf:"bytes,10,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`                                                       // Deletion timestamp (always null with hard delete)
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                      // Sequential ledger ID
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                                                                   // Ledger name/ID
+	StoreDriver       string                 `protobuf:"bytes,3,opt,name=store_driver,json=storeDriver,proto3" json:"store_driver,omitempty"`                                                  // Store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	StoreConfig       *structpb.Struct       `protobuf:"bytes,4,opt,name=store_config,json=storeConfig,proto3" json:"store_config,omitempty"`                                                  // Store driver-specific configuration
+	Metadata          map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional metadata
+	CreatedAt         *Timestamp             `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                                                        // Creation timestamp
+	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"`                               // Number of logs before triggering a snapshot (optional, uses global config if 0)
+	DeletedAt         *Timestamp             `protobuf:"bytes,8,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`                                                        // Deletion timestamp (always null with hard delete)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LedgerInfo) Reset() {
@@ -2701,30 +2699,16 @@ func (x *LedgerInfo) GetName() string {
 	return ""
 }
 
-func (x *LedgerInfo) GetLogStoreDriver() string {
+func (x *LedgerInfo) GetStoreDriver() string {
 	if x != nil {
-		return x.LogStoreDriver
+		return x.StoreDriver
 	}
 	return ""
 }
 
-func (x *LedgerInfo) GetRuntimeStoreDriver() string {
+func (x *LedgerInfo) GetStoreConfig() *structpb.Struct {
 	if x != nil {
-		return x.RuntimeStoreDriver
-	}
-	return ""
-}
-
-func (x *LedgerInfo) GetLogStoreConfig() *structpb.Struct {
-	if x != nil {
-		return x.LogStoreConfig
-	}
-	return nil
-}
-
-func (x *LedgerInfo) GetRuntimeStoreConfig() *structpb.Struct {
-	if x != nil {
-		return x.RuntimeStoreConfig
+		return x.StoreConfig
 	}
 	return nil
 }
@@ -2758,14 +2742,14 @@ func (x *LedgerInfo) GetDeletedAt() *Timestamp {
 }
 
 type LedgerState struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	LedgerInfo          *LedgerInfo            `protobuf:"bytes,1,opt,name=ledger_info,json=ledgerInfo,proto3" json:"ledger_info,omitempty"`
-	LastLogId           uint64                 `protobuf:"varint,2,opt,name=last_log_id,json=lastLogId,proto3" json:"last_log_id,omitempty"`
-	LastTransactionId   uint64                 `protobuf:"varint,3,opt,name=last_transaction_id,json=lastTransactionId,proto3" json:"last_transaction_id,omitempty"`
-	LogStoreMetrics     *structpb.Struct       `protobuf:"bytes,4,opt,name=log_store_metrics,json=logStoreMetrics,proto3" json:"log_store_metrics,omitempty"`
-	RuntimeStoreMetrics *structpb.Struct       `protobuf:"bytes,5,opt,name=runtime_store_metrics,json=runtimeStoreMetrics,proto3" json:"runtime_store_metrics,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	LedgerInfo        *LedgerInfo            `protobuf:"bytes,1,opt,name=ledger_info,json=ledgerInfo,proto3" json:"ledger_info,omitempty"`
+	LastLogId         uint64                 `protobuf:"varint,2,opt,name=last_log_id,json=lastLogId,proto3" json:"last_log_id,omitempty"`
+	LastTransactionId uint64                 `protobuf:"varint,3,opt,name=last_transaction_id,json=lastTransactionId,proto3" json:"last_transaction_id,omitempty"`
+	LastAppliedId     uint64                 `protobuf:"varint,4,opt,name=last_applied_id,json=lastAppliedId,proto3" json:"last_applied_id,omitempty"`
+	StoreMetrics      *structpb.Struct       `protobuf:"bytes,5,opt,name=store_metrics,json=storeMetrics,proto3" json:"store_metrics,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LedgerState) Reset() {
@@ -2819,16 +2803,16 @@ func (x *LedgerState) GetLastTransactionId() uint64 {
 	return 0
 }
 
-func (x *LedgerState) GetLogStoreMetrics() *structpb.Struct {
+func (x *LedgerState) GetLastAppliedId() uint64 {
 	if x != nil {
-		return x.LogStoreMetrics
+		return x.LastAppliedId
 	}
-	return nil
+	return 0
 }
 
-func (x *LedgerState) GetRuntimeStoreMetrics() *structpb.Struct {
+func (x *LedgerState) GetStoreMetrics() *structpb.Struct {
 	if x != nil {
-		return x.RuntimeStoreMetrics
+		return x.StoreMetrics
 	}
 	return nil
 }
@@ -3396,32 +3380,29 @@ const file_ledger_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\x9e\x01\n" +
 	"\x1aRevertedTransactionMemento\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12H\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x19.ledger.TransactionResumeR\x11revertTransaction\"\xa8\x04\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x19.ledger.TransactionResumeR\x11revertTransaction\"\x9d\x03\n" +
 	"\n" +
 	"LedgerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12(\n" +
-	"\x10log_store_driver\x18\x03 \x01(\tR\x0elogStoreDriver\x120\n" +
-	"\x14runtime_store_driver\x18\x04 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
-	"\x10log_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
-	"\x14runtime_store_config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x12<\n" +
-	"\bmetadata\x18\a \x03(\v2 .ledger.LedgerInfo.MetadataEntryR\bmetadata\x120\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
+	"\fstore_driver\x18\x03 \x01(\tR\vstoreDriver\x12:\n" +
+	"\fstore_config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\vstoreConfig\x12<\n" +
+	"\bmetadata\x18\x05 \x03(\v2 .ledger.LedgerInfo.MetadataEntryR\bmetadata\x120\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
-	"\x12snapshot_threshold\x18\t \x01(\x04R\x11snapshotThreshold\x120\n" +
+	"created_at\x18\x06 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\x120\n" +
 	"\n" +
-	"deleted_at\x18\n" +
-	" \x01(\v2\x11.ledger.TimestampR\tdeletedAt\x1a;\n" +
+	"deleted_at\x18\b \x01(\v2\x11.ledger.TimestampR\tdeletedAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa4\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf8\x01\n" +
 	"\vLedgerState\x123\n" +
 	"\vledger_info\x18\x01 \x01(\v2\x12.ledger.LedgerInfoR\n" +
 	"ledgerInfo\x12\x1e\n" +
 	"\vlast_log_id\x18\x02 \x01(\x04R\tlastLogId\x12.\n" +
-	"\x13last_transaction_id\x18\x03 \x01(\x04R\x11lastTransactionId\x12C\n" +
-	"\x11log_store_metrics\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x0flogStoreMetrics\x12K\n" +
-	"\x15runtime_store_metrics\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x13runtimeStoreMetrics\"\xd7\x03\n" +
+	"\x13last_transaction_id\x18\x03 \x01(\x04R\x11lastTransactionId\x12&\n" +
+	"\x0flast_applied_id\x18\x04 \x01(\x04R\rlastAppliedId\x12<\n" +
+	"\rstore_metrics\x18\x05 \x01(\v2\x17.google.protobuf.StructR\fstoreMetrics\"\xd7\x03\n" +
 	"\x18AppendTransactionCommand\x12`\n" +
 	"\x10account_metadata\x18\x01 \x03(\v25.ledger.AppendTransactionCommand.AccountMetadataEntryR\x0faccountMetadata\x12J\n" +
 	"\bmetadata\x18\x02 \x03(\v2..ledger.AppendTransactionCommand.MetadataEntryR\bmetadata\x12/\n" +
@@ -3613,50 +3594,48 @@ var file_ledger_proto_depIdxs = []int32{
 	42, // 61: ledger.CreatedTransactionMemento.transaction:type_name -> ledger.TransactionResume
 	67, // 62: ledger.CreatedTransactionMemento.account_metadata:type_name -> ledger.CreatedTransactionMemento.AccountMetadataEntry
 	42, // 63: ledger.RevertedTransactionMemento.revert_transaction:type_name -> ledger.TransactionResume
-	72, // 64: ledger.LedgerInfo.log_store_config:type_name -> google.protobuf.Struct
-	72, // 65: ledger.LedgerInfo.runtime_store_config:type_name -> google.protobuf.Struct
-	68, // 66: ledger.LedgerInfo.metadata:type_name -> ledger.LedgerInfo.MetadataEntry
-	0,  // 67: ledger.LedgerInfo.created_at:type_name -> ledger.Timestamp
-	0,  // 68: ledger.LedgerInfo.deleted_at:type_name -> ledger.Timestamp
-	45, // 69: ledger.LedgerState.ledger_info:type_name -> ledger.LedgerInfo
-	72, // 70: ledger.LedgerState.log_store_metrics:type_name -> google.protobuf.Struct
-	72, // 71: ledger.LedgerState.runtime_store_metrics:type_name -> google.protobuf.Struct
-	69, // 72: ledger.AppendTransactionCommand.account_metadata:type_name -> ledger.AppendTransactionCommand.AccountMetadataEntry
-	70, // 73: ledger.AppendTransactionCommand.metadata:type_name -> ledger.AppendTransactionCommand.MetadataEntry
-	0,  // 74: ledger.AppendTransactionCommand.timestamp:type_name -> ledger.Timestamp
-	2,  // 75: ledger.AppendTransactionCommand.postings:type_name -> ledger.Posting
-	37, // 76: ledger.SaveMetadataCommand.target:type_name -> ledger.Target
-	71, // 77: ledger.SaveMetadataCommand.metadata:type_name -> ledger.SaveMetadataCommand.MetadataEntry
-	37, // 78: ledger.DeleteMetadataCommand.target:type_name -> ledger.Target
-	47, // 79: ledger.CommandInput.append_transaction:type_name -> ledger.AppendTransactionCommand
-	48, // 80: ledger.CommandInput.save_metadata:type_name -> ledger.SaveMetadataCommand
-	49, // 81: ledger.CommandInput.delete_metadata:type_name -> ledger.DeleteMetadataCommand
-	50, // 82: ledger.CommandInput.revert_transaction:type_name -> ledger.RevertTransactionCommand
-	6,  // 83: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
-	8,  // 84: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
-	1,  // 85: ledger.CreateTransactionRequestPayload.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	1,  // 86: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	1,  // 87: ledger.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	1,  // 88: ledger.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	18, // 89: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
-	22, // 90: ledger.LedgerService.RevertTransaction:input_type -> ledger.RevertTransactionRequest
-	20, // 91: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
-	24, // 92: ledger.LedgerService.SaveTransactionMetadata:input_type -> ledger.SaveTransactionMetadataRequest
-	26, // 93: ledger.LedgerService.DeleteAccountMetadata:input_type -> ledger.DeleteAccountMetadataRequest
-	28, // 94: ledger.LedgerService.DeleteTransactionMetadata:input_type -> ledger.DeleteTransactionMetadataRequest
-	29, // 95: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
-	31, // 96: ledger.LedgerService.CreateTransaction:output_type -> ledger.Log
-	31, // 97: ledger.LedgerService.RevertTransaction:output_type -> ledger.Log
-	31, // 98: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.Log
-	31, // 99: ledger.LedgerService.SaveTransactionMetadata:output_type -> ledger.Log
-	31, // 100: ledger.LedgerService.DeleteAccountMetadata:output_type -> ledger.Log
-	31, // 101: ledger.LedgerService.DeleteTransactionMetadata:output_type -> ledger.Log
-	30, // 102: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
-	96, // [96:103] is the sub-list for method output_type
-	89, // [89:96] is the sub-list for method input_type
-	89, // [89:89] is the sub-list for extension type_name
-	89, // [89:89] is the sub-list for extension extendee
-	0,  // [0:89] is the sub-list for field type_name
+	72, // 64: ledger.LedgerInfo.store_config:type_name -> google.protobuf.Struct
+	68, // 65: ledger.LedgerInfo.metadata:type_name -> ledger.LedgerInfo.MetadataEntry
+	0,  // 66: ledger.LedgerInfo.created_at:type_name -> ledger.Timestamp
+	0,  // 67: ledger.LedgerInfo.deleted_at:type_name -> ledger.Timestamp
+	45, // 68: ledger.LedgerState.ledger_info:type_name -> ledger.LedgerInfo
+	72, // 69: ledger.LedgerState.store_metrics:type_name -> google.protobuf.Struct
+	69, // 70: ledger.AppendTransactionCommand.account_metadata:type_name -> ledger.AppendTransactionCommand.AccountMetadataEntry
+	70, // 71: ledger.AppendTransactionCommand.metadata:type_name -> ledger.AppendTransactionCommand.MetadataEntry
+	0,  // 72: ledger.AppendTransactionCommand.timestamp:type_name -> ledger.Timestamp
+	2,  // 73: ledger.AppendTransactionCommand.postings:type_name -> ledger.Posting
+	37, // 74: ledger.SaveMetadataCommand.target:type_name -> ledger.Target
+	71, // 75: ledger.SaveMetadataCommand.metadata:type_name -> ledger.SaveMetadataCommand.MetadataEntry
+	37, // 76: ledger.DeleteMetadataCommand.target:type_name -> ledger.Target
+	47, // 77: ledger.CommandInput.append_transaction:type_name -> ledger.AppendTransactionCommand
+	48, // 78: ledger.CommandInput.save_metadata:type_name -> ledger.SaveMetadataCommand
+	49, // 79: ledger.CommandInput.delete_metadata:type_name -> ledger.DeleteMetadataCommand
+	50, // 80: ledger.CommandInput.revert_transaction:type_name -> ledger.RevertTransactionCommand
+	6,  // 81: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
+	8,  // 82: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
+	1,  // 83: ledger.CreateTransactionRequestPayload.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 84: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 85: ledger.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	1,  // 86: ledger.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	18, // 87: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
+	22, // 88: ledger.LedgerService.RevertTransaction:input_type -> ledger.RevertTransactionRequest
+	20, // 89: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
+	24, // 90: ledger.LedgerService.SaveTransactionMetadata:input_type -> ledger.SaveTransactionMetadataRequest
+	26, // 91: ledger.LedgerService.DeleteAccountMetadata:input_type -> ledger.DeleteAccountMetadataRequest
+	28, // 92: ledger.LedgerService.DeleteTransactionMetadata:input_type -> ledger.DeleteTransactionMetadataRequest
+	29, // 93: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
+	31, // 94: ledger.LedgerService.CreateTransaction:output_type -> ledger.Log
+	31, // 95: ledger.LedgerService.RevertTransaction:output_type -> ledger.Log
+	31, // 96: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.Log
+	31, // 97: ledger.LedgerService.SaveTransactionMetadata:output_type -> ledger.Log
+	31, // 98: ledger.LedgerService.DeleteAccountMetadata:output_type -> ledger.Log
+	31, // 99: ledger.LedgerService.DeleteTransactionMetadata:output_type -> ledger.Log
+	30, // 100: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
+	94, // [94:101] is the sub-list for method output_type
+	87, // [87:94] is the sub-list for method input_type
+	87, // [87:87] is the sub-list for extension type_name
+	87, // [87:87] is the sub-list for extension extendee
+	0,  // [0:87] is the sub-list for field type_name
 }
 
 func init() { file_ledger_proto_init() }

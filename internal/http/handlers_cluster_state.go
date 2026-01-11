@@ -13,4 +13,3 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 
 	writeOK(w, clusterState)
 }
-

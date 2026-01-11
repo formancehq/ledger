@@ -21,7 +21,7 @@ Explanation of the ledger system, transaction management, and data organization.
 Documentation of HTTP and gRPC APIs, service interfaces, and data formats.
 
 ### 💾 [Storage and Persistence](./storage.md)
-Details on storage systems (WAL, snapshots, log stores), data persistence, and recovery after failures.
+Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 
 ### 🚀 [Deployment](./deployment.md)
 Deployment guide, Kubernetes/Helm configuration, and environment management.

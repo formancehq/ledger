@@ -1,12 +1,12 @@
 package service
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/XSAM/otelsql"
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.opentelemetry.io/otel/attribute"
-
-	"context"
-	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -27,4 +27,3 @@ func NewSQLiteMattnRuntimeStore(ctx context.Context, dsn string, logger logging.
 
 	return store, nil
 }
-

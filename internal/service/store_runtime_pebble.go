@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"path/filepath"
 	"time"
@@ -30,11 +32,20 @@ type PebbleRuntimeStore struct {
 
 // Key prefixes for Pebble storage
 const (
+	keyPrefixLog             = "log:"
+	keyPrefixLogIdempotency  = "log-idempotency:"
 	keyPrefixBalance         = "balance:"
 	keyPrefixAccountMetadata = "metadata:"
 	keyPrefixIdempotency     = "idempotency:"
-	keyLastProcessedLogID    = "info:last_processed_log_id"
 )
+
+// logKey returns the key for a log entry.
+func logKey(id uint64) []byte {
+	// Use big-endian encoding for proper lexicographic ordering
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, id)
+	return append([]byte(keyPrefixLog), key...)
+}
 
 // NewPebbleRuntimeStore creates a new PebbleRuntimeStore instance
 func NewPebbleRuntimeStore(
@@ -67,24 +78,82 @@ func NewPebbleRuntimeStore(
 
 // Close closes the Pebble database
 func (s *PebbleRuntimeStore) Close() error {
+	var errs []error
 	if s.db != nil {
-		return s.db.Close()
+		if err := s.db.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("closing store: %v", errs)
 	}
 	return nil
 }
 
 // ============================================================================
-// RuntimeStore Update Implementation
+// RuntimeStore InsertLogs Implementation
 // ============================================================================
 
-// Update applies all runtime updates atomically
-func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) error {
-	// Use a batch for atomic updates
+// InsertLogs persists logs and updates runtime state.
+func (s *PebbleRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+	if len(logs) == 0 {
+		return nil
+	}
+
+	update, err := LogsToRuntimeUpdate(logs)
+	if err != nil {
+		return err
+	}
+
+	// Use a batch for atomic inserts
 	batch := s.db.NewBatch()
 	defer func() {
 		_ = batch.Close()
 	}()
 
+	for _, log := range logs {
+		// Validate log data
+		if log.Data == nil {
+			return fmt.Errorf("log data is nil for id %d", log.Id)
+		}
+
+		// Marshal protobuf Log to binary
+		logBinary, err := proto.Marshal(log)
+		if err != nil {
+			return fmt.Errorf("marshaling log to protobuf: %w", err)
+		}
+
+		// Use log ID as key for efficient lookups
+		key := logKey(log.Id)
+		if err := batch.Set(key, logBinary, pebble.NoSync); err != nil {
+			return fmt.Errorf("inserting log: %w", err)
+		}
+
+		// Also create an index by idempotency key if present
+		if log.Idempotency != nil && log.Idempotency.Key != "" {
+			idempotencyKey := []byte(fmt.Sprintf("%s%s", keyPrefixLogIdempotency, log.Idempotency.Key))
+			// Store the log ID as value for quick lookup
+			idValue := make([]byte, 8)
+			binary.BigEndian.PutUint64(idValue, log.Id)
+			if err := batch.Set(idempotencyKey, idValue, pebble.NoSync); err != nil {
+				return fmt.Errorf("inserting idempotency index: %w", err)
+			}
+		}
+	}
+
+	if err := s.applyRuntimeUpdate(batch, update); err != nil {
+		return err
+	}
+
+	if err := batch.Commit(pebble.NoSync); err != nil {
+		return fmt.Errorf("committing batch: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into Pebble")
+	return nil
+}
+
+func (s *PebbleRuntimeStore) applyRuntimeUpdate(batch *pebble.Batch, update RuntimeUpdate) error {
 	// Apply balance differences
 	// Store each diff as a separate entry instead of reading and updating the current balance
 	if len(update.BalanceDiffs) > 0 {
@@ -107,17 +176,8 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 	if len(update.AccountMetadata) > 0 {
 		for accountAddr, metadataMap := range update.AccountMetadata {
 			for key, value := range metadataMap {
-				// Convert value to string (metadata values are always strings)
-				var valueStr string
-				if strVal, ok := value.(string); ok {
-					valueStr = strVal
-				} else {
-					// Fallback: convert to string representation
-					valueStr = fmt.Sprintf("%v", value)
-				}
-
 				pebbleKey := accountMetadataKey(accountAddr, key)
-				if err := batch.Set(pebbleKey, []byte(valueStr), pebble.NoSync); err != nil {
+				if err := batch.Set(pebbleKey, []byte(value), pebble.NoSync); err != nil {
 					return fmt.Errorf("upserting account metadata: %w", err)
 				}
 			}
@@ -152,21 +212,139 @@ func (s *PebbleRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 		}
 	}
 
-	// Update last processed log ID
-	if update.LastProcessedLogID > 0 {
-		value := fmt.Sprintf("%d", update.LastProcessedLogID)
-		key := []byte(keyLastProcessedLogID)
-		if err := batch.Set(key, []byte(value), pebble.NoSync); err != nil {
-			return fmt.Errorf("updating last processed log ID: %w", err)
-		}
-	}
-
-	// Commit the batch
-	if err := batch.Commit(pebble.NoSync); err != nil {
-		return fmt.Errorf("committing batch: %w", err)
-	}
-
 	return nil
+}
+
+// ============================================================================
+// LogReader Implementation
+// ============================================================================
+
+// pebbleLogCursor implements Cursor[*ledgerpb.Log] for Pebble.
+type pebbleLogCursor struct {
+	iter  *pebble.Iterator
+	store *PebbleRuntimeStore
+}
+
+func (c *pebbleLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
+	if !c.iter.Valid() {
+		if err := c.iter.Error(); err != nil {
+			return nil, err
+		}
+		return nil, io.EOF
+	}
+
+	// Read protobuf Log
+	value, err := c.iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading log value: %w", err)
+	}
+
+	// Unmarshal protobuf Log
+	log := &ledgerpb.Log{}
+	if err := proto.Unmarshal(value, log); err != nil {
+		return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+	}
+
+	// Move to next
+	c.iter.Next()
+
+	return log, nil
+}
+
+func (c *pebbleLogCursor) Close() error {
+	if c.iter != nil {
+		return c.iter.Close()
+	}
+	return nil
+}
+
+// GetAllLogs returns a cursor to iterate over all logs.
+// Logs are returned in ascending order by id.
+// from: optional log id to start from (0 = from beginning).
+// to: optional log id to stop at (0 = until end, inclusive).
+func (s *PebbleRuntimeStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
+	// Set up iterator bounds
+	lowerBound := []byte(keyPrefixLog)
+	upperBound := append([]byte(keyPrefixLog), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+
+	if from > 0 {
+		lowerBound = logKey(from)
+	}
+	if to > 0 {
+		// Upper bound should be exclusive, so we use to+1
+		upperBound = logKey(to + 1)
+	}
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator: %w", err)
+	}
+
+	// Position iterator at first key
+	iter.First()
+
+	return &pebbleLogCursor{
+		iter:  iter,
+		store: s,
+	}, nil
+}
+
+// GetLogByID retrieves a log by its ID.
+func (s *PebbleRuntimeStore) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	return s.GetLogWithID(ctx, id)
+}
+
+// GetLogWithID retrieves a log by its ID.
+func (s *PebbleRuntimeStore) GetLogWithID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	key := logKey(id)
+	value, closer, err := s.db.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting log by id: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	// Unmarshal protobuf Log
+	log := &ledgerpb.Log{}
+	if err := proto.Unmarshal(value, log); err != nil {
+		return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+	}
+
+	return log, nil
+}
+
+// GetLastProcessedLogID retrieves the ID of the last inserted log.
+func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64, error) {
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(keyPrefixLog),
+		UpperBound: append([]byte(keyPrefixLog), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating iterator: %w", err)
+	}
+	defer func() {
+		_ = iter.Close()
+	}()
+
+	if !iter.Last() {
+		if err := iter.Error(); err != nil {
+			return 0, fmt.Errorf("getting last log: %w", err)
+		}
+		return 0, nil
+	}
+
+	key := iter.Key()
+	if len(key) < len(keyPrefixLog)+8 {
+		return 0, nil
+	}
+	return binary.BigEndian.Uint64(key[len(keyPrefixLog):]), nil
 }
 
 // balanceDiffKey returns a unique key for a balance diff entry
@@ -327,29 +505,6 @@ func (s *PebbleRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	}
 
 	return idempotencyProto.Hash, idempotencyProto.LogId, nil
-}
-
-// GetLastProcessedLogID retrieves the ID of the last processed log from Pebble
-func (s *PebbleRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64, error) {
-	key := []byte(keyLastProcessedLogID)
-	value, closer, err := s.db.Get(key)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("querying last processed log ID: %w", err)
-	}
-	defer func() {
-		_ = closer.Close()
-	}()
-
-	// Parse the value as uint64
-	var lastLogID uint64
-	if _, err := fmt.Sscanf(string(value), "%d", &lastLogID); err != nil {
-		return 0, fmt.Errorf("parsing last processed log ID: %w", err)
-	}
-
-	return lastLogID, nil
 }
 
 // Metrics returns Pebble database metrics (implements MetricsAware)

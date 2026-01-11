@@ -16,21 +16,16 @@ func TestSQLiteRuntimeStoreModernIntegration(t *testing.T) {
 	})
 }
 
-func createSQLiteModernRuntimeStore(t *testing.T) *SQLiteRuntimeStore {
+func createSQLiteModernRuntimeStore(t *testing.T) RuntimeStore {
 	tmpDir := t.TempDir()
 	runtimeDSN := fmt.Sprintf("file:%s/test-runtime.db", tmpDir)
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	
-	// Create runtime store (stores balances and metadata only)
-	runtimeStore, err := NewSQLiteModernRuntimeStore(ctx, runtimeDSN, logger)
+
+	// Create runtime store (stores balances, metadata, and logs)
+	runtimeStore, err := NewSQLiteModernRuntimeStore(runtimeDSN, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = runtimeStore.Close() })
-	
+
 	return runtimeStore
 }
-
-
-
-
-

@@ -93,7 +93,7 @@ type RuntimeUpdate struct {
 	// Positive values add to balance, negative values subtract
 	BalanceDiffs map[string]map[string]*big.Int
 	// AccountMetadata contains metadata updates: map[account]map[key]value
-	AccountMetadata map[string]map[string]interface{}
+	AccountMetadata map[string]map[string]string
 	// AccountMetadataDeletes contains metadata keys to delete: map[account][]keys
 	AccountMetadataDeletes map[string][]string
 	// IdempotencyKeys contains idempotency entries to insert: map[key]{hash, logID}
@@ -102,16 +102,15 @@ type RuntimeUpdate struct {
 	LastProcessedLogID uint64
 }
 
-// RuntimeStore handles runtime queries for balances and account metadata
+// RuntimeStore handles runtime queries and provides log access.
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package service . RuntimeStore
 type RuntimeStore interface {
+	LogStore
 	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
 	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
-	// Update applies all runtime updates atomically
-	Update(ctx context.Context, update RuntimeUpdate) error
 }

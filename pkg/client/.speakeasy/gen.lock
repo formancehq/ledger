@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 4b8f40bcd388bbb62301611f5f064fa9
+  docChecksum: f25c00524bc5c0ef7af0d80d9fdf2d41
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.62
-  configChecksum: 0d9158c8b2a27719594b9c4e4b04b21f
+  releaseVersion: 0.11.66
+  configChecksum: f736116dcd17fb5d6fd97ad6ae940aca
 features:
   go:
     additionalDependencies: 0.1.0
@@ -84,10 +84,8 @@ generatedFiles:
   - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/clusterstateresponsestate.md
   - docs/models/components/createledgerrequest.md
-  - docs/models/components/createledgerrequestlogstoreconfig.md
-  - docs/models/components/createledgerrequestlogstoredriver.md
-  - docs/models/components/createledgerrequestruntimestoreconfig.md
-  - docs/models/components/createledgerrequestruntimestoredriver.md
+  - docs/models/components/createledgerrequeststoreconfig.md
+  - docs/models/components/createledgerrequeststoredriver.md
   - docs/models/components/createledgerresponse.md
   - docs/models/components/createtransactionrequest.md
   - docs/models/components/createtransactionresponse.md
@@ -103,8 +101,6 @@ generatedFiles:
   - docs/models/components/ledgerinfo.md
   - docs/models/components/ledgerstate.md
   - docs/models/components/listallledgersresponse.md
-  - docs/models/components/logstoreconfig.md
-  - docs/models/components/logstoredriver.md
   - docs/models/components/nodeinfo.md
   - docs/models/components/pebbleconfig.md
   - docs/models/components/postingrequest.md
@@ -113,13 +109,12 @@ generatedFiles:
   - docs/models/components/progressinfostate.md
   - docs/models/components/raftstatus.md
   - docs/models/components/reverttransactionrequest.md
-  - docs/models/components/runtimestoreconfig.md
-  - docs/models/components/runtimestoredriver.md
   - docs/models/components/script.md
   - docs/models/components/sqlitemattnconfig.md
   - docs/models/components/sqlitemodernconfig.md
   - docs/models/components/state.md
-  - docs/models/components/status.md
+  - docs/models/components/storeconfig.md
+  - docs/models/components/storedriver.md
   - docs/models/components/suffrage.md
   - docs/models/components/systemstate.md
   - docs/models/components/targetid.md
@@ -199,7 +194,7 @@ examples:
           includeDeleted: false
       responses:
         "200":
-          application/json: {"data": {"id": 427403, "name": "<value>", "logStoreDriver": "sqlite-modern", "runtimeStoreDriver": "pebble", "logStoreConfig": {}, "runtimeStoreConfig": {}, "createdAt": "2025-04-04T05:10:16.528Z"}}
+          application/json: {"data": {"id": 427403, "name": "<value>", "storeDriver": "sqlite-modern", "storeConfig": {}, "createdAt": "2025-04-04T05:10:16.528Z"}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -212,10 +207,10 @@ examples:
         path:
           ledgerName: "<value>"
       requestBody:
-        application/json: {"logStoreDriver": "pebble", "runtimeStoreDriver": "sqlite-mattn", "logStoreConfig": {}, "runtimeStoreConfig": {}}
+        application/json: {"storeDriver": "pebble", "storeConfig": {}}
       responses:
         "201":
-          application/json: {"data": {"id": 726425, "name": "<value>", "logStoreDriver": "pebble", "runtimeStoreDriver": "sqlite-mattn", "logStoreConfig": {}, "runtimeStoreConfig": {}, "createdAt": "2024-05-25T17:25:53.217Z"}}
+          application/json: {"data": {"id": 726425, "name": "<value>", "storeDriver": "sqlite-modern", "storeConfig": {}, "createdAt": "2024-05-25T17:25:53.217Z"}}
         "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -253,7 +248,7 @@ examples:
     speakeasy-default-get-cluster-state:
       responses:
         "200":
-          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"nextLedgerID": 443395, "ledgers": {"key": {"id": 682127, "name": "<value>", "logStoreDriver": "sqlite-modern", "runtimeStoreDriver": "pebble", "createdAt": "2025-10-07T01:06:29.005Z"}}}}}
+          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"nextLedgerID": 443395, "ledgers": {"key": {"id": 682127, "name": "<value>", "storeDriver": "sqlite-modern", "createdAt": "2025-10-07T01:06:29.005Z"}}}}}
         "405":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -385,7 +380,7 @@ examples:
           ledgerName: "<value>"
       responses:
         "200":
-          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "logStoreDriver": "sqlite-mattn", "runtimeStoreDriver": "pebble", "logStoreConfig": {}, "runtimeStoreConfig": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastLogID": 177169, "logStoreMetrics": {}, "runtimeStoreMetrics": {"key": "<value>", "key1": "<value>", "key2": "<value>"}}}}
+          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "storeDriver": "sqlite-mattn", "storeConfig": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastLogID": 177169, "storeMetrics": {}}}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

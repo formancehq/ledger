@@ -246,6 +246,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 **CRITICAL**: When modifying any `.proto` file, you MUST regenerate the protobuf code immediately after making the changes.
 
 When modifying any `.proto` file:
+1. **Realign field numbers sequentially** when adding/removing fields to avoid gaps, and remove obsolete `reserved` entries.
 1. Edit the `.proto` file in the `proto/` directory
 2. **IMMEDIATELY run `just generate-proto` to regenerate the Go code for all proto files** - Do not skip this step!
 3. Update any code that uses the generated types if the API has changed

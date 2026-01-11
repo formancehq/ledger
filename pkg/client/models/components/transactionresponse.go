@@ -9,7 +9,7 @@ import (
 
 type TransactionResponse struct {
 	Postings []PostingResponse `json:"postings"`
-	Metadata map[string]any    `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Transaction timestamp (ISO 8601 format)
 	Timestamp time.Time `json:"timestamp"`
 	Reference *string   `json:"reference,omitempty"`
@@ -35,7 +35,7 @@ func (o *TransactionResponse) GetPostings() []PostingResponse {
 	return o.Postings
 }
 
-func (o *TransactionResponse) GetMetadata() map[string]any {
+func (o *TransactionResponse) GetMetadata() map[string]string {
 	if o == nil {
 		return nil
 	}

@@ -15,9 +15,11 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ret := make([]*ledgerpb.LedgerInfo, 0, len(ledgersInfo))
-	for _, ledger := range ledgersInfo {
-		ret = append(ret, ledger)
+	ret := make([]*ledgerpb.LedgerInfo, len(ledgersInfo))
+	i := 0
+	for _, l := range ledgersInfo {
+		ret[i] = l
+		i++
 	}
 
 	// Return ledgers list wrapped in BaseResponse

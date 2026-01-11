@@ -1,9 +1,9 @@
 package http
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/systempb"
@@ -24,14 +24,25 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unable to read request body: %w", err))
+		return
+	}
+
 	req := &systempb.CreateLedgerRequest{}
-	if err := json.UnmarshalRead(r.Body, &req, json.WithUnmarshalers(json.UnmarshalFunc(protojson.Unmarshal))); err != nil {
+	unmarshalOptions := protojson.UnmarshalOptions{DiscardUnknown: true}
+	if err := unmarshalOptions.Unmarshal(body, req); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
+
+	if req.StoreDriver == "" {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("store driver is required"))
+		return
+	}
+
 	req.Name = ledgerName
-	data, _ := json.Marshal(req)
-	fmt.Println(string(data))
 
 	// Create ledger via cluster
 	ledgerInfo, err := s.backend.CreateLedger(r.Context(), req)

@@ -82,9 +82,8 @@ paths:
     post:
       summary: Create a new ledger
       description: |
-        Creates a new ledger with the specified name, drivers, and configurations. Both logStoreDriver and runtimeStoreDriver are required.
+        Creates a new ledger with the specified name, driver, and configuration. The storeDriver is required.
         Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble).
-        Each store (log store and runtime store) can have its own driver and configuration, allowing for flexible storage setups.
         Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
@@ -547,41 +546,24 @@ components:
     CreateLedgerRequest:
       type: object
       required:
-        - logStoreDriver
-        - runtimeStoreDriver
+        - storeDriver
       properties:
-        logStoreDriver:
+        storeDriver:
           type: string
           enum:
           - sqlite-modern
           - sqlite-mattn
           - pebble
           description: |
-            Log store driver name. 
+            Store driver name. 
             Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
             and pebble (github.com/cockroachdb/pebble)
-        runtimeStoreDriver:
-          type: string
-          enum:
-          - sqlite-modern
-          - sqlite-mattn
-          - pebble
-          description: |
-            Runtime store driver name. 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
-            and pebble (github.com/cockroachdb/pebble)
-        logStoreConfig:
+        storeConfig:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
             - $ref: '#/components/schemas/PebbleConfig'
-          description: Log store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
-        runtimeStoreConfig:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteMattnConfig'
-            - $ref: '#/components/schemas/SQLiteModernConfig'
-            - $ref: '#/components/schemas/PebbleConfig'
-          description: Runtime store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
+          description: Store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
         metadata:
           type: object
           additionalProperties:
@@ -624,8 +606,7 @@ components:
       required:
         - id
         - name
-        - logStoreDriver
-        - runtimeStoreDriver
+        - storeDriver
         - createdAt
       properties:
         id:
@@ -635,32 +616,19 @@ components:
         name:
           type: string
           description: Name of the ledger
-        logStoreDriver:
+        storeDriver:
           type: string
           enum: [sqlite-mattn, sqlite-modern, pebble]
           description: |
-            Log store driver name. 
+            Store driver name. 
             Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
             and pebble (github.com/cockroachdb/pebble)
-        runtimeStoreDriver:
-          type: string
-          enum: [sqlite-mattn, sqlite-modern, pebble]
-          description: |
-            Runtime store driver name. 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
-            and pebble (github.com/cockroachdb/pebble)
-        logStoreConfig:
+        storeConfig:
           oneOf:
             - $ref: '#/components/schemas/SQLiteMattnConfig'
             - $ref: '#/components/schemas/SQLiteModernConfig'
             - $ref: '#/components/schemas/PebbleConfig'
-          description: Log store driver-specific configuration
-        runtimeStoreConfig:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteMattnConfig'
-            - $ref: '#/components/schemas/SQLiteModernConfig'
-            - $ref: '#/components/schemas/PebbleConfig'
-          description: Runtime store driver-specific configuration
+          description: Store driver-specific configuration
         metadata:
           type: object
           additionalProperties:
@@ -679,10 +647,6 @@ components:
           format: date-time
           nullable: true
           description: Deletion timestamp (always null with hard delete)
-        status:
-          type: string
-          enum: [Active, Deleted]
-          description: Ledger status
 
     CreateTransactionRequest:
       type: object
@@ -799,7 +763,8 @@ components:
           description: ID of the target (account address or transaction ID)
         metadata:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: string
           description: Metadata to add
 
     RevertTransactionRequest:
@@ -821,7 +786,8 @@ components:
           description: Set the timestamp of the reverted transaction to the original transaction timestamp
         metadata:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: string
           description: Metadata for the revert transaction
 
     DeleteMetadataRequest:
@@ -914,7 +880,8 @@ components:
             $ref: '#/components/schemas/PostingResponse'
         metadata:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: string
         timestamp:
           type: string
           format: date-time
@@ -1043,8 +1010,7 @@ components:
       required:
         - ledgerInfo
         - lastLogID
-        - logStoreMetrics
-        - runtimeStoreMetrics
+        - storeMetrics
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
@@ -1053,19 +1019,11 @@ components:
           format: uint64
           minimum: 0
           description: Last global id number
-        logStoreMetrics:
+        storeMetrics:
           type: object
           additionalProperties: true
           description: |
-            Metrics from the log store. Structure varies by driver:
-            - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
-            - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
-          nullable: false
-        runtimeStoreMetrics:
-          type: object
-          additionalProperties: true
-          description: |
-            Metrics from the runtime store. Structure varies by driver:
+            Metrics from the store. Structure varies by driver:
             - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
             - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
           nullable: false

@@ -264,7 +264,7 @@ TestRuns are installed directly to Kubernetes from a Helm chart (`misc/k6-run`) 
 Install a TestRun for a test script:
 
 ```bash
-just k6-install-testrun world_to_bank.js --parallelism 1 --stages "10s:10,10m:10,10s:0"
+just k6-run world_to_bank.js --parallelism 1 --stages "10s:10,10m:10,10s:0"
 ```
 
 This will install the TestRun directly to Kubernetes using Helm.
@@ -274,7 +274,7 @@ This will install the TestRun directly to Kubernetes using Helm.
 Configure the test using k6 stages:
 
 ```bash
-just k6-install-testrun any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
+just k6-run any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
 ```
 
 ### Custom Parameters
@@ -290,10 +290,10 @@ All parameters are optional with defaults:
 
 ```bash
 # Test with k6 stages
-just k6-install-testrun any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
+just k6-run any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
 
 # Custom namespace and ledger URL
-just k6-install-testrun world_to_any.js --namespace my-namespace --ledger-url http://localhost:9000
+just k6-run world_to_any.js --namespace my-namespace --ledger-url http://localhost:9000
 ```
 
 ### Helm Chart Structure

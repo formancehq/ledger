@@ -119,8 +119,7 @@ var _ = Describe("Ledger Deletion", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -205,8 +204,7 @@ var _ = Describe("Ledger Deletion", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())

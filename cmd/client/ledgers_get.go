@@ -69,8 +69,7 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	panelData := ""
 	panelData += fmt.Sprintf("ID: %d\n", data.ID)
 	panelData += fmt.Sprintf("Name: %s\n", data.Name)
-	panelData += fmt.Sprintf("Log Store Driver: %s\n", string(data.LogStoreDriver))
-	panelData += fmt.Sprintf("Runtime Store Driver: %s\n", string(data.RuntimeStoreDriver))
+	panelData += fmt.Sprintf("Store Driver: %s\n", string(data.StoreDriver))
 	panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
 	if data.DeletedAt != nil {
 		panelData += fmt.Sprintf("Deleted At: %s\n", data.DeletedAt.Format("2006-01-02 15:04:05"))

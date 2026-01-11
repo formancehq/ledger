@@ -178,7 +178,7 @@ The transaction creation process:
 5. An `InsertLogCommand` is proposed to the ledger's Raft group
 6. Ledger FSM:
    - Generates a global sequence number
-   - Stores the log in the LogStore
+   - Stores the log in the RuntimeStore
    - Returns the result
 
 ```mermaid
@@ -187,7 +187,6 @@ sequenceDiagram
     participant HTTP
     participant LedgerNode
     participant LedgerFSM
-    participant LogStore
     participant RuntimeStore
     
     Client->>HTTP: POST /ledgers/my-ledger/transactions
@@ -195,10 +194,10 @@ sequenceDiagram
     LedgerNode->>LedgerNode: Validate Transaction
     LedgerNode->>RuntimeStore: Check Balances
     LedgerNode->>LedgerFSM: Propose InsertLogCommand (via Raft)
-    LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
-    LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
+    LedgerFSM->>LedgerFSM: Generate Sequence
+    LedgerFSM->>RuntimeStore: InsertLogs() - Persist log and update balances
     LedgerFSM-->>LedgerNode: Log with Sequence
-    Note over LedgerFSM,LogStore: Logs written to LogStore during snapshot
+    Note over LedgerFSM,RuntimeStore: Logs persisted during apply
     LedgerNode-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
@@ -215,11 +214,11 @@ Each transaction is stored as a **log** with:
 
 Sequences are generated sequentially by the ledger FSM, ensuring global transaction order within each ledger.
 
-## Storage Architecture: LogStore vs RuntimeStore
+## Storage Architecture: RuntimeStore (logs + runtime state)
 
-The ledger system uses two distinct storage components, each serving different purposes within the Raft consensus flow:
+The ledger uses a single store per ledger. The RuntimeStore implements the LogStore interface and persists the immutable log history alongside derived state (balances, account metadata, idempotency).
 
-### LogStore
+### Log persistence (LogStore interface)
 
 **Purpose**: Persistent storage of transaction logs (the immutable history of all transactions)
 
@@ -230,40 +229,11 @@ The ledger system uses two distinct storage components, each serving different p
 - Acts as the source of truth for transaction history
 
 **Usage in Raft**:
-- **During writes**: When transactions are committed through Raft, logs are temporarily stored in memory in the FSM
-- **During snapshots**: Logs accumulated in memory are written in batch to the LogStore when a snapshot is created
-- **During reads**: Logs can be read directly from LogStore without going through Raft (local reads)
-- **During recovery**: Logs are replayed from LogStore to rebuild state
+- **During writes**: When logs are applied by the FSM, `RuntimeStore.InsertLogs()` persists logs and updates balances and metadata
+- **During reads**: Logs can be read directly from RuntimeStore without going through Raft (local reads)
+- **During recovery**: Logs are replayed from RuntimeStore to rebuild state
 
-**Key characteristics**:
-- Immutable: Logs are never modified, only appended
-- Sequential: Logs are stored with sequential IDs
-- Persistent: All logs are durably stored on disk
-- Batched writes: Logs are written in batches during snapshot creation, not immediately after each transaction
-
-**When Logs Are Written to LogStore**:
-
-Logs are **not** written to the LogStore immediately when transactions are committed. Instead, they follow a batched write pattern:
-
-1. **During transaction commit**: When a transaction is committed through Raft:
-   - The log is stored **in memory** in the FSM (`f.logs` slice)
-   - The RuntimeStore is updated immediately to reflect new balances
-   - The log remains in memory, not yet persisted to LogStore
-
-2. **During snapshot creation**: When a snapshot is triggered (based on `SnapshotThreshold`):
-   - All logs accumulated in memory are written **in batch** to the LogStore via `logWriter.InsertLogs()`
-   - This batch write is atomic and efficient
-   - After successful write, logs are cleared from memory (`f.logs = f.logs[len(logs):]`)
-
-**Benefits of this approach**:
-- **Performance**: Batch writes are more efficient than individual writes
-- **Consistency**: Logs are written atomically during snapshots
-- **Memory efficiency**: Logs are cleared from memory after being persisted
-- **Recovery**: Snapshots + logs after snapshot provide complete recovery capability
-
-**Important**: While logs are in memory (between commits and snapshots), they are still available for reading through the FSM's in-memory state. However, for durability and recovery, they must be persisted to LogStore during snapshots.
-
-### RuntimeStore
+### Runtime state
 
 **Purpose**: Runtime data access for balances and account metadata (derived state)
 
@@ -274,32 +244,25 @@ Logs are **not** written to the LogStore immediately when transactions are commi
 - Provides fast read access to current state
 
 **Usage in Raft**:
-- **During writes**: When logs are applied by the FSM, `RuntimeStore.InsertLogs()` is called to update balances and metadata
+- **During writes**: When logs are applied by the FSM, `RuntimeStore.InsertLogs()` persists logs and updates balances and metadata
 - **During reads**: Balances and metadata are read directly from RuntimeStore (local reads, no Raft consensus needed)
-- **During recovery**: Balances are recalculated by replaying logs from LogStore
+- **During recovery**: Balances are recalculated by replaying logs from RuntimeStore
 
-**Key characteristics**:
-- Derived state: Balances are computed from transaction logs
-- Mutable: Balances are updated as transactions are processed
-- Optimized for queries: Fast lookups without scanning all logs
-
-### How They Work Together
+### How It Works
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Leader
     participant FSM
-    participant LogStore
     participant RuntimeStore
     
     Client->>Leader: Create Transaction
     Leader->>FSM: Apply InsertLogCommand (via Raft)
-    FSM->>FSM: Store log in memory
-    FSM->>RuntimeStore: InsertLogs() - Update balances
+    FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
     RuntimeStore->>RuntimeStore: Calculate new balances
     FSM-->>Leader: Transaction committed
-    Note over FSM,LogStore: Logs written to LogStore during snapshot creation
+    Note over FSM,RuntimeStore: Logs persisted during apply
     Leader-->>Client: Success
     
     Note over Client,FSM: Read operations (no Raft)
@@ -312,9 +275,8 @@ sequenceDiagram
 **Write Flow**:
 1. Transaction is proposed to Raft leader
 2. Once committed, FSM applies the command
-3. FSM writes the log to **LogStore** (persistent history)
-4. FSM calls `RuntimeStore.InsertLogs()` to update **RuntimeStore** (current balances)
-5. Both stores are updated atomically within the same transaction
+3. FSM calls `RuntimeStore.InsertLogs()` to persist logs and update balances
+4. Logs and runtime state are stored in the same RuntimeStore
 
 **Read Flow**:
 1. Client requests balances
@@ -323,16 +285,14 @@ sequenceDiagram
 
 **Recovery Flow**:
 1. On startup, FSM loads the last snapshot
-2. FSM replays logs from **LogStore** starting after the snapshot
+2. FSM replays logs from **RuntimeStore** starting after the snapshot
 3. For each log, FSM calls `RuntimeStore.InsertLogs()` to rebuild balances
-4. RuntimeStore is fully synchronized with LogStore
 
-### Why Two Stores?
+### Why One Store?
 
-- **Separation of concerns**: Transaction history (LogStore) vs. current state (RuntimeStore)
-- **Performance**: Reading balances from RuntimeStore is much faster than scanning all logs
-- **Scalability**: LogStore can grow indefinitely while RuntimeStore stays compact
-- **Update timing**: RuntimeStore is updated immediately when entries are applied, while LogStore is filled in batches during snapshot creation
+- **Atomic updates**: Log persistence and runtime state updates are handled together
+- **Simpler configuration**: One store per ledger instead of separate log/runtime stores
+- **Consistent reads**: The same store provides both history and current state
 
 **Note**: To keep RuntimeStore compact and efficient, balances should be set to zero whenever possible. Zero balances can be omitted from storage, reducing the size of the RuntimeStore and improving query performance.
 
@@ -341,7 +301,7 @@ sequenceDiagram
 ### Isolation Between Ledgers
 
 - Each ledger has its own Raft group
-- Data is stored separately (each ledger has its own LogStore)
+- Data is stored separately (each ledger has its own RuntimeStore)
 - A problem in one ledger does not affect others
 - Snapshots are created per ledger
 - Each ledger can use a different storage driver
@@ -383,8 +343,8 @@ The system supports idempotency keys to avoid duplicate transactions:
 ### FSM Management
 
 The ledger FSM maintains an index of idempotency keys:
-- Stored in memory for optimal performance
-- Persisted in snapshots
+- Stored in the RuntimeStore for fast lookups
+- Persisted alongside runtime state
 - Restored during recovery
 
 ## Performance and Optimizations
@@ -395,7 +355,7 @@ Reads can be served locally without going through Raft:
 - `GetLedger`: Local read (system FSM)
 - `GetAllLedgers`: Local read (system FSM)
 - `GetBalances`: Local read from RuntimeStore
-- `GetAllLogs`: Local read from LogStore
+- `GetAllLogs`: Local read from RuntimeStore
 
 ### Writes via Leader
 

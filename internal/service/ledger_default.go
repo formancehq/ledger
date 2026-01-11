@@ -519,7 +519,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numsc
 		accounts = append(accounts, address)
 	}
 
-	// Get metadata from the log store
+	// Get metadata from the runtime store
 	metadataMap, err := s.runtimeStore.GetAccountMetadata(ctx, accounts)
 	if err != nil {
 		return nil, err

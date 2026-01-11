@@ -31,7 +31,7 @@ func NewSystemServiceServer(logger logging.Logger, cluster *system.Node) systemp
 
 func (impl *SystemServiceServerImpl) CreateLedger(ctx context.Context, req *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	impl.logger.
-		WithFields(map[string]any{"name": req.Name, "log_store_driver": req.LogStoreDriver, "runtime_store_driver": req.RuntimeStoreDriver}).
+		WithFields(map[string]any{"name": req.Name, "store_driver": req.StoreDriver}).
 		Infof("CreateLedger request received")
 
 	return impl.systemNode.CreateLedger(ctx, req)

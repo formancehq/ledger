@@ -3,6 +3,7 @@
 package service
 
 import (
+	"io"
 	"math/big"
 	"testing"
 	"time"
@@ -20,14 +21,12 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 
 	ctx := logging.TestingContext()
 
-	t.Run("Update", func(t *testing.T) {
+	t.Run("InsertLogs", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 
 		testLogs := createRuntimeTestLogs()
-		update, err := LogsToRuntimeUpdate(testLogs)
-		require.NoError(t, err)
-		err = store.Update(ctx, update)
+		err := store.InsertLogs(ctx, testLogs...)
 		require.NoError(t, err)
 	})
 
@@ -37,9 +36,7 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
-		update, err := LogsToRuntimeUpdate(testLogs)
-		require.NoError(t, err)
-		err = store.Update(ctx, update)
+		err := store.InsertLogs(ctx, testLogs...)
 		require.NoError(t, err)
 
 		balances, err := store.GetBalances(ctx, map[string][]string{
@@ -53,15 +50,65 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		require.Equal(t, big.NewInt(50), balances["user"]["USD"])
 	})
 
+	t.Run("GetAllLogs", func(t *testing.T) {
+		t.Parallel()
+		store := createStore(t)
+
+		testLogs := createRuntimeTestLogs()
+		err := store.InsertLogs(ctx, testLogs...)
+		require.NoError(t, err)
+
+		// Get all logs
+		cursor, err := store.GetAllLogs(ctx, 0, 0)
+		require.NoError(t, err)
+		require.NotNil(t, cursor)
+		t.Cleanup(func() { _ = cursor.Close() })
+
+		// Read all logs
+		var logs []*ledgerpb.Log
+		for {
+			log, err := cursor.Next(ctx)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			logs = append(logs, log)
+		}
+
+		// Verify we got all logs
+		require.Equal(t, len(testLogs), len(logs))
+
+		// Verify logs are in ascending order by id
+		for i := 0; i < len(logs)-1; i++ {
+			require.LessOrEqual(t, logs[i].Id, logs[i+1].Id)
+		}
+	})
+
+	t.Run("GetLogByID", func(t *testing.T) {
+		t.Parallel()
+		store := createStore(t)
+
+		testLogs := createRuntimeTestLogs()
+		err := store.InsertLogs(ctx, testLogs...)
+		require.NoError(t, err)
+
+		log, err := store.GetLogByID(ctx, 1)
+		require.NoError(t, err)
+		require.NotNil(t, log)
+		require.Equal(t, uint64(1), log.Id)
+
+		log, err = store.GetLogByID(ctx, 999)
+		require.NoError(t, err)
+		require.Nil(t, log)
+	})
+
 	t.Run("GetAccountMetadata", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
-		update, err := LogsToRuntimeUpdate(testLogs)
-		require.NoError(t, err)
-		err = store.Update(ctx, update)
+		err := store.InsertLogs(ctx, testLogs...)
 		require.NoError(t, err)
 
 		// Test GetAccountMetadata for multiple accounts
@@ -160,9 +207,7 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 			}(),
 		}
 
-		update, err := LogsToRuntimeUpdate(logs)
-		require.NoError(t, err)
-		err = store.Update(ctx, update)
+		err := store.InsertLogs(ctx, logs...)
 		require.NoError(t, err)
 
 		// Get account metadata and verify
@@ -185,9 +230,7 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		testLogs := createRuntimeTestLogs()
 
 		// Update runtime store
-		update, err := LogsToRuntimeUpdate(testLogs)
-		require.NoError(t, err)
-		err = store.Update(ctx, update)
+		err := store.InsertLogs(ctx, testLogs...)
 		require.NoError(t, err)
 
 		// Test with existing idempotency key
@@ -209,12 +252,11 @@ func TestRuntimeStoreIntegrationCommon(t *testing.T, createStore func(*testing.T
 		require.Equal(t, uint64(0), logID)
 	})
 
-	t.Run("UpdateEmpty", func(t *testing.T) {
+	t.Run("InsertLogsEmpty", func(t *testing.T) {
 		t.Parallel()
 		store := createStore(t)
 
-		update := RuntimeUpdate{}
-		err := store.Update(ctx, update)
+		err := store.InsertLogs(ctx)
 		require.NoError(t, err)
 	})
 }

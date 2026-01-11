@@ -112,16 +112,14 @@ func (x *ResolveLedgerLeaderResponse) GetLeaderId() uint64 {
 }
 
 type CreateLedgerRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	LogStoreDriver     string                 `protobuf:"bytes,2,opt,name=log_store_driver,json=logStoreDriver,proto3" json:"log_store_driver,omitempty"`             // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-	RuntimeStoreDriver string                 `protobuf:"bytes,3,opt,name=runtime_store_driver,json=runtimeStoreDriver,proto3" json:"runtime_store_driver,omitempty"` // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-	LogStoreConfig     *structpb.Struct       `protobuf:"bytes,4,opt,name=log_store_config,json=logStoreConfig,proto3" json:"log_store_config,omitempty"`             // Log store driver-specific configuration
-	RuntimeStoreConfig *structpb.Struct       `protobuf:"bytes,5,opt,name=runtime_store_config,json=runtimeStoreConfig,proto3" json:"runtime_store_config,omitempty"` // Runtime store driver-specific configuration
-	Metadata           map[string]string      `protobuf:"bytes,6,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	SnapshotThreshold  uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	StoreDriver       string                 `protobuf:"bytes,2,opt,name=store_driver,json=storeDriver,proto3" json:"store_driver,omitempty"` // Store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+	StoreConfig       *structpb.Struct       `protobuf:"bytes,3,opt,name=store_config,json=storeConfig,proto3" json:"store_config,omitempty"` // Store driver-specific configuration
+	Metadata          map[string]string      `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	SnapshotThreshold uint64                 `protobuf:"varint,5,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreateLedgerRequest) Reset() {
@@ -161,30 +159,16 @@ func (x *CreateLedgerRequest) GetName() string {
 	return ""
 }
 
-func (x *CreateLedgerRequest) GetLogStoreDriver() string {
+func (x *CreateLedgerRequest) GetStoreDriver() string {
 	if x != nil {
-		return x.LogStoreDriver
+		return x.StoreDriver
 	}
 	return ""
 }
 
-func (x *CreateLedgerRequest) GetRuntimeStoreDriver() string {
+func (x *CreateLedgerRequest) GetStoreConfig() *structpb.Struct {
 	if x != nil {
-		return x.RuntimeStoreDriver
-	}
-	return ""
-}
-
-func (x *CreateLedgerRequest) GetLogStoreConfig() *structpb.Struct {
-	if x != nil {
-		return x.LogStoreConfig
-	}
-	return nil
-}
-
-func (x *CreateLedgerRequest) GetRuntimeStoreConfig() *structpb.Struct {
-	if x != nil {
-		return x.RuntimeStoreConfig
+		return x.StoreConfig
 	}
 	return nil
 }
@@ -616,15 +600,13 @@ const file_system_proto_rawDesc = "" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\":\n" +
 	"\x1bResolveLedgerLeaderResponse\x12\x1b\n" +
-	"\tleader_id\x18\x01 \x01(\x04R\bleaderId\"\xc6\x03\n" +
+	"\tleader_id\x18\x01 \x01(\x04R\bleaderId\"\xbb\x02\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12(\n" +
-	"\x10log_store_driver\x18\x02 \x01(\tR\x0elogStoreDriver\x120\n" +
-	"\x14runtime_store_driver\x18\x03 \x01(\tR\x12runtimeStoreDriver\x12A\n" +
-	"\x10log_store_config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x0elogStoreConfig\x12I\n" +
-	"\x14runtime_store_config\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x12runtimeStoreConfig\x12E\n" +
-	"\bmetadata\x18\x06 \x03(\v2).ledger.CreateLedgerRequest.MetadataEntryR\bmetadata\x12-\n" +
-	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\x1a;\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
+	"\fstore_driver\x18\x02 \x01(\tR\vstoreDriver\x12:\n" +
+	"\fstore_config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\vstoreConfig\x12E\n" +
+	"\bmetadata\x18\x04 \x03(\v2).ledger.CreateLedgerRequest.MetadataEntryR\bmetadata\x12-\n" +
+	"\x12snapshot_threshold\x18\x05 \x01(\x04R\x11snapshotThreshold\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\")\n" +
@@ -700,32 +682,31 @@ var file_system_proto_goTypes = []any{
 	(*ledgerpb.LedgerInfo)(nil),         // 17: ledger.LedgerInfo
 }
 var file_system_proto_depIdxs = []int32{
-	16, // 0: ledger.CreateLedgerRequest.log_store_config:type_name -> google.protobuf.Struct
-	16, // 1: ledger.CreateLedgerRequest.runtime_store_config:type_name -> google.protobuf.Struct
-	12, // 2: ledger.CreateLedgerRequest.metadata:type_name -> ledger.CreateLedgerRequest.MetadataEntry
-	13, // 3: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
-	14, // 4: ledger.State.ledgers:type_name -> ledger.State.LedgersEntry
-	15, // 5: ledger.SystemFSMSnapshot.ledgers:type_name -> ledger.SystemFSMSnapshot.LedgersEntry
-	17, // 6: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> ledger.LedgerInfo
-	17, // 7: ledger.State.LedgersEntry.value:type_name -> ledger.LedgerInfo
-	17, // 8: ledger.SystemFSMSnapshot.LedgersEntry.value:type_name -> ledger.LedgerInfo
-	2,  // 9: ledger.SystemService.CreateLedger:input_type -> ledger.CreateLedgerRequest
-	3,  // 10: ledger.SystemService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
-	5,  // 11: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
-	7,  // 12: ledger.SystemService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
-	9,  // 13: ledger.SystemService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
-	0,  // 14: ledger.SystemService.ResolveLedgerLeader:input_type -> ledger.ResolveLedgerLeaderRequest
-	17, // 15: ledger.SystemService.CreateLedger:output_type -> ledger.LedgerInfo
-	4,  // 16: ledger.SystemService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
-	6,  // 17: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
-	8,  // 18: ledger.SystemService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
-	17, // 19: ledger.SystemService.GetLedgerInfo:output_type -> ledger.LedgerInfo
-	1,  // 20: ledger.SystemService.ResolveLedgerLeader:output_type -> ledger.ResolveLedgerLeaderResponse
-	15, // [15:21] is the sub-list for method output_type
-	9,  // [9:15] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	16, // 0: ledger.CreateLedgerRequest.store_config:type_name -> google.protobuf.Struct
+	12, // 1: ledger.CreateLedgerRequest.metadata:type_name -> ledger.CreateLedgerRequest.MetadataEntry
+	13, // 2: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
+	14, // 3: ledger.State.ledgers:type_name -> ledger.State.LedgersEntry
+	15, // 4: ledger.SystemFSMSnapshot.ledgers:type_name -> ledger.SystemFSMSnapshot.LedgersEntry
+	17, // 5: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> ledger.LedgerInfo
+	17, // 6: ledger.State.LedgersEntry.value:type_name -> ledger.LedgerInfo
+	17, // 7: ledger.SystemFSMSnapshot.LedgersEntry.value:type_name -> ledger.LedgerInfo
+	2,  // 8: ledger.SystemService.CreateLedger:input_type -> ledger.CreateLedgerRequest
+	3,  // 9: ledger.SystemService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
+	5,  // 10: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
+	7,  // 11: ledger.SystemService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	9,  // 12: ledger.SystemService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
+	0,  // 13: ledger.SystemService.ResolveLedgerLeader:input_type -> ledger.ResolveLedgerLeaderRequest
+	17, // 14: ledger.SystemService.CreateLedger:output_type -> ledger.LedgerInfo
+	4,  // 15: ledger.SystemService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
+	6,  // 16: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
+	8,  // 17: ledger.SystemService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
+	17, // 18: ledger.SystemService.GetLedgerInfo:output_type -> ledger.LedgerInfo
+	1,  // 19: ledger.SystemService.ResolveLedgerLeader:output_type -> ledger.ResolveLedgerLeaderResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_system_proto_init() }

@@ -6,8 +6,7 @@ The Ledger v3 POC system uses multiple storage layers to ensure data durability 
 
 1. **WAL (Write-Ahead Log)**: Raft log for consensus
 2. **Snapshots**: Periodic restoration points
-3. **Log Store**: Transaction storage (SQLite)
-4. **Balances Store**: Balance cache of accounts
+3. **Runtime Store**: Logs + runtime state (balances, account metadata, idempotency)
 
 ## Storage Architecture
 
@@ -20,8 +19,7 @@ graph TB
     end
     
     subgraph "Application Storage"
-        logstore[Log Store<br/>SQLite]
-        RuntimeStore[Runtime Store<br/>Balances & Account Metadata]
+        RuntimeStore[Runtime Store<br/>Logs + Runtime State]
     end
     
     subgraph "Data Directory Structure"
@@ -35,8 +33,8 @@ graph TB
     WAL --> DataDir
     HardState --> DataDir
     Snapshot --> DataDir
-    logstore --> ledger1
-    logstore --> ledger2
+    RuntimeStore --> ledger1
+    RuntimeStore --> ledger2
 ```
 
 ## WAL (Write-Ahead Log)
@@ -236,117 +234,75 @@ The syncer manages the synchronization process between the Raft log and the FSM:
 - Committed entries are applied directly to the FSM
 - The spool is empty and ready for the next synchronization cycle
 
-## Log Store
+## Runtime Store (logs + runtime state)
 
 ### Concept
 
-The Log Store is responsible for persistent storage of transactions (logs) for each ledger. It implements the interfaces `LogWriter` and `LogReader`. Each ledger has its own LogStore instance.
+The Runtime Store is responsible for persistent storage of transactions (logs) and derived runtime state (balances, account metadata, idempotency). It implements the interfaces `LogWriter` and `LogReader` through the `RuntimeStore` interface. Each ledger has its own RuntimeStore instance.
 
-### Implementations
+### Log Operations
 
-#### SQLite
-
-**File**: `internal/service/store_log_sqlite.go`
-
-**Characteristics**:
-- Storage in a SQLite file per ledger
-- No external dependencies
-- Ideal for development and small deployments
-
-**Schema**:
-```sql
-CREATE TABLE logs (
-    id INTEGER,
-    type TEXT NOT NULL,
-    data TEXT NOT NULL,
-    date TEXT,
-    idempotency_key TEXT,
-    idempotency_hash TEXT,
-    sequence INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(idempotency_key),
-    UNIQUE(idempotency_hash)
-);
-
-CREATE INDEX idx_logs_idempotency_key ON logs(idempotency_key);
-CREATE INDEX idx_logs_id ON logs(id);
-CREATE UNIQUE INDEX idx_logs_sequence ON logs(sequence);
-```
-
-### Log Store Operations
-
-#### Write
+**Write**:
 
 ```go
-func (s *logstore) WriteLog(ctx context.Context, log *ledger.Log) error
+func (s *runtimeStore) InsertLogs(ctx context.Context, logs ...*ledger.Log) error
 ```
 
-- Inserts the log in the database
-- Generates the sequence number if necessary
-- Checks the idempotency key if provided
+- Persists logs
+- Updates balances and metadata in the same store
+- Records idempotency entries
 
-#### Read
+**Read**:
 
 ```go
-func (s *logstore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
+func (s *runtimeStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
 ```
 
-- Reads logs starting from sequence `from` (inclusive)
+- Reads logs starting from sequence `from` (exclusive)
 - Stops at sequence `to` (inclusive) if `to > 0`, otherwise reads until the end
 - Returns a cursor for iteration
-- Supports range queries for efficient log streaming
 
-**Parameters**:
-- `from`: Starting sequence number (0 = from beginning)
-- `to`: Ending sequence number (0 = until end, inclusive)
-
-**Use Cases**:
-- **Full log streaming**: `GetAllLogs(ctx, 0, 0)` - Stream all logs
-- **Range queries**: `GetAllLogs(ctx, 100, 200)` - Stream logs from sequence 100 to 200
-- **Catch-up from snapshot**: `GetAllLogs(ctx, snapshotSequence, targetSequence)` - Stream logs needed for catch-up
-
-### Idempotency Key Management
-
-The Log Store maintains an index of idempotency keys:
-
-- Stored in the `logs` table with an index
-- Quick verification during writes
-- Allows detecting duplicated transactions
-
-## Balances Store
-
-### Concept
-
-The Balances Store provides persistent storage of account balances for each ledger. Balances are stored in the database and updated automatically via SQL triggers when transactions are inserted.
-
-**Key characteristics**:
-- **Persistent storage**: Balances are stored in the database, not cached in memory
-- **Automatic updates**: Balances are updated automatically via SQL triggers
-- **Concurrent access**: Locking mechanism ensures safe concurrent access during transactions
-
-### Structure
+### Interface
 
 ```go
 type RuntimeStore interface {
+    LogStore
     GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
     GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
+    // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
+    GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
+    // GetLastProcessedLogID retrieves the ID of the last processed log
+    GetLastProcessedLogID(ctx context.Context) (uint64, error)
 }
 ```
 
-The `RuntimeStore` interface combines balance queries and account metadata queries into a single interface, providing runtime data access for the ledger service.
+The `RuntimeStore` interface combines runtime queries with log access, providing runtime data access and log storage for the ledger service.
 
 ### Implementation
 
 #### SQLite
 
-**File**: `internal/service/store_runtime.go`
+**File**: `internal/service/store_runtime_sqlite.go`
 
-- Balances stored in a `balances` table: `(account, asset, balance)`
-- Updates performed when logs are written via `InsertLogs` method
-- Updates balances by subtracting from source accounts and adding to destination accounts
-- Each ledger has its own RuntimeStore, so no need to filter by ledger
+**Characteristics**:
+- Storage in a SQLite file per ledger
+- No external dependencies
+- Ideal for development and small deployments
+- Logs and runtime state stored together
 
 **Schema**:
 ```sql
+CREATE TABLE logs (
+    id INTEGER PRIMARY KEY,
+    data BLOB NOT NULL,
+    date TEXT,
+    idempotency_key TEXT,
+    idempotency_hash TEXT,
+    UNIQUE(idempotency_key)
+);
+
+CREATE INDEX idx_logs_idempotency_key ON logs(idempotency_key);
+
 CREATE TABLE balances (
     account TEXT NOT NULL,
     asset TEXT NOT NULL,
@@ -385,7 +341,7 @@ data/
     │   │   ├── wal/
     │   │   ├── raft-hardstate.json
     │   │   └── raft-snapshot.json
-    │   └── ledger-1.db            # SQLite LogStore (if SQLite)
+    │   └── ledger-1-runtime.db    # SQLite RuntimeStore (if SQLite)
     └── ledger-2/                  # Ledger 2
         └── ...
 ```
@@ -394,14 +350,14 @@ data/
 
 - **System**: System Raft data in `data/raft/`
 - **Ledgers**: Each ledger in `data/ledgers/ledger-{id}/`
-- **Logs**: Stored logs in each ledger's LogStore
+- **Logs**: Stored logs in each ledger's RuntimeStore
 
 ## Durability and Guarantees
 
 ### Write Durability
 
 1. **WAL**: Synchronized on disk before commit
-2. **LogStore**: ACID transactions for SQLite
+2. **RuntimeStore**: ACID transactions for SQLite
 3. **Snapshots**: Created periodically for recovery
 
 ### Recovery after Failure
@@ -410,7 +366,7 @@ The system can recover completely from:
 
 1. **Snapshot + WAL**: Rapid restoration from the last snapshot
 2. **Complete WAL**: If no snapshot, complete replay of the WAL
-3. **LogStore**: Reconstruction of balances from the logs
+3. **RuntimeStore**: Reconstruction of balances from the logs
 
 ### ACID Guarantees
 
@@ -430,7 +386,7 @@ The system can recover completely from:
 ### Compaction
 
 - **WAL**: Compacted after snapshots
-- **LogStore**: No automatic compaction (can be added)
+- **RuntimeStore**: No automatic compaction (can be added)
 
 ### Indexing
 

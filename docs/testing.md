@@ -47,23 +47,23 @@ func TestValidatebucketConfig(t *testing.T) {
 
 **Objectif** : Tester l'integration entre composants
 
-Runtime store integration tests are kept separate from log store integration tests and use their own fixtures and log samples to avoid cross-coupling.
+Runtime store integration tests cover both runtime state and log persistence now that log storage is part of the runtime store.
 
 **Example** :
 ```go
 //go:build integration
 
-func TestLogstoreintegration(t *testing.T) {
-    store := setupSQLiteStore(t)
+func TestRuntimeStoreIntegration(t *testing.T) {
+    store := setupRuntimeStore(t)
     defer cleanupStore(t, store)
     
     log := &ledger.Log{...}
-    err := store.WriteLog(ctx, log)
+    err := store.InsertLogs(ctx, log)
     require.NoError(t, err)
     
-    Logs, err := store.ReadLogs(ctx, "ledger1", 0)
+    cursor, err := store.GetAllLogs(ctx, 0, 0)
     require.NoError(t, err)
-    Assert.Len(t, Logs.Data, 1)
+    // ...
 }
 ```
 

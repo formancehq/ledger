@@ -33,12 +33,10 @@ message ResolveLedgerLeaderResponse {
 
 message CreateLedgerRequest {
   string name = 1;
-  string log_store_driver = 2;              // Log store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-  string runtime_store_driver = 3;         // Runtime store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-  google.protobuf.Struct log_store_config = 4;     // Log store driver-specific configuration
-  google.protobuf.Struct runtime_store_config = 5; // Runtime store driver-specific configuration
-  map<string, string> metadata = 6;
-  uint64 snapshot_threshold = 7;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  string store_driver = 2;                 // Store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
+  google.protobuf.Struct store_config = 3; // Store driver-specific configuration
+  map<string, string> metadata = 4;
+  uint64 snapshot_threshold = 5;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
 message DeleteLedgerRequest {

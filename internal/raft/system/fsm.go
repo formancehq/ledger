@@ -96,15 +96,13 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, cmd *raft.Command) (*led
 
 	// Create ledger info using protobuf types directly
 	ledgerInfo := &ledgerpb.LedgerInfo{
-		Id:                 ledgerID,
-		Name:               createCmd.Name,
-		LogStoreDriver:     createCmd.LogStoreDriver,
-		RuntimeStoreDriver: createCmd.RuntimeStoreDriver,
-		LogStoreConfig:     createCmd.LogStoreConfig,
-		RuntimeStoreConfig: createCmd.RuntimeStoreConfig,
-		Metadata:           createCmd.Metadata,
-		CreatedAt:          cmd.Date,
-		SnapshotThreshold:  createCmd.SnapshotThreshold,
+		Id:                ledgerID,
+		Name:              createCmd.Name,
+		StoreDriver:       createCmd.StoreDriver,
+		StoreConfig:       createCmd.StoreConfig,
+		Metadata:          createCmd.Metadata,
+		CreatedAt:         cmd.Date,
+		SnapshotThreshold: createCmd.SnapshotThreshold,
 	}
 	fsm.state.Infos[ledgerInfo.Name] = ledgerInfo
 

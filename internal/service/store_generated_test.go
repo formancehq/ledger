@@ -293,6 +293,21 @@ func (m *MockRuntimeStore) EXPECT() *MockRuntimeStoreMockRecorder {
 	return m.recorder
 }
 
+// GetAllLogs mocks base method.
+func (m *MockRuntimeStore) GetAllLogs(ctx context.Context, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllLogs", ctx, from, to)
+	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllLogs indicates an expected call of GetAllLogs.
+func (mr *MockRuntimeStoreMockRecorder) GetAllLogs(ctx, from, to any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockRuntimeStore)(nil).GetAllLogs), ctx, from, to)
+}
+
 // GetAccountMetadata mocks base method.
 func (m *MockRuntimeStore) GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error) {
 	m.ctrl.T.Helper()
@@ -321,6 +336,21 @@ func (m *MockRuntimeStore) GetBalances(ctx context.Context, balanceQuery map[str
 func (mr *MockRuntimeStoreMockRecorder) GetBalances(ctx, balanceQuery any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockRuntimeStore)(nil).GetBalances), ctx, balanceQuery)
+}
+
+// GetLogByID mocks base method.
+func (m *MockRuntimeStore) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLogByID", ctx, id)
+	ret0, _ := ret[0].(*ledgerpb.Log)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLogByID indicates an expected call of GetLogByID.
+func (mr *MockRuntimeStoreMockRecorder) GetLogByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogByID", reflect.TypeOf((*MockRuntimeStore)(nil).GetLogByID), ctx, id)
 }
 
 // GetLastProcessedLogID mocks base method.
@@ -354,16 +384,21 @@ func (mr *MockRuntimeStoreMockRecorder) GetLogForIdempotencyKey(ctx, idempotency
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogForIdempotencyKey", reflect.TypeOf((*MockRuntimeStore)(nil).GetLogForIdempotencyKey), ctx, idempotencyKey)
 }
 
-// Update mocks base method.
-func (m *MockRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) error {
+// InsertLogs mocks base method.
+func (m *MockRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, update)
+	varargs := []any{ctx}
+	for _, a := range logs {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "InsertLogs", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockRuntimeStoreMockRecorder) Update(ctx, update any) *gomock.Call {
+// InsertLogs indicates an expected call of InsertLogs.
+func (mr *MockRuntimeStoreMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockRuntimeStore)(nil).Update), ctx, update)
+	varargs := append([]any{ctx}, logs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockRuntimeStore)(nil).InsertLogs), varargs...)
 }

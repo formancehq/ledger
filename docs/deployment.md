@@ -449,7 +449,7 @@ kubectl cp ledger-v3-poc-0:/tmp/backup.tar.gz ./backup.tar.gz
 
 For SQLite:
 ```bash
-kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/ledgers/my-ledger/logs.db ".backup /tmp/backup.db"
+kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/ledgers/my-ledger/ledger-<id>-runtime.db ".backup /tmp/backup.db"
 ```
 
 ### Restoration

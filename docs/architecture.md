@@ -101,8 +101,7 @@ graph TB
     
     subgraph "Storage Layer"
         WAL[WAL Storage]
-        LogStore[Log Store<br/>SQLite]
-        RuntimeStore[Runtime Store<br/>Balances]
+        RuntimeStore[Runtime Store<br/>Logs + Balances]
         Snapshot[Snapshot Store]
     end
     
@@ -117,7 +116,6 @@ graph TB
     
     SystemNode --> WAL
     LedgerNode --> WAL
-    LedgerNode --> LogStore
     LedgerNode --> RuntimeStore
     SystemNode --> Snapshot
     LedgerNode --> Snapshot
@@ -234,9 +232,9 @@ sequenceDiagram
     alt Node is leader
         LedgerCluster->>LedgerNode: CreateTransaction()
         LedgerNode->>LedgerFSM: Propose InsertLogCommand (via Raft)
-        LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
-        LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
-        Note over LedgerFSM: Logs written to LogStore during snapshot
+        LedgerFSM->>LedgerFSM: Generate Sequence
+        LedgerFSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        Note over LedgerFSM: Logs persisted during apply
         LedgerNode-->>LedgerCluster: CreatedTransaction
     else Node is follower
         LedgerCluster->>LedgerCluster: Find leader
@@ -291,7 +289,7 @@ If no leader is available (e.g., during an election), the system returns a `503 
 
 ### Data Isolation
 
-- Transaction logs are stored in the ledger-specific LogStore
+- Transaction logs are stored in the ledger-specific RuntimeStore
 - Snapshots are created per ledger
 - Recovery is done ledger by ledger
 

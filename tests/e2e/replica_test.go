@@ -150,8 +150,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger0",
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -161,9 +160,7 @@ var _ = Describe("Simple cluster", func() {
 				LedgerName: "ledger0",
 			})
 			Expect(err).To(BeNil())
-
-			Expect(state.LedgerClusterStateResponse.Data.InnerState.LogStoreMetrics).NotTo(BeNil())
-			Expect(state.LedgerClusterStateResponse.Data.InnerState.RuntimeStoreMetrics).NotTo(BeNil())
+			Expect(state.LedgerClusterStateResponse.Data.InnerState.StoreMetrics).NotTo(BeNil())
 		})
 		Context("Then deleting the ledger", func() {
 			BeforeEach(func() {
@@ -186,8 +183,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -236,8 +232,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger1",
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -268,8 +263,7 @@ var _ = Describe("Simple cluster", func() {
 				_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 					LedgerName: ledgerName,
 					CreateLedgerRequest: components.CreateLedgerRequest{
-						LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-						RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+						StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 					},
 				})
 				Expect(err).To(Succeed())
@@ -377,8 +371,7 @@ var _ = Describe("Simple cluster", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())

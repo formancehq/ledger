@@ -68,7 +68,7 @@ sequenceDiagram
 
 5. **Starting the Ledger Raft Group**
    - The FSM starts a new Raft group for the ledger
-   - Initializes storage (WAL, logstore)
+   - Initializes storage (WAL, runtime store)
    - The Raft group joins the cluster
 
 6. **Persistence**
@@ -91,7 +91,6 @@ sequenceDiagram
     participant LedgerService as Ledger Service
     participant RuntimeStore as Runtime Store
     participant LedgerFSM as Ledger FSM
-    participant logstore as Log Store
     
     Client->>HTTP: POST /ledgers/my-ledger/transactions
     HTTP->>LedgerNode: FindLedgerRaftGroup("my-ledger")
@@ -103,15 +102,15 @@ sequenceDiagram
         RuntimeStore-->>LedgerService: Balances OK
         LedgerService->>LedgerService: Validate Transaction
         LedgerService->>LedgerFSM: Propose InsertLogCommand (via Raft)
-        LedgerFSM->>LedgerFSM: Generate Sequence & Store in memory
-        LedgerFSM->>RuntimeStore: InsertLogs() - Update balances
-        Note over LedgerFSM,logstore: Logs written to LogStore during snapshot
+        LedgerFSM->>LedgerFSM: Generate Sequence
+        LedgerFSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        Note over LedgerFSM,RuntimeStore: Logs persisted during apply
         LedgerFSM-->>LedgerService: Log with Sequence
         LedgerService-->>LedgerNode: CreatedTransaction
     else Node is Follower
         LedgerNode->>LedgerNode: Find leader
         LedgerNode->>LedgerFSM: Forward via gRPC (to leader)
-        Note over LedgerFSM,logstore: Same as leader path
+        Note over LedgerFSM,RuntimeStore: Same as leader path
         LedgerFSM-->>LedgerNode: CreatedTransaction
     end
     
@@ -138,7 +137,7 @@ sequenceDiagram
 
 4. **FSM Application**
    - The ledger FSM generates a sequence number
-   - The log is written to the LogStore
+   - The log is written to the RuntimeStore
    - Balances are updated
 
 5. **Response Return**
@@ -220,7 +219,7 @@ sequenceDiagram
     participant Follower as Follower Node
     participant Leader as Leader Node
     participant Storage as Storage
-    participant LogStore as Log Store
+    participant RuntimeStore as Runtime Store
     
     Follower->>Follower: Start/Recover
     Follower->>Storage: Load Snapshot
@@ -228,14 +227,14 @@ sequenceDiagram
     Follower->>Follower: Restore FSM State
     
     Follower->>Leader: StreamLogs gRPC (from snapshot index)
-    Leader->>LogStore: GetAllLogs(from, to)
-    LogStore-->>Leader: Stream Logs
+    Leader->>RuntimeStore: GetAllLogs(from, to)
+    RuntimeStore-->>Leader: Stream Logs
     Leader-->>Follower: Stream Logs (gRPC stream)
     
     loop for each log
         Follower->>Follower: Append to WAL
         Follower->>FSM: Apply Entry
-        FSM->>RuntimeStore: InsertLogs() - Update balances
+        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
     end
     
     Follower->>Follower: Catch Up Complete
@@ -276,7 +275,6 @@ Snapshots are created periodically to compact logs and accelerate recovery.
 sequenceDiagram
     participant Leader as Leader Node
     participant FSM as FSM
-    participant LogStore as Log Store
     participant SnapshotStore as Snapshot Store
     participant WAL as WAL Storage
     
@@ -284,11 +282,7 @@ sequenceDiagram
     Note over Leader: Threshold or interval reached
     
     Leader->>FSM: Create Snapshot
-    FSM->>FSM: Collect logs from memory
-    FSM->>LogStore: WriteLogs() - Batch write logs
-    LogStore-->>FSM: Logs persisted
     FSM->>FSM: Serialize State & Metadata
-    FSM->>FSM: Clear logs from memory
     FSM-->>Leader: Snapshot Data
     
     Leader->>SnapshotStore: Save Snapshot

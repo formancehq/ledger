@@ -1,19 +1,22 @@
 package service
 
 import (
-	"errors"
-
-	"github.com/formancehq/go-libs/v3/logging"
-
 	"context"
 	"database/sql"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"strings"
+	stdtime "time"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // ============================================================================
@@ -27,13 +30,13 @@ type SQLiteRuntimeStore struct {
 	logger logging.Logger
 
 	// Prepared statements
-	stmtGetIdempotency           *sql.Stmt
-	stmtInsertBalance            *sql.Stmt
-	stmtUpsertAccountMetadata    *sql.Stmt
-	stmtDeleteAccountMetadata    *sql.Stmt
-	stmtInsertIdempotency        *sql.Stmt
-	stmtGetLastProcessedLogID    *sql.Stmt
-	stmtUpdateLastProcessedLogID *sql.Stmt
+	stmtGetLogByID            *sql.Stmt
+	stmtInsertLog             *sql.Stmt
+	stmtGetIdempotency        *sql.Stmt
+	stmtInsertBalance         *sql.Stmt
+	stmtUpsertAccountMetadata *sql.Stmt
+	stmtDeleteAccountMetadata *sql.Stmt
+	stmtInsertIdempotency     *sql.Stmt
 }
 
 // NewSQLiteRuntimeStore creates a new SQLiteRuntimeStore instance
@@ -51,6 +54,23 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 
 	// Prepare all statements
 	var err error
+	store.stmtGetLogByID, err = db.PrepareContext(ctx, `
+		SELECT id, data, date, idempotency_key, idempotency_hash
+		FROM logs
+		WHERE id = ?
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing getLogByID statement: %w", err)
+	}
+
+	store.stmtInsertLog, err = db.PrepareContext(ctx, `
+		INSERT INTO logs (data, date, idempotency_key, idempotency_hash, id)
+		VALUES (?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing insertLog statement: %w", err)
+	}
+
 	store.stmtGetIdempotency, err = db.PrepareContext(ctx, `
 		SELECT hash, log_id
 		FROM idempotency
@@ -95,30 +115,309 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 		return nil, fmt.Errorf("preparing insertIdempotency statement: %w", err)
 	}
 
-	store.stmtGetLastProcessedLogID, err = db.PrepareContext(ctx, `
-		SELECT value
-		FROM infos
-		WHERE key = 'last_processed_log_id'
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("preparing getLastProcessedLogID statement: %w", err)
-	}
-
-	store.stmtUpdateLastProcessedLogID, err = db.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO infos (key, value)
-		VALUES ('last_processed_log_id', ?)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("preparing updateLastProcessedLogID statement: %w", err)
-	}
-
 	return store, nil
+}
+
+// InsertLogs persists logs and updates runtime state.
+func (s *SQLiteRuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+	if len(logs) == 0 {
+		return nil
+	}
+	if err := s.insertLogs(ctx, logs...); err != nil {
+		return err
+	}
+
+	update, err := LogsToRuntimeUpdate(logs)
+	if err != nil {
+		return err
+	}
+
+	return s.applyRuntimeUpdate(ctx, update)
+}
+
+// sqliteLogCursor implements Cursor[*ledgerpb.Log] for SQLite.
+type sqliteLogCursor struct {
+	rows  *sql.Rows
+	store *SQLiteRuntimeStore
+}
+
+// InsertLogs inserts logs into the SQLite database.
+func (s *SQLiteRuntimeStore) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+	if len(logs) == 0 {
+		return nil
+	}
+
+	// Use a transaction for batch insert
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	stmt := tx.StmtContext(ctx, s.stmtInsertLog)
+	defer func() {
+		_ = stmt.Close()
+	}()
+
+	for _, log := range logs {
+		// Validate log data
+		if log.Data == nil {
+			return fmt.Errorf("log data is nil for id %d", log.Id)
+		}
+
+		// Marshal protobuf LogPayload to binary
+		dataBinary, err := proto.Marshal(log.Data)
+		if err != nil {
+			return fmt.Errorf("marshaling log payload to protobuf: %w", err)
+		}
+
+		// Format date as RFC3339 string (SQLite stores dates as TEXT)
+		var dateStr string
+		if log.Date != nil {
+			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
+		}
+
+		var (
+			idempotencyKey  sql.NullString
+			idempotencyHash sql.Null[[]byte]
+		)
+		if log.Idempotency != nil && log.Idempotency.Key != "" {
+			idempotencyKey = sql.NullString{
+				String: log.Idempotency.Key,
+				Valid:  true,
+			}
+			idempotencyHash = sql.Null[[]byte]{
+				V:     log.Idempotency.Hash,
+				Valid: true,
+			}
+		}
+
+		var id sql.NullInt64
+		if log.Id != 0 {
+			id = sql.NullInt64{
+				Int64: int64(log.Id),
+				Valid: true,
+			}
+		}
+
+		// Insert log
+		_, err = stmt.ExecContext(ctx,
+			dataBinary,
+			sql.NullString{String: dateStr, Valid: dateStr != ""},
+			idempotencyKey,
+			idempotencyHash,
+			id,
+		)
+		if err != nil {
+			select {
+			// The driver is returning 'sql: statement is closed' when the context is canceled.
+			// So, we recheck the context here.
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				return fmt.Errorf("inserting log: %w", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into SQLite")
+	return nil
+}
+
+// scanLog scans a row into a protobuf Log struct.
+func (s *SQLiteRuntimeStore) scanLog(row *sql.Row) (*ledgerpb.Log, error) {
+	var id sql.NullInt64
+	var dataBinary []byte
+	var dateStr sql.NullString
+	var idempotencyKey sql.NullString
+	var idempotencyHash sql.Null[[]byte]
+
+	err := row.Scan(&id, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
+	if err != nil {
+		return nil, err
+	}
+
+	log := &ledgerpb.Log{}
+
+	// Set ID
+	if id.Valid {
+		log.Id = uint64(id.Int64)
+	}
+
+	// Unmarshal protobuf LogPayload from binary
+	logPayload := &ledgerpb.LogPayload{}
+	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
+		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
+	}
+	log.Data = logPayload
+
+	// Set date
+	if dateStr.Valid {
+		date, err := stdtime.Parse(stdtime.RFC3339, dateStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("parsing date: %w", err)
+		}
+		log.Date = ledgerpb.NewTimestamp(time.New(date))
+	}
+
+	// Set idempotency fields
+	if idempotencyKey.Valid {
+		log.Idempotency = &ledgerpb.Idempotency{
+			Key:  idempotencyKey.String,
+			Hash: idempotencyHash.V,
+		}
+	}
+
+	return log, nil
+}
+
+func (c *sqliteLogCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
+	if !c.rows.Next() {
+		if err := c.rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, io.EOF
+	}
+
+	var (
+		id              sql.NullInt64
+		dataBinary      []byte
+		dateStr         sql.NullString
+		idempotencyKey  sql.NullString
+		idempotencyHash sql.Null[[]byte]
+	)
+
+	err := c.rows.Scan(&id, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
+	if err != nil {
+		return nil, fmt.Errorf("scanning log row: %w", err)
+	}
+
+	log := &ledgerpb.Log{}
+
+	// Set ID
+	if id.Valid {
+		log.Id = uint64(id.Int64)
+	}
+
+	// Unmarshal protobuf LogPayload from binary
+	logPayload := &ledgerpb.LogPayload{}
+	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
+		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
+	}
+	log.Data = logPayload
+
+	// Set date
+	if dateStr.Valid {
+		date, err := stdtime.Parse(stdtime.RFC3339, dateStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("parsing date: %w", err)
+		}
+		log.Date = ledgerpb.NewTimestamp(time.New(date))
+	}
+
+	// Set idempotency fields
+	if idempotencyKey.Valid {
+		log.Idempotency = &ledgerpb.Idempotency{
+			Key:  idempotencyKey.String,
+			Hash: idempotencyHash.V,
+		}
+	}
+
+	return log, nil
+}
+
+func (c *sqliteLogCursor) Close() error {
+	if c.rows != nil {
+		return c.rows.Close()
+	}
+	return nil
+}
+
+// GetAllLogs returns a cursor to iterate over all logs.
+// Logs are returned in ascending order by id.
+// from: optional log id to start from (0 = from beginning).
+func (s *SQLiteRuntimeStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
+	query := `
+		SELECT id, data, date, idempotency_key, idempotency_hash
+		FROM logs
+	`
+	args := []interface{}{}
+	whereClauses := []string{}
+	if from > 0 {
+		whereClauses = append(whereClauses, `id > ?`)
+		args = append(args, int64(from))
+	}
+	if to > 0 {
+		whereClauses = append(whereClauses, `id <= ?`)
+		args = append(args, int64(to))
+	}
+	if len(whereClauses) > 0 {
+		query += ` WHERE ` + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			query += ` AND ` + whereClauses[i]
+		}
+	}
+	query += ` ORDER BY id ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying logs: %w", err)
+	}
+
+	return &sqliteLogCursor{
+		rows:  rows,
+		store: s,
+	}, nil
+}
+
+// GetLogByID retrieves a log by its ID.
+func (s *SQLiteRuntimeStore) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	return s.GetLogWithID(ctx, id)
+}
+
+// GetLogWithID retrieves a log by its ID.
+func (s *SQLiteRuntimeStore) GetLogWithID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
+	row := s.stmtGetLogByID.QueryRowContext(ctx, id)
+
+	log, err := s.scanLog(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting log by id: %w", err)
+	}
+	return log, nil
 }
 
 // createRuntimeTables creates the necessary tables for balances and account metadata
 func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
-	// Create balances table
+	// Create logs table
+	// Note: id is provided by the FSM, not auto-generated by the database
+	// data is stored as BLOB (protobuf binary format)
 	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS logs (
+			id INTEGER PRIMARY KEY,
+			data BLOB NOT NULL,
+			date TEXT,
+			idempotency_key TEXT,
+			idempotency_hash TEXT,
+			UNIQUE(idempotency_key)
+		) WITHOUT ROWID;
+		
+		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating logs table: %w", err)
+	}
+
+	// Create balances table
+	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS balances (
 			id INTEGER PRIMARY KEY,
 			account TEXT NOT NULL,
@@ -156,27 +455,14 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 		return fmt.Errorf("creating idempotency table: %w", err)
 	}
 
-	// Create infos table
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS infos (
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
-			PRIMARY KEY (key)
-		);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating infos table: %w", err)
-	}
-
 	return nil
 }
 
 // ============================================================================
-// RuntimeStore Update Implementation
+// RuntimeStore InsertLogs Implementation
 // ============================================================================
 
-// Update applies all runtime updates atomically
-func (s *SQLiteRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) error {
+func (s *SQLiteRuntimeStore) applyRuntimeUpdate(ctx context.Context, update RuntimeUpdate) error {
 	// Use a transaction for atomic updates
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -252,19 +538,6 @@ func (s *SQLiteRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 		}
 	}
 
-	// Update last processed log ID
-	if update.LastProcessedLogID > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtUpdateLastProcessedLogID)
-		defer func() {
-			_ = stmt.Close()
-		}()
-
-		valueStr := fmt.Sprintf("%d", update.LastProcessedLogID)
-		if _, err := stmt.ExecContext(ctx, valueStr); err != nil {
-			return fmt.Errorf("updating last processed log ID: %w", err)
-		}
-	}
-
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing transaction: %w", err)
 	}
@@ -275,6 +548,16 @@ func (s *SQLiteRuntimeStore) Update(ctx context.Context, update RuntimeUpdate) e
 // Close closes the database connection and prepared statements
 func (s *SQLiteRuntimeStore) Close() error {
 	var errs []error
+	if s.stmtGetLogByID != nil {
+		if err := s.stmtGetLogByID.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.stmtInsertLog != nil {
+		if err := s.stmtInsertLog.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if s.stmtGetIdempotency != nil {
 		if err := s.stmtGetIdempotency.Close(); err != nil {
 			errs = append(errs, err)
@@ -297,16 +580,6 @@ func (s *SQLiteRuntimeStore) Close() error {
 	}
 	if s.stmtInsertIdempotency != nil {
 		if err := s.stmtInsertIdempotency.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if s.stmtGetLastProcessedLogID != nil {
-		if err := s.stmtGetLastProcessedLogID.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if s.stmtUpdateLastProcessedLogID != nil {
-		if err := s.stmtUpdateLastProcessedLogID.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -490,21 +763,21 @@ func (s *SQLiteRuntimeStore) GetLogForIdempotencyKey(ctx context.Context, idempo
 	return hash, logID, nil
 }
 
-// GetLastProcessedLogID retrieves the ID of the last processed log from the infos table
+// GetLastProcessedLogID retrieves the ID of the last inserted log.
 func (s *SQLiteRuntimeStore) GetLastProcessedLogID(ctx context.Context) (uint64, error) {
-	var valueStr string
-	err := s.stmtGetLastProcessedLogID.QueryRowContext(ctx).Scan(&valueStr)
-	if err != nil {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM logs
+		ORDER BY id DESC
+		LIMIT 1
+	`)
+
+	var lastLogID uint64
+	if err := row.Scan(&lastLogID); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("querying last processed log ID: %w", err)
-	}
-
-	// Parse the value as uint64
-	var lastLogID uint64
-	if _, err := fmt.Sscanf(valueStr, "%d", &lastLogID); err != nil {
-		return 0, fmt.Errorf("parsing last processed log ID: %w", err)
 	}
 
 	return lastLogID, nil

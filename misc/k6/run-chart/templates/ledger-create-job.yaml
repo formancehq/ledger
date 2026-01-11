@@ -24,17 +24,15 @@ spec:
               value: {{ .Values.runner.env.ledgerUrl }}
             - name: LEDGER_NAME
               value: {{ .Values.runner.env.ledgerName }}
-            - name: LOG_STORE_DRIVER
-              value: {{ .Values.runner.env.logStoreDriver }}
-            - name: RUNTIME_STORE_DRIVER
-              value: {{ .Values.runner.env.runtimeStoreDriver }}
+            - name: STORE_DRIVER
+              value: {{ .Values.runner.env.storeDriver }}
           command:
             - /bin/sh
             - -c
           args:
             - |
               set -euo pipefail
-              payload=$(printf '{"logStoreDriver":"%s","runtimeStoreDriver":"%s"}' "$LOG_STORE_DRIVER" "$RUNTIME_STORE_DRIVER")
+              payload=$(printf '{"storeDriver":"%s"}' "$STORE_DRIVER")
               status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
                 -X POST \
                 -H "Content-Type: application/json" \

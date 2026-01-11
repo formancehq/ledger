@@ -538,7 +538,7 @@ func (node *Node[State, F]) Start(ctx context.Context) error {
 
 		node.logger.WithFields(map[string]any{"voters": len(voters)}).Infof("Storage initialized with ConfState")
 	} else {
-		node.logger.Infof("Restoring FSM from storage")
+		node.logger.Infof("Restoring FSM from storage...")
 		// Read the last snapshot
 		snapshot, err := node.storage.Snapshot()
 		if err != nil {

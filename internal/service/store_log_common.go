@@ -11,15 +11,6 @@ import (
 // Utility Functions (shared between SQLite implementations)
 // ============================================================================
 
-// convertMetadataToStringMap converts map[string]string to map[string]interface{}
-func convertMetadataToStringMap(m map[string]string) map[string]interface{} {
-	result := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		result[k] = v
-	}
-	return result
-}
-
 // accumulateBalanceDiffs accumulates balance differences from postings into a map
 // balanceDiffs: map[account]map[asset]*big.Int (positive = add, negative = subtract)
 func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, postings []*ledgerpb.Posting) {
@@ -55,7 +46,7 @@ func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, posting
 
 // accumulateAccountsFromTransaction accumulates account and metadata updates from a transaction
 func accumulateAccountsFromTransaction(
-	accountMetadataBatch map[string]map[string]interface{},
+	accountMetadataBatch map[string]map[string]string,
 	transaction *ledgerpb.CreatedTransaction,
 ) {
 	postings := transaction.Transaction.Postings
@@ -79,9 +70,9 @@ func accumulateAccountsFromTransaction(
 		// Accumulate account metadata for batch processing
 		for accountAddr, accountMetaStruct := range transaction.AccountMetadata {
 			if accountMetadataBatch[accountAddr] == nil {
-				accountMetadataBatch[accountAddr] = make(map[string]interface{})
+				accountMetadataBatch[accountAddr] = make(map[string]string)
 			}
-			for k, v := range convertMetadataToStringMap(accountMetaStruct.Entries) {
+			for k, v := range accountMetaStruct.Entries {
 				accountMetadataBatch[accountAddr][k] = v
 			}
 		}
@@ -90,7 +81,7 @@ func accumulateAccountsFromTransaction(
 
 // accumulateMetadataFromSetMetadata accumulates metadata updates from SET_METADATA log
 func accumulateMetadataFromSetMetadata(
-	accountMetadataBatch map[string]map[string]interface{},
+	accountMetadataBatch map[string]map[string]string,
 	savedMetadata *ledgerpb.SavedMetadata,
 ) {
 	if savedMetadata.Target.GetAccount() == nil {
@@ -104,9 +95,9 @@ func accumulateMetadataFromSetMetadata(
 
 	// Accumulate metadata for batch processing
 	if accountMetadataBatch[accountAddr] == nil {
-		accountMetadataBatch[accountAddr] = make(map[string]interface{})
+		accountMetadataBatch[accountAddr] = make(map[string]string)
 	}
-	for k, v := range convertMetadataToStringMap(savedMetadata.Metadata) {
+	for k, v := range savedMetadata.Metadata {
 		accountMetadataBatch[accountAddr][k] = v
 	}
 }
@@ -141,7 +132,7 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 	balanceDiffs := make(map[string]map[string]*big.Int)
 
 	// Accumulate metadata operations for batch processing
-	accountMetadataBatch := make(map[string]map[string]interface{})
+	accountMetadataBatch := make(map[string]map[string]string)
 	accountMetadataDeletes := make(map[string][]string)
 
 	// Accumulate idempotency entries for batch processing

@@ -127,8 +127,7 @@ var _ = Describe("Ledger", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -231,8 +230,7 @@ var _ = Describe("Ledger", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -258,7 +256,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeAccount,
 						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"account_type": "asset",
 							"label":        "Bulk Account",
 						},
@@ -297,7 +295,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeAccount,
 						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"key1": "value1",
 						},
 					}),
@@ -307,7 +305,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeAccount,
 						TargetID:   components.CreateTargetIDStr("bulk-account-2"),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"key2": "value2",
 						},
 					}),
@@ -333,7 +331,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeAccount,
 						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"to_delete": "value",
 						},
 					}),
@@ -363,38 +361,30 @@ var _ = Describe("Ledger", func() {
 
 	Context("When creating ledgers and transactions with different drivers", func() {
 		type driverTestCase struct {
-			driverName                     string
-			logStoreDriverEnum             components.CreateLedgerRequestLogStoreDriver
-			runtimeStoreDriverEnum         components.CreateLedgerRequestRuntimeStoreDriver
-			logStoreDriverResponseEnum     components.LogStoreDriver
-			runtimeStoreDriverResponseEnum components.RuntimeStoreDriver
-			description                    string
+			driverName      string
+			storeDriverEnum components.CreateLedgerRequestStoreDriver
+			storeDriver     components.StoreDriver
+			description     string
 		}
 
 		testCases := []driverTestCase{
 			{
-				driverName:                     "sqlite-mattn",
-				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
-				logStoreDriverResponseEnum:     components.LogStoreDriverSqliteMattn,
-				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverSqliteMattn,
-				description:                    "SQLite Mattn driver (github.com/mattn/go-sqlite3)",
+				driverName:      "sqlite-mattn",
+				storeDriverEnum: components.CreateLedgerRequestStoreDriverSqliteMattn,
+				storeDriver:     components.StoreDriverSqliteMattn,
+				description:     "SQLite Mattn driver (github.com/mattn/go-sqlite3)",
 			},
 			{
-				driverName:                     "sqlite-modern",
-				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverSqliteModern,
-				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverSqliteModern,
-				logStoreDriverResponseEnum:     components.LogStoreDriverSqliteModern,
-				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverSqliteModern,
-				description:                    "SQLite Modern driver (modernc.org/sqlite)",
+				driverName:      "sqlite-modern",
+				storeDriverEnum: components.CreateLedgerRequestStoreDriverSqliteModern,
+				storeDriver:     components.StoreDriverSqliteModern,
+				description:     "SQLite Modern driver (modernc.org/sqlite)",
 			},
 			{
-				driverName:                     "pebble",
-				logStoreDriverEnum:             components.CreateLedgerRequestLogStoreDriverPebble,
-				runtimeStoreDriverEnum:         components.CreateLedgerRequestRuntimeStoreDriverPebble,
-				logStoreDriverResponseEnum:     components.LogStoreDriverPebble,
-				runtimeStoreDriverResponseEnum: components.RuntimeStoreDriverPebble,
-				description:                    "Pebble driver (github.com/cockroachdb/pebble)",
+				driverName:      "pebble",
+				storeDriverEnum: components.CreateLedgerRequestStoreDriverPebble,
+				storeDriver:     components.StoreDriverPebble,
+				description:     "Pebble driver (github.com/cockroachdb/pebble)",
 			},
 		}
 
@@ -415,32 +405,28 @@ var _ = Describe("Ledger", func() {
 					resp, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							LogStoreDriver:     tc.logStoreDriverEnum,
-							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
+							StoreDriver: tc.storeDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed(), "Failed to create ledger with driver %s", tc.driverName)
 					Expect(resp).NotTo(BeNil())
 					Expect(resp.GetCreateLedgerResponse()).NotTo(BeNil())
 					Expect(resp.GetCreateLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(resp.GetCreateLedgerResponse().Data.LogStoreDriver).To(Equal(tc.logStoreDriverResponseEnum))
-					Expect(resp.GetCreateLedgerResponse().Data.RuntimeStoreDriver).To(Equal(tc.runtimeStoreDriverResponseEnum))
+					Expect(resp.GetCreateLedgerResponse().Data.StoreDriver).To(Equal(tc.storeDriver))
 
 					ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
 						LedgerName: ledgerName,
 					})
 					Expect(err).To(Succeed())
 					Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(ledger.GetGetLedgerResponse().Data.LogStoreDriver).To(Equal(tc.logStoreDriverResponseEnum))
-					Expect(ledger.GetGetLedgerResponse().Data.RuntimeStoreDriver).To(Equal(tc.runtimeStoreDriverResponseEnum))
+					Expect(ledger.GetGetLedgerResponse().Data.StoreDriver).To(Equal(tc.storeDriver))
 				})
 
 				It("Should create a transaction on the ledger", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							LogStoreDriver:     tc.logStoreDriverEnum,
-							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
+							StoreDriver: tc.storeDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())
@@ -464,8 +450,7 @@ var _ = Describe("Ledger", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							LogStoreDriver:     tc.logStoreDriverEnum,
-							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
+							StoreDriver: tc.storeDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())
@@ -503,8 +488,7 @@ var _ = Describe("Ledger", func() {
 					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 						LedgerName: ledgerName,
 						CreateLedgerRequest: components.CreateLedgerRequest{
-							LogStoreDriver:     tc.logStoreDriverEnum,
-							RuntimeStoreDriver: tc.runtimeStoreDriverEnum,
+							StoreDriver: tc.storeDriverEnum,
 						},
 					})
 					Expect(err).To(Succeed())
@@ -550,8 +534,7 @@ var _ = Describe("Ledger", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -634,8 +617,7 @@ var _ = Describe("Ledger", func() {
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
 				CreateLedgerRequest: components.CreateLedgerRequest{
-					LogStoreDriver:     components.CreateLedgerRequestLogStoreDriverSqliteMattn,
-					RuntimeStoreDriver: components.CreateLedgerRequestRuntimeStoreDriverSqliteMattn,
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
 				},
 			})
 			Expect(err).To(Succeed())
@@ -665,7 +647,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeTransaction,
 						TargetID:   components.CreateTargetIDInteger(transactionID),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"category": "bulk",
 							"reason":   "reconciliation",
 						},
@@ -708,7 +690,7 @@ var _ = Describe("Ledger", func() {
 					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
 						TargetType: components.TargetTypeTransaction,
 						TargetID:   components.CreateTargetIDInteger(transactionID),
-						Metadata: map[string]any{
+						Metadata: map[string]string{
 							"to_delete": "value",
 						},
 					}),

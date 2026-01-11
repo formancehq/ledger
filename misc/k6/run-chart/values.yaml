@@ -8,8 +8,7 @@ runner:
   env:
     ledgerUrl: "http://ledger-exp.ledger.svc.cluster.local:9000"
     ledgerName: "ledger0"
-    logStoreDriver: "pebble"
-    runtimeStoreDriver: "pebble"
+    storeDriver: "pebble"
     stages: ""
   otlp:
     endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local:4317"

@@ -9,21 +9,21 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 )
 
-// CreateLedgerRequestLogStoreDriver - Log store driver name.
+// CreateLedgerRequestStoreDriver - Store driver name.
 // Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
 // and pebble (github.com/cockroachdb/pebble)
-type CreateLedgerRequestLogStoreDriver string
+type CreateLedgerRequestStoreDriver string
 
 const (
-	CreateLedgerRequestLogStoreDriverSqliteModern CreateLedgerRequestLogStoreDriver = "sqlite-modern"
-	CreateLedgerRequestLogStoreDriverSqliteMattn  CreateLedgerRequestLogStoreDriver = "sqlite-mattn"
-	CreateLedgerRequestLogStoreDriverPebble       CreateLedgerRequestLogStoreDriver = "pebble"
+	CreateLedgerRequestStoreDriverSqliteModern CreateLedgerRequestStoreDriver = "sqlite-modern"
+	CreateLedgerRequestStoreDriverSqliteMattn  CreateLedgerRequestStoreDriver = "sqlite-mattn"
+	CreateLedgerRequestStoreDriverPebble       CreateLedgerRequestStoreDriver = "pebble"
 )
 
-func (e CreateLedgerRequestLogStoreDriver) ToPointer() *CreateLedgerRequestLogStoreDriver {
+func (e CreateLedgerRequestStoreDriver) ToPointer() *CreateLedgerRequestStoreDriver {
 	return &e
 }
-func (e *CreateLedgerRequestLogStoreDriver) UnmarshalJSON(data []byte) error {
+func (e *CreateLedgerRequestStoreDriver) UnmarshalJSON(data []byte) error {
 	var v string
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -34,116 +34,84 @@ func (e *CreateLedgerRequestLogStoreDriver) UnmarshalJSON(data []byte) error {
 	case "sqlite-mattn":
 		fallthrough
 	case "pebble":
-		*e = CreateLedgerRequestLogStoreDriver(v)
+		*e = CreateLedgerRequestStoreDriver(v)
 		return nil
 	default:
-		return fmt.Errorf("invalid value for CreateLedgerRequestLogStoreDriver: %v", v)
+		return fmt.Errorf("invalid value for CreateLedgerRequestStoreDriver: %v", v)
 	}
 }
 
-// CreateLedgerRequestRuntimeStoreDriver - Runtime store driver name.
-// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
-// and pebble (github.com/cockroachdb/pebble)
-type CreateLedgerRequestRuntimeStoreDriver string
+type CreateLedgerRequestStoreConfigType string
 
 const (
-	CreateLedgerRequestRuntimeStoreDriverSqliteModern CreateLedgerRequestRuntimeStoreDriver = "sqlite-modern"
-	CreateLedgerRequestRuntimeStoreDriverSqliteMattn  CreateLedgerRequestRuntimeStoreDriver = "sqlite-mattn"
-	CreateLedgerRequestRuntimeStoreDriverPebble       CreateLedgerRequestRuntimeStoreDriver = "pebble"
+	CreateLedgerRequestStoreConfigTypeSQLiteMattnConfig  CreateLedgerRequestStoreConfigType = "SQLiteMattnConfig"
+	CreateLedgerRequestStoreConfigTypeSQLiteModernConfig CreateLedgerRequestStoreConfigType = "SQLiteModernConfig"
+	CreateLedgerRequestStoreConfigTypePebbleConfig       CreateLedgerRequestStoreConfigType = "PebbleConfig"
 )
 
-func (e CreateLedgerRequestRuntimeStoreDriver) ToPointer() *CreateLedgerRequestRuntimeStoreDriver {
-	return &e
-}
-func (e *CreateLedgerRequestRuntimeStoreDriver) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	switch v {
-	case "sqlite-modern":
-		fallthrough
-	case "sqlite-mattn":
-		fallthrough
-	case "pebble":
-		*e = CreateLedgerRequestRuntimeStoreDriver(v)
-		return nil
-	default:
-		return fmt.Errorf("invalid value for CreateLedgerRequestRuntimeStoreDriver: %v", v)
-	}
-}
-
-type CreateLedgerRequestLogStoreConfigType string
-
-const (
-	CreateLedgerRequestLogStoreConfigTypeSQLiteMattnConfig  CreateLedgerRequestLogStoreConfigType = "SQLiteMattnConfig"
-	CreateLedgerRequestLogStoreConfigTypeSQLiteModernConfig CreateLedgerRequestLogStoreConfigType = "SQLiteModernConfig"
-	CreateLedgerRequestLogStoreConfigTypePebbleConfig       CreateLedgerRequestLogStoreConfigType = "PebbleConfig"
-)
-
-// CreateLedgerRequestLogStoreConfig - Log store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
-type CreateLedgerRequestLogStoreConfig struct {
+// CreateLedgerRequestStoreConfig - Store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
+type CreateLedgerRequestStoreConfig struct {
 	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
 	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
 	PebbleConfig       *PebbleConfig       `queryParam:"inline"`
 
-	Type CreateLedgerRequestLogStoreConfigType
+	Type CreateLedgerRequestStoreConfigType
 }
 
-func CreateCreateLedgerRequestLogStoreConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) CreateLedgerRequestLogStoreConfig {
-	typ := CreateLedgerRequestLogStoreConfigTypeSQLiteMattnConfig
+func CreateCreateLedgerRequestStoreConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) CreateLedgerRequestStoreConfig {
+	typ := CreateLedgerRequestStoreConfigTypeSQLiteMattnConfig
 
-	return CreateLedgerRequestLogStoreConfig{
+	return CreateLedgerRequestStoreConfig{
 		SQLiteMattnConfig: &sqLiteMattnConfig,
 		Type:              typ,
 	}
 }
 
-func CreateCreateLedgerRequestLogStoreConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) CreateLedgerRequestLogStoreConfig {
-	typ := CreateLedgerRequestLogStoreConfigTypeSQLiteModernConfig
+func CreateCreateLedgerRequestStoreConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) CreateLedgerRequestStoreConfig {
+	typ := CreateLedgerRequestStoreConfigTypeSQLiteModernConfig
 
-	return CreateLedgerRequestLogStoreConfig{
+	return CreateLedgerRequestStoreConfig{
 		SQLiteModernConfig: &sqLiteModernConfig,
 		Type:               typ,
 	}
 }
 
-func CreateCreateLedgerRequestLogStoreConfigPebbleConfig(pebbleConfig PebbleConfig) CreateLedgerRequestLogStoreConfig {
-	typ := CreateLedgerRequestLogStoreConfigTypePebbleConfig
+func CreateCreateLedgerRequestStoreConfigPebbleConfig(pebbleConfig PebbleConfig) CreateLedgerRequestStoreConfig {
+	typ := CreateLedgerRequestStoreConfigTypePebbleConfig
 
-	return CreateLedgerRequestLogStoreConfig{
+	return CreateLedgerRequestStoreConfig{
 		PebbleConfig: &pebbleConfig,
 		Type:         typ,
 	}
 }
 
-func (u *CreateLedgerRequestLogStoreConfig) UnmarshalJSON(data []byte) error {
+func (u *CreateLedgerRequestStoreConfig) UnmarshalJSON(data []byte) error {
 
 	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
 	if err := utils.UnmarshalJSON(data, &sqLiteMattnConfig, "", true, true); err == nil {
 		u.SQLiteMattnConfig = &sqLiteMattnConfig
-		u.Type = CreateLedgerRequestLogStoreConfigTypeSQLiteMattnConfig
+		u.Type = CreateLedgerRequestStoreConfigTypeSQLiteMattnConfig
 		return nil
 	}
 
 	var sqLiteModernConfig SQLiteModernConfig = SQLiteModernConfig{}
 	if err := utils.UnmarshalJSON(data, &sqLiteModernConfig, "", true, true); err == nil {
 		u.SQLiteModernConfig = &sqLiteModernConfig
-		u.Type = CreateLedgerRequestLogStoreConfigTypeSQLiteModernConfig
+		u.Type = CreateLedgerRequestStoreConfigTypeSQLiteModernConfig
 		return nil
 	}
 
 	var pebbleConfig PebbleConfig = PebbleConfig{}
 	if err := utils.UnmarshalJSON(data, &pebbleConfig, "", true, true); err == nil {
 		u.PebbleConfig = &pebbleConfig
-		u.Type = CreateLedgerRequestLogStoreConfigTypePebbleConfig
+		u.Type = CreateLedgerRequestStoreConfigTypePebbleConfig
 		return nil
 	}
 
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateLedgerRequestLogStoreConfig", string(data))
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateLedgerRequestStoreConfig", string(data))
 }
 
-func (u CreateLedgerRequestLogStoreConfig) MarshalJSON() ([]byte, error) {
+func (u CreateLedgerRequestStoreConfig) MarshalJSON() ([]byte, error) {
 	if u.SQLiteMattnConfig != nil {
 		return utils.MarshalJSON(u.SQLiteMattnConfig, "", true)
 	}
@@ -156,142 +124,35 @@ func (u CreateLedgerRequestLogStoreConfig) MarshalJSON() ([]byte, error) {
 		return utils.MarshalJSON(u.PebbleConfig, "", true)
 	}
 
-	return nil, errors.New("could not marshal union type CreateLedgerRequestLogStoreConfig: all fields are null")
-}
-
-type CreateLedgerRequestRuntimeStoreConfigType string
-
-const (
-	CreateLedgerRequestRuntimeStoreConfigTypeSQLiteMattnConfig  CreateLedgerRequestRuntimeStoreConfigType = "SQLiteMattnConfig"
-	CreateLedgerRequestRuntimeStoreConfigTypeSQLiteModernConfig CreateLedgerRequestRuntimeStoreConfigType = "SQLiteModernConfig"
-	CreateLedgerRequestRuntimeStoreConfigTypePebbleConfig       CreateLedgerRequestRuntimeStoreConfigType = "PebbleConfig"
-)
-
-// CreateLedgerRequestRuntimeStoreConfig - Runtime store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
-type CreateLedgerRequestRuntimeStoreConfig struct {
-	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
-	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
-	PebbleConfig       *PebbleConfig       `queryParam:"inline"`
-
-	Type CreateLedgerRequestRuntimeStoreConfigType
-}
-
-func CreateCreateLedgerRequestRuntimeStoreConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) CreateLedgerRequestRuntimeStoreConfig {
-	typ := CreateLedgerRequestRuntimeStoreConfigTypeSQLiteMattnConfig
-
-	return CreateLedgerRequestRuntimeStoreConfig{
-		SQLiteMattnConfig: &sqLiteMattnConfig,
-		Type:              typ,
-	}
-}
-
-func CreateCreateLedgerRequestRuntimeStoreConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) CreateLedgerRequestRuntimeStoreConfig {
-	typ := CreateLedgerRequestRuntimeStoreConfigTypeSQLiteModernConfig
-
-	return CreateLedgerRequestRuntimeStoreConfig{
-		SQLiteModernConfig: &sqLiteModernConfig,
-		Type:               typ,
-	}
-}
-
-func CreateCreateLedgerRequestRuntimeStoreConfigPebbleConfig(pebbleConfig PebbleConfig) CreateLedgerRequestRuntimeStoreConfig {
-	typ := CreateLedgerRequestRuntimeStoreConfigTypePebbleConfig
-
-	return CreateLedgerRequestRuntimeStoreConfig{
-		PebbleConfig: &pebbleConfig,
-		Type:         typ,
-	}
-}
-
-func (u *CreateLedgerRequestRuntimeStoreConfig) UnmarshalJSON(data []byte) error {
-
-	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteMattnConfig, "", true, true); err == nil {
-		u.SQLiteMattnConfig = &sqLiteMattnConfig
-		u.Type = CreateLedgerRequestRuntimeStoreConfigTypeSQLiteMattnConfig
-		return nil
-	}
-
-	var sqLiteModernConfig SQLiteModernConfig = SQLiteModernConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteModernConfig, "", true, true); err == nil {
-		u.SQLiteModernConfig = &sqLiteModernConfig
-		u.Type = CreateLedgerRequestRuntimeStoreConfigTypeSQLiteModernConfig
-		return nil
-	}
-
-	var pebbleConfig PebbleConfig = PebbleConfig{}
-	if err := utils.UnmarshalJSON(data, &pebbleConfig, "", true, true); err == nil {
-		u.PebbleConfig = &pebbleConfig
-		u.Type = CreateLedgerRequestRuntimeStoreConfigTypePebbleConfig
-		return nil
-	}
-
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateLedgerRequestRuntimeStoreConfig", string(data))
-}
-
-func (u CreateLedgerRequestRuntimeStoreConfig) MarshalJSON() ([]byte, error) {
-	if u.SQLiteMattnConfig != nil {
-		return utils.MarshalJSON(u.SQLiteMattnConfig, "", true)
-	}
-
-	if u.SQLiteModernConfig != nil {
-		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
-	}
-
-	if u.PebbleConfig != nil {
-		return utils.MarshalJSON(u.PebbleConfig, "", true)
-	}
-
-	return nil, errors.New("could not marshal union type CreateLedgerRequestRuntimeStoreConfig: all fields are null")
+	return nil, errors.New("could not marshal union type CreateLedgerRequestStoreConfig: all fields are null")
 }
 
 type CreateLedgerRequest struct {
-	// Log store driver name.
+	// Store driver name.
 	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
 	// and pebble (github.com/cockroachdb/pebble)
 	//
-	LogStoreDriver CreateLedgerRequestLogStoreDriver `json:"logStoreDriver"`
-	// Runtime store driver name.
-	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
-	// and pebble (github.com/cockroachdb/pebble)
-	//
-	RuntimeStoreDriver CreateLedgerRequestRuntimeStoreDriver `json:"runtimeStoreDriver"`
-	// Log store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
-	LogStoreConfig *CreateLedgerRequestLogStoreConfig `json:"logStoreConfig,omitempty"`
-	// Runtime store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
-	RuntimeStoreConfig *CreateLedgerRequestRuntimeStoreConfig `json:"runtimeStoreConfig,omitempty"`
+	StoreDriver CreateLedgerRequestStoreDriver `json:"storeDriver"`
+	// Store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
+	StoreConfig *CreateLedgerRequestStoreConfig `json:"storeConfig,omitempty"`
 	// Optional metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Number of logs before triggering a snapshot (optional, uses global config if not set)
 	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
 }
 
-func (o *CreateLedgerRequest) GetLogStoreDriver() CreateLedgerRequestLogStoreDriver {
+func (o *CreateLedgerRequest) GetStoreDriver() CreateLedgerRequestStoreDriver {
 	if o == nil {
-		return CreateLedgerRequestLogStoreDriver("")
+		return CreateLedgerRequestStoreDriver("")
 	}
-	return o.LogStoreDriver
+	return o.StoreDriver
 }
 
-func (o *CreateLedgerRequest) GetRuntimeStoreDriver() CreateLedgerRequestRuntimeStoreDriver {
-	if o == nil {
-		return CreateLedgerRequestRuntimeStoreDriver("")
-	}
-	return o.RuntimeStoreDriver
-}
-
-func (o *CreateLedgerRequest) GetLogStoreConfig() *CreateLedgerRequestLogStoreConfig {
+func (o *CreateLedgerRequest) GetStoreConfig() *CreateLedgerRequestStoreConfig {
 	if o == nil {
 		return nil
 	}
-	return o.LogStoreConfig
-}
-
-func (o *CreateLedgerRequest) GetRuntimeStoreConfig() *CreateLedgerRequestRuntimeStoreConfig {
-	if o == nil {
-		return nil
-	}
-	return o.RuntimeStoreConfig
+	return o.StoreConfig
 }
 
 func (o *CreateLedgerRequest) GetMetadata() map[string]string {

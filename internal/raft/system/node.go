@@ -114,9 +114,8 @@ l:
 
 	node.logger.
 		WithFields(map[string]any{
-			"name": cmd.Name,
-			"log_store_driver": cmd.LogStoreDriver,
-			"runtime_store_driver": cmd.RuntimeStoreDriver,
+			"name":         cmd.Name,
+			"store_driver": cmd.StoreDriver,
 		}).
 		Infof("Ledger created on leader")
 
