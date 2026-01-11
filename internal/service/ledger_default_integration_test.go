@@ -329,6 +329,190 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 	})
 }
 
+func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	t.Run("DeleteAccountMetadata", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, _, logFactory := newTestLedgerService(t, ctx)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log, err := ledgerService.DeleteAccountMetadata(ctx, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Address: "test-account",
+				Key:     "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log)
+	})
+
+	t.Run("DeleteAccountMetadata_WithIdempotencyKey", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		idempotencyKey := "delete-account-metadata-idempotency-key"
+		hash := ledgerpb.ComputeIdempotencyHash(&ledgerpb.DeleteAccountMetadataRequestPayload{
+			Address: "test-account",
+			Key:     "key1",
+		})
+
+		gomock.InOrder(
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(nil, uint64(0), nil),
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(hash, uint64(1), nil),
+		)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log1, err := ledgerService.DeleteAccountMetadata(ctx, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Address: "test-account",
+				Key:     "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log1)
+
+		logReader.EXPECT().GetLogByID(gomock.Any(), log1.Id).Return(log1, nil)
+
+		log2, err := ledgerService.DeleteAccountMetadata(ctx, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Address: "test-account",
+				Key:     "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log2)
+		require.Equal(t, log1.Id, log2.Id)
+	})
+
+	t.Run("DeleteAccountMetadata_ValidationErrors", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, _, _ := newTestLedgerService(t, ctx)
+
+		log, err := ledgerService.DeleteAccountMetadata(ctx, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Address: "",
+				Key:     "key1",
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "account address is required")
+
+		log, err = ledgerService.DeleteAccountMetadata(ctx, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Address: "test-account",
+				Key:     "",
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "metadata key is required")
+	})
+}
+
+func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	t.Run("DeleteTransactionMetadata", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, _, logFactory := newTestLedgerService(t, ctx)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log, err := ledgerService.DeleteTransactionMetadata(ctx, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				TransactionId: 42,
+				Key:           "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log)
+	})
+
+	t.Run("DeleteTransactionMetadata_WithIdempotencyKey", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		idempotencyKey := "delete-transaction-metadata-idempotency-key"
+		hash := ledgerpb.ComputeIdempotencyHash(&ledgerpb.DeleteTransactionMetadataRequestPayload{
+			TransactionId: 42,
+			Key:           "key1",
+		})
+
+		gomock.InOrder(
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(nil, uint64(0), nil),
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(hash, uint64(1), nil),
+		)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log1, err := ledgerService.DeleteTransactionMetadata(ctx, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				TransactionId: 42,
+				Key:           "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log1)
+
+		logReader.EXPECT().GetLogByID(gomock.Any(), log1.Id).Return(log1, nil)
+
+		log2, err := ledgerService.DeleteTransactionMetadata(ctx, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				TransactionId: 42,
+				Key:           "key1",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log2)
+		require.Equal(t, log1.Id, log2.Id)
+	})
+
+	t.Run("DeleteTransactionMetadata_ValidationErrors", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, _, _ := newTestLedgerService(t, ctx)
+
+		log, err := ledgerService.DeleteTransactionMetadata(ctx, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				TransactionId: 0,
+				Key:           "key1",
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "transaction id is required")
+
+		log, err = ledgerService.DeleteTransactionMetadata(ctx, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				TransactionId: 42,
+				Key:           "",
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "metadata key is required")
+	})
+}
+
 func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultLedger, *MockLogStore, *MockRuntimeStore, *MockLogFactory) {
 	t.Helper()
 

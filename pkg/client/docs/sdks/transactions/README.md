@@ -7,6 +7,7 @@
 
 * [CreateTransaction](#createtransaction) - Create a new transaction
 * [SaveTransactionMetadata](#savetransactionmetadata) - Save transaction metadata
+* [DeleteTransactionMetadata](#deletetransactionmetadata) - Delete transaction metadata
 * [BulkOperations](#bulkoperations) - Bulk operations
 
 ## CreateTransaction
@@ -124,6 +125,62 @@ func main() {
 | sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
+## DeleteTransactionMetadata
+
+Deletes a metadata key for a specific transaction in the ledger
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New()
+
+    res, err := s.Transactions.DeleteTransactionMetadata(ctx, operations.DeleteTransactionMetadataRequest{
+        LedgerName: "<value>",
+        TransactionID: 220958,
+        Key: "<key>",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                                  | Type                                                                                                       | Required                                                                                                   | Description                                                                                                |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `ctx`                                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                                      | :heavy_check_mark:                                                                                         | The context to use for the request.                                                                        |
+| `request`                                                                                                  | [operations.DeleteTransactionMetadataRequest](../../models/operations/deletetransactionmetadatarequest.md) | :heavy_check_mark:                                                                                         | The request object to use for the request.                                                                 |
+| `opts`                                                                                                     | [][operations.Option](../../models/operations/option.md)                                                   | :heavy_minus_sign:                                                                                         | The options for this request.                                                                              |
+
+### Response
+
+**[*operations.DeleteTransactionMetadataResponse](../../models/operations/deletetransactionmetadataresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 400                     | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
+
 ## BulkOperations
 
 Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request
@@ -151,8 +208,14 @@ func main() {
         RequestBody: []components.BulkElement{
             components.BulkElement{
                 Action: components.ActionDeleteMetadata,
-                Data: components.CreateBulkElementDataCreateTransactionRequest(
-                    components.CreateTransactionRequest{},
+                Data: components.CreateBulkElementDataDeleteMetadataRequest(
+                    components.DeleteMetadataRequest{
+                        TargetType: components.DeleteMetadataRequestTargetTypeTransaction,
+                        TargetID: components.CreateDeleteMetadataRequestTargetIDStr(
+                            "<id>",
+                        ),
+                        Key: "<key>",
+                    },
                 ),
             },
         },

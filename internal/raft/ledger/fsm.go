@@ -151,8 +151,17 @@ func (f *FSM) processCreateLog(raftCommand *raft.Command) (*ledgerpb.Log, error)
 				},
 			},
 		}
+	case *ledgerpb.CommandInput_DeleteMetadata:
+		logPayload = &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_DeletedMetadata{
+				DeletedMetadata: &ledgerpb.DeletedMetadata{
+					Target: cmd.DeleteMetadata.Target,
+					Key:    cmd.DeleteMetadata.Key,
+				},
+			},
+		}
 	default:
-		return nil, fmt.Errorf("unhandled command type: %T")
+		return nil, fmt.Errorf("unhandled command type: %T", cmd)
 	}
 
 	log := &ledgerpb.Log{

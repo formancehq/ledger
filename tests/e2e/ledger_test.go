@@ -195,6 +195,28 @@ var _ = Describe("Ledger", func() {
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
+
+		It("Should delete account metadata successfully", func() {
+			metadata := map[string]string{
+				"to_delete": "value",
+			}
+
+			resp, err := servers[leaderID-1].client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
+				LedgerName:  ledgerName,
+				Address:     "test-account",
+				RequestBody: metadata,
+			})
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+
+			deleteResp, err := servers[leaderID-1].client.Accounts.DeleteAccountMetadata(ctx, operations.DeleteAccountMetadataRequest{
+				LedgerName: ledgerName,
+				Address:    "test-account",
+				Key:        "to_delete",
+			})
+			Expect(err).To(Succeed())
+			Expect(deleteResp).NotTo(BeNil())
+		})
 	})
 
 	Context("When saving account metadata via bulk endpoint", func() {
@@ -288,6 +310,40 @@ var _ = Describe("Ledger", func() {
 						Metadata: map[string]any{
 							"key2": "value2",
 						},
+					}),
+				},
+			}
+
+			resp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.BulkResponse).NotTo(BeNil())
+			Expect(resp.BulkResponse.Data).To(HaveLen(2))
+			Expect(resp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(resp.BulkResponse.Data[1].LogID).NotTo(BeNil())
+		})
+
+		It("Should delete account metadata via bulk endpoint", func() {
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionAddMetadata,
+					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
+						TargetType: components.TargetTypeAccount,
+						TargetID:   components.CreateTargetIDStr("bulk-account"),
+						Metadata: map[string]any{
+							"to_delete": "value",
+						},
+					}),
+				},
+				{
+					Action: components.ActionDeleteMetadata,
+					Data: components.CreateBulkElementDataDeleteMetadataRequest(components.DeleteMetadataRequest{
+						TargetType: components.DeleteMetadataRequestTargetTypeAccount,
+						TargetID:   components.CreateDeleteMetadataRequestTargetIDStr("bulk-account"),
+						Key:        "to_delete",
 					}),
 				},
 			}
@@ -533,6 +589,37 @@ var _ = Describe("Ledger", func() {
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
 		})
+
+		It("Should delete transaction metadata successfully", func() {
+			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "transaction-metadata-account",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+					Metadata: map[string]string{
+						"to_delete": "value",
+					},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+
+			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+			Expect(transactionID).NotTo(BeZero())
+
+			deleteResp, err := servers[leaderID-1].client.Transactions.DeleteTransactionMetadata(ctx, operations.DeleteTransactionMetadataRequest{
+				LedgerName:    ledgerName,
+				TransactionID: transactionID,
+				Key:           "to_delete",
+			})
+			Expect(err).To(Succeed())
+			Expect(deleteResp).NotTo(BeNil())
+		})
 	})
 
 	Context("When saving transaction metadata via bulk endpoint", func() {
@@ -595,6 +682,57 @@ var _ = Describe("Ledger", func() {
 			Expect(saveResp.BulkResponse).NotTo(BeNil())
 			Expect(saveResp.BulkResponse.Data).To(HaveLen(1))
 			Expect(saveResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+		})
+
+		It("Should delete transaction metadata via bulk endpoint", func() {
+			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "transaction-bulk-account",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+
+			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionAddMetadata,
+					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
+						TargetType: components.TargetTypeTransaction,
+						TargetID:   components.CreateTargetIDInteger(transactionID),
+						Metadata: map[string]any{
+							"to_delete": "value",
+						},
+					}),
+				},
+				{
+					Action: components.ActionDeleteMetadata,
+					Data: components.CreateBulkElementDataDeleteMetadataRequest(components.DeleteMetadataRequest{
+						TargetType: components.DeleteMetadataRequestTargetTypeTransaction,
+						TargetID:   components.CreateDeleteMetadataRequestTargetIDInteger(transactionID),
+						Key:        "to_delete",
+					}),
+				},
+			}
+
+			saveResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(saveResp).NotTo(BeNil())
+			Expect(saveResp.BulkResponse).NotTo(BeNil())
+			Expect(saveResp.BulkResponse.Data).To(HaveLen(2))
+			Expect(saveResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(saveResp.BulkResponse.Data[1].LogID).NotTo(BeNil())
 		})
 	})
 })

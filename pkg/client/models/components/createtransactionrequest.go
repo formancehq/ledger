@@ -19,8 +19,6 @@ type CreateTransactionRequest struct {
 	// List of postings for the transaction (required if script is not provided)
 	Postings []PostingRequest `json:"postings,omitempty"`
 	Script   *Script          `json:"script,omitempty"`
-	// If true, validate the transaction without applying it
-	DryRun *bool `default:"false" json:"dryRun"`
 	// Idempotency key to prevent duplicate transactions
 	IdempotencyKey *string `json:"idempotencyKey,omitempty"`
 }
@@ -76,13 +74,6 @@ func (o *CreateTransactionRequest) GetScript() *Script {
 		return nil
 	}
 	return o.Script
-}
-
-func (o *CreateTransactionRequest) GetDryRun() *bool {
-	if o == nil {
-		return nil
-	}
-	return o.DryRun
 }
 
 func (o *CreateTransactionRequest) GetIdempotencyKey() *string {

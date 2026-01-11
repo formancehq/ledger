@@ -339,6 +339,95 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/accounts/{address}/metadata/{key}:
+    delete:
+      summary: Delete account metadata
+      description: Deletes a metadata key for a specific account in the ledger
+      operationId: deleteAccountMetadata
+      tags:
+        - Accounts
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Account address
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Metadata key to delete
+      responses:
+        '204':
+          description: Account metadata deleted successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{ledgerName}/transactions/{transactionId}/metadata/{key}:
+    delete:
+      summary: Delete transaction metadata
+      description: Deletes a metadata key for a specific transaction in the ledger
+      operationId: deleteTransactionMetadata
+      tags:
+        - Transactions
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transaction ID
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Metadata key to delete
+      responses:
+        '204':
+          description: Transaction metadata deleted successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations

@@ -330,6 +330,14 @@ Content-Type: application/json
 
 **Response**: `204 No Content`
 
+#### Delete Transaction Metadata
+
+```http
+DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
+```
+
+**Response**: `204 No Content`
+
 #### Bulk Operations
 
 ```http
@@ -388,6 +396,14 @@ Content-Type: application/json
   }
 }
 ```
+
+#### Delete Account Metadata
+
+```http
+DELETE /{ledgerName}/accounts/{address}/metadata/{key}
+```
+
+**Response**: `204 No Content`
 
 ### Cluster
 

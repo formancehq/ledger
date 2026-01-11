@@ -164,6 +164,72 @@ func (impl *LedgerServiceServerImpl) SaveTransactionMetadata(ctx context.Context
 	return log, nil
 }
 
+func (impl *LedgerServiceServerImpl) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.Log, error) {
+	impl.logger.WithFields(map[string]any{"address": req.Payload.Address}).Debugf("DeleteAccountMetadata request received")
+
+	if req.Payload.Address == "" {
+		return nil, fmt.Errorf("account address is required")
+	}
+	if req.Payload.Key == "" {
+		return nil, fmt.Errorf("metadata key is required")
+	}
+
+	ledgerName := req.Parameters.Ledger
+	if ledgerName == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
+	}
+
+	params := service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+		IdempotencyKey: req.Parameters.IdempotencyKey,
+		Input:          req.Payload,
+	}
+
+	log, err := ledgerNode.DeleteAccountMetadata(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("deleting account metadata: %w", err)
+	}
+
+	return log, nil
+}
+
+func (impl *LedgerServiceServerImpl) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.Log, error) {
+	impl.logger.WithFields(map[string]any{"transaction_id": req.Payload.TransactionId}).Debugf("DeleteTransactionMetadata request received")
+
+	if req.Payload.TransactionId == 0 {
+		return nil, fmt.Errorf("transaction id is required")
+	}
+	if req.Payload.Key == "" {
+		return nil, fmt.Errorf("metadata key is required")
+	}
+
+	ledgerName := req.Parameters.Ledger
+	if ledgerName == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
+	}
+
+	params := service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		IdempotencyKey: req.Parameters.IdempotencyKey,
+		Input:          req.Payload,
+	}
+
+	log, err := ledgerNode.DeleteTransactionMetadata(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("deleting transaction metadata: %w", err)
+	}
+
+	return log, nil
+}
+
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) {
 	ledgerpb.RegisterLedgerServiceServer(server, ledgerServiceServer)
 }

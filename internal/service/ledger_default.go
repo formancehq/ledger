@@ -8,7 +8,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/numscript"
 )
@@ -22,14 +21,15 @@ type LogFactory interface {
 type DefaultLedger struct {
 	keySetLocker KeySetLocker
 	logReader    LogReader
-	logFactory   LogFactory
 	logger       logging.Logger
 	runtimeStore RuntimeStore
 	// todo: use a LRU cache with limits
-	scriptCache               sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
-	createTransactionLp       *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
-	saveTransactionMetadataLp *logProcessor[*ledgerpb.SaveTransactionMetadataRequestPayload]
-	saveAccountMetadataLp     *logProcessor[*ledgerpb.SaveAccountMetadataRequestPayload]
+	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
+	createTransactionLp         *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
+	saveTransactionMetadataLp   *logProcessor[*ledgerpb.SaveTransactionMetadataRequestPayload]
+	saveAccountMetadataLp       *logProcessor[*ledgerpb.SaveAccountMetadataRequestPayload]
+	deleteTransactionMetadataLp *logProcessor[*ledgerpb.DeleteTransactionMetadataRequestPayload]
+	deleteAccountMetadataLp     *logProcessor[*ledgerpb.DeleteAccountMetadataRequestPayload]
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -68,6 +68,22 @@ func NewDefaultLedger(
 		logFactory,
 		l.keySetLocker,
 		l.saveAccountMetadata,
+	)
+	l.deleteTransactionMetadataLp = newLogProcessor(
+		"DeleteTransactionMetadata",
+		runtimeStore,
+		logReader,
+		logFactory,
+		l.keySetLocker,
+		l.deleteTransactionMetadata,
+	)
+	l.deleteAccountMetadataLp = newLogProcessor(
+		"DeleteAccountMetadata",
+		runtimeStore,
+		logReader,
+		logFactory,
+		l.keySetLocker,
+		l.deleteAccountMetadata,
 	)
 
 	return l
@@ -182,28 +198,6 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 		}
 	}
 
-	// Determine timestamp: use provided timestamp or current time if not provided
-	var timestamp *time.Time
-	if input.Timestamp != nil {
-		t := input.Timestamp.AsTime()
-		timestamp = &t
-	}
-	now := time.Now()
-	if timestamp == nil {
-		timestamp = &now
-	}
-
-	// Create transaction (metadata will be set later after merging with script metadata)
-	tx := ledgerpb.NewTransaction().
-		WithPostings(postings...).
-		WithTimestamp(*timestamp).
-		WithInsertedAt(now).
-		WithUpdatedAt(now)
-
-	if input.Reference != "" {
-		tx = tx.WithReference(input.Reference)
-	}
-
 	// Merge script metadata with input metadata
 	var finalMetadata metadata.Metadata
 	if input.Metadata != nil {
@@ -243,9 +237,6 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 			finalAccountMetadata[account] = accountMeta
 		}
 	}
-
-	// Update transaction with final metadata
-	tx = tx.WithMetadata(finalMetadata)
 
 	// Convert account metadata to protobuf
 	accountMetadataProto := make(map[string]*ledgerpb.Metadata)
@@ -406,14 +397,68 @@ func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, parameters Para
 	}, nil
 }
 
-// DeleteTransactionMetadata is not implemented yet
+// DeleteTransactionMetadata deletes a metadata key from a transaction
 func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, parameters)
+	return log, err
 }
 
-// DeleteAccountMetadata is not implemented yet
+func (l *DefaultLedger) deleteTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+	input := parameters.Input
+
+	if input.TransactionId == 0 {
+		return nil, fmt.Errorf("transaction id is required")
+	}
+	if input.Key == "" {
+		return nil, fmt.Errorf("metadata key is required")
+	}
+
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_DeleteMetadata{
+			DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Transaction{
+						Transaction: &ledgerpb.TargetTransaction{
+							Id: input.TransactionId,
+						},
+					},
+				},
+				Key: input.Key,
+			},
+		},
+	}, nil
+}
+
+// DeleteAccountMetadata deletes a metadata key from an account
 func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, parameters)
+	return log, err
+}
+
+func (l *DefaultLedger) deleteAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+	input := parameters.Input
+
+	if input.Address == "" {
+		return nil, fmt.Errorf("account address is required")
+	}
+	if input.Key == "" {
+		return nil, fmt.Errorf("metadata key is required")
+	}
+
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_DeleteMetadata{
+			DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{
+						Account: &ledgerpb.TargetAccount{
+							Addr: input.Address,
+						},
+					},
+				},
+				Key: input.Key,
+			},
+		},
+	}, nil
 }
 
 // Import is not implemented yet

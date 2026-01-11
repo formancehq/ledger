@@ -74,11 +74,33 @@ func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, parameters P
 }
 
 func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, err := g.client.DeleteTransactionMetadata(ctx, &ledgerpb.DeleteTransactionMetadataRequest{
+		Payload: parameters.Input,
+		Parameters: &ledgerpb.Parameters{
+			Ledger:         g.name,
+			IdempotencyKey: parameters.IdempotencyKey,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	return log, nil
 }
 
 func (g *LedgerGrpcClient) DeleteAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, err := g.client.DeleteAccountMetadata(ctx, &ledgerpb.DeleteAccountMetadataRequest{
+		Payload: parameters.Input,
+		Parameters: &ledgerpb.Parameters{
+			Ledger:         g.name,
+			IdempotencyKey: parameters.IdempotencyKey,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	return log, nil
 }
 
 func (g *LedgerGrpcClient) Import(ctx context.Context, stream chan *ledgerpb.Log) error {

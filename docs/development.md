@@ -46,7 +46,9 @@ Each HTTP handler has its own file:
 - `handlers_delete_ledger.go`
 - `handlers_create_transaction.go`
 - `handlers_save_transaction_metadata.go`
+- `handlers_delete_transaction_metadata.go`
 - `handlers_save_account_metadata.go`
+- `handlers_delete_account_metadata.go`
 - `handlers_bulk.go`
 - etc.
 

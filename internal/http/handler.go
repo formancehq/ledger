@@ -72,16 +72,18 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 			r.Get("/health", server.handleHealth)
 			r.Get("/cluster/state", server.handleClusterState)
 
-			r.Post("/{ledgerName}", server.handleCreateLedger)                                                  // POST /{ledgerName}
-			r.Get("/{ledgerName}", server.handleGetLedger)                                                      // GET /{ledgerName}
-			r.Delete("/{ledgerName}", server.handleDeleteLedger)                                                // DELETE /{ledgerName}
-			r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                                  // GET /{ledgerName}/raft/state
-			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                                // POST /{ledgerName}/transactions
-			r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata) // POST /{ledgerName}/transactions/{transactionId}/metadata
-			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)               // POST /{ledgerName}/accounts/{address}/metadata
-			r.Post("/{ledgerName}/bulk", server.handleBulk)                                                     // POST /{ledgerName}/bulk
-			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                                    // For compat
-			r.Get("/", server.handleListAllLedgers)                                                             // GET / - must be last
+			r.Post("/{ledgerName}", server.handleCreateLedger)                                                            // POST /{ledgerName}
+			r.Get("/{ledgerName}", server.handleGetLedger)                                                                // GET /{ledgerName}
+			r.Delete("/{ledgerName}", server.handleDeleteLedger)                                                          // DELETE /{ledgerName}
+			r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                                            // GET /{ledgerName}/raft/state
+			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                                          // POST /{ledgerName}/transactions
+			r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)           // POST /{ledgerName}/transactions/{transactionId}/metadata
+			r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata) // DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
+			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)                         // POST /{ledgerName}/accounts/{address}/metadata
+			r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)               // DELETE /{ledgerName}/accounts/{address}/metadata/{key}
+			r.Post("/{ledgerName}/bulk", server.handleBulk)                                                               // POST /{ledgerName}/bulk
+			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                                              // For compat
+			r.Get("/", server.handleListAllLedgers)                                                                       // GET / - must be last
 		})
 	}
 

@@ -332,7 +332,7 @@ message SaveMetadataCommand {
 
 message DeleteMetadataCommand {
   Target target = 1;
-  map<string, string> metadata = 2;
+  string key = 2;
 }
 
 message RevertTransactionCommand {

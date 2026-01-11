@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 8ac9bc81cc67e70b50aaef2f5416f6e4
+  docChecksum: 4b8f40bcd388bbb62301611f5f064fa9
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.59
-  configChecksum: bbcb2f903aa2833df7e17118639c2cee
+  releaseVersion: 0.11.62
+  configChecksum: 0d9158c8b2a27719594b9c4e4b04b21f
 features:
   go:
     additionalDependencies: 0.1.0
@@ -60,7 +60,9 @@ generatedFiles:
   - /models/operations/bulkoperations.go
   - /models/operations/createledger.go
   - /models/operations/createtransaction.go
+  - /models/operations/deleteaccountmetadata.go
   - /models/operations/deleteledger.go
+  - /models/operations/deletetransactionmetadata.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
   - /models/operations/getledgerraftstate.go
@@ -129,8 +131,12 @@ generatedFiles:
   - docs/models/operations/createledgerresponse.md
   - docs/models/operations/createtransactionrequest.md
   - docs/models/operations/createtransactionresponse.md
+  - docs/models/operations/deleteaccountmetadatarequest.md
+  - docs/models/operations/deleteaccountmetadataresponse.md
   - docs/models/operations/deleteledgerrequest.md
   - docs/models/operations/deleteledgerresponse.md
+  - docs/models/operations/deletetransactionmetadatarequest.md
+  - docs/models/operations/deletetransactionmetadataresponse.md
   - docs/models/operations/getclusterstateresponse.md
   - docs/models/operations/getledgerraftstaterequest.md
   - docs/models/operations/getledgerraftstateresponse.md
@@ -222,7 +228,7 @@ examples:
         path:
           ledgerName: "<value>"
       requestBody:
-        application/json: {"dryRun": false}
+        application/json: {}
       responses:
         "201":
           application/json: {"data": {"transaction": {"postings": [{"source": "<value>", "destination": "<value>", "amount": 361192, "asset": "<value>"}], "timestamp": "2023-02-01T17:54:50.972Z", "id": 156492}}}
@@ -329,7 +335,7 @@ examples:
           atomic: false
           parallel: false
       requestBody:
-        application/json: [{"action": "DELETE_METADATA", "data": {"dryRun": false}}]
+        application/json: [{"action": "DELETE_METADATA", "data": {"targetType": "TRANSACTION", "targetId": "<id>", "key": "<key>"}}]
       responses:
         "200":
           application/json: {"data": [{"responseType": "<value>", "logID": 858709}]}
@@ -408,6 +414,34 @@ examples:
           dryRun: false
       requestBody:
         application/json: {"reason": "correction", "source": "support"}
+      responses:
+        "400":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  deleteTransactionMetadata:
+    speakeasy-default-delete-transaction-metadata:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          transactionId: 220958
+          key: "<key>"
+      responses:
+        "400":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  deleteAccountMetadata:
+    speakeasy-default-delete-account-metadata:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          address: "649 Zoey Overpass"
+          key: "<key>"
       responses:
         "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}

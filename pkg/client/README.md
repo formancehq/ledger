@@ -86,6 +86,7 @@ func main() {
 ### [Accounts](docs/sdks/accounts/README.md)
 
 * [SaveAccountMetadata](docs/sdks/accounts/README.md#saveaccountmetadata) - Save account metadata
+* [DeleteAccountMetadata](docs/sdks/accounts/README.md#deleteaccountmetadata) - Delete account metadata
 
 ### [Cluster](docs/sdks/cluster/README.md)
 
@@ -104,6 +105,7 @@ func main() {
 
 * [CreateTransaction](docs/sdks/transactions/README.md#createtransaction) - Create a new transaction
 * [SaveTransactionMetadata](docs/sdks/transactions/README.md#savetransactionmetadata) - Save transaction metadata
+* [DeleteTransactionMetadata](docs/sdks/transactions/README.md#deletetransactionmetadata) - Delete transaction metadata
 * [BulkOperations](docs/sdks/transactions/README.md#bulkoperations) - Bulk operations
 
 </details>
