@@ -19,10 +19,8 @@ type LogFactory interface {
 
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
-	keySetLocker KeySetLocker
-	logReader    LogReader
-	logger       logging.Logger
-	runtimeStore RuntimeStore
+	logReader LogReader
+	logger    logging.Logger
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
 	createTransactionLp         *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
@@ -41,17 +39,16 @@ func NewDefaultLedger(
 	logger logging.Logger,
 ) *DefaultLedger {
 	l := &DefaultLedger{
-		keySetLocker: NewDefaultKeySetLocker(),
-		logReader:    logReader,
-		runtimeStore: runtimeStore,
-		logger:       logger,
+		logReader: logReader,
+		logger:    logger,
 	}
+	keySetLocker := NewDefaultKeySetLocker()
 	l.createTransactionLp = newLogProcessor(
 		"CreateTransaction",
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.createTransaction,
 	)
 	l.saveTransactionMetadataLp = newLogProcessor(
@@ -59,7 +56,7 @@ func NewDefaultLedger(
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.saveTransactionMetadata,
 	)
 	l.saveAccountMetadataLp = newLogProcessor(
@@ -67,7 +64,7 @@ func NewDefaultLedger(
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.saveAccountMetadata,
 	)
 	l.deleteTransactionMetadataLp = newLogProcessor(
@@ -75,7 +72,7 @@ func NewDefaultLedger(
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.deleteTransactionMetadata,
 	)
 	l.deleteAccountMetadataLp = newLogProcessor(
@@ -83,7 +80,7 @@ func NewDefaultLedger(
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.deleteAccountMetadata,
 	)
 	l.revertTransactionLp = newLogProcessor(
@@ -91,7 +88,7 @@ func NewDefaultLedger(
 		runtimeStore,
 		logReader,
 		logFactory,
-		l.keySetLocker,
+		keySetLocker,
 		l.revertTransaction,
 	)
 
@@ -104,7 +101,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	return log, err
 }
 
-func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) createTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
 	l.logger.Debugf("Creating transaction")
 
 	input := parameters.Input
@@ -120,6 +117,13 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 		return nil, fmt.Errorf("you need to pass either a posting array or a numscript script")
 	}
 
+	if input.Reference != "" {
+		_, err := unitOfWork.LockKeys(ctx, fmt.Sprintf("tx/references/%s", input.Reference))
+		if err != nil {
+			return nil, fmt.Errorf("locking reference %s: %w", input.Reference, err)
+		}
+	}
+
 	var (
 		// If script is provided, compile and execute it to generate postings
 		scriptMetadata        metadata.Metadata
@@ -129,14 +133,14 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 	if hasScript {
 		script := input.Script
 		var err error
-		postings, scriptMetadata, scriptAccountMetadata, err = l.executeNumscript(ctx, script)
+		postings, scriptMetadata, scriptAccountMetadata, err = l.executeNumscript(ctx, unitOfWork, script)
 		if err != nil {
 			return nil, fmt.Errorf("executing numscript: %w", err)
 		}
 	} else {
 		postings = input.Postings
 		// Check that all source accounts have sufficient funds
-		if err := l.checkBalances(ctx, postings); err != nil {
+		if err := l.checkBalances(ctx, unitOfWork, postings); err != nil {
 			return nil, err
 		}
 	}
@@ -203,7 +207,7 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
-func (l *DefaultLedger) executeNumscript(ctx context.Context, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
+func (l *DefaultLedger) executeNumscript(ctx context.Context, store *unitOfWork, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
 	if script == nil || script.Plain == "" {
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
@@ -228,15 +232,8 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, script *ledgerpb.S
 		l.scriptCache.Store(scriptKey, parseResult)
 	}
 
-	// Create a store adapter that uses our balance store
-	// todo: need release when the transaction is committed
-	storeAdapter := &balancesLockedStoreAdapter{
-		keySetLocker: l.keySetLocker,
-		runtimeStore: l.runtimeStore,
-	}
-
 	// Execute the script
-	result, err := parseResult.Run(ctx, script.Vars, storeAdapter)
+	result, err := parseResult.Run(ctx, script.Vars, store)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to execute numscript: %w", err)
 	}
@@ -275,7 +272,7 @@ func (l *DefaultLedger) RevertTransaction(ctx context.Context, parameters Parame
 	return log, err
 }
 
-func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -285,15 +282,13 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parame
 
 	// Lock the transaction ID to prevent concurrent revert operations
 	lockKey := fmt.Sprintf("tx/revert/%d", input.TransactionId)
-	// todo: the release is done before the log is inserted
-	release, err := l.keySetLocker.LockKeys(ctx, lockKey)
+	_, err := unitOfWork.LockKeys(ctx, lockKey)
 	if err != nil {
 		return nil, fmt.Errorf("locking transaction %d: %w", input.TransactionId, err)
 	}
-	defer release()
 
 	// Check if transaction is already reverted (fast path using store index)
-	isReverted, err := l.runtimeStore.IsTransactionReverted(ctx, input.TransactionId)
+	isReverted, err := unitOfWork.IsTransactionReverted(ctx, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("checking if transaction %d is reverted: %w", input.TransactionId, err)
 	}
@@ -302,7 +297,7 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parame
 	}
 
 	// Get the log ID for the transaction ID
-	logID, err := l.runtimeStore.GetLogIDForTransactionID(ctx, input.TransactionId)
+	logID, err := unitOfWork.GetLogIDForTransactionID(ctx, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("getting log ID for transaction %d: %w", input.TransactionId, err)
 	}
@@ -355,7 +350,7 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parame
 
 	// Validate balances for revert transaction (unless force is true)
 	if !input.Force {
-		if err := l.checkBalances(ctx, reversedPostings); err != nil {
+		if err := l.checkBalances(ctx, unitOfWork, reversedPostings); err != nil {
 			return nil, err
 		}
 	}
@@ -403,7 +398,7 @@ func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, parameters 
 	return log, err
 }
 
-func (l *DefaultLedger) saveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) saveTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -436,7 +431,7 @@ func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, parameters Para
 	return log, err
 }
 
-func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -469,7 +464,7 @@ func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, parameter
 	return log, err
 }
 
-func (l *DefaultLedger) deleteTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.TransactionId == 0 {
@@ -501,7 +496,7 @@ func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, parameters Pa
 	return log, err
 }
 
-func (l *DefaultLedger) deleteAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultLedger) deleteAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.Address == "" {
@@ -544,7 +539,7 @@ func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) 
 // checkBalances verifies that all source accounts have sufficient funds for the given postings.
 // It locks the relevant balance keys, fetches current balances, and returns ErrInsufficientFunds
 // if any source account lacks the required funds.
-func (l *DefaultLedger) checkBalances(ctx context.Context, postings []*ledgerpb.Posting) error {
+func (l *DefaultLedger) checkBalances(ctx context.Context, store *unitOfWork, postings []*ledgerpb.Posting) error {
 	// Group postings by source account and asset to check balances
 	// Build balance query: map[account] = [assets]
 	balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
@@ -589,15 +584,7 @@ func (l *DefaultLedger) checkBalances(ctx context.Context, postings []*ledgerpb.
 		balanceQueryList[account] = assetList
 	}
 
-	// Lock and check sufficient funds for all source accounts
-	lockKeys := makeBalanceLockKeys(balanceQueryList)
-	release, err := l.keySetLocker.LockKeys(ctx, lockKeys...)
-	if err != nil {
-		return err
-	}
-	defer release()
-
-	balances, err := l.runtimeStore.GetBalances(ctx, balanceQueryList)
+	balances, err := store.GetBalances(ctx, balanceQueryList)
 	if err != nil {
 		return err
 	}

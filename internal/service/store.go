@@ -125,12 +125,33 @@ type RuntimeStore interface {
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
 }
 
-type balancesLockedStoreAdapter struct {
-	keySetLocker KeySetLocker
-	runtimeStore RuntimeStore
+type unitOfWork struct {
+	RuntimeStore
+	KeySetLocker
+	releases []func()
 }
 
-func (s *balancesLockedStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
+func (s *unitOfWork) LockKeys(ctx context.Context, keys ...string) (func(), error) {
+	release, err := s.KeySetLocker.LockKeys(ctx, keys...)
+	if err != nil {
+		return nil, err
+	}
+	s.releases = append(s.releases, release)
+
+	return release, nil
+}
+
+func (s *unitOfWork) TryLockKeys(ctx context.Context, keys ...string) (func(), error) {
+	release, err := s.KeySetLocker.TryLockKeys(ctx, keys...)
+	if err != nil {
+		return nil, err
+	}
+	s.releases = append(s.releases, release)
+
+	return release, nil
+}
+
+func (s *unitOfWork) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
 	// Convert numscript.BalanceQuery to our format
 	balanceQuery := make(map[string][]string)
 	for account, assets := range q {
@@ -138,13 +159,12 @@ func (s *balancesLockedStoreAdapter) GetBalances(ctx context.Context, q numscrip
 	}
 
 	lockKeys := makeBalanceLockKeys(balanceQuery)
-	release, err := s.keySetLocker.LockKeys(ctx, lockKeys...)
+	_, err := s.LockKeys(ctx, lockKeys...)
 	if err != nil {
 		return nil, err
 	}
-	defer release()
 
-	balances, err := s.runtimeStore.GetBalances(ctx, balanceQuery)
+	balances, err := s.RuntimeStore.GetBalances(ctx, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +182,7 @@ func (s *balancesLockedStoreAdapter) GetBalances(ctx context.Context, q numscrip
 }
 
 // GetAccountsMetadata retrieves account metadata for accounts in the query
-func (s *balancesLockedStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
+func (s *unitOfWork) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
 	// Convert numscript.MetadataQuery (map[string]struct{}) to []string
 	accounts := make([]string, 0, len(q))
 	for address := range q {
@@ -170,7 +190,7 @@ func (s *balancesLockedStoreAdapter) GetAccountsMetadata(ctx context.Context, q 
 	}
 
 	// Get metadata from the runtime store
-	metadataMap, err := s.runtimeStore.GetAccountMetadata(ctx, accounts)
+	metadataMap, err := s.RuntimeStore.GetAccountMetadata(ctx, accounts)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +209,12 @@ func (s *balancesLockedStoreAdapter) GetAccountsMetadata(ctx context.Context, q 
 	}
 
 	return result, nil
+}
+
+func (s *unitOfWork) ReleaseLocks() {
+	for _, release := range s.releases {
+		release()
+	}
 }
 
 func makeBalanceLockKeys(balanceQuery map[string][]string) []string {

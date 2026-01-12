@@ -14,7 +14,7 @@ type logProcessor[INPUT any] struct {
 	logReader    LogReader
 	logFactory   LogFactory
 	keySetLocker KeySetLocker
-	builder      func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
+	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
 }
 
 func newLogProcessor[INPUT any](
@@ -23,7 +23,7 @@ func newLogProcessor[INPUT any](
 	logStore LogReader,
 	logFactory LogFactory,
 	keySetLocker KeySetLocker,
-	builder func(ctx context.Context, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
+	builder func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
 
 ) *logProcessor[INPUT] {
 	return &logProcessor[INPUT]{
@@ -68,7 +68,13 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		}
 	}
 
-	input, err := lp.builder(ctx, parameters)
+	store := &unitOfWork{
+		KeySetLocker: lp.keySetLocker,
+		RuntimeStore: lp.runtimeStore,
+	}
+	defer store.ReleaseLocks()
+
+	input, err := lp.builder(ctx, store, parameters)
 	if err != nil {
 		return nil, false, err
 	}
