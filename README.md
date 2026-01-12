@@ -7,6 +7,8 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 
 For detailed technical documentation, architecture overview, API reference, and development guides, see the [Technical Documentation](./docs/README.md).
 
+For a comparison of the write API between this POC and the original ledger (`github.com/formancehq/ledger`), including missing and intentionally removed features, see the [API Comparison](./docs/api-comparison.md).
+
 
 ## Prerequisites
 

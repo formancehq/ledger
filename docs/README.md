@@ -20,6 +20,9 @@ Explanation of the ledger system, transaction management, and data organization.
 ### 🔌 [API and Interfaces](./api.md)
 Documentation of HTTP and gRPC APIs, service interfaces, and data formats.
 
+### 🔄 [API Comparison](./api-comparison.md)
+Comparison of the write API between this POC and the original ledger (`github.com/formancehq/ledger`), including missing and intentionally removed features.
+
 ### 💾 [Storage and Persistence](./storage.md)
 Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 
