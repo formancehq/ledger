@@ -135,75 +135,9 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, parameters Parame
 		}
 	} else {
 		postings = input.Postings
-		// Group postings by source account and asset to check balances
-		// Build balance query: map[account] = [assets]
-		balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
-		requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
-
-		for _, posting := range postings {
-			if posting == nil {
-				continue
-			}
-			if posting.Source == "world" {
-				continue // WORLD account has infinite funds
-			}
-
-			// Track assets for balance query
-			if balanceQuery[posting.Source] == nil {
-				balanceQuery[posting.Source] = make(map[string]bool)
-			}
-			balanceQuery[posting.Source][posting.Asset] = true
-
-			// Track required funds
-			if requiredFunds[posting.Source] == nil {
-				requiredFunds[posting.Source] = make(map[string]*big.Int)
-			}
-			if requiredFunds[posting.Source][posting.Asset] == nil {
-				requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
-			}
-			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount.Value())
-		}
-
-		// Convert balanceQuery to the format expected by the balance query
-		balanceQueryList := make(map[string][]string)
-		for account, assets := range balanceQuery {
-			assetList := make([]string, 0, len(assets))
-			for asset := range assets {
-				assetList = append(assetList, asset)
-			}
-			balanceQueryList[account] = assetList
-		}
-
-		// Lock and check sufficient funds for all source accounts
-		lockKeys := makeBalanceLockKeys(balanceQueryList)
-		release, err := l.keySetLocker.LockKeys(ctx, lockKeys...)
-		if err != nil {
+		// Check that all source accounts have sufficient funds
+		if err := l.checkBalances(ctx, postings); err != nil {
 			return nil, err
-		}
-		defer release()
-
-		balances, err := l.runtimeStore.GetBalances(ctx, balanceQueryList)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check if accounts have sufficient funds
-		for account, assets := range requiredFunds {
-			accountBalances, ok := balances[account]
-			if !ok {
-				accountBalances = make(map[string]*big.Int)
-			}
-
-			for asset, requiredAmount := range assets {
-				balance, ok := accountBalances[asset]
-				if !ok {
-					balance = big.NewInt(0)
-				}
-
-				if balance.Cmp(requiredAmount) < 0 {
-					return nil, ErrInsufficientFunds
-				}
-			}
 		}
 	}
 
@@ -296,7 +230,7 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, script *ledgerpb.S
 
 	// Create a store adapter that uses our balance store
 	// todo: need release when the transaction is committed
-	storeAdapter := &numscriptStoreAdapter{
+	storeAdapter := &balancesLockedStoreAdapter{
 		keySetLocker: l.keySetLocker,
 		runtimeStore: l.runtimeStore,
 	}
@@ -421,74 +355,8 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parame
 
 	// Validate balances for revert transaction (unless force is true)
 	if !input.Force {
-		// Group postings by source account and asset to check balances
-		balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
-		requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
-
-		for _, posting := range reversedPostings {
-			if posting == nil {
-				continue
-			}
-			if posting.Source == "world" {
-				continue // WORLD account has infinite funds
-			}
-
-			// Track assets for balance query
-			if balanceQuery[posting.Source] == nil {
-				balanceQuery[posting.Source] = make(map[string]bool)
-			}
-			balanceQuery[posting.Source][posting.Asset] = true
-
-			// Track required funds
-			if requiredFunds[posting.Source] == nil {
-				requiredFunds[posting.Source] = make(map[string]*big.Int)
-			}
-			if requiredFunds[posting.Source][posting.Asset] == nil {
-				requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
-			}
-			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount.Value())
-		}
-
-		// Convert balanceQuery to the format expected by the balance query
-		balanceQueryList := make(map[string][]string)
-		for account, assets := range balanceQuery {
-			assetList := make([]string, 0, len(assets))
-			for asset := range assets {
-				assetList = append(assetList, asset)
-			}
-			balanceQueryList[account] = assetList
-		}
-
-		// Lock and check sufficient funds for all source accounts
-		lockKeys := makeBalanceLockKeys(balanceQueryList)
-		release, err := l.keySetLocker.LockKeys(ctx, lockKeys...)
-		if err != nil {
+		if err := l.checkBalances(ctx, reversedPostings); err != nil {
 			return nil, err
-		}
-		defer release()
-
-		balances, err := l.runtimeStore.GetBalances(ctx, balanceQueryList)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check if accounts have sufficient funds
-		for account, assets := range requiredFunds {
-			accountBalances, ok := balances[account]
-			if !ok {
-				accountBalances = make(map[string]*big.Int)
-			}
-
-			for asset, requiredAmount := range assets {
-				balance, ok := accountBalances[asset]
-				if !ok {
-					balance = big.NewInt(0)
-				}
-
-				if balance.Cmp(requiredAmount) < 0 {
-					return nil, ErrInsufficientFunds
-				}
-			}
 		}
 	}
 
@@ -673,78 +541,85 @@ func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) 
 	return l.logReader.GetAllLogs(ctx, from, to)
 }
 
-type numscriptStoreAdapter struct {
-	keySetLocker KeySetLocker
-	runtimeStore RuntimeStore
-}
+// checkBalances verifies that all source accounts have sufficient funds for the given postings.
+// It locks the relevant balance keys, fetches current balances, and returns ErrInsufficientFunds
+// if any source account lacks the required funds.
+func (l *DefaultLedger) checkBalances(ctx context.Context, postings []*ledgerpb.Posting) error {
+	// Group postings by source account and asset to check balances
+	// Build balance query: map[account] = [assets]
+	balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
+	requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
 
-func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
-	// Convert numscript.BalanceQuery to our format
-	balanceQuery := make(map[string][]string)
-	for account, assets := range q {
-		balanceQuery[account] = assets
+	for _, posting := range postings {
+		if posting == nil {
+			continue
+		}
+		if posting.Source == "world" {
+			continue // WORLD account has infinite funds
+		}
+
+		// Track assets for balance query
+		if balanceQuery[posting.Source] == nil {
+			balanceQuery[posting.Source] = make(map[string]bool)
+		}
+		balanceQuery[posting.Source][posting.Asset] = true
+
+		// Track required funds
+		if requiredFunds[posting.Source] == nil {
+			requiredFunds[posting.Source] = make(map[string]*big.Int)
+		}
+		if requiredFunds[posting.Source][posting.Asset] == nil {
+			requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
+		}
+		requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount.Value())
 	}
 
-	lockKeys := makeBalanceLockKeys(balanceQuery)
-	release, err := s.keySetLocker.LockKeys(ctx, lockKeys...)
+	// No balance check needed if no non-world sources
+	if len(balanceQuery) == 0 {
+		return nil
+	}
+
+	// Convert balanceQuery to the format expected by the balance query
+	balanceQueryList := make(map[string][]string)
+	for account, assets := range balanceQuery {
+		assetList := make([]string, 0, len(assets))
+		for asset := range assets {
+			assetList = append(assetList, asset)
+		}
+		balanceQueryList[account] = assetList
+	}
+
+	// Lock and check sufficient funds for all source accounts
+	lockKeys := makeBalanceLockKeys(balanceQueryList)
+	release, err := l.keySetLocker.LockKeys(ctx, lockKeys...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer release()
 
-	balances, err := s.runtimeStore.GetBalances(ctx, balanceQuery)
+	balances, err := l.runtimeStore.GetBalances(ctx, balanceQueryList)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Convert to numscript.Balances format
-	result := make(numscript.Balances)
-	for account, accountBalances := range balances {
-		result[account] = make(map[string]*big.Int)
-		for asset, balance := range accountBalances {
-			result[account][asset] = balance
+	// Check if accounts have sufficient funds
+	for account, assets := range requiredFunds {
+		accountBalances, ok := balances[account]
+		if !ok {
+			accountBalances = make(map[string]*big.Int)
+		}
+
+		for asset, requiredAmount := range assets {
+			balance, ok := accountBalances[asset]
+			if !ok {
+				balance = big.NewInt(0)
+			}
+
+			if balance.Cmp(requiredAmount) < 0 {
+				return ErrInsufficientFunds
+			}
 		}
 	}
 
-	return result, nil
-}
-
-// GetAccountsMetadata retrieves account metadata for accounts in the query
-func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
-	// Convert numscript.MetadataQuery (map[string]struct{}) to []string
-	accounts := make([]string, 0, len(q))
-	for address := range q {
-		accounts = append(accounts, address)
-	}
-
-	// Get metadata from the runtime store
-	metadataMap, err := s.runtimeStore.GetAccountMetadata(ctx, accounts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to numscript.AccountsMetadata format (map[string]map[string]string)
-	result := make(numscript.AccountsMetadata)
-	for address, accountMetadata := range metadataMap {
-		result[address] = accountMetadata
-	}
-
-	// Ensure all requested accounts are in the result (even if empty)
-	for address := range q {
-		if _, exists := result[address]; !exists {
-			result[address] = make(map[string]string)
-		}
-	}
-
-	return result, nil
-}
-
-func makeBalanceLockKeys(balanceQuery map[string][]string) []string {
-	lockKeys := make([]string, 0)
-	for account, assets := range balanceQuery {
-		for _, asset := range assets {
-			lockKeys = append(lockKeys, fmt.Sprintf("%s:%s", account, asset))
-		}
-	}
-	return lockKeys
+	return nil
 }

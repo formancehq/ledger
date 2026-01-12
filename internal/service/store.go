@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/numscript"
 	"google.golang.org/grpc"
 )
 
@@ -121,4 +123,80 @@ type RuntimeStore interface {
 	IsTransactionReverted(ctx context.Context, transactionID uint64) (bool, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
+}
+
+type balancesLockedStoreAdapter struct {
+	keySetLocker KeySetLocker
+	runtimeStore RuntimeStore
+}
+
+func (s *balancesLockedStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
+	// Convert numscript.BalanceQuery to our format
+	balanceQuery := make(map[string][]string)
+	for account, assets := range q {
+		balanceQuery[account] = assets
+	}
+
+	lockKeys := makeBalanceLockKeys(balanceQuery)
+	release, err := s.keySetLocker.LockKeys(ctx, lockKeys...)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	balances, err := s.runtimeStore.GetBalances(ctx, balanceQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to numscript.Balances format
+	result := make(numscript.Balances)
+	for account, accountBalances := range balances {
+		result[account] = make(map[string]*big.Int)
+		for asset, balance := range accountBalances {
+			result[account][asset] = balance
+		}
+	}
+
+	return result, nil
+}
+
+// GetAccountsMetadata retrieves account metadata for accounts in the query
+func (s *balancesLockedStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
+	// Convert numscript.MetadataQuery (map[string]struct{}) to []string
+	accounts := make([]string, 0, len(q))
+	for address := range q {
+		accounts = append(accounts, address)
+	}
+
+	// Get metadata from the runtime store
+	metadataMap, err := s.runtimeStore.GetAccountMetadata(ctx, accounts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to numscript.AccountsMetadata format (map[string]map[string]string)
+	result := make(numscript.AccountsMetadata)
+	for address, accountMetadata := range metadataMap {
+		result[address] = accountMetadata
+	}
+
+	// Ensure all requested accounts are in the result (even if empty)
+	for address := range q {
+		if _, exists := result[address]; !exists {
+			result[address] = make(map[string]string)
+		}
+	}
+
+	return result, nil
+}
+
+func makeBalanceLockKeys(balanceQuery map[string][]string) []string {
+	lockKeys := make([]string, 0)
+	for account, assets := range balanceQuery {
+		for _, asset := range assets {
+			lockKeys = append(lockKeys, fmt.Sprintf("%s:%s", account, asset))
+		}
+	}
+	return lockKeys
 }

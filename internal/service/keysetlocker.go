@@ -9,6 +9,7 @@ import (
 
 var ErrLockUnavailable = errors.New("lock unavailable")
 
+// todo: add deadlocks detection
 // KeySetLocker provides key-based locking for concurrent access.
 type KeySetLocker interface {
 	LockKeys(ctx context.Context, keys ...string) (func(), error)
