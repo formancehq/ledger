@@ -26,6 +26,9 @@ Comparison of the write API between this POC and the original ledger (`github.co
 ### 💾 [Storage and Persistence](./storage.md)
 Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 
+### 🗄️ [Storage Drivers](./storage-drivers.md)
+Detailed documentation on each storage driver (SQLite mattn, SQLite modern, Pebble), their characteristics, configuration, and use cases.
+
 ### 🚀 [Deployment](./deployment.md)
 Deployment guide, Kubernetes/Helm configuration, and environment management.
 

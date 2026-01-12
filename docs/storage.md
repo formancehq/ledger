@@ -398,6 +398,7 @@ The system can recover completely from:
 
 To deepen your understanding:
 
-1. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
-2. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
-3. [Deployment](./deployment.md) - Storage configuration in production
+1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on each storage driver
+2. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
+3. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
+4. [Deployment](./deployment.md) - Storage configuration in production
