@@ -106,6 +106,7 @@ func main() {
 * [CreateTransaction](docs/sdks/transactions/README.md#createtransaction) - Create a new transaction
 * [SaveTransactionMetadata](docs/sdks/transactions/README.md#savetransactionmetadata) - Save transaction metadata
 * [DeleteTransactionMetadata](docs/sdks/transactions/README.md#deletetransactionmetadata) - Delete transaction metadata
+* [RevertTransaction](docs/sdks/transactions/README.md#reverttransaction) - Revert a transaction
 * [BulkOperations](docs/sdks/transactions/README.md#bulkoperations) - Bulk operations
 
 </details>

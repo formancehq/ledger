@@ -79,7 +79,7 @@ func (f *FSM) GetState() *ledgerpb.LedgerState {
 }
 
 // processInsertLog handles the insert log command by building the log entry
-func (f *FSM) processCreateLog(raftCommand *raft.Command) (*ledgerpb.Log, error) {
+func (f *FSM) processCreateLog(ctx context.Context, raftCommand *raft.Command) (*ledgerpb.Log, error) {
 	var createCmd CreateLogCommand
 	if err := UnmarshalCommandData(raftCommand.Data, &createCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
@@ -131,6 +131,79 @@ func (f *FSM) processCreateLog(raftCommand *raft.Command) (*ledgerpb.Log, error)
 				},
 			},
 		}
+	case *ledgerpb.CommandInput_RevertTransaction:
+		revertCmd := cmd.RevertTransaction
+		if revertCmd == nil {
+			return nil, fmt.Errorf("revert transaction command is nil")
+		}
+		if revertCmd.RevertTransaction == nil {
+			return nil, fmt.Errorf("revert transaction is nil")
+		}
+
+		// Get the log ID for the transaction ID
+		logID, err := f.runtimeStore.GetLogIDForTransactionID(ctx, revertCmd.TransactionId)
+		if err != nil {
+			return nil, fmt.Errorf("getting log ID for transaction %d: %w", revertCmd.TransactionId, err)
+		}
+		if logID == 0 {
+			return nil, fmt.Errorf("transaction %d not found", revertCmd.TransactionId)
+		}
+
+		// Get the log containing the original transaction
+		originalLog, err := f.runtimeStore.GetLogByID(ctx, logID)
+		if err != nil {
+			return nil, fmt.Errorf("getting log %d: %w", logID, err)
+		}
+		if originalLog == nil {
+			return nil, fmt.Errorf("log %d not found", logID)
+		}
+
+		// Extract the original transaction from the log
+		var originalTx *ledgerpb.Transaction
+		switch payload := originalLog.Data.Payload.(type) {
+		case *ledgerpb.LogPayload_CreatedTransaction:
+			if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
+				return nil, fmt.Errorf("invalid log payload: missing transaction")
+			}
+			originalTx = payload.CreatedTransaction.Transaction
+		case *ledgerpb.LogPayload_RevertedTransaction:
+			return nil, fmt.Errorf("transaction %d is already reverted", revertCmd.TransactionId)
+		default:
+			return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+		}
+
+		// Check if transaction is already reverted
+		if originalTx.Reverted || originalTx.RevertedAt != nil {
+			return nil, fmt.Errorf("transaction %d is already reverted", revertCmd.TransactionId)
+		}
+
+		// Use the revert transaction provided in the command
+		revertTx := proto.Clone(revertCmd.RevertTransaction).(*ledgerpb.Transaction)
+		
+		// Set timestamp if not provided (use current date)
+		if revertTx.Timestamp == nil || revertTx.Timestamp.Data == 0 {
+			revertTx.Timestamp = raftCommand.Date
+		}
+
+		// Assign transaction ID and timestamps
+		f.state.LastTransactionId++
+		revertTx.Id = f.state.LastTransactionId
+		revertTx.InsertedAt = raftCommand.Date
+		revertTx.UpdatedAt = raftCommand.Date
+
+		// Mark original transaction as reverted
+		revertedTxCopy := proto.Clone(originalTx).(*ledgerpb.Transaction)
+		revertedTxCopy.Reverted = true
+		revertedTxCopy.RevertedAt = raftCommand.Date
+
+		logPayload = &ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_RevertedTransaction{
+				RevertedTransaction: &ledgerpb.RevertedTransaction{
+					RevertedTransaction: revertedTxCopy,
+					RevertTransaction:   revertTx,
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unhandled command type: %T", cmd)
 	}
@@ -153,7 +226,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...*raft.Command) ([]ra
 	for _, command := range commands {
 		switch command.Type {
 		case raft.CommandType_InsertLog:
-			log, err := f.processCreateLog(command)
+			log, err := f.processCreateLog(ctx, command)
 			if err != nil {
 				ret = append(ret, raft.ApplyResult{
 					Error: err,

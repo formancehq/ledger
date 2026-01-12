@@ -427,6 +427,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/transactions/{transactionId}/revert:
+    post:
+      summary: Revert a transaction
+      description: Reverts a transaction by creating a reverse transaction that undoes its effects
+      operationId: revertTransaction
+      tags:
+        - Transactions
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transaction ID to revert
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Idempotency key for the request
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevertTransactionRequestBody'
+      responses:
+        '201':
+          description: Transaction reverted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevertedTransactionResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -790,6 +845,23 @@ components:
             type: string
           description: Metadata for the revert transaction
 
+    RevertTransactionRequestBody:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: Force revert even if accounts don't have sufficient funds
+        atEffectiveDate:
+          type: boolean
+          default: false
+          description: Set the timestamp of the reverted transaction to the original transaction timestamp
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Metadata for the revert transaction
+
     DeleteMetadataRequest:
       type: object
       required:
@@ -892,6 +964,27 @@ components:
           type: integer
           format: int64
           description: Transaction ID (assigned by the system)
+
+    RevertedTransaction:
+      type: object
+      required:
+        - revertedTransaction
+        - revertTransaction
+      properties:
+        revertedTransaction:
+          $ref: '#/components/schemas/TransactionResponse'
+          description: The original transaction that was reverted
+        revertTransaction:
+          $ref: '#/components/schemas/TransactionResponse'
+          description: The new transaction that reverses the original transaction
+
+    RevertedTransactionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/RevertedTransaction'
 
     PostingResponse:
       type: object

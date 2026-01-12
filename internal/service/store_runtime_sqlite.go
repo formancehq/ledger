@@ -30,15 +30,17 @@ type SQLiteRuntimeStore struct {
 	logger logging.Logger
 
 	// Prepared statements
-	stmtGetLogByID                *sql.Stmt
-	stmtInsertLog                 *sql.Stmt
-	stmtGetIdempotency            *sql.Stmt
-	stmtInsertBalance             *sql.Stmt
-	stmtUpsertAccountMetadata     *sql.Stmt
-	stmtDeleteAccountMetadata     *sql.Stmt
-	stmtInsertIdempotency         *sql.Stmt
-	stmtInsertTransactionID       *sql.Stmt
-	stmtGetLogIDForTransactionID  *sql.Stmt
+	stmtGetLogByID                  *sql.Stmt
+	stmtInsertLog                   *sql.Stmt
+	stmtGetIdempotency              *sql.Stmt
+	stmtInsertBalance               *sql.Stmt
+	stmtUpsertAccountMetadata       *sql.Stmt
+	stmtDeleteAccountMetadata       *sql.Stmt
+	stmtInsertIdempotency           *sql.Stmt
+	stmtInsertTransactionID         *sql.Stmt
+	stmtGetLogIDForTransactionID    *sql.Stmt
+	stmtInsertRevertedTransactionID *sql.Stmt
+	stmtIsTransactionReverted       *sql.Stmt
 }
 
 // NewSQLiteRuntimeStore creates a new SQLiteRuntimeStore instance
@@ -132,6 +134,24 @@ func NewSQLiteRuntimeStore(db *SQLDB, logger logging.Logger) (*SQLiteRuntimeStor
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("preparing getLogIDForTransactionID statement: %w", err)
+	}
+
+	store.stmtInsertRevertedTransactionID, err = db.PrepareContext(ctx, `
+		INSERT OR REPLACE INTO reverted_transaction_ids (transaction_id)
+		VALUES (?)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing insertRevertedTransactionID statement: %w", err)
+	}
+
+	store.stmtIsTransactionReverted, err = db.PrepareContext(ctx, `
+		SELECT 1
+		FROM reverted_transaction_ids
+		WHERE transaction_id = ?
+		LIMIT 1
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing isTransactionReverted statement: %w", err)
 	}
 
 	return store, nil
@@ -488,6 +508,19 @@ func (s *SQLiteRuntimeStore) createRuntimeTables(ctx context.Context) error {
 		return fmt.Errorf("creating transaction_ids table: %w", err)
 	}
 
+	// Create reverted_transaction_ids table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS reverted_transaction_ids (
+			transaction_id INTEGER NOT NULL,
+			PRIMARY KEY (transaction_id)
+		) WITHOUT ROWID;
+		
+		CREATE INDEX IF NOT EXISTS idx_reverted_transaction_ids_transaction_id ON reverted_transaction_ids(transaction_id);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating reverted_transaction_ids table: %w", err)
+	}
+
 	return nil
 }
 
@@ -585,6 +618,20 @@ func (s *SQLiteRuntimeStore) applyRuntimeUpdate(ctx context.Context, update Runt
 		}
 	}
 
+	// Apply reverted transaction IDs
+	if len(update.RevertedTransactionIDs) > 0 {
+		stmt := tx.StmtContext(ctx, s.stmtInsertRevertedTransactionID)
+		defer func() {
+			_ = stmt.Close()
+		}()
+
+		for transactionID := range update.RevertedTransactionIDs {
+			if _, err := stmt.ExecContext(ctx, transactionID); err != nil {
+				return fmt.Errorf("inserting reverted transaction ID for transaction %d: %w", transactionID, err)
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing transaction: %w", err)
 	}
@@ -637,6 +684,16 @@ func (s *SQLiteRuntimeStore) Close() error {
 	}
 	if s.stmtGetLogIDForTransactionID != nil {
 		if err := s.stmtGetLogIDForTransactionID.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.stmtInsertRevertedTransactionID != nil {
+		if err := s.stmtInsertRevertedTransactionID.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.stmtIsTransactionReverted != nil {
+		if err := s.stmtIsTransactionReverted.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -837,6 +894,25 @@ func (s *SQLiteRuntimeStore) GetLogIDForTransactionID(ctx context.Context, trans
 	}
 
 	return logID, nil
+}
+
+// IsTransactionReverted checks if a transaction has been reverted (implements RuntimeStore)
+func (s *SQLiteRuntimeStore) IsTransactionReverted(ctx context.Context, transactionID uint64) (bool, error) {
+	if transactionID == 0 {
+		return false, nil
+	}
+
+	var exists int
+	err := s.stmtIsTransactionReverted.QueryRowContext(ctx, transactionID).Scan(&exists)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("querying reverted transaction ID: %w", err)
+	}
+
+	return exists == 1, nil
 }
 
 // GetLastProcessedLogID retrieves the ID of the last inserted log.

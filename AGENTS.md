@@ -37,6 +37,27 @@ Run:
 just generate-sdk
 ```
 
+## Mock Generation
+
+**CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, you MUST regenerate the mocks immediately.
+
+Interfaces annotated with mockgen:
+- `LogWriter`, `LogReader`, `LogStore`, `RuntimeStore` in `internal/service/store.go`
+- `LogFactory` in `internal/service/ledger_default.go`
+
+To regenerate mocks, run:
+```bash
+go generate ./internal/service/store.go
+go generate ./internal/service/ledger_default.go
+```
+
+Or regenerate all mocks in the service package:
+```bash
+go generate ./internal/service/...
+```
+
+**Note for AI agents**: Always regenerate mock files automatically after modifying any interface annotated with `//go:generate mockgen`. Use `go generate` command with the appropriate file path to regenerate the mocks.
+
 ## JSON Property Naming Convention
 
 **CRITICAL**: All JSON objects in the API must use **camelCase** for property names.

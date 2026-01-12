@@ -139,6 +139,8 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 	idempotencyKeys := make(map[string]*ledgerpb.IdempotencyEntry)
 	// Accumulate transaction ID to log ID mappings
 	transactionIDs := make(map[uint64]uint64)
+	// Accumulate reverted transaction IDs
+	revertedTransactionIDs := make(map[uint64]bool)
 
 	for _, log := range logs {
 		// Validate log data
@@ -172,6 +174,8 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 				// Store transaction ID -> log ID mapping for reverted transaction
 				if payload.RevertedTransaction.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction.Id != 0 {
 					transactionIDs[payload.RevertedTransaction.RevertedTransaction.Id] = log.Id
+					// Mark transaction as reverted
+					revertedTransactionIDs[payload.RevertedTransaction.RevertedTransaction.Id] = true
 				}
 				// Store transaction ID -> log ID mapping for revert transaction
 				if payload.RevertedTransaction.RevertTransaction != nil && payload.RevertedTransaction.RevertTransaction.Id != 0 {
@@ -213,6 +217,7 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		AccountMetadataDeletes: accountMetadataDeletes,
 		IdempotencyKeys:        idempotencyKeys,
 		TransactionIDs:         transactionIDs,
+		RevertedTransactionIDs: revertedTransactionIDs,
 		LastProcessedLogID:     logs[len(logs)-1].Id,
 	}, nil
 }

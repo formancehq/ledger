@@ -112,9 +112,9 @@ func WithTimeout(timeout time.Duration) SDKOption {
 // New creates a new instance of the SDK with the provided options
 func New(opts ...SDKOption) *Formance {
 	sdk := &Formance{
-		SDKVersion: "0.11.66",
+		SDKVersion: "0.11.68",
 		sdkConfiguration: config.SDKConfiguration{
-			UserAgent:  "speakeasy-sdk/go 0.11.66 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
+			UserAgent:  "speakeasy-sdk/go 0.11.68 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
 			ServerList: ServerList,
 		},
 		hooks: hooks.New(),

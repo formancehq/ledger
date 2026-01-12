@@ -334,7 +334,8 @@ message DeleteMetadataCommand {
 }
 
 message RevertTransactionCommand {
-
+  uint64 transaction_id = 1;
+  Transaction revert_transaction = 2;
 }
 
 message CommandInput {

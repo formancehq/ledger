@@ -230,6 +230,20 @@ func (impl *LedgerServiceServerImpl) DeleteTransactionMetadata(ctx context.Conte
 	return log, nil
 }
 
+func (impl *LedgerServiceServerImpl) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.Log, error) {
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.Parameters.Ledger)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", req.Parameters.Ledger, err)
+	}
+
+	params := service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		IdempotencyKey: req.Parameters.IdempotencyKey,
+		Input:          req.Payload,
+	}
+
+	return ledgerNode.RevertTransaction(ctx, params)
+}
+
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) {
 	ledgerpb.RegisterLedgerServiceServer(server, ledgerServiceServer)
 }

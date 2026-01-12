@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
@@ -76,7 +77,7 @@ func (b *DefaultBackend) GetLedgerInfo(ctx context.Context, name string) (*ledge
 func (b *DefaultBackend) GetLedger(ctx context.Context, name string) (service.Ledger, error) {
 	ledgerNode, err := b.GetLedgerNode(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting ledger node: %w", err)
 	}
 
 	if ledgerNode.IsLeader() {

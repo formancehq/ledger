@@ -30,6 +30,7 @@ type DefaultLedger struct {
 	saveAccountMetadataLp       *logProcessor[*ledgerpb.SaveAccountMetadataRequestPayload]
 	deleteTransactionMetadataLp *logProcessor[*ledgerpb.DeleteTransactionMetadataRequestPayload]
 	deleteAccountMetadataLp     *logProcessor[*ledgerpb.DeleteAccountMetadataRequestPayload]
+	revertTransactionLp         *logProcessor[*ledgerpb.RevertTransactionRequestPayload]
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -84,6 +85,14 @@ func NewDefaultLedger(
 		logFactory,
 		l.keySetLocker,
 		l.deleteAccountMetadata,
+	)
+	l.revertTransactionLp = newLogProcessor(
+		"RevertTransaction",
+		runtimeStore,
+		logReader,
+		logFactory,
+		l.keySetLocker,
+		l.revertTransaction,
 	)
 
 	return l
@@ -326,9 +335,198 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, script *ledgerpb.S
 	return postings, txMetadata, accountMetadata, nil
 }
 
-// RevertTransaction is not implemented yet
+// RevertTransaction reverts a transaction by creating a reverse transaction
 func (l *DefaultLedger) RevertTransaction(ctx context.Context, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	log, _, err := l.revertTransactionLp.forgeLog(ctx, parameters)
+	return log, err
+}
+
+func (l *DefaultLedger) revertTransaction(ctx context.Context, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+	input := parameters.Input
+
+	// Validate input
+	if input.TransactionId == 0 {
+		return nil, fmt.Errorf("transaction id is required")
+	}
+
+	// Lock the transaction ID to prevent concurrent revert operations
+	lockKey := fmt.Sprintf("tx/revert/%d", input.TransactionId)
+	// todo: the release is done before the log is inserted
+	release, err := l.keySetLocker.LockKeys(ctx, lockKey)
+	if err != nil {
+		return nil, fmt.Errorf("locking transaction %d: %w", input.TransactionId, err)
+	}
+	defer release()
+
+	// Check if transaction is already reverted (fast path using store index)
+	isReverted, err := l.runtimeStore.IsTransactionReverted(ctx, input.TransactionId)
+	if err != nil {
+		return nil, fmt.Errorf("checking if transaction %d is reverted: %w", input.TransactionId, err)
+	}
+	if isReverted {
+		return nil, fmt.Errorf("transaction %d is already reverted", input.TransactionId)
+	}
+
+	// Get the log ID for the transaction ID
+	logID, err := l.runtimeStore.GetLogIDForTransactionID(ctx, input.TransactionId)
+	if err != nil {
+		return nil, fmt.Errorf("getting log ID for transaction %d: %w", input.TransactionId, err)
+	}
+	if logID == 0 {
+		return nil, fmt.Errorf("transaction %d not found", input.TransactionId)
+	}
+
+	// Get the log containing the original transaction
+	log, err := l.logReader.GetLogByID(ctx, logID)
+	if err != nil {
+		return nil, fmt.Errorf("getting log %d: %w", logID, err)
+	}
+	if log == nil {
+		return nil, fmt.Errorf("log %d not found", logID)
+	}
+
+	// Extract the original transaction from the log
+	var originalTx *ledgerpb.Transaction
+	switch payload := log.Data.Payload.(type) {
+	case *ledgerpb.LogPayload_CreatedTransaction:
+		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
+			return nil, fmt.Errorf("invalid log payload: missing transaction")
+		}
+		originalTx = payload.CreatedTransaction.Transaction
+	case *ledgerpb.LogPayload_RevertedTransaction:
+		// Transaction already reverted (double-check)
+		return nil, fmt.Errorf("transaction %d is already a revert transaction", input.TransactionId)
+	default:
+		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+	}
+
+	// Create reverse transaction with swapped source/destination
+	reversedPostings := make([]*ledgerpb.Posting, len(originalTx.Postings))
+	for i, posting := range originalTx.Postings {
+		if posting == nil {
+			return nil, fmt.Errorf("nil posting at index %d", i)
+		}
+		reversedPostings[i] = &ledgerpb.Posting{
+			Source:      posting.Destination,
+			Destination: posting.Source,
+			Amount:      posting.Amount,
+			Asset:       posting.Asset,
+		}
+	}
+
+	// Reverse the order of postings
+	for i := 0; i < len(reversedPostings)/2; i++ {
+		reversedPostings[i], reversedPostings[len(reversedPostings)-i-1] = reversedPostings[len(reversedPostings)-i-1], reversedPostings[i]
+	}
+
+	// Validate balances for revert transaction (unless force is true)
+	if !input.Force {
+		// Group postings by source account and asset to check balances
+		balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
+		requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
+
+		for _, posting := range reversedPostings {
+			if posting == nil {
+				continue
+			}
+			if posting.Source == "world" {
+				continue // WORLD account has infinite funds
+			}
+
+			// Track assets for balance query
+			if balanceQuery[posting.Source] == nil {
+				balanceQuery[posting.Source] = make(map[string]bool)
+			}
+			balanceQuery[posting.Source][posting.Asset] = true
+
+			// Track required funds
+			if requiredFunds[posting.Source] == nil {
+				requiredFunds[posting.Source] = make(map[string]*big.Int)
+			}
+			if requiredFunds[posting.Source][posting.Asset] == nil {
+				requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
+			}
+			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount.Value())
+		}
+
+		// Convert balanceQuery to the format expected by the balance query
+		balanceQueryList := make(map[string][]string)
+		for account, assets := range balanceQuery {
+			assetList := make([]string, 0, len(assets))
+			for asset := range assets {
+				assetList = append(assetList, asset)
+			}
+			balanceQueryList[account] = assetList
+		}
+
+		// Lock and check sufficient funds for all source accounts
+		lockKeys := makeBalanceLockKeys(balanceQueryList)
+		release, err := l.keySetLocker.LockKeys(ctx, lockKeys...)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+
+		balances, err := l.runtimeStore.GetBalances(ctx, balanceQueryList)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if accounts have sufficient funds
+		for account, assets := range requiredFunds {
+			accountBalances, ok := balances[account]
+			if !ok {
+				accountBalances = make(map[string]*big.Int)
+			}
+
+			for asset, requiredAmount := range assets {
+				balance, ok := accountBalances[asset]
+				if !ok {
+					balance = big.NewInt(0)
+				}
+
+				if balance.Cmp(requiredAmount) < 0 {
+					return nil, ErrInsufficientFunds
+				}
+			}
+		}
+	}
+
+	// Merge metadata: original transaction metadata + revert metadata
+	revertMetadata := make(map[string]string)
+	if originalTx.Metadata != nil {
+		for k, v := range originalTx.Metadata {
+			revertMetadata[k] = v
+		}
+	}
+	if input.Metadata != nil {
+		for k, v := range input.Metadata {
+			revertMetadata[k] = v
+		}
+	}
+
+	// Determine timestamp for revert transaction
+	var revertTimestamp *ledgerpb.Timestamp
+	if input.AtEffectiveDate && originalTx.Timestamp != nil {
+		revertTimestamp = originalTx.Timestamp
+	}
+
+	// Create the revert transaction (transaction ID will be assigned by FSM)
+	revertTx := &ledgerpb.Transaction{
+		Postings:  reversedPostings,
+		Metadata:  revertMetadata,
+		Timestamp: revertTimestamp,
+		Reference: originalTx.Reference,
+	}
+
+	return &ledgerpb.CommandInput{
+		Command: &ledgerpb.CommandInput_RevertTransaction{
+			RevertTransaction: &ledgerpb.RevertTransactionCommand{
+				TransactionId:     input.TransactionId,
+				RevertTransaction: revertTx,
+			},
+		},
+	}, nil
 }
 
 // SaveTransactionMetadata saves metadata for a transaction

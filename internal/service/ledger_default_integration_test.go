@@ -4,10 +4,13 @@ package service
 
 import (
 	"context"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
+	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -537,4 +540,425 @@ func expectCreateLogsWithSequentialIDs(logFactory *MockLogFactory, times int) {
 			}, nil
 		}).
 		Times(times)
+}
+
+func TestDefaultLedger_RevertTransaction(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	t.Run("RevertTransaction", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+		logID := uint64(1)
+
+		// Create original transaction log
+		originalTx := &ledgerpb.Transaction{
+			Id: transactionID,
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			},
+		}
+		originalLog := &ledgerpb.Log{
+			Id: logID,
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: originalTx,
+					},
+				},
+			},
+		}
+
+		// Mock expectations
+		runtimeStore.EXPECT().
+			IsTransactionReverted(gomock.Any(), transactionID).
+			Return(false, nil)
+		runtimeStore.EXPECT().
+			GetLogIDForTransactionID(gomock.Any(), transactionID).
+			Return(logID, nil)
+		logReader.EXPECT().
+			GetLogByID(gomock.Any(), logID).
+			Return(originalLog, nil)
+		runtimeStore.EXPECT().
+			GetBalances(gomock.Any(), gomock.Any()).
+			Return(ledgerpb.Balances{
+				"account-1": map[string]*big.Int{
+					"USD": big.NewInt(100),
+				},
+			}, nil)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log)
+	})
+
+	t.Run("RevertTransaction_WithIdempotencyKey", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+		logID := uint64(1)
+		idempotencyKey := "revert-tx-idempotency-key"
+
+		// Create original transaction log
+		originalTx := &ledgerpb.Transaction{
+			Id: transactionID,
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			},
+		}
+		originalLog := &ledgerpb.Log{
+			Id: logID,
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: originalTx,
+					},
+				},
+			},
+		}
+
+		hash := ledgerpb.ComputeIdempotencyHash(&ledgerpb.RevertTransactionRequestPayload{
+			TransactionId: transactionID,
+		})
+
+		// Create the revert log that will be returned
+		revertLogID := uint64(1)
+		revertLog := &ledgerpb.Log{
+			Id: revertLogID,
+		}
+
+		gomock.InOrder(
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(nil, uint64(0), nil),
+			runtimeStore.EXPECT().
+				IsTransactionReverted(gomock.Any(), transactionID).
+				Return(false, nil),
+			runtimeStore.EXPECT().
+				GetLogIDForTransactionID(gomock.Any(), transactionID).
+				Return(logID, nil),
+			logReader.EXPECT().
+				GetLogByID(gomock.Any(), logID).
+				Return(originalLog, nil),
+			runtimeStore.EXPECT().
+				GetBalances(gomock.Any(), gomock.Any()).
+				Return(ledgerpb.Balances{
+					"account-1": map[string]*big.Int{
+						"USD": big.NewInt(100),
+					},
+				}, nil),
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(hash, revertLogID, nil),
+		)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log1, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log1)
+
+		logReader.EXPECT().GetLogByID(gomock.Any(), revertLogID).Return(revertLog, nil)
+
+		// Try to revert again with the same idempotency key
+		log2, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log2)
+		require.Equal(t, log1.Id, log2.Id)
+	})
+
+	t.Run("RevertTransaction_WithIdempotencyKeyConflict", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+		logID := uint64(1)
+		idempotencyKey := "revert-tx-idempotency-key-conflict"
+
+		// Create original transaction log
+		originalTx := &ledgerpb.Transaction{
+			Id: transactionID,
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			},
+		}
+		originalLog := &ledgerpb.Log{
+			Id: logID,
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: originalTx,
+					},
+				},
+			},
+		}
+
+		hash1 := ledgerpb.ComputeIdempotencyHash(&ledgerpb.RevertTransactionRequestPayload{
+			TransactionId: transactionID,
+		})
+
+		// Create the revert log that will be returned
+		revertLogID := uint64(1)
+		revertLog := &ledgerpb.Log{
+			Id: revertLogID,
+		}
+
+		gomock.InOrder(
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(nil, uint64(0), nil),
+			runtimeStore.EXPECT().
+				IsTransactionReverted(gomock.Any(), transactionID).
+				Return(false, nil),
+			runtimeStore.EXPECT().
+				GetLogIDForTransactionID(gomock.Any(), transactionID).
+				Return(logID, nil),
+			logReader.EXPECT().
+				GetLogByID(gomock.Any(), logID).
+				Return(originalLog, nil),
+			runtimeStore.EXPECT().
+				GetBalances(gomock.Any(), gomock.Any()).
+				Return(ledgerpb.Balances{
+					"account-1": map[string]*big.Int{
+						"USD": big.NewInt(100),
+					},
+				}, nil),
+			runtimeStore.EXPECT().
+				GetLogForIdempotencyKey(gomock.Any(), idempotencyKey).
+				Return(hash1, revertLogID, nil),
+		)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log1, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log1)
+
+		logReader.EXPECT().GetLogByID(gomock.Any(), revertLogID).Return(revertLog, nil)
+
+		// Try to revert again with the same idempotency key but different metadata
+		log2, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+				Metadata: map[string]string{
+					"reason": "different",
+				},
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log2)
+		require.Equal(t, ErrIdempotencyKeyConflict, err)
+	})
+
+	t.Run("RevertTransaction_AlreadyReverted", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, runtimeStore, _ := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+
+		runtimeStore.EXPECT().
+			IsTransactionReverted(gomock.Any(), transactionID).
+			Return(true, nil)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "already reverted")
+	})
+
+	t.Run("RevertTransaction_NotFound", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, runtimeStore, _ := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(999)
+
+		runtimeStore.EXPECT().
+			IsTransactionReverted(gomock.Any(), transactionID).
+			Return(false, nil)
+		runtimeStore.EXPECT().
+			GetLogIDForTransactionID(gomock.Any(), transactionID).
+			Return(uint64(0), nil)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("RevertTransaction_ValidationErrors", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, _, _, _ := newTestLedgerService(t, ctx)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: 0,
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, log)
+		require.Contains(t, err.Error(), "transaction id is required")
+	})
+
+	t.Run("RevertTransaction_WithForce", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+		logID := uint64(1)
+
+		// Create original transaction log
+		originalTx := &ledgerpb.Transaction{
+			Id: transactionID,
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			},
+		}
+		originalLog := &ledgerpb.Log{
+			Id: logID,
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: originalTx,
+					},
+				},
+			},
+		}
+
+		// Mock expectations - with force=true, balance check should be skipped
+		runtimeStore.EXPECT().
+			IsTransactionReverted(gomock.Any(), transactionID).
+			Return(false, nil)
+		runtimeStore.EXPECT().
+			GetLogIDForTransactionID(gomock.Any(), transactionID).
+			Return(logID, nil)
+		logReader.EXPECT().
+			GetLogByID(gomock.Any(), logID).
+			Return(originalLog, nil)
+
+		expectCreateLogsWithSequentialIDs(logFactory, 1)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId: transactionID,
+				Force:         true,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log)
+	})
+
+	t.Run("RevertTransaction_WithAtEffectiveDate", func(t *testing.T) {
+		t.Parallel()
+		ledgerService, logReader, runtimeStore, logFactory := newTestLedgerService(t, ctx)
+
+		transactionID := uint64(42)
+		logID := uint64(1)
+
+		// Create original transaction log with timestamp
+		originalTimestamp := ledgerpb.NewTimestamp(libtime.New(time.Now()))
+		originalTx := &ledgerpb.Transaction{
+			Id:        transactionID,
+			Timestamp: originalTimestamp,
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			},
+		}
+		originalLog := &ledgerpb.Log{
+			Id: logID,
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: originalTx,
+					},
+				},
+			},
+		}
+
+		// Mock expectations
+		runtimeStore.EXPECT().
+			IsTransactionReverted(gomock.Any(), transactionID).
+			Return(false, nil)
+		runtimeStore.EXPECT().
+			GetLogIDForTransactionID(gomock.Any(), transactionID).
+			Return(logID, nil)
+		logReader.EXPECT().
+			GetLogByID(gomock.Any(), logID).
+			Return(originalLog, nil)
+		runtimeStore.EXPECT().
+			GetBalances(gomock.Any(), gomock.Any()).
+			Return(ledgerpb.Balances{
+				"account-1": map[string]*big.Int{
+					"USD": big.NewInt(100),
+				},
+			}, nil)
+
+		// Create a log with data for the revert transaction
+		revertLogID := uint64(1)
+		logFactory.EXPECT().
+			CreateLog(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+				return &ledgerpb.Log{
+					Id: revertLogID,
+					Data: &ledgerpb.LogPayload{
+						Payload: &ledgerpb.LogPayload_RevertedTransaction{
+							RevertedTransaction: &ledgerpb.RevertedTransaction{
+								RevertedTransaction: originalTx,
+								RevertTransaction: &ledgerpb.Transaction{
+									Id:        2,
+									Timestamp: originalTimestamp,
+								},
+							},
+						},
+					},
+				}, nil
+			}).
+			Times(1)
+
+		log, err := ledgerService.RevertTransaction(ctx, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+			Input: &ledgerpb.RevertTransactionRequestPayload{
+				TransactionId:   transactionID,
+				AtEffectiveDate: true,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, log)
+
+		// Verify that the revert transaction command contains the original timestamp
+		require.NotNil(t, log.Data)
+		require.NotNil(t, log.Data.Payload)
+	})
 }

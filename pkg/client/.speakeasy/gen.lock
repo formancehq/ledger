@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: f25c00524bc5c0ef7af0d80d9fdf2d41
+  docChecksum: 68fd6524fa0654d91e9e33937922c46e
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.66
-  configChecksum: f736116dcd17fb5d6fd97ad6ae940aca
+  releaseVersion: 0.11.68
+  configChecksum: b89918d1ffd60013e1a520868ea5a555
 features:
   go:
     additionalDependencies: 0.1.0
@@ -51,7 +51,10 @@ generatedFiles:
   - /models/components/postingresponse.go
   - /models/components/progressinfo.go
   - /models/components/raftstatus.go
+  - /models/components/revertedtransaction.go
+  - /models/components/revertedtransactionresponse.go
   - /models/components/reverttransactionrequest.go
+  - /models/components/reverttransactionrequestbody.go
   - /models/components/script.go
   - /models/components/sqlitemattnconfig.go
   - /models/components/sqlitemodernconfig.go
@@ -67,6 +70,7 @@ generatedFiles:
   - /models/operations/getledger.go
   - /models/operations/getledgerraftstate.go
   - /models/operations/listallledgers.go
+  - /models/operations/reverttransaction.go
   - /models/operations/saveaccountmetadata.go
   - /models/operations/savetransactionmetadata.go
   - /models/sdkerrors/errorresponse.go
@@ -108,7 +112,10 @@ generatedFiles:
   - docs/models/components/progressinfo.md
   - docs/models/components/progressinfostate.md
   - docs/models/components/raftstatus.md
+  - docs/models/components/revertedtransaction.md
+  - docs/models/components/revertedtransactionresponse.md
   - docs/models/components/reverttransactionrequest.md
+  - docs/models/components/reverttransactionrequestbody.md
   - docs/models/components/script.md
   - docs/models/components/sqlitemattnconfig.md
   - docs/models/components/sqlitemodernconfig.md
@@ -139,6 +146,8 @@ generatedFiles:
   - docs/models/operations/getledgerresponse.md
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/option.md
+  - docs/models/operations/reverttransactionrequest.md
+  - docs/models/operations/reverttransactionresponse.md
   - docs/models/operations/saveaccountmetadatarequest.md
   - docs/models/operations/saveaccountmetadataresponse.md
   - docs/models/operations/savetransactionmetadatarequest.md
@@ -438,6 +447,21 @@ examples:
           address: "649 Zoey Overpass"
           key: "<key>"
       responses:
+        "400":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  revertTransaction:
+    speakeasy-default-revert-transaction:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          transactionId: 102914
+      responses:
+        "201":
+          application/json: {"data": {"revertedTransaction": {"postings": [{"source": "<value>", "destination": "<value>", "amount": 376007, "asset": "<value>"}], "timestamp": "2024-12-17T22:12:25.987Z", "id": 509527}, "revertTransaction": {"postings": [{"source": "<value>", "destination": "<value>", "amount": 376007, "asset": "<value>"}], "timestamp": "2026-10-16T08:25:05.732Z", "id": 584194}}}
         "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

@@ -100,6 +100,8 @@ type RuntimeUpdate struct {
 	IdempotencyKeys map[string]*ledgerpb.IdempotencyEntry
 	// TransactionIDs contains transaction ID to log ID mappings: map[transactionID]logID
 	TransactionIDs map[uint64]uint64
+	// RevertedTransactionIDs contains transaction IDs that have been reverted: map[transactionID]bool
+	RevertedTransactionIDs map[uint64]bool
 	// LastProcessedLogID is the ID of the last processed log
 	LastProcessedLogID uint64
 }
@@ -115,6 +117,8 @@ type RuntimeStore interface {
 	GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
 	// GetLogIDForTransactionID retrieves the log ID for a given transaction ID
 	GetLogIDForTransactionID(ctx context.Context, transactionID uint64) (uint64, error)
+	// IsTransactionReverted checks if a transaction has been reverted
+	IsTransactionReverted(ctx context.Context, transactionID uint64) (bool, error)
 	// GetLastProcessedLogID retrieves the ID of the last processed log
 	GetLastProcessedLogID(ctx context.Context) (uint64, error)
 }

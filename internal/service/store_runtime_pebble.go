@@ -38,6 +38,7 @@ var (
 	keyPrefixAccountMetadata = []byte("met")
 	keyPrefixIdempotency     = []byte("idm")
 	keyPrefixTransactionID   = []byte("tid")
+	keyPrefixRevertedTxID    = []byte("rtx")
 )
 
 // logKey returns the key for a log entry.
@@ -226,6 +227,17 @@ func (s *PebbleRuntimeStore) applyRuntimeUpdate(batch *pebble.Batch, update Runt
 			binary.BigEndian.PutUint64(logIDValue, logID)
 			if err := batch.Set(pebbleKey, logIDValue, pebble.NoSync); err != nil {
 				return fmt.Errorf("inserting transaction ID mapping for transaction %d: %w", transactionID, err)
+			}
+		}
+	}
+
+	// Apply reverted transaction IDs
+	if len(update.RevertedTransactionIDs) > 0 {
+		for transactionID := range update.RevertedTransactionIDs {
+			pebbleKey := revertedTransactionIDPebbleKey(transactionID)
+			// Store empty value (just presence indicates reverted)
+			if err := batch.Set(pebbleKey, []byte{1}, pebble.NoSync); err != nil {
+				return fmt.Errorf("inserting reverted transaction ID for transaction %d: %w", transactionID, err)
 			}
 		}
 	}
@@ -458,6 +470,16 @@ func transactionIDPebbleKey(transactionID uint64) []byte {
 	return key
 }
 
+// revertedTransactionIDPebbleKey returns the key for a reverted transaction ID
+// Format: rtx{transactionID}
+func revertedTransactionIDPebbleKey(transactionID uint64) []byte {
+	// Use big-endian encoding for proper lexicographic ordering
+	key := make([]byte, len(keyPrefixRevertedTxID)+8)
+	copy(key, keyPrefixRevertedTxID)
+	binary.BigEndian.PutUint64(key[len(keyPrefixRevertedTxID):], transactionID)
+	return key
+}
+
 // ============================================================================
 // RuntimeStore Implementation
 // ============================================================================
@@ -625,6 +647,27 @@ func (s *PebbleRuntimeStore) GetLogIDForTransactionID(ctx context.Context, trans
 	logID := binary.BigEndian.Uint64(value)
 
 	return logID, nil
+}
+
+// IsTransactionReverted checks if a transaction has been reverted (implements RuntimeStore)
+func (s *PebbleRuntimeStore) IsTransactionReverted(ctx context.Context, transactionID uint64) (bool, error) {
+	if transactionID == 0 {
+		return false, nil
+	}
+
+	key := revertedTransactionIDPebbleKey(transactionID)
+	_, closer, err := s.db.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("querying reverted transaction ID: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	return true, nil
 }
 
 // Metrics returns Pebble database metrics (implements MetricsAware)

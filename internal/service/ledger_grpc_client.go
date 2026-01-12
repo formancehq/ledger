@@ -39,7 +39,13 @@ func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, parameters Par
 }
 
 func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return nil, ErrNotFound
+	return g.client.RevertTransaction(ctx, &ledgerpb.RevertTransactionRequest{
+		Parameters: &ledgerpb.Parameters{
+			Ledger:         g.name,
+			IdempotencyKey: parameters.IdempotencyKey,
+		},
+		Payload: parameters.Input,
+	})
 }
 
 func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {

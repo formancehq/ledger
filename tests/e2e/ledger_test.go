@@ -717,4 +717,308 @@ var _ = Describe("Ledger", func() {
 			Expect(saveResp.BulkResponse.Data[1].LogID).NotTo(BeNil())
 		})
 	})
+
+	Context("When reverting transactions", func() {
+		var (
+			leaderID   uint64
+			ledgerName = "revert-transaction-ledger"
+		)
+
+		BeforeEach(func() {
+			leaderID = getLeaderID()
+
+			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
+				CreateLedgerRequest: components.CreateLedgerRequest{
+					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should revert a transaction successfully", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+			Expect(createResp.GetCreateTransactionResponse()).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			Expect(transactionID).NotTo(BeZero())
+
+			// Revert the transaction via bulk endpoint
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID: transactionID,
+					}),
+				},
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp).NotTo(BeNil())
+			Expect(revertResp.BulkResponse).NotTo(BeNil())
+			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
+			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+		})
+
+		It("Should revert a transaction with metadata", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Revert the transaction with metadata
+			revertMetadata := map[string]string{
+				"reason": "correction",
+				"source": "support",
+			}
+
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID:       transactionID,
+						Metadata: revertMetadata,
+					}),
+				},
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp).NotTo(BeNil())
+			Expect(revertResp.BulkResponse).NotTo(BeNil())
+			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
+			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+		})
+
+		It("Should revert a transaction with force flag", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Revert the transaction with force flag
+			force := true
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID:    transactionID,
+						Force: &force,
+					}),
+				},
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp).NotTo(BeNil())
+			Expect(revertResp.BulkResponse).NotTo(BeNil())
+			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
+			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+		})
+
+		It("Should revert a transaction with atEffectiveDate flag", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Revert the transaction with atEffectiveDate flag
+			atEffectiveDate := true
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID:              transactionID,
+						AtEffectiveDate: &atEffectiveDate,
+					}),
+				},
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp).NotTo(BeNil())
+			Expect(revertResp.BulkResponse).NotTo(BeNil())
+			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
+			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+		})
+
+		It("Should fail to revert a non-existent transaction", func() {
+			nonExistentTransactionID := int64(99999)
+
+			bulkElements := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID: nonExistentTransactionID,
+					}),
+				},
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).NotTo(Succeed())
+			Expect(revertResp).To(BeNil())
+		})
+
+		It("Should fail to revert an already reverted transaction", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Revert the transaction first time
+			bulkElements1 := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID: transactionID,
+					}),
+				},
+			}
+
+			revertResp1, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements1,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp1).NotTo(BeNil())
+
+			// Try to revert the same transaction again
+			bulkElements2 := []components.BulkElement{
+				{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID: transactionID,
+					}),
+				},
+			}
+
+			revertResp2, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements2,
+			})
+			Expect(err).NotTo(Succeed())
+			Expect(revertResp2).To(BeNil())
+		})
+
+		It("Should revert multiple transactions in bulk", func() {
+			// Create multiple transactions
+			var transactionIDs []int64
+			for i := 0; i < 3; i++ {
+				createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+					LedgerName: ledgerName,
+					CreateTransactionRequest: components.CreateTransactionRequest{
+						Postings: []components.PostingRequest{{
+							Source:      "world",
+							Destination: fmt.Sprintf("account-%d", i+1),
+							Amount:      big.NewInt(100 * int64(i+1)),
+							Asset:       "USD",
+						}},
+					},
+				})
+				Expect(err).To(Succeed())
+				Expect(createResp).NotTo(BeNil())
+				transactionIDs = append(transactionIDs, createResp.GetCreateTransactionResponse().GetData().Transaction.ID)
+			}
+
+			// Revert all transactions in bulk
+			bulkElements := make([]components.BulkElement, len(transactionIDs))
+			for i, txID := range transactionIDs {
+				bulkElements[i] = components.BulkElement{
+					Action: components.ActionRevertTransaction,
+					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
+						ID: txID,
+					}),
+				}
+			}
+
+			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
+				LedgerName:  ledgerName,
+				RequestBody: bulkElements,
+			})
+			Expect(err).To(Succeed())
+			Expect(revertResp).NotTo(BeNil())
+			Expect(revertResp.BulkResponse).NotTo(BeNil())
+			Expect(revertResp.BulkResponse.Data).To(HaveLen(len(transactionIDs)))
+			for _, data := range revertResp.BulkResponse.Data {
+				Expect(data.LogID).NotTo(BeNil())
+			}
+		})
+	})
 })
