@@ -18,11 +18,6 @@ import (
 	"google.golang.org/protobuf/protoadapt"
 )
 
-type Incoming struct {
-	Msg raftpb.Message
-	Rsp chan error
-}
-
 // GRPCTransport handles network communication between Raft nodes using gRPC
 // It wraps GRPCClientPool and manages Raft-specific message routing and channels
 type GRPCTransport struct {
@@ -30,7 +25,7 @@ type GRPCTransport struct {
 	connectionPool *transport.ConnectionPool
 
 	// Channel for Incoming messages
-	recvCh Queue[Incoming]
+	recvCh Queue[raftpb.Message]
 
 	// Channels for outgoing messages per peer
 	peers map[uint64]peerConnection
@@ -58,32 +53,27 @@ func NewTransport(
 ) *GRPCTransport {
 	meter := meterProvider.Meter("raft.transport")
 
-	createQueue := func(capacity, priority int) Queue[Incoming] {
+	createQueue := func(capacity, priority int) Queue[raftpb.Message] {
 
 		meter := meterProvider.Meter("raft.transport", metric.WithInstrumentationAttributes(
 			attribute.Int("priority", priority),
 		))
 
-		return NewQueueObserver[Incoming](
+		return NewQueueObserver[raftpb.Message](
 			"raft.transport.recv",
-			NewSimpleQueue[Incoming](logger, capacity),
-			WithLogger[Incoming](logger),
-			WithMeter[Incoming](meter),
-			WithAttributesFn(func(t Incoming) []attribute.KeyValue {
-				// todo: Add something to separate messages for different groups
-				return AddTypeAsAttribute(t.Msg)
-			}),
+			NewSimpleQueue[raftpb.Message](logger, capacity),
+			WithLogger[raftpb.Message](logger),
+			WithMeter[raftpb.Message](meter),
+			WithAttributesFn(AddTypeAsAttribute),
 		)
 	}
 
 	return &GRPCTransport{
 		connectionPool: connectionPool,
-		recvCh: NewPriorityQueue[Incoming](
-			func(incoming Incoming) int {
-				return RaftMessagePriority(incoming.Msg)
-			},
+		recvCh: NewPriorityQueue[raftpb.Message](
+			RaftMessagePriority,
 			logger,
-			CreateQueues[Incoming](config.Reception, createQueue)...,
+			CreateQueues[raftpb.Message](config.Reception, createQueue)...,
 		),
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
@@ -182,14 +172,14 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 }
 
 // Send sends a message to a peer
-func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
-	peer, exists := t.peers[peerID]
+func (t *GRPCTransport) Send(msg raftpb.Message) {
+	peer, exists := t.peers[msg.To]
 
 	if exists {
 		if !peer.sendCh.Push(msg) {
 			t.logger.
 				WithFields(map[string]any{
-					"peer": fmt.Sprintf("%x", peerID),
+					"peer": fmt.Sprintf("%x", msg.To),
 					"type": msg.Type.String(),
 				}).
 				Errorf("Send channel full, dropping message")
@@ -197,7 +187,7 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 	} else {
 		t.logger.
 			WithFields(map[string]any{
-				"peer": fmt.Sprintf("%x", peerID),
+				"peer": fmt.Sprintf("%x", msg.To),
 				"type": msg.Type.String(),
 			}).
 			Errorf("No send channel for peer, dropping message")
@@ -205,7 +195,7 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 }
 
 // Recv returns the channel for receiving messages
-func (t *GRPCTransport) Recv() <-chan Incoming {
+func (t *GRPCTransport) Recv() <-chan raftpb.Message {
 	return t.recvCh.Recv()
 }
 
@@ -265,11 +255,7 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 			}
 
 			// Send message to recvCh for processing
-			rspChan := make(chan error, 1)
-			if !t.recvCh.Push(Incoming{
-				Msg: msg,
-				Rsp: rspChan,
-			}) {
+			if !t.recvCh.Push(msg) {
 				if err := stream.Send(&SendMessageResponse{
 					Message: &SendMessageResponse_Raft{
 						Raft: &RaftResponseMessage{
@@ -283,26 +269,15 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 				continue
 			}
 
-			select {
-			case <-stream.Context().Done():
-				return stream.Context().Err()
-			case ret := <-rspChan:
-				if err := stream.Send(&SendMessageResponse{
-					Message: &SendMessageResponse_Raft{
-						Raft: &RaftResponseMessage{
-							Success: ret == nil,
-							Error: func() string {
-								if ret != nil {
-									return ret.Error()
-								}
-								return ""
-							}(),
-							RequestId: m.Raft.Id,
-						},
+			if err := stream.Send(&SendMessageResponse{
+				Message: &SendMessageResponse_Raft{
+					Raft: &RaftResponseMessage{
+						Success:   true,
+						RequestId: m.Raft.Id,
 					},
-				}); err != nil {
-					return err
-				}
+				},
+			}); err != nil {
+				t.logger.Errorf("Failed to send response to peer: %v", err)
 			}
 		}
 	}
@@ -414,6 +389,8 @@ func (conn *peerConnection) loop() {
 							Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
 						conn.unreachableCh.Push(nodeID)
 					}
+				default:
+					panic(fmt.Sprintf("received unexpected message type: %T", msg))
 				}
 			}
 		}, conn.logger)

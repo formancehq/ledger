@@ -1,17 +1,16 @@
-package service
+package pebble
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-
-	"context"
-	"time"
 )
 
-func NewPebbleMetricsListener(m metric.Meter) *pebble.EventListener {
+func NewMetricsListener(m metric.Meter) *pebble.EventListener {
 	flushTotal, err := m.Int64Counter(
 		"pebble.flush.total",
 		metric.WithDescription("Number of Pebble flush operations"),
@@ -92,7 +91,7 @@ func NewPebbleMetricsListener(m metric.Meter) *pebble.EventListener {
 
 			flushTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 
-			// Prefer info.Duration (CPU+IO), not TotalDuration, for “work time”.
+			// Prefer info.Duration (CPU+IO), not TotalDuration, for "work time".
 			flushDurMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
 			flushInputBytes.Record(ctx, int64(info.InputBytes), metric.WithAttributes(attrs...))
 		},

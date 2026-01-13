@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
@@ -15,8 +16,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
-	"github.com/formancehq/ledger-v3-poc/internal/systempb"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store/sqlite"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -28,24 +30,53 @@ func Module() fx.Option {
 		transport.Module(),
 		fx.Provide(
 			raft.NewTransport,
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Runtime, error) {
+				switch cfg.StorageType {
+				case "pebble":
+					return pebble.NewRuntimeStore(
+						filepath.Join(cfg.RaftConfig.DataDir, "runtime"),
+						logger,
+						meterProvider.Meter("peeble.runtime_store"),
+					)
+				case "sqlite-mattn":
+					return sqlite.NewMattnRuntimeStore(
+						filepath.Join(cfg.RaftConfig.DataDir, "runtime.db"),
+						logger,
+					)
+				case "sqlite-modernc":
+					return sqlite.NewModernRuntimeStore(
+						filepath.Join(cfg.RaftConfig.DataDir, "runtime.db"),
+						logger,
+					)
+				default:
+					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
+				}
+			},
 			func(
 				params struct {
 					fx.In
-					Config        system.NodeConfig
+					Config        raft.NodeConfig
 					Logger        logging.Logger
 					Transport     *raft.GRPCTransport
 					MeterProvider metric.MeterProvider
+					RuntimeStore  store.Runtime
 				},
-			) (*system.Node, error) {
-				return system.NewNode(params.Config, params.Logger, params.Transport, params.MeterProvider)
+			) (*raft.Node, error) {
+				return raft.NewNode(
+					params.Config,
+					params.Transport,
+					params.RuntimeStore,
+					params.Logger,
+					params.MeterProvider.Meter("raft.node"),
+				)
 			},
-			func(cfg Config) system.NodeConfig {
+			func(cfg Config) raft.NodeConfig {
 				return cfg.RaftConfig
 			},
 			func(cfg Config) raft.TransportConfig {
 				return cfg.TransportConfig
 			},
-			func(cfg system.NodeConfig, logger logging.Logger) (*grpcserver.Server, error) {
+			func(cfg raft.NodeConfig, logger logging.Logger) (*grpcserver.Server, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
@@ -57,11 +88,10 @@ func Module() fx.Option {
 
 				return grpcserver.NewServer(grpcPort, logger), nil
 			},
-			NewSystemServiceServer,
 			NewLedgerServiceServer,
 			httphandler.NewServer,
 			httphandler.NewHandler,
-			func(node *system.Node, connectionPool *transport.ConnectionPool, cfg system.NodeConfig) httphandler.Backend {
+			func(node *raft.Node, connectionPool *transport.ConnectionPool, cfg raft.NodeConfig) httphandler.Backend {
 				return httphandler.NewDefaultBackend(node, connectionPool, cfg.NodeID)
 			},
 		),
@@ -86,12 +116,13 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
+			func(lc fx.Lifecycle, runtime store.Runtime) {
+				lc.Append(fx.Hook{
+					OnStop: runtime.Close,
+				})
+			},
 			func(grpcServer *grpcserver.Server, transport *raft.GRPCTransport) error {
 				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
-				return nil
-			},
-			func(grpcServer *grpcserver.Server, systemServiceServer systempb.SystemServiceServer) error {
-				RegisterSystemService(grpcServer.GetServer(), systemServiceServer)
 				return nil
 			},
 			func(grpcServer *grpcserver.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) error {
@@ -118,7 +149,7 @@ func Module() fx.Option {
 					OnStop: raftTransport.Stop,
 				})
 			},
-			func(lc fx.Lifecycle, systemNode *system.Node, logger logging.Logger) (*system.Node, error) {
+			func(lc fx.Lifecycle, systemNode *raft.Node, logger logging.Logger) (*raft.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						if err := systemNode.Start(ctx); err != nil {

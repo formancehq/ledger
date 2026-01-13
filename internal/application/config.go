@@ -2,14 +2,14 @@ package application
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
 )
 
 type Config struct {
-	RaftConfig system.NodeConfig
+	RaftConfig raft.NodeConfig
 	Debug      bool
 	HTTPPort   int
 	TransportConfig raft.TransportConfig
+	StorageType string
 }
 
 func (c Config) Validate() error {

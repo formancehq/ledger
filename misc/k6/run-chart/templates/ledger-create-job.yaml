@@ -24,19 +24,16 @@ spec:
               value: {{ .Values.runner.env.ledgerUrl }}
             - name: LEDGER_NAME
               value: {{ .Values.runner.env.ledgerName }}
-            - name: STORE_DRIVER
-              value: {{ .Values.runner.env.storeDriver }}
           command:
             - /bin/sh
             - -c
           args:
             - |
               set -euo pipefail
-              payload=$(printf '{"storeDriver":"%s"}' "$STORE_DRIVER")
               status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
                 -X POST \
                 -H "Content-Type: application/json" \
-                --data "$payload" \
+                --data "{}" \
                 "$LEDGER_URL/$LEDGER_NAME" || true)
               if [ "$status" = "201" ] || [ "$status" = "409" ]; then
                 exit 0

@@ -69,14 +69,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		Input:          payload,
 	}
 
-	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
-	// Call ledger service
-	log, err := ledger.RevertTransaction(r.Context(), params)
+	log, err := s.backend.RevertTransaction(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

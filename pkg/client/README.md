@@ -99,7 +99,6 @@ func main() {
 * [GetLedger](docs/sdks/ledgers/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
 * [DeleteLedger](docs/sdks/ledgers/README.md#deleteledger) - Delete a ledger
-* [GetLedgerRaftState](docs/sdks/ledgers/README.md#getledgerraftstate) - Get ledger Raft cluster state
 
 ### [Transactions](docs/sdks/transactions/README.md)
 

@@ -37,13 +37,7 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 		},
 	}
 
-	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
-	_, err = ledger.DeleteAccountMetadata(r.Context(), params)
+	_, err := s.backend.DeleteAccountMetadata(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "address": address, "key": key, "error": err}).Errorf("Failed to delete account metadata")
 		handleError(w, r, err)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/grpc"
 )
@@ -15,10 +15,10 @@ import (
 type LedgerServiceServerImpl struct {
 	ledgerpb.UnimplementedLedgerServiceServer
 	logger     logging.Logger
-	systemNode *system.Node
+	systemNode *raft.Node
 }
 
-func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) ledgerpb.LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, systemNode *raft.Node) ledgerpb.LedgerServiceServer {
 	return &LedgerServiceServerImpl{
 		logger:     logger,
 		systemNode: systemNode,
@@ -28,41 +28,16 @@ func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) ledg
 func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.Log, error) {
 	impl.logger.WithFields(map[string]any{"reference": req.Payload.Reference}).Debugf("CreateTransaction request received")
 
-	// Create transaction parameters directly from protobuf request
-	params := service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+	return impl.systemNode.CreateTransaction(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
-	}
-
-	// Extract ledger name from request
-	ledgerName := req.Parameters.Ledger
-	if ledgerName == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
-	}
-
-	// Call ledger service
-	log, err := ledgerNode.CreateTransaction(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("creating transaction: %w", err)
-	}
-
-	return log, nil
+	})
 }
 
 func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest, stream ledgerpb.LedgerService_StreamLogsServer) error {
 	ctx := stream.Context()
 
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.GetLedger())
-	if err != nil {
-		return err
-	}
-
-	cursor, err := ledgerNode.GetAllLogs(ctx, req.FromId, req.ToId)
+	cursor, err := impl.systemNode.GetAllLogs(ctx, req.Ledger, req.FromId, req.ToId)
 	if err != nil {
 		return err
 	}
@@ -91,157 +66,79 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest,
 }
 
 func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.Log, error) {
-	impl.logger.WithFields(map[string]any{"address": req.Payload.Address}).Debugf("SaveAccountMetadata request received")
-
-	// Validate request
-	if req.Payload.Address == "" {
-		return nil, fmt.Errorf("account address is required")
-	}
-	if req.Payload.Metadata == nil {
-		return nil, fmt.Errorf("metadata is required")
-	}
-
-	// Extract ledger name from request
-	ledgerName := req.Parameters.Ledger
-	if ledgerName == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
-	}
-
-	// Create parameters directly from protobuf request
-	params := service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+	return impl.systemNode.SaveAccountMetadata(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
-	}
-
-	// Call ledger service
-	log, err := ledgerNode.SaveAccountMetadata(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("saving account metadata: %w", err)
-	}
-
-	return log, nil
+	})
 }
 
 func (impl *LedgerServiceServerImpl) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.Log, error) {
-	impl.logger.WithFields(map[string]any{"transaction_id": req.Payload.TransactionId}).Debugf("SaveTransactionMetadata request received")
-
-	// Validate request
-	if req.Payload.TransactionId == 0 {
-		return nil, fmt.Errorf("transaction id is required")
-	}
-	if req.Payload.Metadata == nil {
-		return nil, fmt.Errorf("metadata is required")
-	}
-
-	// Extract ledger name from request
-	ledgerName := req.Parameters.Ledger
-	if ledgerName == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
-	}
-
-	// Create parameters directly from protobuf request
-	params := service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+	return impl.systemNode.SaveTransactionMetadata(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
-	}
-
-	// Call ledger service
-	log, err := ledgerNode.SaveTransactionMetadata(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("saving transaction metadata: %w", err)
-	}
-
-	return log, nil
+	})
 }
 
 func (impl *LedgerServiceServerImpl) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.Log, error) {
-	impl.logger.WithFields(map[string]any{"address": req.Payload.Address}).Debugf("DeleteAccountMetadata request received")
-
-	if req.Payload.Address == "" {
-		return nil, fmt.Errorf("account address is required")
-	}
-	if req.Payload.Key == "" {
-		return nil, fmt.Errorf("metadata key is required")
-	}
-
-	ledgerName := req.Parameters.Ledger
-	if ledgerName == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
-	}
-
-	params := service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+	return impl.systemNode.DeleteAccountMetadata(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
-	}
-
-	log, err := ledgerNode.DeleteAccountMetadata(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("deleting account metadata: %w", err)
-	}
-
-	return log, nil
+	})
 }
 
 func (impl *LedgerServiceServerImpl) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.Log, error) {
-	impl.logger.WithFields(map[string]any{"transaction_id": req.Payload.TransactionId}).Debugf("DeleteTransactionMetadata request received")
-
-	if req.Payload.TransactionId == 0 {
-		return nil, fmt.Errorf("transaction id is required")
-	}
-	if req.Payload.Key == "" {
-		return nil, fmt.Errorf("metadata key is required")
-	}
-
-	ledgerName := req.Parameters.Ledger
-	if ledgerName == "" {
-		return nil, fmt.Errorf("ledger name is required")
-	}
-
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
-	}
-
-	params := service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+	return impl.systemNode.DeleteTransactionMetadata(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
-	}
-
-	log, err := ledgerNode.DeleteTransactionMetadata(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("deleting transaction metadata: %w", err)
-	}
-
-	return log, nil
+	})
 }
 
 func (impl *LedgerServiceServerImpl) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.Log, error) {
-	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.Parameters.Ledger)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger '%s': %w", req.Parameters.Ledger, err)
-	}
-
-	params := service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+	return impl.systemNode.RevertTransaction(ctx, req.Parameters.Ledger, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
+	})
+}
+
+func (impl *LedgerServiceServerImpl) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
+	return impl.systemNode.CreateLedger(ctx, req)
+}
+
+func (impl *LedgerServiceServerImpl) DeleteLedger(ctx context.Context, req *ledgerpb.DeleteLedgerCommand) (*ledgerpb.DeleteLedgerResponse, error) {
+	impl.logger.WithFields(map[string]any{"name": req.Name}).Debugf("DeleteLedger request received")
+
+	if req.Name == "" {
+		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	return ledgerNode.RevertTransaction(ctx, params)
+	if err := impl.systemNode.DeleteLedger(ctx, req.Name); err != nil {
+		return nil, fmt.Errorf("deleting ledger: %w", err)
+	}
+
+	return &ledgerpb.DeleteLedgerResponse{}, nil
+}
+
+func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *ledgerpb.GetAllLedgersRequest) (*ledgerpb.GetAllLedgersResponse, error) {
+	impl.logger.Debugf("GetAllLedgersInfo request received")
+
+	ledgers, err := impl.systemNode.GetAllLedgersInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting all ledgers: %w", err)
+	}
+
+	return &ledgerpb.GetAllLedgersResponse{
+		Ledgers: ledgers,
+	}, nil
+}
+
+func (impl *LedgerServiceServerImpl) GetLedgerInfo(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
+	impl.logger.WithFields(map[string]any{"name": req.Name}).Debugf("GetLedgerInfo request received")
+
+	if req.Name == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	return impl.systemNode.GetLedgerInfo(ctx, req.Name)
 }
 
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) {

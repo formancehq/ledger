@@ -64,7 +64,7 @@ go generate ./internal/service/...
 
 - **All properties in OpenAPI specification** (`openapi.yml`) must be in camelCase
 - **All JSON tags in Go structs** used for HTTP request/response bodies must use camelCase
-- **Examples**: `logStoreDriver`, `runtimeStoreDriver`, `logStoreConfig`, `runtimeStoreConfig`, `snapshotThreshold`, `createdAt`, `deletedAt`, etc.
+- **Examples**: `ledgerName`, `nextLogId`, `nextTransactionId`, `createdAt`, `idempotencyKey`, etc.
 
 This convention ensures consistency across the API and matches common JavaScript/TypeScript conventions.
 

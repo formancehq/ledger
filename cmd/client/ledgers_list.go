@@ -47,19 +47,13 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 
 	// Create table data
 	tableData := pterm.TableData{
-		{"ID", "Name", "Store Driver", "Created At", "Deleted At"},
+		{"Name", "Created At"},
 	}
 
 	for _, ledger := range ledgers {
-		id := fmt.Sprintf("%d", ledger.ID)
 		name := ledger.Name
-		storeDriver := string(ledger.StoreDriver)
 		createdAt := ledger.CreatedAt.Format("2006-01-02 15:04:05")
-		deletedAt := "N/A"
-		if ledger.DeletedAt != nil {
-			deletedAt = ledger.DeletedAt.Format("2006-01-02 15:04:05")
-		}
-		tableData = append(tableData, []string{id, name, storeDriver, createdAt, deletedAt})
+		tableData = append(tableData, []string{name, createdAt})
 	}
 
 	pterm.DefaultSection.Println("All Ledgers")

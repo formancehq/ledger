@@ -1,4 +1,4 @@
-package service
+package sqlite
 
 import (
 	"context"
@@ -11,20 +11,20 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type SQLDB struct {
+type DB struct {
 	*sql.DB
 	reg metric.Registration
 }
 
-func (db *SQLDB) Close() error {
+func (db *DB) Close() error {
 	if err := db.reg.Unregister(); err != nil {
 		return err
 	}
 	return db.DB.Close()
 }
 
-// SQLiteMetrics contains SQLite database metrics
-type SQLiteMetrics struct {
+// Metrics contains SQLite database metrics
+type Metrics struct {
 	PageCount     int64 `json:"pageCount"`
 	PageSize      int64 `json:"pageSize"`
 	DatabaseSize  int64 `json:"databaseSize"`
@@ -32,10 +32,10 @@ type SQLiteMetrics struct {
 	SchemaVersion int64 `json:"schemaVersion"`
 }
 
-// getSQLiteMetrics retrieves SQLite database metrics using PRAGMA statements
-func getSQLiteMetrics(db *SQLDB) *SQLiteMetrics {
+// getMetrics retrieves SQLite database metrics using PRAGMA statements
+func getMetrics(db *DB) *Metrics {
 	ctx := context.Background()
-	metrics := &SQLiteMetrics{}
+	metrics := &Metrics{}
 
 	// Get page count
 	var pageCount int64
@@ -69,8 +69,8 @@ func getSQLiteMetrics(db *SQLDB) *SQLiteMetrics {
 	return metrics
 }
 
-// openSQLiteModernDB opens a SQLite database using the modernc.org/sqlite driver
-func openSQLiteModernDB(dsn string, options ...otelsql.Option) (*SQLDB, error) {
+// OpenModernDB opens a SQLite database using the modernc.org/sqlite driver
+func OpenModernDB(dsn string, options ...otelsql.Option) (*DB, error) {
 	db, err := otelsql.Open("sqlite",
 		dsn+"?cache=shared&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-32768)",
 		options...,
@@ -78,11 +78,11 @@ func openSQLiteModernDB(dsn string, options ...otelsql.Option) (*SQLDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite modern database: %w", err)
 	}
-	return configureSQLiteDB(db, options...)
+	return configureDB(db, options...)
 }
 
-// openSQLiteMattnDB opens a SQLite database using the github.com/mattn/go-sqlite3 driver
-func openSQLiteMattnDB(dsn string, options ...otelsql.Option) (*SQLDB, error) {
+// OpenMattnDB opens a SQLite database using the github.com/mattn/go-sqlite3 driver
+func OpenMattnDB(dsn string, options ...otelsql.Option) (*DB, error) {
 	db, err := otelsql.Open("sqlite3", dsn+
 		"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=-32768&_temp_store=MEMORY&_busy_timeout=5000&_txlock=immediate",
 		options...,
@@ -90,11 +90,11 @@ func openSQLiteMattnDB(dsn string, options ...otelsql.Option) (*SQLDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
-	return configureSQLiteDB(db, options...)
+	return configureDB(db, options...)
 }
 
-// configureSQLiteDB configures common SQLite database connection settings
-func configureSQLiteDB(db *sql.DB, options ...otelsql.Option) (*SQLDB, error) {
+// configureDB configures common SQLite database connection settings
+func configureDB(db *sql.DB, options ...otelsql.Option) (*DB, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
@@ -103,5 +103,5 @@ func configureSQLiteDB(db *sql.DB, options ...otelsql.Option) (*SQLDB, error) {
 		panic(err)
 	}
 
-	return &SQLDB{db, reg}, nil
+	return &DB{db, reg}, nil
 }

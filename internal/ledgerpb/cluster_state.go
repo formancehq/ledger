@@ -39,13 +39,13 @@ type ProgressInfo struct {
 }
 
 // ClusterState represents the state of the Raft cluster
-type ClusterState[InnerState any] struct {
+type ClusterState struct {
 	State      string      `json:"state"`      // Leader, Follower, Candidate, Shutdown
 	Leader     uint        `json:"leader"`     // ID of the current leader (0 if no leader)
 	Nodes      []NodeInfo  `json:"nodes"`      // List of all nodes in the cluster
 	LocalNode  uint        `json:"localNode"`  // ID of the local node
 	RaftStatus *RaftStatus `json:"raftStatus"` // Complete Raft status information
-	InnerState InnerState  `json:"innerState"`
+	InnerState *State  `json:"innerState"`
 }
 
 // NodeInfo represents information about a node in the cluster

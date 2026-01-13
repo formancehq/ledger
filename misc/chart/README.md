@@ -174,6 +174,7 @@ The following table lists the configurable parameters and their default values:
 | `config.bindAddr` | Raft/gRPC bind address (same port for both) | `0.0.0.0:8888` |
 | `config.httpPort` | HTTP server port | `9000` |
 | `config.dataDir` | Data directory for Raft | `/data/raft` |
+| `config.storageType` | Storage type (sqlite-mattn, sqlite-modern, pebble) | `` |
 | `config.raft.snapshotThreshold` | Number of logs before triggering a snapshot | `100` |
 | `config.raft.snapshotInterval` | Minimum interval between snapshots | `30s` |
 | `config.raft.electionTick` | Election timeout in ticks | `10` |

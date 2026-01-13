@@ -128,7 +128,6 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 		pterm.Println()
 		pterm.DefaultHeader.WithFullWidth().Println("FSM State")
 		fsmInfo := ""
-		fsmInfo += fmt.Sprintf("Next Ledger ID: %d\n", innerState.GetNextLedgerID())
 		fsmInfo += fmt.Sprintf("Number of Ledgers: %d\n", len(innerState.GetLedgers()))
 
 		pterm.DefaultBox.WithTitle("FSM Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(fsmInfo)
@@ -136,13 +135,14 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 		// Ledgers table
 		pterm.Println()
 		ledgerTableData := pterm.TableData{
-			{"Name", "ID", "Store Driver"},
+			{"Name", "Next Log ID", "Next TX ID", "Last Applied Log ID"},
 		}
-		for name, ledgerInfo := range innerState.GetLedgers() {
+		for name, ledgerState := range innerState.GetLedgers() {
 			ledgerTableData = append(ledgerTableData, []string{
 				name,
-				fmt.Sprintf("%d", ledgerInfo.ID),
-				string(ledgerInfo.StoreDriver),
+				fmt.Sprintf("%d", ledgerState.NextLogID),
+				fmt.Sprintf("%d", ledgerState.NextTransactionID),
+				fmt.Sprintf("%d", ledgerState.LastAppliedLogID),
 			})
 		}
 		return pterm.DefaultTable.WithHasHeader().WithData(ledgerTableData).Render()

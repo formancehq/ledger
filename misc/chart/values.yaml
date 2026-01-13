@@ -42,6 +42,9 @@ config:
   httpPort: 9000
   dataDir: "/data/raft"
   
+  # Storage type: sqlite-mattn, sqlite-modern, or pebble
+  storageType: "sqlite-mattn"
+  
   # Raft configuration
   raft:
     snapshotThreshold: 15000   # Number of logs before triggering a snapshot

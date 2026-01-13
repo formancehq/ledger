@@ -45,13 +45,7 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 		},
 	}
 
-	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
-	_, err = ledger.DeleteTransactionMetadata(r.Context(), params)
+	_, err = s.backend.DeleteTransactionMetadata(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

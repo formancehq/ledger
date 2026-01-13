@@ -6,49 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/onsi/gomega/types"
 )
-
-type beLedgerFollowerMatcher struct {
-	ledgerName string
-}
-
-func (matcher beLedgerFollowerMatcher) Match(actual any) (success bool, err error) {
-	srv, ok := actual.(*serviceWithClient)
-	if !ok {
-		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
-	}
-
-	clusterState, err := srv.client.Ledgers.GetLedgerRaftState(context.Background(), operations.GetLedgerRaftStateRequest{
-		LedgerName: matcher.ledgerName,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
-		return false, nil
-	}
-	return *clusterState.LedgerClusterStateResponse.Data.Leader !=
-		clusterState.LedgerClusterStateResponse.Data.LocalNode, nil
-}
-
-func (matcher beLedgerFollowerMatcher) FailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected node to be a follower for ledger '%s'", matcher.ledgerName)
-}
-
-func (matcher beLedgerFollowerMatcher) NegatedFailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected node not to be a follower for ledger '%s'", matcher.ledgerName)
-}
-
-func BeLedgerFollower(ledgerName string) types.GomegaMatcher {
-	return beLedgerFollowerMatcher{
-		ledgerName: ledgerName,
-	}
-}
-
-var _ types.GomegaMatcher = (*beLedgerFollowerMatcher)(nil)
 
 type beFollowerMatcher struct{}
 
@@ -84,50 +43,48 @@ func BeFollower() types.GomegaMatcher {
 
 var _ types.GomegaMatcher = (*beFollowerMatcher)(nil)
 
-type hasLastLogMatcher struct {
-	ledgerName      string
-	expectedLastLog uint64
-	observedLastLog uint64
+type hasNextLogIDMatcher struct {
+	ledgerName          string
+	expectedNextLastLog uint64
+	observedNextLastLog uint64
 }
 
-func (matcher *hasLastLogMatcher) Match(actual any) (success bool, err error) {
+func (matcher *hasNextLogIDMatcher) Match(actual any) (success bool, err error) {
 	srv, ok := actual.(*serviceWithClient)
 	if !ok {
 		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
 	}
 
-	clusterState, err := srv.client.Ledgers.GetLedgerRaftState(context.Background(), operations.GetLedgerRaftStateRequest{
-		LedgerName: matcher.ledgerName,
-	})
+	clusterState, err := srv.client.Cluster.GetClusterState(context.Background())
 	if err != nil {
 		return false, err
 	}
 
-	matcher.observedLastLog = uint64(clusterState.LedgerClusterStateResponse.Data.InnerState.LastLogID)
+	matcher.observedNextLastLog = uint64(clusterState.ClusterStateResponse.Data.InnerState.Ledgers[matcher.ledgerName].NextLogID)
 
-	if matcher.observedLastLog > matcher.expectedLastLog {
-		return false, fmt.Errorf("last log %d is greater than expected %d", matcher.observedLastLog, matcher.expectedLastLog)
+	if matcher.observedNextLastLog > matcher.expectedNextLastLog {
+		return false, fmt.Errorf("last log %d is greater than expected %d", matcher.observedNextLastLog, matcher.expectedNextLastLog)
 	}
 
-	return matcher.observedLastLog == matcher.expectedLastLog, nil
+	return matcher.observedNextLastLog == matcher.expectedNextLastLog, nil
 }
 
-func (matcher *hasLastLogMatcher) FailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected %s to have last log %d, got %d", matcher.ledgerName, matcher.expectedLastLog, matcher.observedLastLog)
+func (matcher *hasNextLogIDMatcher) FailureMessage(actual any) (message string) {
+	return fmt.Sprintf("Expected %s to have last log %d, got %d", matcher.ledgerName, matcher.expectedNextLastLog, matcher.observedNextLastLog)
 }
 
-func (matcher *hasLastLogMatcher) NegatedFailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected %s not to have last log %d", matcher.ledgerName, matcher.expectedLastLog)
+func (matcher *hasNextLogIDMatcher) NegatedFailureMessage(actual any) (message string) {
+	return fmt.Sprintf("Expected %s not to have last log %d", matcher.ledgerName, matcher.expectedNextLastLog)
 }
 
-func HasLastLog(ledgerName string, lastLog uint64) types.GomegaMatcher {
-	return &hasLastLogMatcher{
-		ledgerName:      ledgerName,
-		expectedLastLog: lastLog,
+func HasNextLogID(ledgerName string, lastLog uint64) types.GomegaMatcher {
+	return &hasNextLogIDMatcher{
+		ledgerName:          ledgerName,
+		expectedNextLastLog: lastLog,
 	}
 }
 
-var _ types.GomegaMatcher = (*hasLastLogMatcher)(nil)
+var _ types.GomegaMatcher = (*hasNextLogIDMatcher)(nil)
 
 type haveALeaderMatcher struct {
 	fetchTo *uint64
@@ -171,53 +128,3 @@ func HaveALeader(fetchTo *uint64) types.GomegaMatcher {
 }
 
 var _ types.GomegaMatcher = (*haveALeaderMatcher)(nil)
-
-
-type haveALeaderOnLedgerMatcher struct {
-	fetchTo *uint64
-	ledgerName string
-}
-
-func (h haveALeaderOnLedgerMatcher) Match(actual any) (success bool, err error) {
-	srv, ok := actual.(*serviceWithClient)
-	if !ok {
-		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
-	}
-
-	clusterState, err := srv.client.Ledgers.GetLedgerRaftState(context.Background(), operations.GetLedgerRaftStateRequest{
-		LedgerName: h.ledgerName,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
-		return false, nil
-	}
-
-	leaderID := uint64(*clusterState.LedgerClusterStateResponse.Data.Leader)
-	if h.fetchTo != nil {
-		*h.fetchTo = leaderID
-	}
-
-	return leaderID != 0, nil
-}
-
-func (h haveALeaderOnLedgerMatcher) FailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected ledger cluster to have a leader")
-}
-
-func (h haveALeaderOnLedgerMatcher) NegatedFailureMessage(actual any) (message string) {
-	return fmt.Sprintf("Expected ledger cluster not to have a leader")
-}
-
-func HaveALeaderOnLedger(ledgerName string, fetchTo *uint64) types.GomegaMatcher {
-	return haveALeaderOnLedgerMatcher{
-		fetchTo: fetchTo,
-		ledgerName: ledgerName,
-	}
-}
-
-var _ types.GomegaMatcher = (*haveALeaderOnLedgerMatcher)(nil)
-
-

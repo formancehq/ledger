@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: tidy generate-proto generate-sdk lint lint-client
+pre-commit: generate generate-proto generate-sdk tidy lint lint-client
 pc: pre-commit
 
 lint:
@@ -44,6 +44,10 @@ clean:
 clean-benchmarks-data:
     rm -rf build
 
+generate:
+    rm $(find ./internal -name '*_generated_test.go') || true
+    rm $(find ./internal -name '*_generated.go') || true
+    go generate ./...
 
 # Generate SDK from OpenAPI specification using Speakeasy
 generate-sdk:
@@ -61,15 +65,13 @@ clean-sdk:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
+    rm $(find ./internal -name '*.pb.go') || true
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
         -I misc/proto \
         misc/proto/raft_transport.proto \
-        misc/proto/system.proto \
-        misc/proto/ledger.proto \
-        misc/proto/commands/commands.proto \
-        misc/proto/commands/ledger_commands.proto
+        misc/proto/ledger.proto
 
 # Docker builds are handled via Pulumi
 

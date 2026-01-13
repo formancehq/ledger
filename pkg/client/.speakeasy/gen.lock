@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 68fd6524fa0654d91e9e33937922c46e
+  docChecksum: eb7ab2834873815b5d52d30f13e3cf17
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.68
-  configChecksum: b89918d1ffd60013e1a520868ea5a555
+  releaseVersion: 0.12.12
+  configChecksum: 53cd6df75e271df2d88944c620890bd6
 features:
   go:
     additionalDependencies: 0.1.0
@@ -19,7 +19,6 @@ features:
     globalSecurityCallbacks: 0.1.0
     globalServerURLs: 2.82.3
     intellisenseMarkdownSupport: 0.1.0
-    nullables: 0.1.1
     responseFormat: 0.1.2
     retries: 2.83.3
     sdkHooks: 0.2.0
@@ -41,12 +40,10 @@ generatedFiles:
   - /models/components/deletemetadatarequest.go
   - /models/components/getledgerresponse.go
   - /models/components/httpmetadata.go
-  - /models/components/ledgerclusterstateresponse.go
   - /models/components/ledgerinfo.go
   - /models/components/ledgerstate.go
   - /models/components/listallledgersresponse.go
   - /models/components/nodeinfo.go
-  - /models/components/pebbleconfig.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
   - /models/components/progressinfo.go
@@ -56,8 +53,6 @@ generatedFiles:
   - /models/components/reverttransactionrequest.go
   - /models/components/reverttransactionrequestbody.go
   - /models/components/script.go
-  - /models/components/sqlitemattnconfig.go
-  - /models/components/sqlitemodernconfig.go
   - /models/components/systemstate.go
   - /models/components/transactionresponse.go
   - /models/operations/bulkoperations.go
@@ -68,7 +63,6 @@ generatedFiles:
   - /models/operations/deletetransactionmetadata.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
-  - /models/operations/getledgerraftstate.go
   - /models/operations/listallledgers.go
   - /models/operations/reverttransaction.go
   - /models/operations/saveaccountmetadata.go
@@ -88,25 +82,19 @@ generatedFiles:
   - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/clusterstateresponsestate.md
   - docs/models/components/createledgerrequest.md
-  - docs/models/components/createledgerrequeststoreconfig.md
-  - docs/models/components/createledgerrequeststoredriver.md
   - docs/models/components/createledgerresponse.md
   - docs/models/components/createtransactionrequest.md
   - docs/models/components/createtransactionresponse.md
-  - docs/models/components/createtransactionresponsedata.md
   - docs/models/components/data.md
   - docs/models/components/deletemetadatarequest.md
   - docs/models/components/deletemetadatarequesttargetid.md
   - docs/models/components/deletemetadatarequesttargettype.md
   - docs/models/components/getledgerresponse.md
   - docs/models/components/httpmetadata.md
-  - docs/models/components/ledgerclusterstateresponse.md
-  - docs/models/components/ledgerclusterstateresponsestate.md
   - docs/models/components/ledgerinfo.md
   - docs/models/components/ledgerstate.md
   - docs/models/components/listallledgersresponse.md
   - docs/models/components/nodeinfo.md
-  - docs/models/components/pebbleconfig.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
   - docs/models/components/progressinfo.md
@@ -117,11 +105,7 @@ generatedFiles:
   - docs/models/components/reverttransactionrequest.md
   - docs/models/components/reverttransactionrequestbody.md
   - docs/models/components/script.md
-  - docs/models/components/sqlitemattnconfig.md
-  - docs/models/components/sqlitemodernconfig.md
   - docs/models/components/state.md
-  - docs/models/components/storeconfig.md
-  - docs/models/components/storedriver.md
   - docs/models/components/suffrage.md
   - docs/models/components/systemstate.md
   - docs/models/components/targetid.md
@@ -140,8 +124,6 @@ generatedFiles:
   - docs/models/operations/deletetransactionmetadatarequest.md
   - docs/models/operations/deletetransactionmetadataresponse.md
   - docs/models/operations/getclusterstateresponse.md
-  - docs/models/operations/getledgerraftstaterequest.md
-  - docs/models/operations/getledgerraftstateresponse.md
   - docs/models/operations/getledgerrequest.md
   - docs/models/operations/getledgerresponse.md
   - docs/models/operations/listallledgersresponse.md
@@ -203,7 +185,7 @@ examples:
           includeDeleted: false
       responses:
         "200":
-          application/json: {"data": {"id": 427403, "name": "<value>", "storeDriver": "sqlite-modern", "storeConfig": {}, "createdAt": "2025-04-04T05:10:16.528Z"}}
+          application/json: {"data": {"name": "<value>", "createdAt": "2025-04-04T05:10:16.528Z"}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -216,10 +198,10 @@ examples:
         path:
           ledgerName: "<value>"
       requestBody:
-        application/json: {"storeDriver": "pebble", "storeConfig": {}}
+        application/json: {}
       responses:
         "201":
-          application/json: {"data": {"id": 726425, "name": "<value>", "storeDriver": "sqlite-modern", "storeConfig": {}, "createdAt": "2024-05-25T17:25:53.217Z"}}
+          application/json: {"data": {"name": "<value>", "createdAt": "2024-05-25T17:25:53.217Z"}}
         "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -257,7 +239,7 @@ examples:
     speakeasy-default-get-cluster-state:
       responses:
         "200":
-          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"nextLedgerID": 443395, "ledgers": {"key": {"id": 682127, "name": "<value>", "storeDriver": "sqlite-modern", "createdAt": "2025-10-07T01:06:29.005Z"}}}}}
+          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"ledgers": {"key": {"ledgerInfo": {"name": "<value>", "createdAt": "2025-04-30T23:04:24.464Z"}, "nextLogId": 880008, "nextTransactionId": 682127, "lastAppliedLogId": 921575}}}}}
         "405":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
@@ -389,7 +371,7 @@ examples:
           ledgerName: "<value>"
       responses:
         "200":
-          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "storeDriver": "sqlite-mattn", "storeConfig": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastLogID": 177169, "storeMetrics": {}}}}
+          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"name": "<value>", "createdAt": "2024-12-22T17:41:17.836Z"}, "nextLogId": 177169, "nextTransactionId": 926706}}}
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

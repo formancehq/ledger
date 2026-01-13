@@ -82,8 +82,7 @@ paths:
     post:
       summary: Create a new ledger
       description: |
-        Creates a new ledger with the specified name, driver, and configuration. The storeDriver is required.
-        Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble).
+        Creates a new ledger with the specified name. Storage is configured at the server level.
         Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
@@ -144,42 +143,6 @@ paths:
       responses:
         '204':
           description: Ledger deleted successfully
-        '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledgerName}/raft/state:
-    get:
-      summary: Get ledger Raft cluster state
-      description: Returns the current state of the Raft cluster for the specified ledger, including the list of nodes, the current leader, and the ledger state
-      operationId: getLedgerRaftState
-      tags:
-        - Ledgers
-      parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-      responses:
-        '200':
-          description: Ledger Raft cluster state retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LedgerClusterStateResponse'
         '404':
           description: Ledger not found
           content:
@@ -600,34 +563,12 @@ components:
   schemas:
     CreateLedgerRequest:
       type: object
-      required:
-        - storeDriver
       properties:
-        storeDriver:
-          type: string
-          enum:
-          - sqlite-modern
-          - sqlite-mattn
-          - pebble
-          description: |
-            Store driver name. 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
-            and pebble (github.com/cockroachdb/pebble)
-        storeConfig:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteMattnConfig'
-            - $ref: '#/components/schemas/SQLiteModernConfig'
-            - $ref: '#/components/schemas/PebbleConfig'
-          description: Store driver-specific configuration (optional - DSN/data directory is auto-generated for all drivers)
         metadata:
           type: object
           additionalProperties:
             type: string
           description: Optional metadata for the ledger
-        snapshotThreshold:
-          type: integer
-          format: int64
-          description: Number of logs before triggering a snapshot (optional, uses global config if not set)
 
     CreateLedgerResponse:
       type: object
@@ -659,31 +600,12 @@ components:
     LedgerInfo:
       type: object
       required:
-        - id
         - name
-        - storeDriver
         - createdAt
       properties:
-        id:
-          type: integer
-          format: int64
-          description: Sequential ID for the ledger
         name:
           type: string
           description: Name of the ledger
-        storeDriver:
-          type: string
-          enum: [sqlite-mattn, sqlite-modern, pebble]
-          description: |
-            Store driver name. 
-            Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), 
-            and pebble (github.com/cockroachdb/pebble)
-        storeConfig:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteMattnConfig'
-            - $ref: '#/components/schemas/SQLiteModernConfig'
-            - $ref: '#/components/schemas/PebbleConfig'
-          description: Store driver-specific configuration
         metadata:
           type: object
           additionalProperties:
@@ -693,15 +615,6 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
-        snapshotThreshold:
-          type: integer
-          format: int64
-          description: Number of logs before triggering a snapshot (0 means use global config)
-        deletedAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: Deletion timestamp (always null with hard delete)
 
     CreateTransactionRequest:
       type: object
@@ -1084,42 +997,39 @@ components:
     SystemState:
       type: object
       required:
-        - nextLedgerID
         - ledgers
       properties:
-        nextLedgerID:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Next sequential ledger ID
         ledgers:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/LedgerInfo'
-          description: Map of ledger name to ledger information
+            $ref: '#/components/schemas/LedgerState'
+          description: Map of ledger name to ledger state
 
     LedgerState:
       type: object
       required:
         - ledgerInfo
-        - lastLogID
-        - storeMetrics
+        - nextLogId
+        - nextTransactionId
+        - lastAppliedLogId
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
-        lastLogID:
+        nextLogId:
           type: integer
           format: uint64
           minimum: 0
-          description: Last global id number
-        storeMetrics:
-          type: object
-          additionalProperties: true
-          description: |
-            Metrics from the store. Structure varies by driver:
-            - For Pebble: Contains Pebble database metrics (compactions, flushes, etc.)
-            - For SQLite: Contains SQLite metrics (pageCount, pageSize, databaseSize, freePages, schemaVersion)
-          nullable: false
+          description: Next log ID to be assigned
+        nextTransactionId:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Next transaction ID to be assigned
+        lastAppliedLogId:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Last applied log ID
 
     NodeInfo:
       type: object
@@ -1260,35 +1170,6 @@ components:
           type: boolean
           description: Whether this node is paused
 
-    SQLiteMattnConfig:
-      type: object
-      description: SQLite Mattn driver configuration (github.com/mattn/go-sqlite3) - empty object, DSN is automatically generated
-      properties: {}
-      example: {}
-
-    SQLiteModernConfig:
-      type: object
-      description: SQLite Modern driver configuration (modernc.org/sqlite) - empty object, DSN is automatically generated
-      properties: {}
-      example: {}
-
-    PebbleConfig:
-      type: object
-      description: Pebble driver configuration (github.com/cockroachdb/pebble) - empty object, data directory is automatically generated
-      properties: {}
-      example: {}
-
-    ClickHouseConfig:
-      type: object
-      required:
-        - dsn
-      properties:
-        dsn:
-          type: string
-          description: Data Source Name (connection string) for ClickHouse database
-      example:
-        dsn: "clickhouse://localhost:9000?database=ledger&username=default&password="
-
     ErrorResponse:
       type: object
       required:
@@ -1302,41 +1183,3 @@ components:
           type: string
           description: Human-readable error message
 
-    SQLiteStoreMetrics:
-      type: object
-      description: SQLite store metrics structure
-      properties:
-        pageCount:
-          type: integer
-          format: int64
-          description: Number of pages in the database
-        pageSize:
-          type: integer
-          format: int64
-          description: Size of each page in bytes
-        databaseSize:
-          type: integer
-          format: int64
-          description: Total database size in bytes (pageCount * pageSize)
-        freePages:
-          type: integer
-          format: int64
-          description: Number of free pages in the database
-        schemaVersion:
-          type: integer
-          format: int64
-          description: Schema version number
-
-    PebbleStoreMetrics:
-      type: object
-      description: |
-        Pebble store metrics structure. Contains detailed metrics about Pebble database operations including:
-        - Compaction metrics (count, duration, bytes)
-        - Flush metrics (count, duration, bytes)
-        - Write stall metrics (count, duration, active state)
-        - Level statistics
-        - And many other internal metrics
-        
-        The exact structure is defined by Pebble's Metrics type and may vary between versions.
-        Common fields include compaction-related metrics, flush metrics, and level statistics.
-      additionalProperties: true

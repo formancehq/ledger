@@ -2,9 +2,33 @@ syntax = "proto3";
 
 package ledger;
 
-import "google/protobuf/struct.proto";
-
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/ledgerpb";
+
+// LedgerService provides ledger operations
+service LedgerService {
+  // CreateLedger creates a new ledger
+  rpc CreateLedger(CreateLedgerCommand) returns (LedgerInfo);
+  // DeleteLedger deletes a ledger
+  rpc DeleteLedger(DeleteLedgerCommand) returns (DeleteLedgerResponse);
+  // GetAllLedgersInfo returns all ledgers info in the cluster
+  rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
+  // GetLedgerInfo returns a ledger info by its name
+  rpc GetLedgerInfo(GetLedgerByNameRequest) returns (LedgerInfo);
+  // CreateTransaction creates a new transaction
+  rpc CreateTransaction(CreateTransactionRequest) returns (Log);
+  // RevertTransaction reverts a transaction
+  rpc RevertTransaction(RevertTransactionRequest) returns (Log);
+  // SaveAccountMetadata saves metadata for an account
+  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (Log);
+  // SaveTransactionMetadata saves metadata for a transaction
+  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (Log);
+  // DeleteAccountMetadata deletes metadata for an account
+  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (Log);
+  // DeleteTransactionMetadata deletes metadata for a transaction
+  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (Log);
+  // StreamLogs streams logs from a ledger, optionally starting from a log ID
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+}
 
 message Timestamp {
   uint64 data = 1;
@@ -99,24 +123,6 @@ message AccountsVolumes {
   string asset = 2;
   string input = 3;   // big.Int as string
   string output = 4;  // big.Int as string
-}
-
-// LedgerService provides ledger operations
-service LedgerService {
-  // CreateTransaction creates a new transaction
-  rpc CreateTransaction(CreateTransactionRequest) returns (Log);
-  // RevertTransaction reverts a transaction
-  rpc RevertTransaction(RevertTransactionRequest) returns (Log);
-  // SaveAccountMetadata saves metadata for an account
-  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (Log);
-  // SaveTransactionMetadata saves metadata for a transaction
-  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (Log);
-  // DeleteAccountMetadata deletes metadata for an account
-  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (Log);
-  // DeleteTransactionMetadata deletes metadata for a transaction
-  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (Log);
-  // StreamLogs streams logs from a ledger, optionally starting from a log ID
-  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
 
 message BigInt {
@@ -214,6 +220,7 @@ message Log {
   Timestamp date = 2;
   Idempotency idempotency = 3;
   uint64 id = 4;
+  string ledger = 5;
 }
 
 message LogPayload {
@@ -296,46 +303,39 @@ message RevertedTransactionMemento {
 
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
-  uint64 id = 1;                            // Sequential ledger ID
-  string name = 2;                          // Ledger name/ID
-  string store_driver = 3;                  // Store driver name (e.g., "sqlite-mattn", "sqlite-modern", "pebble", etc.)
-  google.protobuf.Struct store_config = 4;  // Store driver-specific configuration
-  map<string, string> metadata = 5;         // Optional metadata
-  Timestamp created_at = 6;                 // Creation timestamp
-  uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
-  Timestamp deleted_at = 8;                 // Deletion timestamp (always null with hard delete)
+  string name = 1;                          // Ledger name/ID
+  map<string, string> metadata = 2;         // Optional metadata
+  Timestamp created_at = 3;                 // Creation timestamp
 }
 
 message LedgerState {
   LedgerInfo ledger_info = 1;
-  uint64 last_log_id = 2;
-  uint64 last_transaction_id = 3;
-  uint64 last_applied_id = 4;
-  google.protobuf.Struct store_metrics = 5;
+  uint64 next_log_id = 2;
+  uint64 next_transaction_id = 3;
+  uint64 last_applied_log_id = 4;
 }
 
-
 message AppendTransactionCommand {
-  map<string, Metadata> account_metadata = 1;
-  map<string, string> metadata = 2;
-  Timestamp timestamp = 3;
-  string reference = 4;
-  repeated Posting postings = 5;
+  map<string, Metadata> account_metadata = 2;
+  map<string, string> metadata = 3;
+  Timestamp timestamp = 4;
+  string reference = 5;
+  repeated Posting postings = 6;
 }
 
 message SaveMetadataCommand {
-  Target target = 1;
-  map<string, string> metadata = 2;
+  Target target = 2;
+  map<string, string> metadata = 3;
 }
 
 message DeleteMetadataCommand {
-  Target target = 1;
-  string key = 2;
+  Target target = 2;
+  string key = 3;
 }
 
 message RevertTransactionCommand {
-  uint64 transaction_id = 1;
-  Transaction revert_transaction = 2;
+  uint64 transaction_id = 2;
+  Transaction revert_transaction = 3;
 }
 
 message CommandInput {
@@ -345,4 +345,51 @@ message CommandInput {
     DeleteMetadataCommand delete_metadata = 4;
     RevertTransactionCommand revert_transaction = 5;
   }
+}
+
+message CreateLogCommand {
+  Idempotency idempotency = 1;
+  CommandInput input = 2;
+  string ledger = 3;
+}
+
+message CreateLedgerCommand {
+  string name = 1;
+  map<string, string> metadata = 2;
+}
+
+message DeleteLedgerCommand {
+  string name = 1;
+}
+
+message DeleteLedgerResponse {}
+
+message GetAllLedgersRequest {
+  // Empty - no parameters needed
+}
+
+message GetAllLedgersResponse {
+  map<string, LedgerInfo> ledgers = 1;
+}
+
+message GetLedgerByNameRequest {
+  string name = 1;
+}
+
+message State {
+  map<string, LedgerState> ledgers = 1;
+}
+
+// CommandProto represents a command to be executed in the FSM (protobuf serialization format)
+message Command {
+  uint64 id = 1;                    // Random command ID
+  CommandType type = 2;                  // Command type (e.g., "create_bucket", "delete_bucket", "create_ledger", "insert_log")
+  bytes data = 3;                   // Protobuf-encoded command data
+  ledger.Timestamp date = 4; // Creation date in UTC
+}
+
+enum CommandType {
+  CreateLedger = 0;
+  DeleteLedger = 1;
+  CreateLog = 2;
 }

@@ -160,12 +160,9 @@ POST /{ledgerName}
 Content-Type: application/json
 
 {
-  "driver": "sqlite",
-  "config": {},
   "metadata": {
     "key": "value"
-  },
-  "snapshotThreshold": 100
+  }
 }
 ```
 
@@ -173,12 +170,11 @@ Content-Type: application/json
 ```json
 {
   "data": {
-    "id": 1,
     "name": "my-ledger",
-    "driver": "sqlite",
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "snapshotThreshold": 100
+    "metadata": {
+      "key": "value"
+    },
+    "createdAt": "2024-01-01T00:00:00Z"
   }
 }
 ```
@@ -193,17 +189,9 @@ GET /{ledgerName}
 ```json
 {
   "data": {
-    "id": 1,
     "name": "my-ledger",
-    "driver": "sqlite",
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "snapshotThreshold": 100,
-    "raftState": {
-      "state": "Leader",
-      "leader": 1,
-      "nodes": [...]
-    }
+    "metadata": {},
+    "createdAt": "2024-01-01T00:00:00Z"
   }
 }
 ```
@@ -219,16 +207,14 @@ GET /
 {
   "data": [
     {
-      "id": 1,
       "name": "ledger1",
-      "driver": "sqlite",
-      ...
+      "metadata": {},
+      "createdAt": "2024-01-01T00:00:00Z"
     },
     {
-      "id": 2,
       "name": "ledger2",
-      "driver": "sqlite",
-      ...
+      "metadata": {},
+      "createdAt": "2024-01-01T00:00:00Z"
     }
   ]
 }

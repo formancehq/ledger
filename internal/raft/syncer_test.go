@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -18,18 +19,16 @@ func TestSyncerApplyEntries(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	type State struct{}
-
 	ctrl := gomock.NewController(t)
-	fsm := NewMockFSM[State](ctrl)
+	fsm := NewMockFSM(ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
 	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})
 	go syncer.run()
 	t.Cleanup(syncer.stop)
 
-	cmd := &Command{
-		Type: CommandType_CreateLedger,
+	cmd := &ledgerpb.Command{
+		Type: ledgerpb.CommandType_CreateLedger,
 	}
 
 	fsm.EXPECT().
@@ -45,10 +44,8 @@ func TestSyncerCreateSnapshot(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	type State struct{}
-
 	ctrl := gomock.NewController(t)
-	fsm := NewMockFSM[State](ctrl)
+	fsm := NewMockFSM(ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
 	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})
@@ -83,7 +80,7 @@ func TestSyncerCreateSnapshot(t *testing.T) {
 	case <-snapshotting:
 	}
 
-	cmd := &Command{Type: CommandType_CreateLedger}
+	cmd := &ledgerpb.Command{Type: ledgerpb.CommandType_CreateLedger}
 	fsm.EXPECT().
 		ApplyEntries(gomock.Any(), cmd).
 		Return(nil, nil)
@@ -107,10 +104,8 @@ func TestSyncerCreateSnapshotWhileAlreadySnapshotting(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	type State struct{}
-
 	ctrl := gomock.NewController(t)
-	fsm := NewMockFSM[State](ctrl)
+	fsm := NewMockFSM(ctrl)
 	spool := NewMockSpool(ctrl)
 	snapshotStore := NewMockSnapshotStore(ctrl)
 	syncer := newSyncer(spool, fsm, logging.FromContext(ctx), snapshotStore, noop.Meter{})

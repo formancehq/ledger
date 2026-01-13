@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/systempb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -30,15 +30,10 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := &systempb.CreateLedgerRequest{}
+	req := &ledgerpb.CreateLedgerCommand{}
 	unmarshalOptions := protojson.UnmarshalOptions{DiscardUnknown: true}
 	if err := unmarshalOptions.Unmarshal(body, req); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-		return
-	}
-
-	if req.StoreDriver == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("store driver is required"))
 		return
 	}
 

@@ -7,11 +7,19 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 )
+
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source syncer.go -destination syncer_generated_test.go -package raft . FSM
+type FSM interface {
+	CreateSnapshot(ctx context.Context) ([]byte, error)
+	SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error
+	ApplyEntries(ctx context.Context, commands ...*ledgerpb.Command) ([]ApplyResult, error)
+}
 
 type createSnapshotCommand struct {
 	errCh   chan error
@@ -22,18 +30,18 @@ type createSnapshotCommand struct {
 type createSnapshotTerminatedCommand struct {
 	createSnapshotCommand createSnapshotCommand
 }
-type restoreSnapshotCommand struct {
+type syncSnapshotCommand struct {
 	leader   uint64
 	snapshot raftpb.Snapshot
 	errCh    chan error
 }
 
-type restoreSnapshotUnspoolCommand struct {
-	restoreSnapshotCommand restoreSnapshotCommand
+type unspoolCommand struct {
+	syncSnapshotCommand syncSnapshotCommand
 }
 
 type applyEntriesCommand struct {
-	commands []*Command
+	commands []*ledgerpb.Command
 	resultCh chan []ApplyResult
 	errCh    chan error
 }
@@ -42,7 +50,7 @@ type syncerStatus int
 
 const (
 	syncerStatusNormal syncerStatus = iota
-	syncerStatusRestoring
+	syncerStatusSyncing
 	syncerStatusSnapshotting
 )
 
@@ -51,9 +59,9 @@ type SnapshotStore interface {
 	CreateSnapshot(applied uint64, state *raftpb.ConfState, data []byte) (raftpb.Snapshot, error)
 }
 
-type syncer[State any, F FSM[State]] struct {
+type syncer struct {
 	spool                   Spool
-	fsm                     F
+	fsm                     FSM
 	logger                  logging.Logger
 	createSnapshotHistogram metric.Float64Histogram
 
@@ -63,7 +71,7 @@ type syncer[State any, F FSM[State]] struct {
 	stopCh   chan chan struct{}
 }
 
-func (s *syncer[State, F]) run() {
+func (s *syncer) run() {
 
 	defer otlplogs.RecoverAndLogPanics(s.logger)
 
@@ -77,11 +85,12 @@ func (s *syncer[State, F]) run() {
 		case cmd := <-s.commands:
 			switch cmd := cmd.(type) {
 			case createSnapshotCommand:
+				s.logger.Infof("Creating snapshot")
 				switch s.status {
 				case syncerStatusNormal:
 					s.status = syncerStatusSnapshotting
-				case syncerStatusRestoring:
-					panic("snapshotting while restoring")
+				case syncerStatusSyncing:
+					panic("snapshotting while syncing")
 				case syncerStatusSnapshotting:
 					s.logger.Infof("Snapshotting already in progress, interrupting")
 					taskExecutor.interrupt()
@@ -110,25 +119,26 @@ func (s *syncer[State, F]) run() {
 				)
 			case createSnapshotTerminatedCommand:
 				s.status = syncerStatusNormal
-			case restoreSnapshotCommand:
+			case syncSnapshotCommand:
 				switch s.status {
 				case syncerStatusNormal:
-					s.status = syncerStatusRestoring
+					s.status = syncerStatusSyncing
 				case syncerStatusSnapshotting:
-					panic("restoring while snapshotting")
-				case syncerStatusRestoring:
+					s.logger.Infof("Snapshotting in progress, interrupting")
+					taskExecutor.interrupt()
+				case syncerStatusSyncing:
 					taskExecutor.interrupt()
 				}
 
 				taskExecutor.run(context.Background(), cmd.errCh, func(ctx context.Context) (any, error) {
-					err := s.fsm.RestoreSnapshot(ctx, cmd.leader, cmd.snapshot)
+					err := s.fsm.SyncSnapshot(ctx, cmd.leader, cmd.snapshot)
 					if err != nil {
 						return nil, err
 					}
-					return restoreSnapshotUnspoolCommand{cmd}, nil
+					return unspoolCommand{cmd}, nil
 				})
 
-			case restoreSnapshotUnspoolCommand:
+			case unspoolCommand:
 				spooledCmd, err := s.spool.Next()
 				if err != nil && !errors.Is(err, io.EOF) {
 					panic(err)
@@ -138,7 +148,7 @@ func (s *syncer[State, F]) run() {
 						panic(err)
 					}
 					s.status = syncerStatusNormal
-					cmd.restoreSnapshotCommand.errCh <- nil
+					cmd.syncSnapshotCommand.errCh <- nil
 					continue
 				}
 
@@ -147,7 +157,7 @@ func (s *syncer[State, F]) run() {
 					panic(err)
 				}
 				if errors.Is(err, context.Canceled) {
-					cmd.restoreSnapshotCommand.errCh <- err
+					cmd.syncSnapshotCommand.errCh <- err
 					continue
 				}
 
@@ -163,7 +173,7 @@ func (s *syncer[State, F]) run() {
 						panic(err)
 					}
 					cmd.resultCh <- entries
-				case syncerStatusRestoring:
+				case syncerStatusSyncing:
 					err := s.spool.AppendCommittedEntries(context.Background(), cmd.commands...)
 					if err != nil {
 						cmd.errCh <- err
@@ -178,7 +188,7 @@ func (s *syncer[State, F]) run() {
 	}
 }
 
-func (s *syncer[State, F]) CreateSnapshot(ctx context.Context, applied uint64, state *raftpb.ConfState) error {
+func (s *syncer) CreateSnapshot(ctx context.Context, applied uint64, state *raftpb.ConfState) error {
 	cmd := createSnapshotCommand{
 		errCh:   make(chan error, 1),
 		applied: applied,
@@ -199,7 +209,7 @@ func (s *syncer[State, F]) CreateSnapshot(ctx context.Context, applied uint64, s
 	}
 }
 
-func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...*Command) ([]ApplyResult, error) {
+func (s *syncer) ApplyEntries(ctx context.Context, commands ...*ledgerpb.Command) ([]ApplyResult, error) {
 	cmd := applyEntriesCommand{
 		commands: commands,
 		resultCh: make(chan []ApplyResult, 1),
@@ -222,8 +232,8 @@ func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...*Comman
 	}
 }
 
-func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
-	cmd := restoreSnapshotCommand{
+func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
+	cmd := syncSnapshotCommand{
 		leader:   leader,
 		snapshot: snapshot,
 		errCh:    make(chan error, 1),
@@ -243,24 +253,24 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, s
 	}
 }
 
-func (s *syncer[State, F]) IsSyncing() bool {
-	return s.status == syncerStatusRestoring
+func (s *syncer) IsSyncing() bool {
+	return s.status == syncerStatusSyncing
 }
 
-func (s *syncer[State, F]) stop() {
+func (s *syncer) stop() {
 	ch := make(chan struct{})
 	s.stopCh <- ch
 	<-ch
 }
 
-func newSyncer[State any, F FSM[State]](
+func newSyncer(
 	spool Spool,
-	fsm F,
+	fsm FSM,
 	logger logging.Logger,
 	store SnapshotStore,
 	meter metric.Meter,
-) *syncer[State, F] {
-	s := &syncer[State, F]{
+) *syncer {
+	s := &syncer{
 		spool:    spool,
 		fsm:      fsm,
 		logger:   logger,

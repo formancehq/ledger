@@ -9,13 +9,14 @@ import (
 	"io"
 	"os"
 
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -package raft . Spool
 type Spool interface {
-	AppendCommittedEntries(ctx context.Context, commands ...*Command) error
-	Next() (*Command, error)
+	AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error
+	Next() (*ledgerpb.Command, error)
 	Reset() error
 	Close() error
 }
@@ -47,7 +48,7 @@ func (s *fileSpool) Close() error {
 	return s.f.Close()
 }
 
-func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*Command) error {
+func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
 
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
@@ -66,7 +67,7 @@ func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*Com
 	return s.f.Sync()
 }
 
-func (s *fileSpool) Next() (*Command, error) {
+func (s *fileSpool) Next() (*ledgerpb.Command, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ var (
 	ErrCorrupt = fmt.Errorf("record corrupted")
 )
 
-func writeRecord(w io.Writer, cmd *Command) error {
+func writeRecord(w io.Writer, cmd *ledgerpb.Command) error {
 	payload, err := proto.Marshal(cmd)
 	if err != nil {
 		return err
@@ -139,8 +140,8 @@ func writeRecord(w io.Writer, cmd *Command) error {
 	return err
 }
 
-func readRecord(r *bufio.Reader) (*Command, int, error) {
-	var cmd Command
+func readRecord(r *bufio.Reader) (*ledgerpb.Command, int, error) {
+	var cmd ledgerpb.Command
 
 	hdr := make([]byte, 16)
 	if _, err := io.ReadFull(r, hdr); err != nil {

@@ -3,6 +3,7 @@ config:
   dataDir: /data/raft
   debug: false
   httpPort: 9000
+  storageType: pebble
   monitoring:
     logs:
       enabled: true
@@ -46,7 +47,7 @@ config:
         - 1024
     proposeQueueCapacity: 512
     snapshotInterval: 30s
-    snapshotThreshold: 15000
+    snapshotThreshold: 30000
     tickInterval: 100ms
     transport:
       receptionQueues:

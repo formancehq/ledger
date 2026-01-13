@@ -46,6 +46,15 @@ func (l *Log) WithID(id uint64) *Log {
 	return l
 }
 
+// WithLedger sets the ledger of the log
+func (l *Log) WithLedger(ledger string) *Log {
+	if l == nil {
+		l = &Log{}
+	}
+	l.Ledger = ledger
+	return l
+}
+
 // ChainLog creates a new log chained to the previous one
 func ChainLog(l *Log, previous *Log) *Log {
 	if l == nil {
@@ -56,6 +65,7 @@ func ChainLog(l *Log, previous *Log) *Log {
 		Date:        l.Date,
 		Idempotency: l.Idempotency,
 		Id:          l.Id,
+		Ledger:      l.Ledger,
 	}
 	if previous != nil && previous.Id != 0 {
 		ret.Id = previous.Id + 1

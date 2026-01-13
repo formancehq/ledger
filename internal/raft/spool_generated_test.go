@@ -11,6 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -39,7 +40,7 @@ func (m *MockSpool) EXPECT() *MockSpoolMockRecorder {
 }
 
 // AppendCommittedEntries mocks base method.
-func (m *MockSpool) AppendCommittedEntries(ctx context.Context, commands ...*Command) error {
+func (m *MockSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range commands {
@@ -72,10 +73,10 @@ func (mr *MockSpoolMockRecorder) Close() *gomock.Call {
 }
 
 // Next mocks base method.
-func (m *MockSpool) Next() (*Command, error) {
+func (m *MockSpool) Next() (*ledgerpb.Command, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(*Command)
+	ret0, _ := ret[0].(*ledgerpb.Command)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -1,4 +1,4 @@
-package service
+package store
 
 import (
 	"fmt"
@@ -8,11 +8,11 @@ import (
 )
 
 // ============================================================================
-// Utility Functions (shared between SQLite implementations)
+// Utility Functions (shared between store implementations)
 // ============================================================================
 
 // accumulateBalanceDiffs accumulates balance differences from postings into a map
-// balanceDiffs: map[account]map[asset]*big.Int (positive = add, negative = subtract)
+// balanceDiffs: map[string]map[string]map[asset]*big.Int (positive = add, negative = subtract)
 func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, postings []*ledgerpb.Posting) {
 	for _, posting := range postings {
 		if posting == nil {
@@ -22,24 +22,26 @@ func accumulateBalanceDiffs(balanceDiffs map[string]map[string]*big.Int, posting
 
 		// Subtract from source
 		if posting.Source != "" && posting.Source != posting.Destination {
-			if balanceDiffs[posting.Source] == nil {
-				balanceDiffs[posting.Source] = make(map[string]*big.Int)
+			sourceKey := posting.Source
+			if balanceDiffs[sourceKey] == nil {
+				balanceDiffs[sourceKey] = make(map[string]*big.Int)
 			}
-			if balanceDiffs[posting.Source][posting.Asset] == nil {
-				balanceDiffs[posting.Source][posting.Asset] = big.NewInt(0)
+			if balanceDiffs[sourceKey][posting.Asset] == nil {
+				balanceDiffs[sourceKey][posting.Asset] = big.NewInt(0)
 			}
-			balanceDiffs[posting.Source][posting.Asset] = new(big.Int).Sub(balanceDiffs[posting.Source][posting.Asset], amount)
+			balanceDiffs[sourceKey][posting.Asset] = new(big.Int).Sub(balanceDiffs[sourceKey][posting.Asset], amount)
 		}
 
 		// Add to destination
 		if posting.Destination != "" {
-			if balanceDiffs[posting.Destination] == nil {
-				balanceDiffs[posting.Destination] = make(map[string]*big.Int)
+			destKey := posting.Destination
+			if balanceDiffs[destKey] == nil {
+				balanceDiffs[destKey] = make(map[string]*big.Int)
 			}
-			if balanceDiffs[posting.Destination][posting.Asset] == nil {
-				balanceDiffs[posting.Destination][posting.Asset] = big.NewInt(0)
+			if balanceDiffs[destKey][posting.Asset] == nil {
+				balanceDiffs[destKey][posting.Asset] = big.NewInt(0)
 			}
-			balanceDiffs[posting.Destination][posting.Asset] = new(big.Int).Add(balanceDiffs[posting.Destination][posting.Asset], amount)
+			balanceDiffs[destKey][posting.Asset] = new(big.Int).Add(balanceDiffs[destKey][posting.Asset], amount)
 		}
 	}
 }
@@ -128,19 +130,11 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		return RuntimeUpdate{}, nil
 	}
 
-	// Accumulate balance differences for all logs
-	balanceDiffs := make(map[string]map[string]*big.Int)
-
-	// Accumulate metadata operations for batch processing
-	accountMetadataBatch := make(map[string]map[string]string)
-	accountMetadataDeletes := make(map[string][]string)
-
-	// Accumulate idempotency entries for batch processing
-	idempotencyKeys := make(map[string]*ledgerpb.IdempotencyEntry)
-	// Accumulate transaction ID to log ID mappings
-	transactionIDs := make(map[uint64]uint64)
-	// Accumulate reverted transaction IDs
-	revertedTransactionIDs := make(map[uint64]bool)
+	balanceDiffs := make(map[string]map[string]map[string]*big.Int)
+	accountMetadataBatch := make(map[string]map[string]map[string]string)
+	accountMetadataDeletes := make(map[string]map[string][]string)
+	transactionIDs := make(map[string]map[uint64]uint64)
+	revertedTransactionIDs := make(map[string]map[uint64]bool)
 
 	for _, log := range logs {
 		// Validate log data
@@ -148,38 +142,51 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 			return RuntimeUpdate{}, fmt.Errorf("log data is nil for id %d", log.Id)
 		}
 
-		// Accumulate idempotency entry if present
-		if log.Idempotency != nil {
-			idempotencyKeys[log.Idempotency.Key] = &ledgerpb.IdempotencyEntry{
-				Hash:  log.Idempotency.Hash,
-				LogId: log.Id,
-			}
-		}
+		ledger := log.Ledger
 
 		// Accumulate balance differences and update accounts based on log type
 		switch payload := log.Data.Payload.(type) {
 		case *ledgerpb.LogPayload_CreatedTransaction:
 			if payload.CreatedTransaction != nil && payload.CreatedTransaction.Transaction != nil {
-				// Accumulate balance differences
-				accumulateBalanceDiffs(balanceDiffs, payload.CreatedTransaction.Transaction.Postings)
-				// Accumulate account and metadata updates for batch processing
-				accumulateAccountsFromTransaction(accountMetadataBatch, payload.CreatedTransaction)
+
+				if balanceDiffs[log.Ledger] == nil {
+					balanceDiffs[log.Ledger] = make(map[string]map[string]*big.Int)
+				}
+
+				accumulateBalanceDiffs(balanceDiffs[log.Ledger], payload.CreatedTransaction.Transaction.Postings)
+
+				if accountMetadataBatch[log.Ledger] == nil {
+					accountMetadataBatch[log.Ledger] = make(map[string]map[string]string)
+				}
+				accumulateAccountsFromTransaction(accountMetadataBatch[log.Ledger], payload.CreatedTransaction)
 				// Store transaction ID -> log ID mapping
 				if payload.CreatedTransaction.Transaction.Id != 0 {
-					transactionIDs[payload.CreatedTransaction.Transaction.Id] = log.Id
+					if transactionIDs[log.Ledger] == nil {
+						transactionIDs[log.Ledger] = make(map[uint64]uint64)
+					}
+					transactionIDs[log.Ledger][payload.CreatedTransaction.Transaction.Id] = log.Id
 				}
 			}
 		case *ledgerpb.LogPayload_RevertedTransaction:
 			if payload.RevertedTransaction != nil {
 				// Store transaction ID -> log ID mapping for reverted transaction
 				if payload.RevertedTransaction.RevertedTransaction != nil && payload.RevertedTransaction.RevertedTransaction.Id != 0 {
-					transactionIDs[payload.RevertedTransaction.RevertedTransaction.Id] = log.Id
+					if transactionIDs[log.Ledger] == nil {
+						transactionIDs[log.Ledger] = make(map[uint64]uint64)
+					}
+					transactionIDs[log.Ledger][payload.RevertedTransaction.RevertedTransaction.Id] = log.Id
 					// Mark transaction as reverted
-					revertedTransactionIDs[payload.RevertedTransaction.RevertedTransaction.Id] = true
+					if revertedTransactionIDs[log.Ledger] == nil {
+						revertedTransactionIDs[log.Ledger] = make(map[uint64]bool)
+					}
+					revertedTransactionIDs[log.Ledger][payload.RevertedTransaction.RevertedTransaction.Id] = true
 				}
 				// Store transaction ID -> log ID mapping for revert transaction
 				if payload.RevertedTransaction.RevertTransaction != nil && payload.RevertedTransaction.RevertTransaction.Id != 0 {
-					transactionIDs[payload.RevertedTransaction.RevertTransaction.Id] = log.Id
+					if transactionIDs[log.Ledger] == nil {
+						transactionIDs[log.Ledger] = make(map[uint64]uint64)
+					}
+					transactionIDs[log.Ledger][payload.RevertedTransaction.RevertTransaction.Id] = log.Id
 				}
 				if payload.RevertedTransaction.RevertedTransaction != nil {
 					// Reverse postings for balance update (subtract from destination, add to source)
@@ -195,18 +202,27 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 						}
 					}
 					// Accumulate balance differences (reversed)
-					accumulateBalanceDiffs(balanceDiffs, reversedPostings)
+					if balanceDiffs[log.Ledger] == nil {
+						balanceDiffs[log.Ledger] = make(map[string]map[string]*big.Int)
+					}
+					accumulateBalanceDiffs(balanceDiffs[ledger], reversedPostings)
 				}
 			}
 		case *ledgerpb.LogPayload_SavedMetadata:
 			if payload.SavedMetadata != nil {
 				// Accumulate metadata updates for batch processing
-				accumulateMetadataFromSetMetadata(accountMetadataBatch, payload.SavedMetadata)
+				if accountMetadataBatch[ledger] == nil {
+					accountMetadataBatch[ledger] = make(map[string]map[string]string)
+				}
+				accumulateMetadataFromSetMetadata(accountMetadataBatch[ledger], payload.SavedMetadata)
 			}
 		case *ledgerpb.LogPayload_DeletedMetadata:
 			if payload.DeletedMetadata != nil {
 				// Accumulate metadata deletions for batch processing
-				accumulateMetadataFromDeleteMetadata(accountMetadataDeletes, payload.DeletedMetadata)
+				if accountMetadataDeletes[ledger] == nil {
+					accountMetadataDeletes[ledger] = make(map[string][]string)
+				}
+				accumulateMetadataFromDeleteMetadata(accountMetadataDeletes[ledger], payload.DeletedMetadata)
 			}
 		}
 	}
@@ -215,9 +231,7 @@ func LogsToRuntimeUpdate(logs []*ledgerpb.Log) (RuntimeUpdate, error) {
 		BalanceDiffs:           balanceDiffs,
 		AccountMetadata:        accountMetadataBatch,
 		AccountMetadataDeletes: accountMetadataDeletes,
-		IdempotencyKeys:        idempotencyKeys,
 		TransactionIDs:         transactionIDs,
 		RevertedTransactionIDs: revertedTransactionIDs,
-		LastProcessedLogID:     logs[len(logs)-1].Id,
 	}, nil
 }

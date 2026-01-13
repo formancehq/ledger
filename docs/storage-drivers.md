@@ -1,6 +1,6 @@
 # Storage Drivers
 
-This document describes the available storage drivers for the Runtime Store and how they are used in the Ledger v3 POC.
+This document describes the available storage drivers for the Runtime Store and how they are configured in the Ledger v3 POC.
 
 ## Overview
 
@@ -12,7 +12,28 @@ The Runtime Store is responsible for persisting:
 - **Transaction ID mappings** - Map transaction IDs to log IDs
 - **Reverted transaction IDs** - Track which transactions have been reverted
 
-Each ledger has its own Runtime Store instance, and the driver is specified when creating the ledger.
+**Storage is configured at the server level** using the `--storage-type` flag. All ledgers on a node use the same storage driver.
+
+## Configuration
+
+Storage type is specified when starting the server:
+
+```bash
+# Using SQLite (mattn driver)
+./ledger serve --storage-type sqlite-mattn
+
+# Using SQLite (modern driver)  
+./ledger serve --storage-type sqlite-modern
+
+# Using Pebble
+./ledger serve --storage-type pebble
+```
+
+Or via environment variable:
+
+```bash
+STORAGE_TYPE=pebble ./ledger serve
+```
 
 ## Available Drivers
 
@@ -46,17 +67,6 @@ github.com/mattn/go-sqlite3
 | **Cross-compilation** | Difficult (requires C compiler) |
 | **Docker compatibility** | Requires glibc (no scratch images) |
 
-### Configuration
-
-```json
-{
-  "storeDriver": "sqlite-mattn",
-  "storeConfig": {}
-}
-```
-
-The DSN (Data Source Name) is automatically generated based on the ledger name and data directory. No manual configuration required.
-
 ### SQLite Settings
 
 The driver is configured with optimized settings for write-heavy workloads:
@@ -75,52 +85,58 @@ _txlock=immediate          -- Acquire write lock immediately
 ```sql
 -- Transaction logs
 CREATE TABLE logs (
-    id INTEGER PRIMARY KEY,
+    ledger TEXT NOT NULL,
+    id INTEGER NOT NULL,
     data BLOB NOT NULL,          -- Protobuf-encoded log
     date TEXT,
     idempotency_key TEXT,
     idempotency_hash TEXT,
-    UNIQUE(idempotency_key)
+    PRIMARY KEY (ledger, id)
 ) WITHOUT ROWID;
 
-CREATE INDEX idx_logs_idempotency_key ON logs(idempotency_key);
+CREATE UNIQUE INDEX idx_logs_idempotency_key ON logs(ledger, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- Account balances
 CREATE TABLE balances (
     id INTEGER PRIMARY KEY,
+    ledger TEXT NOT NULL,
     account TEXT NOT NULL,
     asset TEXT NOT NULL,
     balance TEXT NOT NULL DEFAULT '0',
-    UNIQUE (asset, account)
+    UNIQUE (ledger, asset, account)
 );
 
 -- Account metadata
 CREATE TABLE account_metadata (
+    ledger TEXT NOT NULL,
     account_address TEXT NOT NULL,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
-    PRIMARY KEY (account_address, key)
+    PRIMARY KEY (ledger, account_address, key)
 );
 
 -- Idempotency tracking
 CREATE TABLE idempotency (
+    ledger TEXT NOT NULL,
     key TEXT NOT NULL,
     hash BYTEA NOT NULL,
     log_id INTEGER NOT NULL,
-    PRIMARY KEY (key)
+    PRIMARY KEY (ledger, key)
 );
 
 -- Transaction ID to log ID mapping
 CREATE TABLE transaction_ids (
+    ledger TEXT NOT NULL,
     transaction_id INTEGER NOT NULL,
     log_id INTEGER NOT NULL,
-    PRIMARY KEY (transaction_id)
+    PRIMARY KEY (ledger, transaction_id)
 ) WITHOUT ROWID;
 
 -- Reverted transactions tracking
 CREATE TABLE reverted_transaction_ids (
+    ledger TEXT NOT NULL,
     transaction_id INTEGER NOT NULL,
-    PRIMARY KEY (transaction_id)
+    PRIMARY KEY (ledger, transaction_id)
 ) WITHOUT ROWID;
 ```
 
@@ -133,7 +149,7 @@ CREATE TABLE reverted_transaction_ids (
 ### File Location
 
 ```
-data/ledgers/{ledger-name}/{ledger-name}-runtime.db
+data/runtime.db
 ```
 
 ---
@@ -159,17 +175,6 @@ modernc.org/sqlite
 | **Performance** | Good (slightly slower than mattn) |
 | **Cross-compilation** | Easy |
 | **Docker compatibility** | Works with scratch images |
-
-### Configuration
-
-```json
-{
-  "storeDriver": "sqlite-modern",
-  "storeConfig": {}
-}
-```
-
-The DSN is automatically generated. No manual configuration required.
 
 ### SQLite Settings
 
@@ -197,7 +202,7 @@ Same schema as sqlite-mattn (see above).
 ### File Location
 
 ```
-data/ledgers/{ledger-name}/{ledger-name}-runtime.db
+data/runtime.db
 ```
 
 ---
@@ -224,17 +229,6 @@ github.com/cockroachdb/pebble
 | **Cross-compilation** | Easy |
 | **Docker compatibility** | Works with scratch images |
 
-### Configuration
-
-```json
-{
-  "storeDriver": "pebble",
-  "storeConfig": {}
-}
-```
-
-The data directory is automatically generated. No manual configuration required.
-
 ### Pebble Settings
 
 Optimized for ledger workloads:
@@ -250,13 +244,13 @@ Pebble uses a key-value model with prefixed keys for different data types:
 
 | Prefix | Data Type | Key Format |
 |--------|-----------|------------|
-| `l` | Logs | `l{log_id}` (8 bytes, big-endian) |
-| `lid` | Log idempotency index | `lid{idempotency_key}` |
-| `bal` | Balance diffs | `bal{account}:{asset}:{timestamp}` |
-| `met` | Account metadata | `met{account}:{key}` |
-| `idm` | Idempotency entries | `idm{key}` |
-| `tid` | Transaction ID → Log ID | `tid{transaction_id}` (8 bytes) |
-| `rtx` | Reverted transaction IDs | `rtx{transaction_id}` (8 bytes) |
+| `l` | Logs | `l{ledger}\x00{log_id}` (8 bytes, big-endian) |
+| `lid` | Log idempotency index | `lid{ledger}\x00{idempotency_key}` |
+| `bal` | Balance diffs | `bal{ledger}\x00{account}:{asset}:{timestamp}` |
+| `met` | Account metadata | `met{ledger}\x00{account}:{key}` |
+| `idm` | Idempotency entries | `idm{ledger}\x00{key}` |
+| `tid` | Transaction ID → Log ID | `tid{ledger}\x00{transaction_id}` (8 bytes) |
+| `rtx` | Reverted transaction IDs | `rtx{ledger}\x00{transaction_id}` (8 bytes) |
 
 ### Balance Storage Model
 
@@ -268,7 +262,7 @@ Unlike SQLite which stores the current balance, Pebble stores **balance diffs** 
 - Excellent write throughput
 
 ```
-Key: bal{account}:{asset}:{nanosecond_timestamp}
+Key: bal{ledger}\x00{account}:{asset}:{nanosecond_timestamp}
 Value: Balance diff as big.Int bytes
 ```
 
@@ -282,13 +276,12 @@ Value: Balance diff as big.Int bytes
 ### Directory Structure
 
 ```
-data/ledgers/{ledger-name}/
-└── live/
-    ├── 000001.sst
-    ├── 000002.sst
-    ├── MANIFEST-000001
-    ├── OPTIONS-000001
-    └── ...
+data/runtime/
+├── 000001.sst
+├── 000002.sst
+├── MANIFEST-000001
+├── OPTIONS-000001
+└── ...
 ```
 
 ### Metrics
@@ -338,7 +331,9 @@ Pebble exposes detailed metrics accessible via the API:
 
 ---
 
-## Creating a Ledger with a Specific Driver
+## Creating a Ledger
+
+Ledgers are created without specifying storage - storage is determined by the server's `--storage-type` flag:
 
 ### HTTP API
 
@@ -346,19 +341,11 @@ Pebble exposes detailed metrics accessible via the API:
 curl -X POST http://localhost:9000/my-ledger \
   -H "Content-Type: application/json" \
   -d '{
-    "storeDriver": "pebble",
-    "storeConfig": {},
     "metadata": {
-      "description": "My high-performance ledger"
+      "description": "My ledger"
     }
   }'
 ```
-
-### Available Driver Values
-
-- `sqlite-mattn` - SQLite with github.com/mattn/go-sqlite3
-- `sqlite-modern` - SQLite with modernc.org/sqlite
-- `pebble` - CockroachDB Pebble
 
 ---
 
@@ -371,12 +358,12 @@ All drivers implement the `RuntimeStore` interface:
 ```go
 type RuntimeStore interface {
     LogStore
-    GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledgerpb.Balances, error)
-    GetAccountMetadata(ctx context.Context, accounts []string) (map[string]metadata.Metadata, error)
-    GetLogForIdempotencyKey(ctx context.Context, idempotencyKey string) ([]byte, uint64, error)
-    GetLogIDForTransactionID(ctx context.Context, transactionID uint64) (uint64, error)
-    IsTransactionReverted(ctx context.Context, transactionID uint64) (bool, error)
-    GetLastProcessedLogID(ctx context.Context) (uint64, error)
+    GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error)
+    GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error)
+    GetLogForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) ([]byte, uint64, error)
+    GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error)
+    IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
+    GetLastProcessedLogID(ctx context.Context, ledger string) (uint64, error)
 }
 ```
 
@@ -384,11 +371,11 @@ type RuntimeStore interface {
 
 | Driver | Source File |
 |--------|-------------|
-| sqlite-mattn | `internal/service/store_runtime_sqlite_mattn.go` |
-| sqlite-modern | `internal/service/store_runtime_sqlite_modern.go` |
-| pebble | `internal/service/store_runtime_pebble.go` |
-| Common SQLite | `internal/service/store_runtime_sqlite.go` |
-| Common logic | `internal/service/store_sqlite_common.go` |
+| sqlite-mattn | `internal/store/sqlite/runtime.go` |
+| sqlite-modern | `internal/store/sqlite/runtime.go` |
+| pebble | `internal/store/pebble/runtime.go` |
+| Common SQLite | `internal/store/sqlite/db.go` |
+| Interfaces | `internal/store/store.go` |
 
 ---
 

@@ -17,12 +17,6 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
 	// Determine content type
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {
@@ -46,7 +40,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create bulker and run
-	err = s.bulkerFactory.CreateBulker(ledger, ledgerName).Run(r.Context(), send, receive,
+	err := s.bulkerFactory.CreateBulker(s.backend, ledgerName).Run(r.Context(), send, receive,
 		bulking.BulkingOptions{
 			ContinueOnFailure: queryParamBool(r, "continueOnFailure"),
 			Atomic:            queryParamBool(r, "atomic"),

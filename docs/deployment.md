@@ -366,19 +366,6 @@ config:
     snapshotInterval: "30s"     # Minimum interval between snapshots
 ```
 
-#### Per-Ledger Configuration
-
-Ledgers can have their own `snapshotThreshold`:
-
-```bash
-curl -X POST http://localhost:9000/my-ledger \
-  -H "Content-Type: application/json" \
-  -d '{
-    "driver": "sqlite",
-    "snapshotThreshold": 500
-  }'
-```
-
 ### Storage
 
 #### SQLite

@@ -29,10 +29,6 @@ spec:
     - name: LEDGER_NAME
       value: {{ .Values.runner.env.ledgerName }}
     {{- end }}
-    {{- if .Values.runner.env.storeDriver }}
-    - name: STORE_DRIVER
-      value: {{ .Values.runner.env.storeDriver }}
-    {{- end }}
     {{- if .Values.runner.env.stages }}
     - name: K6_STAGES
       value: "{{ .Values.runner.env.stages }}"

@@ -20,7 +20,7 @@ import (
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
 
 type Bulker struct {
-	ledger      service.Ledger
+	ledger      service.Controller
 	ledgerName  string
 	parallelism int
 	tracer      trace.Tracer
@@ -129,7 +129,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, err := b.ledger.CreateTransaction(ctx, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+		log, err := b.ledger.CreateTransaction(ctx, b.ledgerName, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          rs,
 		})
@@ -148,7 +148,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 		case "ACCOUNT":
 			address := *req.TargetID.Str
 
-			log, err = b.ledger.SaveAccountMetadata(ctx, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+			log, err = b.ledger.SaveAccountMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 					Address:  address,
@@ -158,7 +158,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 		case "TRANSACTION":
 			transactionID := *req.TargetID.Int
 
-			log, err = b.ledger.SaveTransactionMetadata(ctx, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+			log, err = b.ledger.SaveTransactionMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 					TransactionId: transactionID,
@@ -177,7 +177,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 	case ActionRevertTransaction:
 		req := data.Data.(RevertTransactionRequest)
 
-		log, err := b.ledger.RevertTransaction(ctx, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := b.ledger.RevertTransaction(ctx, b.ledgerName, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			IdempotencyKey: data.IdempotencyKey,
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId:   req.ID,
@@ -209,7 +209,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledger.DeleteAccountMetadata(ctx, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+			log, err = b.ledger.DeleteAccountMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 					Address: address,
@@ -229,7 +229,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				return nil, 0, err
 			}
 
-			log, err = b.ledger.DeleteTransactionMetadata(ctx, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+			log, err = b.ledger.DeleteTransactionMetadata(ctx, b.ledgerName, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 					TransactionId: transactionID,
@@ -250,7 +250,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 	}
 }
 
-func NewBulker(ledgerCluster service.Ledger, ledgerName string, options ...BulkerOption) *Bulker {
+func NewBulker(ledgerCluster service.Controller, ledgerName string, options ...BulkerOption) *Bulker {
 	ret := &Bulker{
 		ledger:     ledgerCluster,
 		ledgerName: ledgerName,
@@ -296,14 +296,14 @@ func (opts BulkingOptions) Validate() error {
 }
 
 type BulkerFactory interface {
-	CreateBulker(ledgerCluster service.Ledger, ledgerName string) *Bulker
+	CreateBulker(ctrl service.Controller, ledgerName string) *Bulker
 }
 
 type DefaultBulkerFactory struct {
 	Options []BulkerOption
 }
 
-func (d *DefaultBulkerFactory) CreateBulker(ledgerCluster service.Ledger, ledgerName string) *Bulker {
+func (d *DefaultBulkerFactory) CreateBulker(ledgerCluster service.Controller, ledgerName string) *Bulker {
 	return NewBulker(ledgerCluster, ledgerName, d.Options...)
 }
 

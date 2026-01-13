@@ -2,14 +2,13 @@ package http
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/systempb"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 )
 
@@ -29,23 +28,22 @@ func NewServer(logger logging.Logger, backend Backend) *Server {
 }
 
 type Backend interface {
-	GetClusterState(context context.Context) (*ledgerpb.ClusterState[*systempb.State], error)
-	CreateLedger(ctx context.Context, req *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error)
+	service.Controller
+	GetClusterState(context context.Context) (*ledgerpb.ClusterState, error)
+	CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error)
 	GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
-	GetLedger(ctx context.Context, name string) (service.Ledger, error)
 	DeleteLedger(ctx context.Context, name string) error
-	GetLedgerClusterState(ctx context.Context, name string) (*ledgerpb.ClusterState[*ledgerpb.LedgerState], error)
 	IsHealthy() bool
 	GetAllLedgers(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error)
 }
 
 type DefaultBackend struct {
-	*system.Node
+	*raft.Node
 	connectionPool *transport.ConnectionPool
 	nodeId         uint64
 }
 
-func (b *DefaultBackend) getMainCluster() (service.System, error) {
+func (b *DefaultBackend) getCtrl() (service.Controller, error) {
 	if b.IsLeader() {
 		return b.Node, nil
 	}
@@ -55,15 +53,15 @@ func (b *DefaultBackend) getMainCluster() (service.System, error) {
 
 	grpcConn := b.connectionPool.GetConnection(b.GetLeader())
 
-	return service.NewGrpcSystemClient(systempb.NewSystemServiceClient(grpcConn)), nil
+	return service.NewLedgerGrpcClient(ledgerpb.NewLedgerServiceClient(grpcConn)), nil
 }
 
-func (b *DefaultBackend) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState[*systempb.State], error) {
+func (b *DefaultBackend) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, error) {
 	return b.Node.GetClusterState(ctx)
 }
 
-func (b *DefaultBackend) CreateLedger(ctx context.Context, req *systempb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
-	clusterLeader, err := b.getMainCluster()
+func (b *DefaultBackend) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
+	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
@@ -74,46 +72,30 @@ func (b *DefaultBackend) GetLedgerInfo(ctx context.Context, name string) (*ledge
 	return b.Node.GetLedgerInfo(ctx, name)
 }
 
-func (b *DefaultBackend) GetLedger(ctx context.Context, name string) (service.Ledger, error) {
-	ledgerNode, err := b.GetLedgerNode(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("getting ledger node: %w", err)
+func (b *DefaultBackend) GetLedger(ctx context.Context, name string) (service.Controller, error) {
+	if b.IsLeader() {
+		return b.Node, nil
 	}
 
-	if ledgerNode.IsLeader() {
-		return ledgerNode, nil
-	}
-
-	leader := ledgerNode.GetLeader()
+	leader := b.GetLeader()
 	if leader == 0 {
 		return nil, ledgerpb.ErrNoLeader
 	}
-	ledgerLeaderNodeID := system.NodeIDFromLedgerNodeID(leader)
 
-	grpcConn := b.connectionPool.GetConnection(ledgerLeaderNodeID)
+	grpcConn := b.connectionPool.GetConnection(leader)
 	if grpcConn == nil {
-		logging.FromContext(ctx).Errorf("no connection for node %d", ledgerLeaderNodeID)
 		return nil, ledgerpb.ErrNoLeader
 	}
 
-	return service.NewLedgerGrpcClient(name, ledgerpb.NewLedgerServiceClient(grpcConn)), nil
+	return service.NewLedgerGrpcClient(ledgerpb.NewLedgerServiceClient(grpcConn)), nil
 }
 
 func (b *DefaultBackend) DeleteLedger(ctx context.Context, name string) error {
-	clusterLeader, err := b.getMainCluster()
+	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return err
 	}
 	return clusterLeader.DeleteLedger(ctx, name)
-}
-
-func (b *DefaultBackend) GetLedgerClusterState(ctx context.Context, name string) (*ledgerpb.ClusterState[*ledgerpb.LedgerState], error) {
-	ledgerNode, err := b.GetLedgerNode(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-
-	return ledgerNode.GetClusterState(ctx)
 }
 
 func (b *DefaultBackend) IsHealthy() bool {
@@ -124,9 +106,82 @@ func (b *DefaultBackend) GetAllLedgers(ctx context.Context) (map[string]*ledgerp
 	return b.GetAllLedgersInfo(ctx)
 }
 
+func (b *DefaultBackend) CreateTransaction(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.CreateTransaction(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) RevertTransaction(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.RevertTransaction(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) SaveTransactionMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.SaveTransactionMetadata(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) SaveAccountMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.SaveAccountMetadata(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) DeleteTransactionMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.DeleteTransactionMetadata(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) DeleteAccountMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.DeleteAccountMetadata(ctx, ledger, parameters)
+}
+func (b *DefaultBackend) Import(ctx context.Context, ledger string, stream chan *ledgerpb.Log) error {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return err
+	}
+
+	return ctrl.Import(ctx, ledger, stream)
+}
+func (b *DefaultBackend) Export(ctx context.Context, ledger string, w service.ExportWriter) error {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return err
+	}
+
+	return ctrl.Export(ctx, ledger, w)
+}
+func (b *DefaultBackend) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.GetAllLogs(ctx, ledger, from, to)
+}
+
 var _ Backend = (*DefaultBackend)(nil)
 
-func NewDefaultBackend(node *system.Node, connectionPool *transport.ConnectionPool, nodeId uint64) *DefaultBackend {
+func NewDefaultBackend(node *raft.Node, connectionPool *transport.ConnectionPool, nodeId uint64) *DefaultBackend {
 	return &DefaultBackend{
 		Node:           node,
 		connectionPool: connectionPool,

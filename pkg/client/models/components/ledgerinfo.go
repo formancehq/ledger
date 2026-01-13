@@ -3,151 +3,17 @@
 package components
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"time"
 )
 
-// StoreDriver - Store driver name.
-// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
-// and pebble (github.com/cockroachdb/pebble)
-type StoreDriver string
-
-const (
-	StoreDriverSqliteMattn  StoreDriver = "sqlite-mattn"
-	StoreDriverSqliteModern StoreDriver = "sqlite-modern"
-	StoreDriverPebble       StoreDriver = "pebble"
-)
-
-func (e StoreDriver) ToPointer() *StoreDriver {
-	return &e
-}
-func (e *StoreDriver) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	switch v {
-	case "sqlite-mattn":
-		fallthrough
-	case "sqlite-modern":
-		fallthrough
-	case "pebble":
-		*e = StoreDriver(v)
-		return nil
-	default:
-		return fmt.Errorf("invalid value for StoreDriver: %v", v)
-	}
-}
-
-type StoreConfigType string
-
-const (
-	StoreConfigTypeSQLiteMattnConfig  StoreConfigType = "SQLiteMattnConfig"
-	StoreConfigTypeSQLiteModernConfig StoreConfigType = "SQLiteModernConfig"
-	StoreConfigTypePebbleConfig       StoreConfigType = "PebbleConfig"
-)
-
-// StoreConfig - Store driver-specific configuration
-type StoreConfig struct {
-	SQLiteMattnConfig  *SQLiteMattnConfig  `queryParam:"inline"`
-	SQLiteModernConfig *SQLiteModernConfig `queryParam:"inline"`
-	PebbleConfig       *PebbleConfig       `queryParam:"inline"`
-
-	Type StoreConfigType
-}
-
-func CreateStoreConfigSQLiteMattnConfig(sqLiteMattnConfig SQLiteMattnConfig) StoreConfig {
-	typ := StoreConfigTypeSQLiteMattnConfig
-
-	return StoreConfig{
-		SQLiteMattnConfig: &sqLiteMattnConfig,
-		Type:              typ,
-	}
-}
-
-func CreateStoreConfigSQLiteModernConfig(sqLiteModernConfig SQLiteModernConfig) StoreConfig {
-	typ := StoreConfigTypeSQLiteModernConfig
-
-	return StoreConfig{
-		SQLiteModernConfig: &sqLiteModernConfig,
-		Type:               typ,
-	}
-}
-
-func CreateStoreConfigPebbleConfig(pebbleConfig PebbleConfig) StoreConfig {
-	typ := StoreConfigTypePebbleConfig
-
-	return StoreConfig{
-		PebbleConfig: &pebbleConfig,
-		Type:         typ,
-	}
-}
-
-func (u *StoreConfig) UnmarshalJSON(data []byte) error {
-
-	var sqLiteMattnConfig SQLiteMattnConfig = SQLiteMattnConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteMattnConfig, "", true, true); err == nil {
-		u.SQLiteMattnConfig = &sqLiteMattnConfig
-		u.Type = StoreConfigTypeSQLiteMattnConfig
-		return nil
-	}
-
-	var sqLiteModernConfig SQLiteModernConfig = SQLiteModernConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteModernConfig, "", true, true); err == nil {
-		u.SQLiteModernConfig = &sqLiteModernConfig
-		u.Type = StoreConfigTypeSQLiteModernConfig
-		return nil
-	}
-
-	var pebbleConfig PebbleConfig = PebbleConfig{}
-	if err := utils.UnmarshalJSON(data, &pebbleConfig, "", true, true); err == nil {
-		u.PebbleConfig = &pebbleConfig
-		u.Type = StoreConfigTypePebbleConfig
-		return nil
-	}
-
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for StoreConfig", string(data))
-}
-
-func (u StoreConfig) MarshalJSON() ([]byte, error) {
-	if u.SQLiteMattnConfig != nil {
-		return utils.MarshalJSON(u.SQLiteMattnConfig, "", true)
-	}
-
-	if u.SQLiteModernConfig != nil {
-		return utils.MarshalJSON(u.SQLiteModernConfig, "", true)
-	}
-
-	if u.PebbleConfig != nil {
-		return utils.MarshalJSON(u.PebbleConfig, "", true)
-	}
-
-	return nil, errors.New("could not marshal union type StoreConfig: all fields are null")
-}
-
 type LedgerInfo struct {
-	// Sequential ID for the ledger
-	ID int64 `json:"id"`
 	// Name of the ledger
 	Name string `json:"name"`
-	// Store driver name.
-	// Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite),
-	// and pebble (github.com/cockroachdb/pebble)
-	//
-	StoreDriver StoreDriver `json:"storeDriver"`
-	// Store driver-specific configuration
-	StoreConfig *StoreConfig `json:"storeConfig,omitempty"`
 	// Metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Creation timestamp (ISO 8601 format)
 	CreatedAt time.Time `json:"createdAt"`
-	// Number of logs before triggering a snapshot (0 means use global config)
-	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
-	// Deletion timestamp (always null with hard delete)
-	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 }
 
 func (l LedgerInfo) MarshalJSON() ([]byte, error) {
@@ -161,32 +27,11 @@ func (l *LedgerInfo) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *LedgerInfo) GetID() int64 {
-	if o == nil {
-		return 0
-	}
-	return o.ID
-}
-
 func (o *LedgerInfo) GetName() string {
 	if o == nil {
 		return ""
 	}
 	return o.Name
-}
-
-func (o *LedgerInfo) GetStoreDriver() StoreDriver {
-	if o == nil {
-		return StoreDriver("")
-	}
-	return o.StoreDriver
-}
-
-func (o *LedgerInfo) GetStoreConfig() *StoreConfig {
-	if o == nil {
-		return nil
-	}
-	return o.StoreConfig
 }
 
 func (o *LedgerInfo) GetMetadata() map[string]string {
@@ -201,18 +46,4 @@ func (o *LedgerInfo) GetCreatedAt() time.Time {
 		return time.Time{}
 	}
 	return o.CreatedAt
-}
-
-func (o *LedgerInfo) GetSnapshotThreshold() *int64 {
-	if o == nil {
-		return nil
-	}
-	return o.SnapshotThreshold
-}
-
-func (o *LedgerInfo) GetDeletedAt() *time.Time {
-	if o == nil {
-		return nil
-	}
-	return o.DeletedAt
 }

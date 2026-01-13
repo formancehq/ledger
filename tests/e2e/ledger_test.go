@@ -126,9 +126,6 @@ var _ = Describe("Ledger", func() {
 
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 
@@ -229,9 +226,6 @@ var _ = Describe("Ledger", func() {
 
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 
@@ -359,167 +353,120 @@ var _ = Describe("Ledger", func() {
 		})
 	})
 
-	Context("When creating ledgers and transactions with different drivers", func() {
-		type driverTestCase struct {
-			driverName      string
-			storeDriverEnum components.CreateLedgerRequestStoreDriver
-			storeDriver     components.StoreDriver
-			description     string
-		}
+	Context("When creating ledgers and transactions", func() {
+		var (
+			leaderID   uint64
+			ledgerName string
+		)
 
-		testCases := []driverTestCase{
-			{
-				driverName:      "sqlite-mattn",
-				storeDriverEnum: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				storeDriver:     components.StoreDriverSqliteMattn,
-				description:     "SQLite Mattn driver (github.com/mattn/go-sqlite3)",
-			},
-			{
-				driverName:      "sqlite-modern",
-				storeDriverEnum: components.CreateLedgerRequestStoreDriverSqliteModern,
-				storeDriver:     components.StoreDriverSqliteModern,
-				description:     "SQLite Modern driver (modernc.org/sqlite)",
-			},
-			{
-				driverName:      "pebble",
-				storeDriverEnum: components.CreateLedgerRequestStoreDriverPebble,
-				storeDriver:     components.StoreDriverPebble,
-				description:     "Pebble driver (github.com/cockroachdb/pebble)",
-			},
-		}
+		BeforeEach(func() {
+			leaderID = getLeaderID()
+			ledgerName = "test-ledger-create"
+		})
 
-		for _, tc := range testCases {
-			tc := tc
-			Context(fmt.Sprintf("With %s driver", tc.driverName), func() {
-				var (
-					leaderID   uint64
-					ledgerName string
-				)
-
-				BeforeEach(func() {
-					leaderID = getLeaderID()
-					ledgerName = fmt.Sprintf("test-ledger-%s", tc.driverName)
-				})
-
-				It("Should create a ledger successfully", func() {
-					resp, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-						LedgerName: ledgerName,
-						CreateLedgerRequest: components.CreateLedgerRequest{
-							StoreDriver: tc.storeDriverEnum,
-						},
-					})
-					Expect(err).To(Succeed(), "Failed to create ledger with driver %s", tc.driverName)
-					Expect(resp).NotTo(BeNil())
-					Expect(resp.GetCreateLedgerResponse()).NotTo(BeNil())
-					Expect(resp.GetCreateLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(resp.GetCreateLedgerResponse().Data.StoreDriver).To(Equal(tc.storeDriver))
-
-					ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-						LedgerName: ledgerName,
-					})
-					Expect(err).To(Succeed())
-					Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
-					Expect(ledger.GetGetLedgerResponse().Data.StoreDriver).To(Equal(tc.storeDriver))
-				})
-
-				It("Should create a transaction on the ledger", func() {
-					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-						LedgerName: ledgerName,
-						CreateLedgerRequest: components.CreateLedgerRequest{
-							StoreDriver: tc.storeDriverEnum,
-						},
-					})
-					Expect(err).To(Succeed())
-
-					resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-						LedgerName: ledgerName,
-						CreateTransactionRequest: components.CreateTransactionRequest{
-							Postings: []components.PostingRequest{{
-								Source:      "world",
-								Destination: "account-1",
-								Amount:      big.NewInt(100),
-								Asset:       "USD",
-							}},
-						},
-					})
-					Expect(err).To(Succeed(), "Failed to create transaction on ledger with driver %s", tc.driverName)
-					Expect(resp).NotTo(BeNil())
-				})
-
-				It("Should create multiple transactions successfully", func() {
-					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-						LedgerName: ledgerName,
-						CreateLedgerRequest: components.CreateLedgerRequest{
-							StoreDriver: tc.storeDriverEnum,
-						},
-					})
-					Expect(err).To(Succeed())
-
-					transactions := []struct {
-						source      string
-						destination string
-						amount      *big.Int
-						asset       string
-					}{
-						{"world", "account-1", big.NewInt(100), "USD"},
-						{"world", "account-2", big.NewInt(200), "USD"},
-						{"account-1", "account-2", big.NewInt(50), "USD"},
-					}
-
-					for i, tx := range transactions {
-						resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-							LedgerName: ledgerName,
-							CreateTransactionRequest: components.CreateTransactionRequest{
-								Postings: []components.PostingRequest{{
-									Source:      tx.source,
-									Destination: tx.destination,
-									Amount:      tx.amount,
-									Asset:       tx.asset,
-								}},
-							},
-						})
-						Expect(err).To(Succeed(), "Failed to create transaction %d with driver %s", i+1, tc.driverName)
-						Expect(resp).NotTo(BeNil())
-						Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
-					}
-				})
-
-				It("Should create transactions with metadata", func() {
-					_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-						LedgerName: ledgerName,
-						CreateLedgerRequest: components.CreateLedgerRequest{
-							StoreDriver: tc.storeDriverEnum,
-						},
-					})
-					Expect(err).To(Succeed())
-
-					resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-						LedgerName: ledgerName,
-						CreateTransactionRequest: components.CreateTransactionRequest{
-							Postings: []components.PostingRequest{{
-								Source:      "world",
-								Destination: "account-with-metadata",
-								Amount:      big.NewInt(100),
-								Asset:       "USD",
-							}},
-							Metadata: map[string]string{
-								"description": "Test transaction",
-								"category":    "test",
-							},
-							AccountMetadata: map[string]map[string]string{
-								"account-with-metadata": {
-									"account_type": "asset",
-									"label":        "Account with Metadata",
-								},
-							},
-						},
-					})
-					Expect(err).To(Succeed(), "Failed to create transaction with metadata using driver %s", tc.driverName)
-					Expect(resp).NotTo(BeNil())
-					Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
-				})
+		It("Should create a ledger successfully", func() {
+			resp, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
 			})
-		}
+			Expect(err).To(Succeed(), "Failed to create ledger")
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.GetCreateLedgerResponse()).NotTo(BeNil())
+			Expect(resp.GetCreateLedgerResponse().Data.Name).To(Equal(ledgerName))
+
+			ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+				LedgerName: ledgerName,
+			})
+			Expect(err).To(Succeed())
+			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+		})
+
+		It("Should create a transaction on the ledger", func() {
+			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
+			})
+			Expect(err).To(Succeed())
+
+			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed(), "Failed to create transaction on ledger")
+			Expect(resp).NotTo(BeNil())
+		})
+
+		It("Should create multiple transactions successfully", func() {
+			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
+			})
+			Expect(err).To(Succeed())
+
+			transactions := []struct {
+				source      string
+				destination string
+				amount      *big.Int
+				asset       string
+			}{
+				{"world", "account-1", big.NewInt(100), "USD"},
+				{"world", "account-2", big.NewInt(200), "USD"},
+				{"account-1", "account-2", big.NewInt(50), "USD"},
+			}
+
+			for i, tx := range transactions {
+				resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+					LedgerName: ledgerName,
+					CreateTransactionRequest: components.CreateTransactionRequest{
+						Postings: []components.PostingRequest{{
+							Source:      tx.source,
+							Destination: tx.destination,
+							Amount:      tx.amount,
+							Asset:       tx.asset,
+						}},
+					},
+				})
+				Expect(err).To(Succeed(), "Failed to create transaction %d", i+1)
+				Expect(resp).NotTo(BeNil())
+				Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			}
+		})
+
+		It("Should create transactions with metadata", func() {
+			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
+			})
+			Expect(err).To(Succeed())
+
+			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-with-metadata",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+					Metadata: map[string]string{
+						"description": "Test transaction",
+						"category":    "test",
+					},
+					AccountMetadata: map[string]map[string]string{
+						"account-with-metadata": {
+							"account_type": "asset",
+							"label":        "Account with Metadata",
+						},
+					},
+				},
+			})
+			Expect(err).To(Succeed(), "Failed to create transaction with metadata")
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+		})
 	})
 
 	Context("When saving transaction metadata via direct endpoint", func() {
@@ -533,9 +480,6 @@ var _ = Describe("Ledger", func() {
 
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -616,9 +560,6 @@ var _ = Describe("Ledger", func() {
 
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -729,9 +670,6 @@ var _ = Describe("Ledger", func() {
 
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 		})

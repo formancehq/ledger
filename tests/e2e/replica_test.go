@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
@@ -149,19 +148,10 @@ var _ = Describe("Simple cluster", func() {
 		BeforeEach(func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger0",
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 		})
-		It("should succeed", func() {
-			state, err := servers[0].client.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
-				LedgerName: "ledger0",
-			})
-			Expect(err).To(BeNil())
-			Expect(state.LedgerClusterStateResponse.Data.InnerState.StoreMetrics).NotTo(BeNil())
-		})
+		It("should succeed", func() {})
 		Context("Then deleting the ledger", func() {
 			BeforeEach(func() {
 				// Note: DeleteLedger endpoint needs to be added to the SDK
@@ -182,9 +172,6 @@ var _ = Describe("Simple cluster", func() {
 			// Create ledger
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -231,9 +218,6 @@ var _ = Describe("Simple cluster", func() {
 			// Create a ledger
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: "ledger1",
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 
@@ -262,9 +246,6 @@ var _ = Describe("Simple cluster", func() {
 				// Create a ledger while follower is down
 				_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 					LedgerName: ledgerName,
-					CreateLedgerRequest: components.CreateLedgerRequest{
-						StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-					},
 				})
 				Expect(err).To(Succeed())
 			})
@@ -325,7 +306,7 @@ var _ = Describe("Simple cluster", func() {
 
 				Context("Then the follower come back", func() {
 					BeforeEach(func() {
-						Eventually(servers[leaderID-1]).To(HasLastLog(ledgerName, uint64(15)))
+						Eventually(servers[leaderID-1]).To(HasNextLogID(ledgerName, uint64(16)))
 
 						// Restart the follower
 						By("Starting the follower", func() {
@@ -333,8 +314,7 @@ var _ = Describe("Simple cluster", func() {
 						})
 
 						Eventually(servers[followerID-1]).To(BeFollower())
-						Eventually(servers[followerID-1]).To(BeLedgerFollower(ledgerName))
-						Eventually(servers[followerID-1]).To(HasLastLog(ledgerName, countTransactions))
+						Eventually(servers[followerID-1]).To(HasNextLogID(ledgerName, countTransactions+1))
 					})
 
 					It("Should restore the state from a snapshot sent by the leader", func() {})
@@ -352,8 +332,7 @@ var _ = Describe("Simple cluster", func() {
 						})
 						It("Should restart as expected", func() {
 							Eventually(servers[followerID-1]).To(BeFollower())
-							Eventually(servers[followerID-1]).To(BeLedgerFollower(ledgerName))
-							Eventually(servers[followerID-1]).To(HasLastLog(ledgerName, countTransactions))
+							Eventually(servers[followerID-1]).To(HasNextLogID(ledgerName, countTransactions+1))
 						})
 					})
 				})
@@ -362,37 +341,28 @@ var _ = Describe("Simple cluster", func() {
 	})
 	Context("When creating a ledger", func() {
 		var (
-			ledgerName     string
-			ledgerLeaderID uint64
+			ledgerName string
 		)
 		BeforeEach(func() {
 			ledgerName = "ledger2"
 			// Create a ledger while follower is down
 			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
 				LedgerName: ledgerName,
-				CreateLedgerRequest: components.CreateLedgerRequest{
-					StoreDriver: components.CreateLedgerRequestStoreDriverSqliteMattn,
-				},
 			})
 			Expect(err).To(Succeed())
 
-			Expect(servers[leaderID-1]).To(HaveALeaderOnLedger(ledgerName, &ledgerLeaderID))
+			Expect(servers[leaderID-1]).To(HaveALeader(&leaderID))
 		})
 		Context("When simulating a follower slowness by blocking MsgApp from the leader", func() {
 			var (
-				ledgerFollowerID uint64
+				followerID uint64
 			)
 			BeforeEach(func() {
 				// Find a follower (any node that is not the leader)
-				ledgerFollowerID = system.LedgerNodeID(
-					1,
-					((system.NodeIDFromLedgerNodeID(ledgerLeaderID)+1)%countInstances)+1,
-				)
-				By(fmt.Sprintf("Blocking MsgApp from the leader to follower %d", ledgerFollowerID), func() {
+				followerID = ((leaderID + 1) % countInstances) + 1
+				By(fmt.Sprintf("Blocking MsgApp from the leader to follower %d", followerID), func() {
 					gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
-						fmt.Println("Check MsgApp from the leader to follower", msg.From, msg.To, msg.Type)
-						if msg.To == ledgerFollowerID && msg.Type == raftpb.MsgApp {
-							fmt.Println("Blocking MsgApp from the leader to follower", msg.To)
+						if msg.To == followerID && msg.Type == raftpb.MsgApp {
 							return false
 						}
 						return true
@@ -405,7 +375,7 @@ var _ = Describe("Simple cluster", func() {
 					// Create enough transactions to trigger a snapshot
 					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 					for i := 0; i < countTransactions; i++ {
-						_, err := servers[system.NodeIDFromLedgerNodeID(ledgerLeaderID)-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
 							LedgerName: ledgerName,
 							CreateTransactionRequest: components.CreateTransactionRequest{
 								Postings: []components.PostingRequest{{
@@ -427,7 +397,7 @@ var _ = Describe("Simple cluster", func() {
 						// Create enough transactions to trigger a snapshot
 						// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 						for i := 0; i < countTransactions; i++ {
-							_, err := servers[system.NodeIDFromLedgerNodeID(ledgerLeaderID)-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+							_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
 								LedgerName: ledgerName,
 								CreateTransactionRequest: components.CreateTransactionRequest{
 									Postings: []components.PostingRequest{{

@@ -223,47 +223,30 @@ func (x *RevertedTransactionMemento) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for LedgerInfo
-func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Id                uint64            `json:"id,omitempty"`
-		Name              string            `json:"name,omitempty"`
-		StoreDriver       string            `json:"storeDriver,omitempty"`
-		StoreConfig       interface{}       `json:"storeConfig,omitempty"`
-		Metadata          map[string]string `json:"metadata,omitempty"`
-		CreatedAt         *Timestamp        `json:"createdAt,omitempty"`
-		SnapshotThreshold uint64            `json:"snapshotThreshold,omitempty"`
-		DeletedAt         *Timestamp        `json:"deletedAt,omitempty"`
-	}{
-		Id:                x.Id,
-		Name:              x.Name,
-		StoreDriver:       x.StoreDriver,
-		StoreConfig:       x.StoreConfig,
-		Metadata:          x.Metadata,
-		CreatedAt:         x.CreatedAt,
-		SnapshotThreshold: x.SnapshotThreshold,
-		DeletedAt:         x.DeletedAt,
-	})
-}
+// // MarshalJSON implements json.Marshaler for LedgerInfo
+// func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
+// 	return json.Marshal(&struct {
+// 		Name      string            `json:"name,omitempty"`
+// 		Metadata  map[string]string `json:"metadata,omitempty"`
+// 		CreatedAt *Timestamp        `json:"createdAt,omitempty"`
+// 	}{
+// 		Name:      x.Name,
+// 		Metadata:  x.Metadata,
+// 		CreatedAt: x.CreatedAt,
+// 	})
+// }
 
-func (x *LedgerState) MarshalJSON() ([]byte, error) {
-	var storeMetrics map[string]any
-	if x.StoreMetrics != nil {
-		storeMetrics = x.StoreMetrics.AsMap()
-	}
-
-	return json.Marshal(struct {
-		LedgerInfo        *LedgerInfo    `json:"ledgerInfo,omitempty"`
-		LastLogId         uint64         `json:"lastLogId,omitempty"`
-		LastTransactionId uint64         `json:"lastTransactionId,omitempty"`
-		StoreMetrics      map[string]any `json:"storeMetrics,omitempty"`
-	}{
-		LedgerInfo:        x.LedgerInfo,
-		LastLogId:         x.LastLogId,
-		LastTransactionId: x.LastTransactionId,
-		StoreMetrics:      storeMetrics,
-	})
-}
+// func (x *LedgerState) MarshalJSON() ([]byte, error) {
+// 	return json.Marshal(struct {
+// 		LedgerInfo        *LedgerInfo `json:"ledgerInfo,omitempty"`
+// 		NextLogId         uint64      `json:"nextLogId,omitempty"`
+// 		NextTransactionId uint64      `json:"nextTransactionId,omitempty"`
+// 	}{
+// 		LedgerInfo:        x.LedgerInfo,
+// 		NextLogId:         x.NextLogId,
+// 		NextTransactionId: x.NextTransactionId,
+// 	})
+// }
 
 // UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
 // Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
@@ -373,4 +356,18 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("unknown type '%s'", x.TargetType)
 	}
 	return err
+}
+
+func (state *LedgerState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		LedgerInfo        *LedgerInfo `json:"ledgerInfo,omitempty"`
+		NextLogId         uint64      `json:"nextLogId,omitempty"`
+		NextTransactionId uint64      `json:"nextTransactionId,omitempty"`
+		LastAppliedLogId  uint64      `json:"lastAppliedLogId,omitempty"`
+	}{
+		LedgerInfo:        state.LedgerInfo,
+		NextLogId:         state.NextLogId,
+		NextTransactionId: state.NextTransactionId,
+		LastAppliedLogId:  state.LastAppliedLogId,
+	})
 }

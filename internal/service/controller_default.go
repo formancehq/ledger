@@ -9,18 +9,18 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/numscript"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source ledger_default.go -destination ledger_default_generated_test.go -package service . LogFactory
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package service . LogFactory
 type LogFactory interface {
-	CreateLog(ctx context.Context, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
+	CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
 }
 
-// DefaultLedger is the default implementation of the Ledger interface
-type DefaultLedger struct {
-	logReader LogReader
-	logger    logging.Logger
+// DefaultController is the default implementation of the Ledger interface
+type DefaultController struct {
+	logger logging.Logger
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
 	createTransactionLp         *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
@@ -32,21 +32,18 @@ type DefaultLedger struct {
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(
-	logReader LogReader,
+func NewDefaultController(
 	logFactory LogFactory,
-	runtimeStore RuntimeStore,
+	runtimeStore store.Runtime,
 	logger logging.Logger,
-) *DefaultLedger {
-	l := &DefaultLedger{
-		logReader: logReader,
-		logger:    logger,
+) *DefaultController {
+	l := &DefaultController{
+		logger: logger,
 	}
 	keySetLocker := NewDefaultKeySetLocker()
 	l.createTransactionLp = newLogProcessor(
 		"CreateTransaction",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.createTransaction,
@@ -54,7 +51,6 @@ func NewDefaultLedger(
 	l.saveTransactionMetadataLp = newLogProcessor(
 		"SaveTransactionMetadata",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.saveTransactionMetadata,
@@ -62,7 +58,6 @@ func NewDefaultLedger(
 	l.saveAccountMetadataLp = newLogProcessor(
 		"SaveAccountMetadata",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.saveAccountMetadata,
@@ -70,7 +65,6 @@ func NewDefaultLedger(
 	l.deleteTransactionMetadataLp = newLogProcessor(
 		"DeleteTransactionMetadata",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.deleteTransactionMetadata,
@@ -78,7 +72,6 @@ func NewDefaultLedger(
 	l.deleteAccountMetadataLp = newLogProcessor(
 		"DeleteAccountMetadata",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.deleteAccountMetadata,
@@ -86,7 +79,6 @@ func NewDefaultLedger(
 	l.revertTransactionLp = newLogProcessor(
 		"RevertTransaction",
 		runtimeStore,
-		logReader,
 		logFactory,
 		keySetLocker,
 		l.revertTransaction,
@@ -96,12 +88,12 @@ func NewDefaultLedger(
 }
 
 // CreateTransaction creates a new transaction
-func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.createTransactionLp.forgeLog(ctx, parameters)
+func (l *DefaultController) CreateTransaction(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.createTransactionLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) createTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
 	l.logger.Debugf("Creating transaction")
 
 	input := parameters.Input
@@ -207,7 +199,7 @@ func (l *DefaultLedger) createTransaction(ctx context.Context, unitOfWork *unitO
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
-func (l *DefaultLedger) executeNumscript(ctx context.Context, store *unitOfWork, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
+func (l *DefaultController) executeNumscript(ctx context.Context, store *unitOfWork, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
 	if script == nil || script.Plain == "" {
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
@@ -267,12 +259,12 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, store *unitOfWork,
 }
 
 // RevertTransaction reverts a transaction by creating a reverse transaction
-func (l *DefaultLedger) RevertTransaction(ctx context.Context, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.revertTransactionLp.forgeLog(ctx, parameters)
+func (l *DefaultController) RevertTransaction(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.revertTransactionLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -306,7 +298,7 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, unitOfWork *unitO
 	}
 
 	// Get the log containing the original transaction
-	log, err := l.logReader.GetLogByID(ctx, logID)
+	log, err := unitOfWork.GetLogByID(ctx, logID)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", logID, err)
 	}
@@ -393,12 +385,12 @@ func (l *DefaultLedger) revertTransaction(ctx context.Context, unitOfWork *unitO
 }
 
 // SaveTransactionMetadata saves metadata for a transaction
-func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, parameters)
+func (l *DefaultController) SaveTransactionMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) saveTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -426,12 +418,12 @@ func (l *DefaultLedger) saveTransactionMetadata(ctx context.Context, store *unit
 }
 
 // SaveAccountMetadata saves metadata for an account
-func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveAccountMetadataLp.forgeLog(ctx, parameters)
+func (l *DefaultController) SaveAccountMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.saveAccountMetadataLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -459,12 +451,12 @@ func (l *DefaultLedger) saveAccountMetadata(ctx context.Context, store *unitOfWo
 }
 
 // DeleteTransactionMetadata deletes a metadata key from a transaction
-func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, parameters)
+func (l *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.TransactionId == 0 {
@@ -491,12 +483,12 @@ func (l *DefaultLedger) deleteTransactionMetadata(ctx context.Context, store *un
 }
 
 // DeleteAccountMetadata deletes a metadata key from an account
-func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, parameters)
+func (l *DefaultController) DeleteAccountMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, ledger, parameters)
 	return log, err
 }
 
-func (l *DefaultLedger) deleteAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (l *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.Address == "" {
@@ -523,23 +515,19 @@ func (l *DefaultLedger) deleteAccountMetadata(ctx context.Context, store *unitOf
 }
 
 // Import is not implemented yet
-func (l *DefaultLedger) Import(ctx context.Context, stream chan *ledgerpb.Log) error {
-	return ErrNotFound
+func (l *DefaultController) Import(ctx context.Context, ledger string, stream chan *ledgerpb.Log) error {
+	return fmt.Errorf("import is not implemented yet")
 }
 
 // Export is not implemented yet
-func (l *DefaultLedger) Export(ctx context.Context, w ExportWriter) error {
-	return ErrNotFound
-}
-
-func (l *DefaultLedger) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
-	return l.logReader.GetAllLogs(ctx, from, to)
+func (l *DefaultController) Export(ctx context.Context, ledger string, w ExportWriter) error {
+	return fmt.Errorf("export is not implemented yet")
 }
 
 // checkBalances verifies that all source accounts have sufficient funds for the given postings.
 // It locks the relevant balance keys, fetches current balances, and returns ErrInsufficientFunds
 // if any source account lacks the required funds.
-func (l *DefaultLedger) checkBalances(ctx context.Context, store *unitOfWork, postings []*ledgerpb.Posting) error {
+func (l *DefaultController) checkBalances(ctx context.Context, store *unitOfWork, postings []*ledgerpb.Posting) error {
 	// Group postings by source account and asset to check balances
 	// Build balance query: map[account] = [assets]
 	balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)

@@ -27,20 +27,11 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build service.Parameters[*ledgerpb.CreateTransactionRequest]
-	params := service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+	// Call ledger service
+	log, err := s.backend.CreateTransaction(r.Context(), ledgerName, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input:          req,
-	}
-
-	ledger, err := s.backend.GetLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
-	// Call ledger service
-	log, err := ledger.CreateTransaction(r.Context(), params)
+	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")
 		handleError(w, r, err)

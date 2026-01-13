@@ -6,12 +6,12 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
 type logProcessor[INPUT any] struct {
 	operation    string
-	runtimeStore RuntimeStore
-	logReader    LogReader
+	runtimeStore store.Runtime
 	logFactory   LogFactory
 	keySetLocker KeySetLocker
 	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
@@ -19,8 +19,7 @@ type logProcessor[INPUT any] struct {
 
 func newLogProcessor[INPUT any](
 	operation string,
-	runtimeStore RuntimeStore,
-	logStore LogReader,
+	runtimeStore store.Runtime,
 	logFactory LogFactory,
 	keySetLocker KeySetLocker,
 	builder func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
@@ -29,7 +28,6 @@ func newLogProcessor[INPUT any](
 	return &logProcessor[INPUT]{
 		operation:    operation,
 		runtimeStore: runtimeStore,
-		logReader:    logStore,
 		keySetLocker: keySetLocker,
 		builder:      builder,
 		logFactory:   logFactory,
@@ -38,29 +36,29 @@ func newLogProcessor[INPUT any](
 
 func (lp *logProcessor[INPUT]) forgeLog(
 	ctx context.Context,
+	ledger string,
 	parameters Parameters[INPUT],
 ) (*ledgerpb.Log, bool, error) {
 
 	if parameters.IdempotencyKey != "" {
-
 		release, err := lp.keySetLocker.TryLockKeys(ctx, "ik/"+parameters.IdempotencyKey)
 		if err != nil {
 			return nil, false, errors.Join(ErrIdempotencyKeyConflict, err)
 		}
 		defer release()
 
-		hash, id, err := lp.runtimeStore.GetLogForIdempotencyKey(ctx, parameters.IdempotencyKey)
-		if err != nil {
+		id, err := lp.runtimeStore.GetLogIDForIdempotencyKey(ctx, ledger, parameters.IdempotencyKey)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return nil, false, err
 		}
 
-		if id != 0 {
-			log, err := lp.logReader.GetLogByID(ctx, id)
+		if err == nil {
+			log, err := lp.runtimeStore.GetLogByID(ctx, ledger, id)
 			if err != nil {
 				return nil, false, err
 			}
 
-			if string(ledgerpb.ComputeIdempotencyHash(parameters.Input)) != string(hash) {
+			if string(ledgerpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
 				return nil, false, ErrIdempotencyKeyConflict
 			}
 
@@ -70,7 +68,8 @@ func (lp *logProcessor[INPUT]) forgeLog(
 
 	store := &unitOfWork{
 		KeySetLocker: lp.keySetLocker,
-		RuntimeStore: lp.runtimeStore,
+		Runtime:      lp.runtimeStore,
+		ledger:       ledger,
 	}
 	defer store.ReleaseLocks()
 
@@ -79,7 +78,7 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		return nil, false, err
 	}
 
-	log, err := lp.logFactory.CreateLog(ctx, &ledgerpb.Idempotency{
+	log, err := lp.logFactory.CreateLog(ctx, ledger, &ledgerpb.Idempotency{
 		Key:  parameters.IdempotencyKey,
 		Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
 	}, input)

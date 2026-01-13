@@ -115,6 +115,10 @@ spec:
         {{- end }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
+        {{- if .Values.config.storageType }}
+        - name: STORAGE_TYPE
+          value: {{ .Values.config.storageType | quote }}
+        {{- end }}
         # OpenTelemetry metrics configuration
         - name: OTEL_METRICS_KEEP_IN_MEMORY
           value: {{ .Values.config.monitoring.metrics.keepInMemory | default true | toString | quote }}
@@ -166,6 +170,9 @@ spec:
           exec ./ledger-v3-poc \
             --node-id $NODE_ID \
             --advertise-addr "$ADVERTISE_ADDR" \
+            {{- if .Values.config.storageType }}
+            --storage-type {{ .Values.config.storageType | quote }} \
+            {{- end }}
             $PEERS_LIST
         volumeMounts:
         - name: data

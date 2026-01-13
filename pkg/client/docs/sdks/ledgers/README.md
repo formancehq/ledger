@@ -9,7 +9,6 @@
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a new ledger
 * [DeleteLedger](#deleteledger) - Delete a ledger
-* [GetLedgerRaftState](#getledgerraftstate) - Get ledger Raft cluster state
 
 ## ListAllLedgers
 
@@ -115,8 +114,7 @@ func main() {
 
 ## CreateLedger
 
-Creates a new ledger with the specified name, driver, and configuration. The storeDriver is required.
-Available drivers: sqlite-mattn (github.com/mattn/go-sqlite3), sqlite-modern (modernc.org/sqlite), and pebble (github.com/cockroachdb/pebble).
+Creates a new ledger with the specified name. Storage is configured at the server level.
 Each ledger has its own Raft group for data consistency.
 
 
@@ -140,12 +138,7 @@ func main() {
 
     res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
         LedgerName: "<value>",
-        CreateLedgerRequest: components.CreateLedgerRequest{
-            StoreDriver: components.CreateLedgerRequestStoreDriverPebble,
-            StoreConfig: client.Pointer(components.CreateCreateLedgerRequestStoreConfigSQLiteMattnConfig(
-                components.SQLiteMattnConfig{},
-            )),
-        },
+        CreateLedgerRequest: components.CreateLedgerRequest{},
     })
     if err != nil {
         log.Fatal(err)
@@ -221,60 +214,6 @@ func main() {
 ### Response
 
 **[*operations.DeleteLedgerResponse](../../models/operations/deleteledgerresponse.md), error**
-
-### Errors
-
-| Error Type              | Status Code             | Content Type            |
-| ----------------------- | ----------------------- | ----------------------- |
-| sdkerrors.ErrorResponse | 404                     | application/json        |
-| sdkerrors.ErrorResponse | 500                     | application/json        |
-| sdkerrors.ErrorResponse | 503                     | application/json        |
-| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
-
-## GetLedgerRaftState
-
-Returns the current state of the Raft cluster for the specified ledger, including the list of nodes, the current leader, and the ledger state
-
-### Example Usage
-
-```go
-package main
-
-import(
-	"context"
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
-	"log"
-)
-
-func main() {
-    ctx := context.Background()
-
-    s := client.New()
-
-    res, err := s.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
-        LedgerName: "<value>",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    if res.LedgerClusterStateResponse != nil {
-        // handle response
-    }
-}
-```
-
-### Parameters
-
-| Parameter                                                                                    | Type                                                                                         | Required                                                                                     | Description                                                                                  |
-| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `ctx`                                                                                        | [context.Context](https://pkg.go.dev/context#Context)                                        | :heavy_check_mark:                                                                           | The context to use for the request.                                                          |
-| `request`                                                                                    | [operations.GetLedgerRaftStateRequest](../../models/operations/getledgerraftstaterequest.md) | :heavy_check_mark:                                                                           | The request object to use for the request.                                                   |
-| `opts`                                                                                       | [][operations.Option](../../models/operations/option.md)                                     | :heavy_minus_sign:                                                                           | The options for this request.                                                                |
-
-### Response
-
-**[*operations.GetLedgerRaftStateResponse](../../models/operations/getledgerraftstateresponse.md), error**
 
 ### Errors
 
