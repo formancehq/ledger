@@ -21,6 +21,7 @@ just run
 go run ./cmd/server \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
+  --wal-dir ./wal/node-1 \
   --data-dir ./data/node-1 \
   --http-port 9000
 ```

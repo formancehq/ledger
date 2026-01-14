@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Ledger v3 POC uses the Raft consensus protocol to ensure data consistency across the cluster. The system implements a multi-level architecture with multiple independent Raft groups.
+Ledger v3 POC uses the Raft consensus protocol to ensure data consistency across the cluster. The system implements a **single Raft group** architecture where all operations (ledger management and transactions) go through the same consensus layer.
 
 ## Raft Overview
 
@@ -27,45 +27,42 @@ stateDiagram-v2
     Leader --> Follower: Network Partition
 ```
 
-## Multi-Level Architecture
+## Single Raft Architecture
 
-### System Raft Group
+### Unified Command Processing
 
-The system Raft group is the main group that manages ledger creation and deletion. All nodes participate in this group.
+The single Raft group handles all commands through a unified FSM:
 
 **Managed Commands**:
 - `CreateLedgerCommand`: Create a new ledger
 - `DeleteLedgerCommand`: Delete an existing ledger
+- `CreateLogCommand`: Insert a log (transaction, metadata changes, reversions) into any ledger
 
-**FSM**: `internal/raft/system/fsm.go`
+**FSM**: `internal/raft/fsm.go`
 
-### Ledger Raft Groups
+### State Management
 
-Each ledger has its own independent Raft group. Ledger groups are created dynamically when a ledger is created.
-
-**Managed Commands**:
-- `InsertLogCommand`: Insert a log (transaction) into a ledger
-
-**FSM**: `internal/raft/ledger/fsm.go`
-
-### Node ID Mapping
-
-To avoid collisions between Raft groups, the system uses special Node ID encoding:
-
-- **System Raft Group**: Node IDs from 1 to 65535 (0x0001 to 0xFFFF)
-- **Ledger Raft Groups**: Node IDs encoded as `(ledgerID << 16) | systemNodeID`
+The FSM maintains a unified state for all ledgers:
 
 ```go
-// Encoding a Node ID for a ledger
-func nodeIDFromLedgerAndRootNodeID(rootNodeID uint64, ledger LedgerInfo) uint64 {
-    return (ledger.ID << 16) | rootNodeID
+type State struct {
+    Ledgers map[string]*LedgerState  // All ledgers by name
 }
 
-// Decoding a Node ID from a ledger
-func NodeIDFromLedgerNodeID(ledgerNodeID uint64) uint64 {
-    return ledgerNodeID & 0x0000FFFF
+type LedgerState struct {
+    LedgerInfo        *LedgerInfo
+    NextLogId         uint64
+    NextTransactionId uint64
+    LastAppliedLogId  uint64
 }
 ```
+
+### Advantages of Single Raft
+
+1. **Simplified Operations**: Only one Raft group to monitor and maintain
+2. **Unified Snapshots**: Single snapshot contains all ledger states
+3. **Atomic Multi-Ledger Operations**: Easier to implement cross-ledger features in the future
+4. **Reduced Resource Usage**: No overhead from multiple Raft leaders and elections
 
 ## Technical Implementation
 
@@ -85,13 +82,14 @@ The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation us
 - Manages snapshots
 
 ```go
-type Node[F FSM] struct {
-    node        *raft.RawNode
-    logger      logging.Logger
-    fsm         F
-    storage     *WALStorage
-    transport   NodeTransport
-    config      NodeConfig
+type Node struct {
+    rawNode      *raft.RawNode
+    logger       logging.Logger
+    fsm          *defaultFSM
+    wal          *WALStorage
+    transport    *GRPCTransport
+    config       NodeConfig
+    runtimeStore store.Runtime
 }
 ```
 
@@ -111,14 +109,6 @@ type Node[F FSM] struct {
 - Receive Raft messages
 - Detect unreachable nodes
 
-### Multiplexed Transport
-
-`internal/raft/system/multiplexed_transport.go` allows multiplexing multiple Raft groups on a single gRPC transport channel:
-
-- A main channel for the system Raft group
-- One channel per ledger for ledger Raft groups
-- Automatic message routing to the correct group
-
 ```mermaid
 graph TB
     subgraph "gRPC Server"
@@ -126,31 +116,15 @@ graph TB
     end
     
     subgraph "Transport Layer"
-        Transport[gRPC Transport<br/>Multiplexed]
-        Router[Message Router]
+        Transport[gRPC Transport]
     end
     
-    subgraph "Channels"
-        MainChannel[System Channel]
-        Ledger1Channel[Ledger 1 Channel]
-        Ledger2Channel[Ledger 2 Channel]
-    end
-    
-    subgraph "Raft Groups"
-        SystemRaft[System Raft Group]
-        Ledger1Raft[Ledger 1 Raft Group]
-        Ledger2Raft[Ledger 2 Raft Group]
+    subgraph "Raft Group"
+        RaftNode[Single Raft Node<br/>All Ledgers]
     end
     
     GRPC --> Transport
-    Transport --> Router
-    Router --> MainChannel
-    Router --> Ledger1Channel
-    Router --> Ledger2Channel
-    
-    MainChannel --> SystemRaft
-    Ledger1Channel --> Ledger1Raft
-    Ledger2Channel --> Ledger2Raft
+    Transport --> RaftNode
 ```
 
 ## Raft Configuration
@@ -161,14 +135,14 @@ The system exposes several configurable Raft parameters:
 
 ```go
 type NodeConfig struct {
-    ElectionTick      int           // Election timeout in ticks (default: 10)
-    HeartbeatTick     int           // Heartbeat interval in ticks (default: 1)
-    MaxSizePerMsg     uint64        // Maximum size per message in bytes (default: 1MB)
-    MaxInflightMsgs   int           // Maximum number of in-flight messages (default: 256)
-    TickInterval      time.Duration // Interval between ticks
-    SnapshotThreshold uint64        // Number of logs before triggering a snapshot
-    SnapshotInterval  time.Duration // Minimum interval between snapshots
-    CompactionMargin uint64         // Compaction margin in number of logs
+    ElectionTick         int           // Election timeout in ticks (default: 10)
+    HeartbeatTick        int           // Heartbeat interval in ticks (default: 1)
+    MaxSizePerMsg        uint64        // Maximum size per message in bytes (default: 1MB)
+    MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
+    TickInterval         time.Duration // Interval between ticks
+    SnapshotThreshold    uint64        // Number of logs before triggering a snapshot
+    CompactionMargin     uint64        // Compaction margin in number of logs
+    ProposeQueueCapacity int           // Capacity of the propose queue
 }
 ```
 
@@ -251,12 +225,11 @@ Raft logs grow indefinitely. Snapshots allow:
 
 Snapshots are created automatically when:
 - The number of logs exceeds `SnapshotThreshold`
-- The interval since the last snapshot exceeds `SnapshotInterval` (**Note:** This feature is currently under implementation)
 
 ### Snapshot Contents
 
 A snapshot contains:
-- Complete FSM state at a given index
+- Complete FSM state at a given index (all ledgers and their states)
 - Metadata necessary to restore the state
 
 ### Restoring from a Snapshot
@@ -265,6 +238,7 @@ When a node joins the cluster or recovers after a failure:
 1. It loads the most recent snapshot
 2. It restores the FSM state from the snapshot
 3. It applies log entries after the snapshot index
+4. For each ledger, it syncs missing logs from the leader via gRPC streaming
 
 ## Failure Management
 
@@ -323,7 +297,6 @@ Reads can be served locally without going through Raft:
 
 To deepen your understanding:
 
-1. [Ledgers](./buckets-ledgers.md) - How ledgers use Raft
+1. [Ledgers](./buckets-ledgers.md) - How ledgers are managed
 2. [Storage and Persistence](./storage.md) - Raft storage implementation
 3. [Data Flows](./data-flows.md) - Detailed Raft operation flows
-

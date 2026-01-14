@@ -17,53 +17,46 @@ graph TB
     subgraph "Node 1"
         HTTPServer1[HTTP Server<br/>Port 9000]
         GRPCServer1[gRPC Server<br/>Port 8888]
-        MasterCluster1[MasterCluster<br/>Adapter]
-        SystemNode1[System Raft Node]
-        LedgerNode1A[Ledger Raft Node A]
-        LedgerNode1B[Ledger Raft Node B]
+        RaftNode1[Raft Node]
+        FSM1[FSM<br/>All Ledgers]
+        Storage1[Runtime Store]
     end
     
     subgraph "Node 2"
         HTTPServer2[HTTP Server<br/>Port 9000]
         GRPCServer2[gRPC Server<br/>Port 8888]
-        MasterCluster2[MasterCluster<br/>Adapter]
-        SystemNode2[System Raft Node]
-        LedgerNode2A[Ledger Raft Node A]
-        LedgerNode2B[Ledger Raft Node B]
+        RaftNode2[Raft Node]
+        FSM2[FSM<br/>All Ledgers]
+        Storage2[Runtime Store]
     end
     
     subgraph "Node 3"
         HTTPServer3[HTTP Server<br/>Port 9000]
         GRPCServer3[gRPC Server<br/>Port 8888]
-        MasterCluster3[MasterCluster<br/>Adapter]
-        SystemNode3[System Raft Node]
-        LedgerNode3A[Ledger Raft Node A]
-        LedgerNode3B[Ledger Raft Node B]
+        RaftNode3[Raft Node]
+        FSM3[FSM<br/>All Ledgers]
+        Storage3[Runtime Store]
     end
     
     HTTPClient --> HTTPServer1
     GRPCClient --> GRPCServer1
     CLIClient --> HTTPServer1
     
-    HTTPServer1 --> MasterCluster1
-    HTTPServer2 --> MasterCluster2
-    HTTPServer3 --> MasterCluster3
+    HTTPServer1 --> RaftNode1
+    HTTPServer2 --> RaftNode2
+    HTTPServer3 --> RaftNode3
     
-    MasterCluster1 --> SystemNode1
-    MasterCluster1 --> LedgerNode1A
-    MasterCluster1 --> LedgerNode1B
+    RaftNode1 --> FSM1
+    RaftNode2 --> FSM2
+    RaftNode3 --> FSM3
     
-    GRPCServer1 --> SystemNode1
-    GRPCServer1 --> LedgerNode1A
-    GRPCServer1 --> LedgerNode1B
+    FSM1 --> Storage1
+    FSM2 --> Storage2
+    FSM3 --> Storage3
     
-    SystemNode1 -.Raft.-> SystemNode2
-    SystemNode2 -.Raft.-> SystemNode3
-    SystemNode3 -.Raft.-> SystemNode1
-    
-    LedgerNode1A -.Raft.-> LedgerNode2A
-    LedgerNode2A -.Raft.-> LedgerNode3A
-    LedgerNode3A -.Raft.-> LedgerNode1A
+    RaftNode1 -.Raft.-> RaftNode2
+    RaftNode2 -.Raft.-> RaftNode3
+    RaftNode3 -.Raft.-> RaftNode1
 ```
 
 ## Main Components
@@ -74,10 +67,9 @@ Each node in the cluster runs the following components:
 
 - **HTTP Server**: Public REST API (port 9000)
 - **gRPC Server**: Inter-node communication and gRPC API (port 8888)
-- **System Raft Group**: Main Raft group managing ledgers
-- **Ledger Raft Groups**: One Raft group per ledger to manage transactions
-- **Finite State Machine (FSM)**: State machine for applying commands
-- **Storage**: Persistent storage (WAL, snapshots, logs)
+- **Raft Node**: Single Raft group managing all ledgers and transactions
+- **Finite State Machine (FSM)**: State machine for applying commands (ledger and log operations)
+- **Runtime Store**: Persistent storage for logs, balances, and metadata
 
 ### 2. Abstraction Layers
 
@@ -85,18 +77,16 @@ Each node in the cluster runs the following components:
 graph TB
     subgraph "API Layer"
         HTTP[HTTP Handlers]
-        GRPC[gRPC Server<br/>SystemService + LedgerService + RaftTransport]
+        GRPC[gRPC Server<br/>LedgerService + RaftTransport]
     end
     
     subgraph "Service Layer"
-        MasterCluster[MasterCluster<br/>Adapter]
-        LedgerCluster[LedgerCluster<br/>Adapter]
+        Controller[Default Controller<br/>Transaction Processing]
     end
     
     subgraph "Raft Layer"
-        SystemNode[System Raft Node]
-        LedgerNode[Ledger Raft Node]
-        Transport[gRPC Transport<br/>Multiplexed]
+        RaftNode[Raft Node]
+        Transport[gRPC Transport]
     end
     
     subgraph "Storage Layer"
@@ -105,75 +95,77 @@ graph TB
         Snapshot[Snapshot Store]
     end
     
-    HTTP --> MasterCluster
-    GRPC --> MasterCluster
-    MasterCluster --> SystemNode
-    MasterCluster --> LedgerCluster
-    LedgerCluster --> LedgerNode
+    HTTP --> RaftNode
+    GRPC --> RaftNode
+    RaftNode --> Controller
+    Controller --> RuntimeStore
     
-    SystemNode --> Transport
-    LedgerNode --> Transport
+    RaftNode --> Transport
     
-    SystemNode --> WAL
-    LedgerNode --> WAL
-    LedgerNode --> RuntimeStore
-    SystemNode --> Snapshot
-    LedgerNode --> Snapshot
+    RaftNode --> WAL
+    RaftNode --> Snapshot
 ```
 
-## Multi-Level Raft Architecture
+## Single Raft Architecture
 
-The system uses a two-level Raft group architecture:
+The system uses a **single Raft group** to manage all operations:
 
-### Level 1: System Raft Group
+### Unified FSM
 
-The system Raft group manages ledger creation and deletion. Every node participates in this group.
+The FSM (Finite State Machine) handles all commands:
 
-**Responsibilities**:
-- Create/delete ledgers
-- Manage the ledger list
-- Coordinate ledger Raft groups
+**Ledger Commands**:
+- `CreateLedgerCommand`: Create a new ledger
+- `DeleteLedgerCommand`: Delete an existing ledger
 
-### Level 2: Ledger Raft Groups
+**Log Commands**:
+- `CreateLogCommand`: Insert a log (transaction, metadata changes, reversions) into a ledger
 
-Each ledger has its own independent Raft group to manage:
-- Insert logs (transactions)
-- Synchronize ledger data
-- Manage ledger state
+### State Structure
 
-**Isolation**: Ledger Raft groups are completely isolated from each other. A problem in one ledger does not affect others.
+The FSM maintains a unified state containing all ledgers:
+
+```go
+type State struct {
+    Ledgers map[string]*LedgerState  // All ledgers indexed by name
+}
+
+type LedgerState struct {
+    LedgerInfo        *LedgerInfo  // Ledger metadata
+    NextLogId         uint64       // Next log sequence number
+    NextTransactionId uint64       // Next transaction ID
+    LastAppliedLogId  uint64       // Last applied log for sync
+}
+```
+
+### Benefits of Single Raft
+
+1. **Simplicity**: One Raft group to manage instead of N+1 groups
+2. **Consistent Operations**: All operations go through the same consensus layer
+3. **Easier Recovery**: Single snapshot and WAL for the entire system
+4. **Reduced Overhead**: No need to coordinate multiple Raft leaders
 
 ```mermaid
 graph TB
-    subgraph "System Raft Group"
-        S1[Node 1 Leader]
-        S2[Node 2 Follower]
-        S3[Node 3 Follower]
+    subgraph "Single Raft Group"
+        N1[Node 1 Leader]
+        N2[Node 2 Follower]
+        N3[Node 3 Follower]
     end
     
-    subgraph "Ledger A Raft Group"
-        LA1[Node 1 Leader]
-        LA2[Node 2 Follower]
-        LA3[Node 3 Follower]
+    subgraph "FSM State"
+        LedgerA[Ledger A State]
+        LedgerB[Ledger B State]
+        LedgerC[Ledger C State]
     end
     
-    subgraph "Ledger B Raft Group"
-        LB1[Node 1 Follower]
-        LB2[Node 2 Leader]
-        LB3[Node 3 Follower]
-    end
+    N1 -.Raft.-> N2
+    N2 -.Raft.-> N3
+    N3 -.Raft.-> N1
     
-    S1 -.Creates.-> LA1
-    S1 -.Creates.-> LB1
-    Note over S1,LB1: System FSM creates ledger groups<br/>Groups then operate independently
-    
-    LA1 -.Raft.-> LA2
-    LA2 -.Raft.-> LA3
-    LA3 -.Raft.-> LA1
-    
-    LB1 -.Raft.-> LB2
-    LB2 -.Raft.-> LB3
-    LB3 -.Raft.-> LB1
+    N1 --> LedgerA
+    N1 --> LedgerB
+    N1 --> LedgerC
 ```
 
 ## Data Flows
@@ -184,31 +176,25 @@ graph TB
 sequenceDiagram
     participant Client
     participant HTTP as HTTP Handler
-    participant MasterCluster as MasterCluster Adapter
-    participant SystemNode as System Raft Node
-    participant SystemFSM as System FSM
-    participant LedgerNode as Ledger Raft Node
-    participant Storage as Storage
+    participant RaftNode as Raft Node
+    participant FSM as FSM
+    participant Storage as Runtime Store
     
-    Client->>HTTP: POST /ledgers/{name}
-    HTTP->>MasterCluster: CreateLedger()
+    Client->>HTTP: POST /{ledgerName}
+    HTTP->>RaftNode: CreateLedger()
     
     alt Node is leader
-        MasterCluster->>SystemNode: CreateLedger()
-        SystemNode->>SystemFSM: Propose CreateLedgerCommand (via Raft)
-        SystemFSM->>SystemFSM: Validate & Assign ID
-        SystemFSM->>LedgerNode: Start Ledger Raft Group
-        LedgerNode->>Storage: Initialize Storage
-        SystemFSM->>SystemFSM: Store Ledger Info
-        SystemNode-->>MasterCluster: LedgerInfo
+        RaftNode->>FSM: Propose CreateLedgerCommand (via Raft)
+        FSM->>FSM: Validate & Create LedgerState
+        FSM-->>RaftNode: LedgerInfo
     else Node is follower
-        MasterCluster->>MasterCluster: Find leader
-        MasterCluster->>SystemNode: Forward via gRPC (to leader)
-        Note over SystemNode,Storage: Same as leader path
-        SystemNode-->>MasterCluster: LedgerInfo
+        RaftNode->>RaftNode: Find leader
+        RaftNode->>FSM: Forward via gRPC (to leader)
+        Note over FSM,Storage: Same as leader path
+        FSM-->>RaftNode: LedgerInfo
     end
     
-    MasterCluster-->>HTTP: LedgerInfo
+    RaftNode-->>HTTP: LedgerInfo
     HTTP-->>Client: 201 Created
 ```
 
@@ -218,32 +204,32 @@ sequenceDiagram
 sequenceDiagram
     participant Client
     participant HTTP as HTTP Handler
-    participant MasterCluster as MasterCluster Adapter
-    participant LedgerCluster as LedgerCluster Adapter
-    participant LedgerNode as Ledger Raft Node
-    participant LedgerFSM as Ledger FSM
+    participant RaftNode as Raft Node
+    participant Controller as Controller
+    participant FSM as FSM
     participant RuntimeStore as Runtime Store
     
-    Client->>HTTP: POST /ledgers/{name}/transactions
-    HTTP->>MasterCluster: GetLedgerCluster(name)
-    MasterCluster->>LedgerCluster: Get Ledger Cluster
-    HTTP->>LedgerCluster: CreateTransaction()
+    Client->>HTTP: POST /{ledgerName}/transactions
+    HTTP->>RaftNode: CreateTransaction()
+    RaftNode->>Controller: CreateTransaction()
     
     alt Node is leader
-        LedgerCluster->>LedgerNode: CreateTransaction()
-        LedgerNode->>LedgerFSM: Propose InsertLogCommand (via Raft)
-        LedgerFSM->>LedgerFSM: Generate Sequence
-        LedgerFSM->>RuntimeStore: InsertLogs() - Persist log and update balances
-        Note over LedgerFSM: Logs persisted during apply
-        LedgerNode-->>LedgerCluster: CreatedTransaction
+        Controller->>RuntimeStore: Check Balances
+        Controller->>Controller: Validate Transaction
+        Controller->>RaftNode: CreateLog()
+        RaftNode->>FSM: Propose CreateLogCommand (via Raft)
+        FSM->>FSM: Generate Log ID & Transaction ID
+        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        FSM-->>RaftNode: Log
+        RaftNode-->>Controller: Log
     else Node is follower
-        LedgerCluster->>LedgerCluster: Find leader
-        LedgerCluster->>LedgerNode: Forward via gRPC (to leader)
-        Note over LedgerNode,RuntimeStore: Same as leader path
-        LedgerNode-->>LedgerCluster: CreatedTransaction
+        Controller->>Controller: Find leader
+        Controller->>RaftNode: Forward via gRPC (to leader)
+        Note over RaftNode,RuntimeStore: Same as leader path
+        RaftNode-->>Controller: Log
     end
     
-    LedgerCluster-->>HTTP: CreatedTransaction
+    Controller-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
 
@@ -278,20 +264,22 @@ sequenceDiagram
 
 If no leader is available (e.g., during an election), the system returns a `503 Service Unavailable` error with the `Retry-After: 1` header to indicate the client should retry.
 
-## Isolation and Security
+## Data Isolation
 
-### Ledger Isolation
+### Logical Isolation Between Ledgers
 
-- Each ledger has its own Raft group
-- Ledger data is stored separately
-- A ledger can use a different storage driver (configurable)
-- Problems in one ledger do not affect others
+Although all ledgers share the same Raft group and storage:
 
-### Data Isolation
+- Each ledger has its own sequence numbers (log IDs and transaction IDs)
+- Balances and metadata are stored with ledger prefixes
+- Operations on one ledger do not affect the state of others
 
-- Transaction logs are stored in the ledger-specific RuntimeStore
-- Snapshots are created per ledger
-- Recovery is done ledger by ledger
+### Storage Organization
+
+All ledgers share a single Runtime Store with data prefixed by ledger name:
+- `logs` table: Contains `(ledger, id)` as primary key
+- `balances` table: Contains `(ledger, account, asset)` as key
+- `account_metadata` table: Contains `(ledger, account_address, key)` as key
 
 ## Scalability
 
@@ -299,9 +287,9 @@ If no leader is available (e.g., during an election), the system returns a `503 
 
 The system can be scaled horizontally by adding nodes to the cluster:
 
-- New nodes join the system Raft group
-- They automatically participate in existing ledger Raft groups
-- Load is distributed across all nodes
+- New nodes join the Raft group
+- They automatically receive replicated data
+- Load is distributed across all nodes for reads
 
 **Note:** Horizontal scaling is currently under implementation.
 
@@ -310,6 +298,7 @@ The system can be scaled horizontally by adding nodes to the cluster:
 - The number of nodes must be odd to avoid ties during voting
 - A cluster of N nodes can tolerate (N-1)/2 failures
 - Performance may be limited by the leader (all writes go through the leader)
+- All ledgers share the same leader
 
 ## Observability
 
@@ -333,7 +322,8 @@ OpenTelemetry is integrated for distributed tracing:
 The following metrics are available:
 - Cluster state (leader, followers)
 - Number of ledgers
-- Number of transactions per ledger
+- Apply entries duration and batch size
+- Raft state transitions
 
 ## Next Steps
 

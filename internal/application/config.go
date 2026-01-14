@@ -5,11 +5,12 @@ import (
 )
 
 type Config struct {
-	RaftConfig raft.NodeConfig
-	Debug      bool
-	HTTPPort   int
+	RaftConfig      raft.NodeConfig
+	Debug           bool
+	HTTPPort        int
 	TransportConfig raft.TransportConfig
-	StorageType string
+	StorageType     string
+	DataDir         string
 }
 
 func (c Config) Validate() error {

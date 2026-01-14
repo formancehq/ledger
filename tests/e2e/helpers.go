@@ -8,11 +8,12 @@ import (
 )
 
 // serviceWithClient is a shared type used across e2e tests to hold a test service instance
-// along with its SDK client and Raft data directory path.
+// along with its SDK client and directory paths.
 type serviceWithClient struct {
-	service     *testservice.Service
-	client      *client.Formance
-	raftDataDir string
+	service *testservice.Service
+	client  *client.Formance
+	walDir  string
+	dataDir string
 }
 
 

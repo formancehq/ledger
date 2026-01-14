@@ -185,8 +185,6 @@ The following table lists the configurable parameters and their default values:
 | `config.raft.proposeQueueCapacity` | Capacity of the propose queue | `256` |
 | `config.raft.transport.receptionQueues` | Reception queue capacities per priority | `[10, 512, 512, 512, 128]` |
 | `config.raft.transport.sendQueues` | Send queue capacities per priority | `[10, 512, 512, 512, 128]` |
-| `config.raft.multiplexedTransport.receptionQueues` | Multiplexed transport reception queue capacities per priority | `[10, 512, 512, 512, 128]` |
-| `config.raft.multiplexedTransport.sendQueues` | Multiplexed transport send queue capacities per priority | `[10, 512, 512, 512, 128]` |
 | `config.debug` | Enable debug logging | `false` |
 
 ### Monitoring Configuration

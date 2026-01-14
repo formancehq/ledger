@@ -7,9 +7,10 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"google.golang.org/protobuf/proto"
 )
 
-type logProcessor[INPUT any] struct {
+type logProcessor[INPUT proto.Message] struct {
 	operation    string
 	runtimeStore store.Runtime
 	logFactory   LogFactory
@@ -17,7 +18,7 @@ type logProcessor[INPUT any] struct {
 	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
 }
 
-func newLogProcessor[INPUT any](
+func newLogProcessor[INPUT proto.Message](
 	operation string,
 	runtimeStore store.Runtime,
 	logFactory LogFactory,
@@ -78,10 +79,15 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		return nil, false, err
 	}
 
-	log, err := lp.logFactory.CreateLog(ctx, ledger, &ledgerpb.Idempotency{
-		Key:  parameters.IdempotencyKey,
-		Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
-	}, input)
+	var idp *ledgerpb.Idempotency
+	if parameters.IdempotencyKey != "" {
+		idp = &ledgerpb.Idempotency{
+			Key:  parameters.IdempotencyKey,
+			Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
+		}
+	}
+
+	log, err := lp.logFactory.CreateLog(ctx, ledger, idp, input)
 	if err != nil {
 		logging.FromContext(ctx).WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
 		return nil, false, err

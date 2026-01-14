@@ -63,6 +63,8 @@ spec:
           value: {{ .Values.config.bindAddr | quote }}
         - name: HTTP_PORT
           value: {{ .Values.config.httpPort | quote }}
+        - name: WAL_DIR
+          value: {{ .Values.config.walDir | quote }}
         - name: DATA_DIR
           value: {{ .Values.config.dataDir | quote }}
         {{- if .Values.config.raft.snapshotThreshold }}
@@ -105,21 +107,15 @@ spec:
         - name: RAFT_TRANSPORT_SEND_QUEUES
           value: {{ join "," .Values.config.raft.transport.sendQueues | quote }}
         {{- end }}
-        {{- if .Values.config.raft.multiplexedTransport.receptionQueues }}
-        - name: RAFT_MULTIPLEXED_TRANSPORT_RECEPTION_QUEUES
-          value: {{ join "," .Values.config.raft.multiplexedTransport.receptionQueues | quote }}
-        {{- end }}
-        {{- if .Values.config.raft.multiplexedTransport.sendQueues }}
-        - name: RAFT_MULTIPLEXED_TRANSPORT_SEND_QUEUES
-          value: {{ join "," .Values.config.raft.multiplexedTransport.sendQueues | quote }}
-        {{- end }}
+        - name: RAFT_COMPACTION_MARGIN
+          value: {{ .Values.config.raft.compactionMargin | quote }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
         {{- if .Values.config.storageType }}
         - name: STORAGE_TYPE
           value: {{ .Values.config.storageType | quote }}
         {{- end }}
-        # OpenTelemetry metrics configuration
+          # OpenTelemetry metrics configuration
         - name: OTEL_METRICS_KEEP_IN_MEMORY
           value: {{ .Values.config.monitoring.metrics.keepInMemory | default true | toString | quote }}
         - name: OTEL_METRICS_EXPORTER_PUSH_INTERVAL
@@ -175,6 +171,8 @@ spec:
             {{- end }}
             $PEERS_LIST
         volumeMounts:
+        - name: wal
+          mountPath: {{ .Values.config.walDir }}
         - name: data
           mountPath: {{ .Values.config.dataDir }}
         {{- with .Values.livenessProbe }}
@@ -200,20 +198,21 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
   volumeClaimTemplates:
-  {{- if .Values.persistence.enabled }}
   - metadata:
-      name: data
-      {{- with .Values.persistence.annotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      name: wal
     spec:
       accessModes:
-        - {{ .Values.persistence.accessMode }}
-      {{- if .Values.persistence.storageClass }}
-      storageClassName: {{ .Values.persistence.storageClass }}
-      {{- end }}
+        - {{ .Values.persistence.wal.accessMode }}
+      storageClassName: {{ .Values.persistence.wal.storageClass }}
       resources:
         requests:
-          storage: {{ .Values.persistence.size }}
-  {{- end }}
+          storage: {{ .Values.persistence.wal.size }}
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+        - {{ .Values.persistence.data.accessMode }}
+      storageClassName: {{ .Values.persistence.data.storageClass }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.data.size }}

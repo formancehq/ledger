@@ -49,7 +49,7 @@ After setup, `direnv` will automatically load the Nix development environment wh
 just run
 
 # Or manually
-go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
+go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
 ```
 
 ### Development Environment with Pulumi

@@ -61,7 +61,7 @@ func NewTransport(
 
 		return NewQueueObserver[raftpb.Message](
 			"raft.transport.recv",
-			NewSimpleQueue[raftpb.Message](logger, capacity),
+			NewSimpleQueue[raftpb.Message](capacity),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
 			WithAttributesFn(AddTypeAsAttribute),
@@ -78,7 +78,7 @@ func NewTransport(
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
 			"raft.transport.unreachable",
-			NewSimpleQueue[uint64](logger, 100),
+			NewSimpleQueue[uint64](100),
 			WithMeter[uint64](meter),
 			WithLogger[uint64](logger),
 		),
@@ -141,7 +141,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 
 		return NewQueueObserver[raftpb.Message](
 			"raft.transport.peer.sending",
-			NewSimpleQueue[raftpb.Message](logger, capacity),
+			NewSimpleQueue[raftpb.Message](capacity),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
 			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {

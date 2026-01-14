@@ -4,7 +4,7 @@ Welcome to the technical documentation for the Ledger v3 POC project. This docum
 
 ## Overview
 
-Ledger v3 POC is a distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system allows managing ledgers (accounting books) with financial transactions, where each ledger has its own independent Raft group.
+Ledger v3 POC is a distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, with all data stored in a unified storage layer.
 
 ## Documentation Structure
 
@@ -12,7 +12,7 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 Overview of the system architecture, main components, and their interactions.
 
 ### 🎯 [Raft Consensus](./raft-consensus.md)
-In-depth details on the Raft consensus implementation, multiple Raft groups, and leader management.
+In-depth details on the Raft consensus implementation and leader management.
 
 ### 📖 [Ledgers](./buckets-ledgers.md)
 Explanation of the ledger system, transaction management, and data organization.
@@ -47,15 +47,17 @@ Testing strategy, unit tests, integration, and end-to-end tests.
 ## Key Concepts
 
 ### Ledgers
-A **ledger** is an accounting book containing transactions. Each ledger has its own independent Raft group and storage configuration.
+A **ledger** is an accounting book containing transactions. All ledgers are managed by a single Raft group and share the same storage.
 
 ### Transactions
 A **transaction** represents an accounting operation with postings (accounting entries) or a Numscript script. This project uses the new Numscript interpreter and does not allow runtime selection.
 
-### Raft Groups
-The system uses **two levels of Raft groups**:
-- **System group**: Manages ledgers
-- **Ledger groups**: One Raft group per ledger to manage transactions
+### Single Raft Architecture
+The system uses a **single Raft group** that manages:
+- **Ledger operations**: Create and delete ledgers
+- **Transaction operations**: Create transactions, save metadata, revert transactions for all ledgers
+
+This architecture simplifies operations while maintaining strong consistency guarantees.
 
 ## Technologies Used
 
@@ -64,7 +66,7 @@ The system uses **two levels of Raft groups**:
 - **gRPC** : Inter-node communication
 - **HTTP/REST** : Public API
 - **Protocol Buffers** : Data serialization
-- **SQLite**: Transaction log storage
+- **SQLite/Pebble**: Transaction log and runtime state storage
 - **fx (Uber)** : Dependency injection
 - **OpenTelemetry** : Observability and tracing
 

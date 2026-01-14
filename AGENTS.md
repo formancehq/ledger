@@ -219,23 +219,15 @@ This structure enables easy maintenance and clear separation of responsibilities
 
 ## Protocol Buffers and gRPC Code Generation
 
-The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in the `proto/` directory, while the generated Go code is placed in the appropriate internal packages.
+The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in the `misc/proto/` directory, while the generated Go code is placed in the appropriate internal packages.
 
 ### File Locations
 
 - **Protocol definitions**: 
-  - `proto/raft_transport.proto` - Raft transport messages
-  - `proto/system.proto` - System service messages
-  - `proto/ledger.proto` - Ledger service messages (contains Posting, Transaction, Log types)
-  - `proto/commands/` - Directory containing all FSM command definitions:
-    - `proto/commands/commands.proto` - Base command structure for FSM commands
-    - `proto/commands/system_commands.proto` - Commands for the system FSM (create/delete ledger)
-    - `proto/commands/ledger_commands.proto` - Commands for ledger FSM (insert log)
+  - `misc/proto/raft_transport.proto` - Raft transport messages
+  - `misc/proto/ledger.proto` - Ledger service messages and FSM command types (contains Posting, Transaction, Log, Command types)
 - **Generated code**: 
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
-  - `internal/raft/commands.pb.go` - Base command protobuf types
-  - `internal/raft/system/system_commands.pb.go` - System FSM command protobuf types
-  - `internal/raft/ledger/ledger_commands.pb.go` - Ledger FSM command protobuf types
   - `internal/ledgerpb/` - Directory containing ledger protobuf types (ledger.pb.go, ledger_grpc.pb.go, etc.)
 
 ### Regenerating Code
@@ -279,16 +271,13 @@ When modifying any `.proto` file:
 
 To add a new command model (e.g., for a new FSM command):
 
-1. **Add the message definition to the appropriate `.proto` file**:
-   - For system FSM commands: add to `proto/commands/system_commands.proto`
-   - For ledger FSM commands: add to `proto/commands/ledger_commands.proto`
-   - For base command structure: modify `proto/commands/commands.proto` if needed
+1. **Add the message definition to `misc/proto/ledger.proto`**
 
-2. **Example**: Adding a new `UpdateLedgerCommand` to `proto/commands/system_commands.proto`:
+2. **Example**: Adding a new `UpdateLedgerCommand`:
    ```protobuf
    message UpdateLedgerCommand {
      string name = 1;
-     google.protobuf.Struct config = 2;
+     map<string, string> config = 2;
    }
    ```
 
@@ -298,48 +287,26 @@ To add a new command model (e.g., for a new FSM command):
    ```
 
 4. **Update the Go code**:
-   - Create a `NewUpdateLedgerCommand` function in `internal/raft/system/command.go` that:
-     - Converts Go types to protobuf types
+   - Create a `NewUpdateLedgerCommand` function in `internal/raft/command.go` that:
+     - Creates the protobuf command
      - Marshals the protobuf message
-     - Returns a `*raft.Command`
-   - Update `UnmarshalCommandData` in `internal/raft/system/command.go` to handle the new command type
-   - Add a handler method in `internal/raft/system/fsm.go` (e.g., `HandleUpdateLedger`)
+     - Returns a `*ledgerpb.Command`
+   - Update `UnmarshalCommandData` in `internal/raft/command.go` to handle the new command type
+   - Add a handler method in `internal/raft/fsm.go` (e.g., `handleUpdateLedger`)
 
 5. **Example implementation**:
    ```go
-   // In internal/raft/system/command.go
-   func NewUpdateLedgerCommand(name string, config map[string]interface{}) (*raft.Command, error) {
-       configStruct, err := structpb.NewStruct(config)
+   // In internal/raft/command.go
+   func NewUpdateLedgerCommand(cmd *ledgerpb.UpdateLedgerCommand) *ledgerpb.Command {
+       data, err := proto.Marshal(cmd)
        if err != nil {
-           return nil, err
+           panic(err)
        }
-       cmdProto := &UpdateLedgerCommand{
-           Name: name,
-           Config: configStruct,
-       }
-       data, err := proto.Marshal(cmdProto)
-       if err != nil {
-           return nil, err
-       }
-       return &raft.Command{
-           ID:   generateRandomID(),
-           Type: CommandTypeUpdateLedger,
+       return &ledgerpb.Command{
+           Id:   generateRandomID(),
+           Type: ledgerpb.CommandType_UpdateLedger,
            Data: data,
-           Date: time.Now(),
-       }, nil
-   }
-   
-   // Update UnmarshalCommandData to handle UpdateLedgerCommand
-   func UnmarshalCommandData(data []byte, v interface{}) error {
-       switch cmd := v.(type) {
-       case *CreateLedgerCommand:
-           return proto.Unmarshal(data, cmd)
-       case *DeleteLedgerCommand:
-           return proto.Unmarshal(data, cmd)
-       case *UpdateLedgerCommand:
-           return proto.Unmarshal(data, cmd)
-       default:
-           return proto.Unmarshal(data, v.(proto.Message))
+           Date: timestamppb.Now(),
        }
    }
    ```
@@ -366,25 +333,36 @@ The serialization flow:
 
 ## Finite State Machine (FSM) Design Principles
 
-### No I/O Operations
+### Single Raft Architecture
 
-**CRITICAL**: FSMs must never perform any I/O operations (file system, network, database, etc.). All data must be stored in memory and accessed directly from the FSM's internal state.
+The system uses a **single Raft group** to manage all ledgers and their transactions. The FSM (`internal/raft/fsm.go`) handles:
+- `CreateLedgerCommand`: Create a new ledger
+- `DeleteLedgerCommand`: Delete an existing ledger
+- `CreateLogCommand`: Insert a log (transaction, metadata changes, reversions) into any ledger
 
-**Rationale**: 
-- FSMs are deterministic state machines that must produce identical results when replaying the same sequence of commands
-- I/O operations introduce non-determinism (network delays, file system state, etc.)
-- I/O operations can fail, making the FSM unreliable
-- Performance: in-memory operations are orders of magnitude faster
+The FSM maintains a unified state containing all ledgers:
+```go
+type State struct {
+    Ledgers map[string]*LedgerState  // All ledgers indexed by name
+}
+```
 
-**What to do instead**:
-- Store all necessary data in the FSM's internal state (maps, slices, etc.)
-- Access data directly from memory structures
-- If you need to persist data, do it during snapshot creation (which happens outside the FSM)
-- If you need to read persisted data, restore it from snapshots during FSM initialization
+### Performance First
 
-**Example**: Instead of calling `logReader.GetLogWithIdempotencyKey()` in the FSM, maintain an `idempotencyKeys map[string]IdempotencyKeyInfo` in the FSM state and look up directly from this map.
+**CRITICAL**: FSMs should be fast as they are called in the critical path of Raft consensus.
 
-**Note**: The ledger FSM maintains idempotency keys in memory for fast lookups during transaction processing.
+**Why performance matters**:
+- FSMs are invoked synchronously during entry application
+- Slow FSMs block the Raft consensus loop
+- Performance directly impacts transaction throughput and latency
+
+**Best practices**:
+- Keep ledger state in memory (the FSM state map)
+- Minimize I/O operations during entry application
+- Use efficient data structures for lookups
+- Batch operations when possible
+
+**Note**: The FSM performs I/O to update the RuntimeStore during log application. This is necessary for maintaining balances and is done efficiently.
 
 ## Dependency Injection with fx
 

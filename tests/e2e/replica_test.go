@@ -61,9 +61,11 @@ var _ = Describe("Simple cluster", func() {
 
 		servers = make([]*serviceWithClient, 0, countInstances)
 		for i := range countInstances {
-			raftTmpDir := GinkgoT().TempDir()
+			walTmpDir := GinkgoT().TempDir()
+			dataTmpDir := GinkgoT().TempDir()
 			DeferCleanup(func() {
-				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
+				Expect(os.RemoveAll(walTmpDir)).To(Succeed())
+				Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 			})
 
 			server := testservice.New(cmdserver.NewRootCommand,
@@ -72,7 +74,8 @@ var _ = Describe("Simple cluster", func() {
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
 					testserver.WithHTTPPort(nodeHTTPBasePort+i),
-					testserver.WithDataDir(raftTmpDir),
+					testserver.WithWalDir(walTmpDir),
+					testserver.WithDataDir(dataTmpDir),
 					testserver.WithGRPCPort(nodeGRPCBasePort+i),
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
@@ -101,7 +104,8 @@ var _ = Describe("Simple cluster", func() {
 				client: client.New(
 					client.WithServerURL(fmt.Sprintf("http://localhost:%d", nodeHTTPBasePort+i)),
 				),
-				raftDataDir: raftTmpDir,
+				walDir:  walTmpDir,
+				dataDir: dataTmpDir,
 			})
 		}
 		Eventually(servers[0]).To(HaveALeader(&leaderID))

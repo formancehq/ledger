@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strconv"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
@@ -34,20 +33,14 @@ func Module() fx.Option {
 				switch cfg.StorageType {
 				case "pebble":
 					return pebble.NewRuntimeStore(
-						filepath.Join(cfg.RaftConfig.DataDir, "runtime"),
+						cfg.DataDir,
 						logger,
 						meterProvider.Meter("peeble.runtime_store"),
 					)
 				case "sqlite-mattn":
-					return sqlite.NewMattnRuntimeStore(
-						filepath.Join(cfg.RaftConfig.DataDir, "runtime.db"),
-						logger,
-					)
+					return sqlite.NewMattnRuntimeStore(cfg.DataDir, logger)
 				case "sqlite-modernc":
-					return sqlite.NewModernRuntimeStore(
-						filepath.Join(cfg.RaftConfig.DataDir, "runtime.db"),
-						logger,
-					)
+					return sqlite.NewModernRuntimeStore(cfg.DataDir, logger)
 				default:
 					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
 				}

@@ -13,9 +13,7 @@ ledger-v3-poc/
 │   └── client/             # CLI client
 ├── internal/               # Internal code (not exported)
 │   ├── application/       # Application module main
-│   ├── raft/              # Raft implementation
-│   │   ├── system/        # System Raft group
-│   │   └── ledger/        # Ledger Raft groups
+│   ├── raft/              # Raft implementation (single group)
 │   ├── service/           # Business services
 │   ├── http/              # HTTP handlers
 │   ├── grpc/              # gRPC server
@@ -97,15 +95,13 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 ### Example: Adding an FSM Command
 
-1. **Define the protobuf** in `proto/commands/*.proto`
-   - For system FSM commands, add to `proto/commands/system_commands.proto`
-   - For ledger FSM commands, add to `proto/commands/ledger_commands.proto`
+1. **Define the protobuf** in `internal/ledgerpb/` (or update existing definitions)
 
 2. **Regenerate protobufs** using `just generate-proto`
 
-3. **Create the command function** in `internal/raft/system/command.go` (or `internal/raft/ledger/command.go`)
+3. **Create the command function** in `internal/raft/command.go`
 
-4. **Add the handler in the FSM** in `internal/raft/system/fsm.go` (or `internal/raft/ledger/fsm.go`)
+4. **Add the handler in the FSM** in `internal/raft/fsm.go`
 
 5. **Update `ApplyEntries`** to route the command to the handler
 
@@ -133,13 +129,8 @@ The package `pkg/testserver` provides helpers for creating test servers with con
 
 ### Structure
 
-- **`proto/ledger.proto`**: Common types (Posting, Transaction, Log)
-- **`proto/system.proto`**: System service (ledgers)
-- **`proto/raft_transport.proto`**: Raft transport messages
-- **`proto/commands/`**: FSM commands
-  - `commands.proto`: Base command structure
-  - `system_commands.proto`: System FSM commands (create/delete ledger)
-  - `ledger_commands.proto`: Ledger FSM commands (insert log)
+- **`misc/proto/ledger.proto`**: All ledger types (Posting, Transaction, Log, Commands, etc.)
+- **`misc/proto/raft_transport.proto`**: Raft transport messages
 
 ### Regenerate protobufs
 

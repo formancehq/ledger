@@ -1,6 +1,7 @@
 config:
   bindAddr: 0.0.0.0:8888
-  dataDir: /data/raft
+  dataDir: /data/data
+  walDir: /data/wal
   debug: false
   httpPort: 9000
   storageType: pebble
@@ -36,15 +37,7 @@ config:
     heartbeatTick: 1
     maxInflightMsgs: 512
     maxSizePerMsg: 2097152
-    multiplexedTransport:
-      receptionQueues:
-        - 10
-        - 2048
-        - 2048
-      sendQueues:
-        - 10
-        - 1024
-        - 1024
+    compactionMargin: 15000
     proposeQueueCapacity: 512
     snapshotInterval: 30s
     snapshotThreshold: 30000
@@ -86,3 +79,5 @@ service:
   grpcPort: 8888
   httpPort: 9000
   type: ClusterIP
+#nodeSelector:
+#  kubernetes.io/hostname: fake-wkbm406c

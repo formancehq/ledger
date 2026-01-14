@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"google.golang.org/protobuf/proto"
 )
 
 type Controller interface {
@@ -23,7 +24,7 @@ type Controller interface {
 	GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error)
 }
 
-type Parameters[INPUT any] struct {
+type Parameters[INPUT proto.Message] struct {
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 	Input          INPUT  `json:"-"`
 }

@@ -53,10 +53,33 @@ func NewRuntimeStore(
 
 	opts := &pebble.Options{
 		EventListener: NewMetricsListener(meter),
-		MaxConcurrentCompactions: func() int {
-			return 3
+		// 1) Absorber plus d'écritures avant flush => moins de SST, moins de compactions.
+		MemTableSize:                256 << 20, // 256MB (à ajuster selon RAM)
+		MemTableStopWritesThreshold: 4,         // défaut souvent 2; 4 réduit les write stalls
+
+		// 2) Contrôler la pression L0 (source #1 de compactions/churn en write-heavy).
+		L0CompactionThreshold: 8,         // déclenche plus tôt les compactions L0->L1 (évite l'emballement)
+		L0StopWritesThreshold: 32,        // plus haut => moins de "stop-the-world writes" (au prix de plus de dette)
+		LBaseMaxBytes:         512 << 20, // 512MB base level (augmente si dataset gros)
+
+		// 3) Taille des tables: moins de petits fichiers => moins de compactions.
+		// (à calibrer; 64MB est un bon départ)
+		Levels: []pebble.LevelOptions{
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 64 << 20},
 		},
-		MemTableSize: 1 << 25, // 32 MB
+
+		// 4) Lisser l'IO lors des flush/compactions.
+		BytesPerSync:    1 << 20, // 1MB
+		WALBytesPerSync: 1 << 20, // 1MB
+
+		// 5) Concurrence compaction: OK mais pas trop haut (sinon tu satures l’IO).
+		MaxConcurrentCompactions: func() int { return 2 }, // 2 ou 3 selon CPU/IO
 	}
 	db, err := pebble.Open(dbPath, opts)
 	if err != nil {

@@ -25,6 +25,13 @@ func WithGRPCPort(port int) testservice.InstrumentationFunc {
 	}
 }
 
+func WithWalDir(dir string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--wal-dir", dir)
+		return nil
+	}
+}
+
 func WithDataDir(dir string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--data-dir", dir)
@@ -124,24 +131,6 @@ func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationF
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		for _, cap := range capacities {
 			cfg.AppendArgs("--raft-transport-send-queues", fmt.Sprintf("%d", cap))
-		}
-		return nil
-	}
-}
-
-func WithRaftMultiplexedTransportReceptionQueues(capacities ...int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-multiplexed-transport-reception-queues", fmt.Sprintf("%d", cap))
-		}
-		return nil
-	}
-}
-
-func WithRaftMultiplexedTransportSendQueues(capacities ...int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-multiplexed-transport-send-queues", fmt.Sprintf("%d", cap))
 		}
 		return nil
 	}

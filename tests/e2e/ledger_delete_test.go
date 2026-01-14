@@ -33,9 +33,11 @@ var _ = Describe("Ledger Deletion", func() {
 
 		servers = make([]serviceWithClient, 0, countInstances)
 		for i := range countInstances {
-			raftTmpDir := GinkgoT().TempDir()
+			walTmpDir := GinkgoT().TempDir()
+			dataTmpDir := GinkgoT().TempDir()
 			DeferCleanup(func() {
-				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
+				Expect(os.RemoveAll(walTmpDir)).To(Succeed())
+				Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 			})
 
 			server := testservice.New(cmdserver.NewRootCommand,
@@ -44,7 +46,8 @@ var _ = Describe("Ledger Deletion", func() {
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
 					testserver.WithHTTPPort(9200+i),
-					testserver.WithDataDir(raftTmpDir),
+					testserver.WithWalDir(walTmpDir),
+					testserver.WithDataDir(dataTmpDir),
 					testserver.WithGRPCPort(8200+i),
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
@@ -74,7 +77,8 @@ var _ = Describe("Ledger Deletion", func() {
 				client: client.New(
 					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
 				),
-				raftDataDir: raftTmpDir,
+				walDir:  walTmpDir,
+				dataDir: dataTmpDir,
 			})
 		}
 

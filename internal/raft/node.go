@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -29,7 +28,7 @@ type Node struct {
 	mu            sync.RWMutex
 	syncer        *syncer
 	fsm           *defaultFSM
-	wal           *WALStorage
+	wal           *WAL
 	transport     *GRPCTransport
 	config        NodeConfig
 	stopped       chan struct{}
@@ -39,13 +38,14 @@ type Node struct {
 	confState     *raftpb.ConfState
 	futures       map[uint64]*applyFuture // Map of command ID -> future
 	lastSoftState *raft.SoftState
-	isSyncing     *atomic.Bool
 
 	meter                          metric.Meter
-	applyEntriesHistogram          metric.Float64Histogram
+	applyEntriesHistogram          metric.Int64Histogram
 	applyEntriesBatchSizeCounter   metric.Int64Counter
 	applyEntriesBatchSizeHistogram metric.Int64Histogram
-	leadMonitor                    metric.Int64Gauge
+	processEntryHistogram          metric.Int64Histogram
+	appendEntriesHistogram         metric.Int64Histogram
+	leadMonitorHistogram           metric.Int64Gauge
 	defaultLedger                  *service.DefaultController
 	runtimeStore                   store.Runtime
 }
@@ -79,23 +79,28 @@ func NewNode(
 		cfg.ProposeQueueCapacity = 100
 	}
 
-	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
-		return nil, fmt.Errorf("creating data directory: %w", err)
+	if err := os.MkdirAll(cfg.WalDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating wal directory: %w", err)
 	}
 
-	wal, err := NewWALStorage(filepath.Join(cfg.DataDir, "wal"), logger)
+	wal, err := NewWAL(filepath.Join(cfg.WalDir, "wal"), logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating storage: %w", err)
 	}
 
-	spool, err := newFileSpool(filepath.Join(cfg.DataDir, "spool"))
+	spool, err := newFileSpool(filepath.Join(cfg.WalDir, "spool"))
 	if err != nil {
 		return nil, fmt.Errorf("creating spool: %w", err)
 	}
 
 	fsm := newFSM(logger, runtimeStore, transport)
 
-	if wal.IsEmpty() {
+	snapshot, err := wal.Snapshot()
+	if err != nil {
+		return nil, fmt.Errorf("reading snapshot: %w", err)
+	}
+	if len(snapshot.Metadata.ConfState.Voters) == 0 {
+		logger.Infof("Detected empty WAL, creating initial snapshot")
 		voters := make([]uint64, 0, len(cfg.Peers)+1)
 		voters = append(voters, cfg.NodeID)
 
@@ -115,7 +120,7 @@ func NewNode(
 			Voters: voters,
 		}, data)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating initial snapshot: %w", err)
 		}
 	} else {
 		snapshot, err := wal.Snapshot()
@@ -137,20 +142,27 @@ func NewNode(
 	}
 
 	node := &Node{
-		logger:    logger,
-		meter:     meter,
-		futures:   make(map[uint64]*applyFuture),
-		syncer:    newSyncer(spool, fsm, logger, wal, meter),
+		logger:  logger,
+		meter:   meter,
+		futures: make(map[uint64]*applyFuture),
+		syncer: newSyncer(
+			spool,
+			fsm,
+			logger,
+			wal,
+			meter,
+			cfg.SnapshotThreshold,
+			cfg.CompactionMargin,
+		),
 		wal:       wal,
 		transport: transport,
 		config:    cfg,
 		proposeCh: NewQueueObserver[[]byte](
 			"raft.node.propose",
-			NewSimpleQueue[[]byte](logger, cfg.ProposeQueueCapacity),
+			NewSimpleQueue[[]byte](cfg.ProposeQueueCapacity),
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 		),
-		isSyncing:    &atomic.Bool{},
 		runtimeStore: runtimeStore,
 		fsm:          fsm,
 	}
@@ -164,16 +176,16 @@ func NewNode(
 		transport.AddPeer(peerEntry.ID, peerEntry.Address)
 	}
 
-	node.applyEntriesHistogram, err = meter.Float64Histogram("raft.apply_entries.duration",
+	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
 		metric.WithDescription("Time spent applying entries to FSM"),
-		metric.WithUnit("ms"),
+		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			// Fine-grained buckets for small values (0-100ms)
-			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-			12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
-			60, 70, 80, 90, 100,
+			0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
+			12000, 15000, 18000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
+			60000, 70000, 80000, 90000, 100000,
 			// Medium buckets (100-500ms)
-			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+			125000, 150000, 175000, 200000, 250000, 300000, 350000, 400000, 450000, 500000,
 		),
 	)
 	if err != nil {
@@ -199,7 +211,23 @@ func NewNode(
 		panic(err)
 	}
 
-	node.leadMonitor, err = meter.Int64Gauge("raft.node.lead")
+	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
+		metric.WithDescription("Time spending appending entries to wal"),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.processEntryHistogram, err = meter.Int64Histogram("raft.process_entry",
+		metric.WithDescription("Time spent processing ready from raft"),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.leadMonitorHistogram, err = meter.Int64Gauge("raft.node.lead")
 	if err != nil {
 		panic(err)
 	}
@@ -263,6 +291,7 @@ func (node *Node) readyLoop() {
 	node.confState = &initialConfState
 
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
+	defer processingTick.Stop()
 
 	for {
 		select {
@@ -290,12 +319,14 @@ func (node *Node) readyLoop() {
 			}
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
+				now := time.Now()
 				err := node.processReady(node.ctx)
 				if err != nil {
 					if !errors.Is(err, context.Canceled) {
 						panic(err)
 					}
 				}
+				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
 			}
 		}
 	}
@@ -330,19 +361,16 @@ func (node *Node) processReady(ctx context.Context) error {
 					Infof("Leadership gained")
 			}
 		}
-		node.leadMonitor.Record(ctx, int64(ss.Lead))
+		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 		node.lastSoftState = ss
 	}
 
 	if len(rd.Entries) > 0 {
-		if err := node.wal.Append(rd.Entries); err != nil {
+		now := time.Now()
+		if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
 			return fmt.Errorf("appending entries to storage: %w", err)
 		}
-	}
-
-	// Save HardState, Entries and Snapshot to storage
-	if !raft.IsEmptyHardState(rd.HardState) {
-		node.wal.SetHardState(rd.HardState)
+		node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 	}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
@@ -356,17 +384,12 @@ func (node *Node) processReady(ctx context.Context) error {
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 
-		node.isSyncing.Store(true)
-		otlplogs.Go(func() {
-			defer node.isSyncing.Store(false)
-
-			// todo: since the snapshot is already written in storage at this point
-			// we must be able to detect a crash and restart the restoration process
-			// in case of rawNode recover
-			if err := node.syncer.SyncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
-				panic(fmt.Errorf("restoring snapshot in storage: %w", err))
-			}
-		}, node.logger)
+		// todo: since the snapshot is already written in storage at this point
+		// we must be able to detect a crash and restart the restoration process
+		// in case of rawNode recover
+		if err := node.syncer.SyncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
+			panic(fmt.Errorf("restoring snapshot in storage: %w", err))
+		}
 	}
 
 	// Send messages via transport
@@ -429,14 +452,19 @@ func (node *Node) processReady(ctx context.Context) error {
 		err error
 	)
 	if len(commands) > 0 {
+		confState := *node.confState
 		start := time.Now()
-		results, err = node.syncer.ApplyEntries(node.ctx, commands...)
+		results, err = node.syncer.ApplyEntries(
+			node.ctx,
+			rd.CommittedEntries[len(rd.CommittedEntries)-1].Index,
+			&confState,
+			commands...,
+		)
 		if err != nil {
 			return fmt.Errorf("applying entries to FSM: %w", err)
 		}
-		duration := time.Since(start)
 
-		node.applyEntriesHistogram.Record(ctx, float64(duration.Milliseconds()))
+		node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
 		node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(commands)))
 		node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(commands)))
 	}
@@ -456,55 +484,6 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	// Advance the rawNode
 	node.rawNode.Advance(rd)
-
-	// Check if we need to create a snapshot
-	if !node.isSyncing.Load() {
-		lastSnapshot, err := node.wal.Snapshot()
-		if err != nil {
-			return fmt.Errorf("getting last snapshot: %w", err)
-		}
-		status := node.rawNode.Status()
-
-		if status.Applied-lastSnapshot.Metadata.Index > node.config.SnapshotThreshold {
-
-			node.logger.WithFields(map[string]any{
-				"applied":           status.Applied,
-				"term":              status.Term,
-				"commit":            status.Commit,
-				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-				"snapshotThreshold": node.config.SnapshotThreshold,
-			}).Infof("Creating new snapshot")
-
-			otlplogs.Go(func() {
-				err := node.syncer.CreateSnapshot(ctx, status.Applied, node.confState)
-				if err != nil {
-					// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
-					if errors.Is(err, ErrSnapOutOfDate) {
-						node.logger.
-							WithFields(map[string]any{"applied": status.Applied}).
-							Infof("Snapshot already up to date, skipped")
-						return
-					}
-					if errors.Is(err, context.Canceled) {
-						node.logger.
-							WithFields(map[string]any{"applied": status.Applied}).
-							Infof("Snapshot creation cancelled")
-						return
-					}
-
-					panic(fmt.Errorf("creating snapshot in storage: %w", err))
-				}
-
-				// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-				err = node.wal.Compact(status.Applied - node.config.CompactionMargin)
-				if err != nil {
-					panic("Compacting storage failed: " + err.Error())
-				}
-
-				node.logger.Infof("Snapshot created successfully")
-			}, node.logger)
-		}
-	}
 
 	return nil
 }
@@ -694,44 +673,6 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 		RaftStatus: raftStatus,
 		InnerState: node.fsm.GetState(),
 	}, nil
-}
-
-// Snapshot forces a snapshot of the Raft cluster
-func (node *Node) Snapshot(ctx context.Context) error {
-	node.logger.Info("Snapshot request received")
-
-	// Check if we are the leader (only leader can create snapshots)
-	status := node.rawNode.Status()
-	if status.RaftState != raft.StateLeader {
-		return fmt.Errorf("only leader can create snapshots, current state: %v", status.RaftState)
-	}
-
-	node.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("Creating snapshot")
-
-	// Trigger snapshot creation
-	// In etcd/raft, snapshots are created automatically when needed
-	// We can trigger one manually by checking the status
-	if status.Applied > 0 {
-		node.logger.WithFields(map[string]any{"applied": status.Applied}).Debugf("Creating snapshot data via FSM")
-
-		// Get current configuration state from storage
-		node.logger.Debugf("Getting initial state from storage")
-		_, confState, err := node.wal.InitialState()
-		if err != nil {
-			return fmt.Errorf("getting initial state: %w", err)
-		}
-
-		// Create snapshot data via FSM
-		err = node.syncer.CreateSnapshot(ctx, 0, &confState)
-		if err != nil {
-			return fmt.Errorf("creating snapshot data: %w", err)
-		}
-
-		node.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("Snapshot created successfully")
-	} else {
-		node.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("WARN: No applied entries to snapshot")
-	}
-	return nil
 }
 
 // IsHealthy returns true if the rawNode is connected to the cluster (leader or follower)

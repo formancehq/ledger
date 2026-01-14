@@ -2,18 +2,19 @@ package ledgerpb
 
 import (
 	"crypto/sha256"
-	"encoding/json/v2"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // ComputeIdempotencyHash computes a hash from inputs for idempotency checking
-func ComputeIdempotencyHash(inputs any) []byte {
-	digest := sha256.New()
-	data, err := json.Marshal(inputs)
+func ComputeIdempotencyHash(inputs proto.Message) []byte {
+	data, err := proto.Marshal(inputs)
 	if err != nil {
 		panic(err)
 	}
+
+	digest := sha256.New()
 	digest.Write(data)
-	digest.Write([]byte("\n")) // Add newline to match json.NewEncoder behavior
 
 	return digest.Sum(nil)
 }

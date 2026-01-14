@@ -4,15 +4,15 @@
 
 This document covers advanced concepts and implementation details of the Ledger v3 POC system.
 
-## Multiplexed Transport
+## gRPC Transport
 
 ### Concept
 
-The system uses a multiplexed transport to manage plusieurs groups Raft on a single gRPC channel. This allows :
+The system uses a gRPC transport for inter-node communication. This handles:
 
-- A single gRPC server for tors les groups Raft
-- Routage automatic des messages vers le bon groupe
-- Reduction of complexity Network
+- Raft message exchange between nodes
+- Request forwarding to the leader
+- Log synchronization during recovery
 
 ### Architecture
 
@@ -22,92 +22,52 @@ graph TB
         GRPC[gRPC Server<br/>Port 8888]
     end
     
-    subgraph "Multiplexer"
-        router[Message router]
-        Main[Main Channel<br/>System Raft]
-        Ledger1[Ledger 1 Channel]
-        Ledger2[Ledger 2 Channel]
+    subgraph "Transport Layer"
+        Transport[gRPC Transport]
     end
     
-    subgraph "Raft groups"
-        System[System Raft Group]
-        B1[Ledger 1 Raft Group]
-        B2[Ledger 2 Raft Group]
+    subgraph "Raft Node"
+        RaftNode[Single Raft Node<br/>All Ledgers]
     end
     
-    GRPC --> router
-    router --> Main
-    router --> Ledger1
-    router --> Ledger2
-    
-    Main --> System
-    Ledger1 --> B1
-    Ledger2 --> B2
+    GRPC --> Transport
+    Transport --> RaftNode
 ```
 
-### Routage des Messages
+### Message Routing
 
-Each Raft message contains un identifiant de groupe :
+Raft messages are sent directly between nodes via gRPC:
 
-- **groupe System** : ID spécial (0 or encodage specific)
-- **groups bucket** : ID encoded as `(bucketID << 16) | systemNodeID`
-
-Le multiplexer route messages according to this ID.
-
-## Encodage des Node IDs
-
-### Problème
-
-Raft groups must have unique Node IDs to avoid collisions. with multiple Raft groups in the same cluster, il faut un System d'encodage.
-
-### Solution
-
-The system uses an encoding to deux niveaux :
-
-```go
-// Encodage for un bucket
-func nodeIDfrombucketandRootNodeID(rootNodeID uint64, bucket bucketinfo) uint64 {
-    return (bucket.ID << 16) | rootNodeID
-}
-
-// Decoding
-func NodeIDfrombucketNodeID(bucketNodeID uint64) uint64 {
-    return bucketNodeID & 0x0000FFFF
-}
-```
-
-### Limitations
-
-- **System Node IDs** : 1 to 65535 (0x0001 to 0xFFFF)
-- **bucket IDs** : 1 to 65535 (theoretical limit)
-- **total buckets** : Limited by Node IDs available
+- **Leader to Followers**: AppendEntries, Heartbeats
+- **Followers to Leader**: Vote requests, Log responses
+- **Any to Leader**: Forwarded write requests
 
 ## Connection Management gRPC
 
 ### Connection Pool
 
-The system maintains a gRPC connection pool to avoid creating a new connection at each request :
+The system maintains a gRPC connection pool to avoid creating a new connection at each request:
 
 ```go
 type ConnectionPool struct {
-    mu        sync.RWMutex
-    connections map[uint64]*grpc.clientConn
-    dialer    func(uint64) (*grpc.clientConn, error)
+    mu          sync.RWMutex
+    connections map[uint64]*grpc.ClientConn
+    dialer      func(uint64) (*grpc.ClientConn, error)
 }
 ```
 
 ### Reuse
 
-Connections are reused for :
+Connections are reused for:
 - Request forwarding to the leader
-- Raft communication bandween nodes
+- Raft communication between nodes
 - Log synchronization
 
 ### Lifecycle Management
 
-- Connections are created to la demande
+- Connections are created on demand
 - They are reused as long as they are valid
-- They are closed during shutdown du nœud
+- They are closed during node shutdown
 
 ## Snapshot Restoration and Synchronization
 
@@ -182,34 +142,34 @@ sequenceDiagram
 
 During catch-up, the system uses range queries to efficiently stream only the needed logs:
 
-- **From Snapshot**: `GetAllLogs(ctx, snapshotSequence, targetSequence)`
+- **From Snapshot**: `GetAllLogs(ctx, ledger, snapshotSequence, targetSequence)`
 - **Efficient**: Only streams logs in the required range
-- **Inclusive**: Both `from` and `to` are inclusive boundaries
+- **Per Ledger**: Logs are streamed for each ledger that has missing data
 
 **Implementation**:
-- SQLite: `WHERE id >= ? AND id <= ?`
-- gRPC: `StreamLogs` with `from_id` and `to_id` parameters
+- SQLite: `WHERE ledger = ? AND id >= ? AND id <= ?`
+- gRPC: `StreamLogs` with ledger name and `from_id`/`to_id` parameters
 
-## Batching des Commandes
+## Command Batching
 
 ### Concept
 
-for améliorer le débit, multiple commands can be batchées in a single Raft entry or multiple entries can be proposed in parallel.
+To improve throughput, multiple commands can be batched in a single Raft entry or multiple entries can be proposed in parallel.
 
 ### Implementation
 
-The system supports le batching to nivando of the application :
+The system supports batching at the application level:
 
 ```go
-// Plusieurs commandes in ApplyEntries
-results := FSM.ApplyEntries(ctx, commands...)
+// Multiple commands in ApplyEntries
+results := fsm.ApplyEntries(ctx, commands...)
 ```
 
-### Avantages
+### Advantages
 
-- Reduction in the number de messages Network
-- Throughput improvement global
-- Bandter utilization des ressources
+- Reduction in the number of network messages
+- Overall throughput improvement
+- Better resource utilization
 
 ### Limitations
 
@@ -221,205 +181,204 @@ results := FSM.ApplyEntries(ctx, commands...)
 
 ### Concept
 
-Idempotency keys allow to avoid transActions duplicated in case of randry.
+Idempotency keys allow avoiding duplicate transactions in case of retry.
 
-### storage
+### Storage
 
-Idempotency keys are stored :
-- **in memory** : in the FSM du bucket for fast access
-- **in thes snapshots** : for persistance
-- **in the Logstore** : for Verification lors de la resttoration
+Idempotency keys are stored:
+- **In the RuntimeStore**: For fast access and persistence
+- **Per ledger**: Keyed by `(ledger, idempotency_key)`
 
 ### Verification
 
-Verification is done in two steps :
+Verification is done before proposing commands:
 
-1. **Verification in the FSM** : Fast memory access
-2. **Verification in the Logstore** : If not found in memory (after restoration)
+1. **Check in RuntimeStore**: Query `GetLogForIdempotencyKey()`
+2. **If found**: Return existing log without creating a new one
+3. **If not found**: Proceed with command proposal
 
-### format
+### Format
 
 ```go
-type IdempotencyKeyinfo struct {
-    LogID    uint64
-    Sequence uint64
-    Timestamp time.Time
+type IdempotencyEntry struct {
+    LogID         uint64
+    IdempotencyHash []byte
 }
 ```
 
-## Reconstruction of balances
+## Balance Reconstruction
 
-### Problème
+### Problem
 
-Balances must be recalculated after a failure or at démarrage d'un nouvando nœud.
+Balances must be recalculated after a failure or at startup of a new node.
 
 ### Solution
 
-Balances are reconstructed from the Logs :
+Balances are reconstructed from the logs:
 
-1. Charger tors les Logs of the ledger from le Logstore
-2. Rejorer chaque transAction
-3. Mandtre to jorr balances progressively
+1. Load all logs from the RuntimeStore
+2. Replay each transaction
+3. Update balances progressively
 
-### Optimisation
+### Optimization
 
-to avoid de rejorer tors les Logs to chaque démarrage :
+To avoid replaying all logs at each startup:
 
-- **Balance snapshots** : Store balances in thes snapshots (future)
-- **Balance index** : Maintain an index of latest balances per account
+- **Persistent balances**: Stored in RuntimeStore alongside logs
+- **Incremental updates**: Only new logs need to be processed after recovery
 
 ## Timeout Management
 
-### Timeorts Raft
+### Raft Timeouts
 
-Les timeorts Raft sont calculated dynamically :
+Raft timeouts are calculated dynamically:
 
-- **Election Timeort** : `ElectionTick * Tickinterval`
-- **Heartbeat interval** : `HeartbeatTick * Tickinterval`
+- **Election Timeout**: `ElectionTick * TickInterval`
+- **Heartbeat Interval**: `HeartbeatTick * TickInterval`
 
-### Recommandations
+### Recommendations
 
-for un cluster stable :
+For a stable cluster:
 
-- **ElectionTick** : 10-20 (timeort raisonnable)
-- **HeartbeatTick** : 1-2 (quick dandection of failures)
-- **Tickinterval** : 50-200ms (balance performance/responsiveness)
+- **ElectionTick**: 10-20 (reasonable timeout)
+- **HeartbeatTick**: 1-2 (quick failure detection)
+- **TickInterval**: 50-200ms (balance performance/responsiveness)
 
-### Ajustement Dynamique
+### Dynamic Adjustment
 
-Les timeorts peuvent être adjusted according to the conditions :
+Timeouts can be adjusted according to conditions:
 
-- **Network lent** : togmenter les timeorts
-- **Network rapide** : Réduire les timeorts for plus de responsiveness
+- **Slow network**: Increase timeouts
+- **Fast network**: Reduce timeouts for more responsiveness
 
-## Partition Management Network
+## Network Partition Management
 
-### Scénario
+### Scenario
 
-if the cluster is partitionné en deux groups :
+If the cluster is partitioned into two groups:
 
-- **Majority partition** : Continues to function, elects a leader
-- **Minority partition** : Cannot elect de leader, blocks writes
+- **Majority partition**: Continues to function, elects a leader
+- **Minority partition**: Cannot elect a leader, blocks writes
 
-### Détection
+### Detection
 
-Nodes dandect partitions via :
+Nodes detect partitions via:
 - Absence of heartbeats from the leader
-- Election attempts unsuccessful
+- Unsuccessful election attempts
 - Raft messages rejected (lower term)
 
-### Récupération
+### Recovery
 
-When the partition is resolved :
+When the partition is resolved:
 
-1. Nodes dandect a higher term
-2. They synchronize with le leader
-3. Missing Logs are replicated
+1. Nodes detect a higher term
+2. They synchronize with the leader
+3. Missing logs are replicated
 4. The state is unified
 
 ## Performance and Optimizations
 
 ### Local Reads
 
-Reads can be served locally without going through Raft :
+Reads can be served locally without going through Raft:
 
-- `GandLedger` : Read from the local FSM
-- `GandLedgers` : Read from the local FSM
-- `Listbuckets` : Read from la FSM system local
+- `GetLedger`: Read from the local FSM
+- `GetAllLedgers`: Read from the local FSM
+- `GetBalances`: Read from the local RuntimeStore
+- `GetAllLogs`: Read from the local RuntimeStore
 
 ### Writes via Leader
 
-All writes doivent go through the leader :
+All writes must go through the leader:
 
-- forwarding automatic if necessary
-- Détection from the leader via `GandLeader()`
-- Error handling "No Leader"
+- Automatic forwarding if necessary
+- Leader detection via `GetLeader()`
+- "No Leader" error handling
 
-### Pipeline Raft
+### Raft Pipeline
 
-The system can pipeline requests :
+The system can pipeline requests:
 
-- Send multiple `AppendEntries` before receiving the confirmations
-- Limited by `MaxinflightMsgs`
-- Improves throughput mais togmente la Latency
+- Send multiple `AppendEntries` before receiving confirmations
+- Limited by `MaxInflightMsgs`
+- Improves throughput but increases latency
 
 ### Compression
 
-Raft messages can be compressed :
+Raft messages can be compressed:
 
-- Reduction of bandwidth pass
-- Performance improvement Network
-- CPU trade-off/bande pass
+- Bandwidth reduction
+- Network performance improvement
+- CPU/bandwidth trade-off
 
 ## Security
 
-### tothentification inter-node
+### Inter-node Authentication
 
-Currently, no tothentication is required bandween nodes. in production :
+Currently, no authentication is required between nodes. In production:
 
-- **mTLS** : tothentification mutuelle via TLS
-- **tokens** : token tothentication
-- **network Policies** : Restriction to nivando Network
+- **mTLS**: Mutual authentication via TLS
+- **Tokens**: Token authentication
+- **Network Policies**: Network-level restriction
 
-### Chiffrement
+### Encryption
 
-Communications can be encrypted :
+Communications can be encrypted:
 
-- **TLS for gRPC** : Encryption of communications inter-node
-- **TLS for HTTP** : Encryption of communications client-server
+- **TLS for gRPC**: Encryption of inter-node communications
+- **TLS for HTTP**: Encryption of client-server communications
 
-### totorisation
+### Authorization
 
-L'totorisation can be added :
+Authorization can be added:
 
-- **RBAC** : Roles and permissions
-- **Policies** : Access policies per bucket/ledger
+- **RBAC**: Roles and permissions
+- **Policies**: Access policies per ledger
 
-## Extensibilité
+## Extensibility
 
-### Ajorter un nouvando Storage Driver
+### Adding a New Storage Driver
 
-1. Implement `LogWriter` and `LogReader`
-2. Ajorter la validation in `ValidatebucketConfig`
-3. Ajorter le support in the création de bucket
+1. Implement the `RuntimeStore` interface
+2. Add the driver in the factory function
+3. Register the storage type flag
 
-### Ajorter un nouvando Command Type
+### Adding a New Command Type
 
-1. Define the protobuf
-2. Create the function of command
-3. Ajorter le handler in the FSM
-4. Mandtre to jorr `ApplyEntries`
+1. Define the protobuf in `internal/ledgerpb/`
+2. Create the command function in `internal/raft/command.go`
+3. Add the handler in the FSM (`internal/raft/fsm.go`)
+4. Update `ApplyEntries` to handle the new command type
 
-### Ajorter un nouvando Log Type
+### Adding a New Log Type
 
-1. Define the type in `proto/common.proto`
-2. Implement la conversion protobuf ↔ Go
-3. Ajorter le support in the Logstore
-4. Mandtre to jorr les handlers
+1. Define the type in `internal/ledgerpb/`
+2. Implement the conversion protobuf ↔ Go
+3. Add support in the RuntimeStore
+4. Update the handlers
 
 ## Known Limitations
 
-### Nombre de buckets
-
-- Limited by Node IDs available (65535 buckets max théorique)
-- in prActice, Limited by les ressources (memory, storage)
-
 ### Message Size
 
-- Limited by `MaxSizePerMsg` (défaut: 1MB)
-- Large transActions may require an adjustment
+- Limited by `MaxSizePerMsg` (default: 1MB)
+- Large transactions may require an adjustment
 
 ### Latency
 
 - All writes go through the leader
-- La Latency dépend on replication to la majorité
+- Latency depends on replication to majority
 - Reads can be served locally
+
+### Single Leader
+
+- All ledgers share the same Raft leader
+- High write volume across many ledgers may bottleneck at the leader
 
 ## Next Steps
 
-for approfondir :
+To deepen your understanding:
 
-1. [Consensus Raft](./raft-consensus.md) - Détails sur Raft
+1. [Raft Consensus](./raft-consensus.md) - Details on Raft
 2. [Storage and Persistence](./storage.md) - Storage optimizations
-3. [Development](./development.md) - Implement de nouvelles Features
-
+3. [Development](./development.md) - Implementing new features

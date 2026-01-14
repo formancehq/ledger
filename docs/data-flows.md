@@ -6,7 +6,7 @@ This document describes in detail the data flows for the main system operations.
 
 ### Overview
 
-Ledger creation is a distributed operation that goes through the system Raft group.
+Ledger creation is a distributed operation that goes through the single Raft group.
 
 ### Complete Flow
 
@@ -14,72 +14,58 @@ Ledger creation is a distributed operation that goes through the system Raft gro
 sequenceDiagram
     participant Client
     participant HTTP as HTTP Handler
-    participant Adapter as SystemNodeAdapter
-    participant SystemNode as System Raft Node
-    participant SystemFSM as System FSM
-    participant LedgerNode as Ledger Raft Node
-    participant Storage as Storage
+    participant RaftNode as Raft Node
+    participant FSM as FSM
     
-    Client->>HTTP: POST /ledgers/my-ledger
-    HTTP->>Adapter: CreateLedger(name, driver, config)
+    Client->>HTTP: POST /my-ledger
+    HTTP->>RaftNode: CreateLedger(name, metadata)
     
     alt Node is leader
-        Adapter->>SystemNode: CreateLedger()
-        SystemNode->>SystemFSM: Propose CreateLedgerCommand
-        SystemFSM->>SystemFSM: Validate Config
-        SystemFSM->>SystemFSM: Assign Ledger ID
-        SystemFSM->>LedgerNode: Start Ledger Raft Group
-        LedgerNode->>Storage: Initialize Storage
-        SystemFSM->>SystemFSM: Store ledger info
-        SystemFSM-->>SystemNode: LedgerInfo
-        SystemNode-->>Adapter: LedgerInfo
+        RaftNode->>FSM: Propose CreateLedgerCommand
+        FSM->>FSM: Validate Name is Unique
+        FSM->>FSM: Create LedgerState
+        FSM-->>RaftNode: LedgerInfo
     else Node is Follower
-        Adapter->>Adapter: Find leader
-        Adapter->>SystemNode: Forward via gRPC (to leader)
-        Note over SystemNode,Storage: Same as leader path
-        SystemNode-->>Adapter: LedgerInfo
+        RaftNode->>RaftNode: Find leader
+        RaftNode->>FSM: Forward via gRPC (to leader)
+        Note over FSM: Same as leader path
+        FSM-->>RaftNode: LedgerInfo
     end
     
-    Adapter-->>HTTP: LedgerInfo
+    RaftNode-->>HTTP: LedgerInfo
     HTTP-->>Client: 201 Created
 ```
 
 ### Detailed Steps
 
 1. **HTTP Request Reception**
-   - The HTTP handler receives `POST /ledgers/{name}`
-   - Validates the body (driver, config)
-   - Calls `cluster.CreateLedger()`
+   - The HTTP handler receives `POST /{ledgerName}`
+   - Validates the body (metadata)
+   - Calls `raftNode.CreateLedger()`
 
 2. **Leader Verification**
-   - The `SystemNodeAdapter` checks if the node is the leader
+   - The Raft node checks if it is the leader
    - If not leader, identifies the leader and forwards the request
 
 3. **Command Proposal**
    - The leader creates a `CreateLedgerCommand`
-   - The command is proposed to the System Raft group
+   - The command is proposed to the Raft group
    - The command is replicated to all followers
 
 4. **FSM Application**
-   - The System FSM receives the committed command
-   - Validates the driver configuration
-   - Assigns a sequential ID to the ledger
-   - Creates the ledger info
+   - The FSM receives the committed command
+   - Validates the ledger name is unique
+   - Creates a new LedgerState with initial sequence numbers
 
-5. **Starting the Ledger Raft Group**
-   - The FSM starts a new Raft group for the ledger
-   - Initializes storage (WAL, runtime store)
-   - The Raft group joins the cluster
-
-6. **Persistence**
-   - The ledger metadata is stored in the System FSM
+5. **Persistence**
+   - The ledger state is stored in the FSM's in-memory map
    - A snapshot can be created if necessary
 
 ## Transaction Creation
 
 ### Overview
 
-Transaction creation goes through the ledger's Raft group.
+Transaction creation goes through the single Raft group.
 
 ### Complete Flow
 
@@ -87,56 +73,56 @@ Transaction creation goes through the ledger's Raft group.
 sequenceDiagram
     participant Client
     participant HTTP as HTTP Handler
-    participant LedgerNode as Ledger Raft Node
-    participant LedgerService as Ledger Service
+    participant RaftNode as Raft Node
+    participant Controller as Controller
     participant RuntimeStore as Runtime Store
-    participant LedgerFSM as Ledger FSM
+    participant FSM as FSM
     
-    Client->>HTTP: POST /ledgers/my-ledger/transactions
-    HTTP->>LedgerNode: FindLedgerRaftGroup("my-ledger")
-    LedgerNode->>LedgerNode: Find Ledger Raft Group
+    Client->>HTTP: POST /my-ledger/transactions
+    HTTP->>RaftNode: CreateTransaction()
+    RaftNode->>Controller: CreateTransaction()
     
     alt Node is leader
-        LedgerNode->>LedgerService: CreateTransaction()
-        LedgerService->>RuntimeStore: Check Balances
-        RuntimeStore-->>LedgerService: Balances OK
-        LedgerService->>LedgerService: Validate Transaction
-        LedgerService->>LedgerFSM: Propose InsertLogCommand (via Raft)
-        LedgerFSM->>LedgerFSM: Generate Sequence
-        LedgerFSM->>RuntimeStore: InsertLogs() - Persist log and update balances
-        Note over LedgerFSM,RuntimeStore: Logs persisted during apply
-        LedgerFSM-->>LedgerService: Log with Sequence
-        LedgerService-->>LedgerNode: CreatedTransaction
+        Controller->>RuntimeStore: Check Balances
+        RuntimeStore-->>Controller: Balances OK
+        Controller->>Controller: Validate Transaction
+        Controller->>RaftNode: CreateLog()
+        RaftNode->>FSM: Propose CreateLogCommand (via Raft)
+        FSM->>FSM: Generate Log ID & Transaction ID
+        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        Note over FSM,RuntimeStore: Logs persisted during apply
+        FSM-->>RaftNode: Log
+        RaftNode-->>Controller: Log
     else Node is Follower
-        LedgerNode->>LedgerNode: Find leader
-        LedgerNode->>LedgerFSM: Forward via gRPC (to leader)
-        Note over LedgerFSM,RuntimeStore: Same as leader path
-        LedgerFSM-->>LedgerNode: CreatedTransaction
+        Controller->>Controller: Find leader
+        Controller->>RaftNode: Forward via gRPC (to leader)
+        Note over FSM,RuntimeStore: Same as leader path
+        RaftNode-->>Controller: Log
     end
     
-    LedgerNode-->>HTTP: CreatedTransaction
+    Controller-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
 
 ### Detailed Steps
 
-1. **Ledger Identification**
-   - The system identifies the ledger and its Raft group
-   - Retrieves the ledger's Raft group
+1. **Ledger Verification**
+   - The system checks the ledger exists in the FSM state
+   - Retrieves the ledger's current state
 
 2. **Transaction Validation**
    - Validates postings (valid accounts, positive amounts)
-   - Checks balances (if necessary)
+   - Checks balances (if necessary) from RuntimeStore
    - Verifies the idempotency key
    - Executes script if present
 
 3. **Command Proposal**
-   - Creates an `InsertLogCommand` with the transaction
-   - Proposes to the ledger's Raft group
+   - Creates a `CreateLogCommand` with the transaction data
+   - Proposes to the Raft group
    - Replicates to all nodes in the group
 
 4. **FSM Application**
-   - The ledger FSM generates a sequence number
+   - The FSM generates the next log ID and transaction ID for this ledger
    - The log is written to the RuntimeStore
    - Balances are updated
 
@@ -218,23 +204,24 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 sequenceDiagram
     participant Follower as Follower Node
     participant Leader as Leader Node
-    participant Storage as Storage
+    participant Storage as WAL Storage
     participant RuntimeStore as Runtime Store
+    participant FSM as FSM
     
     Follower->>Follower: Start/Recover
     Follower->>Storage: Load Snapshot
     Storage-->>Follower: Snapshot Data
-    Follower->>Follower: Restore FSM State
+    Follower->>FSM: Restore FSM State
     
-    Follower->>Leader: StreamLogs gRPC (from snapshot index)
-    Leader->>RuntimeStore: GetAllLogs(from, to)
-    RuntimeStore-->>Leader: Stream Logs
-    Leader-->>Follower: Stream Logs (gRPC stream)
-    
-    loop for each log
-        Follower->>Follower: Append to WAL
-        Follower->>FSM: Apply Entry
-        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+    loop For each ledger with missing logs
+        Follower->>Leader: StreamLogs gRPC (ledger, from, to)
+        Leader->>RuntimeStore: GetAllLogs(ledger, from, to)
+        RuntimeStore-->>Leader: Stream Logs
+        Leader-->>Follower: Stream Logs (gRPC stream)
+        
+        loop for each log
+            Follower->>RuntimeStore: InsertLogs() - Persist log and update balances
+        end
     end
     
     Follower->>Follower: Catch Up Complete
@@ -246,16 +233,16 @@ sequenceDiagram
 1. **Snapshot Loading**
    - The follower loads the most recent snapshot
    - The FSM state is restored from the snapshot
-   - The last snapshot index is noted
+   - The last applied log ID for each ledger is noted
 
-2. **Log Request**
-   - The follower requests logs from the snapshot index
-   - The leader checks log availability
-   - The leader sends missing logs
+2. **Log Streaming**
+   - For each ledger with missing logs (based on LastAppliedLogId)
+   - The follower requests logs from the leader via gRPC
+   - The leader streams logs from its RuntimeStore
 
 3. **Log Application**
-   - Each log is appended to the local log
-   - Each log is applied to the FSM
+   - Each log is inserted into the follower's RuntimeStore
+   - Balances and metadata are updated
    - The state is progressively updated
 
 4. **Catch-up Complete**
@@ -273,41 +260,36 @@ Snapshots are created periodically to compact logs and accelerate recovery.
 
 ```mermaid
 sequenceDiagram
-    participant Leader as Leader Node
+    participant Syncer as Syncer
     participant FSM as FSM
-    participant SnapshotStore as Snapshot Store
-    participant WAL as WAL Storage
+    participant SnapshotStore as WAL Storage
     
-    Leader->>Leader: Check Snapshot Conditions
-    Note over Leader: Threshold or interval reached
+    Syncer->>Syncer: Check Snapshot Conditions
+    Note over Syncer: Threshold reached
     
-    Leader->>FSM: Create Snapshot
-    FSM->>FSM: Serialize State & Metadata
-    FSM-->>Leader: Snapshot Data
+    Syncer->>FSM: Create Snapshot
+    FSM->>FSM: Serialize State (all ledgers)
+    FSM-->>Syncer: Snapshot Data
     
-    Leader->>SnapshotStore: Save Snapshot
+    Syncer->>SnapshotStore: Save Snapshot
     SnapshotStore->>SnapshotStore: Write to Disk
-    SnapshotStore-->>Leader: Snapshot Saved
+    SnapshotStore-->>Syncer: Snapshot Saved
     
-    Leader->>WAL: Compact logs (remove old entries)
-    WAL->>WAL: Remove entries before snapshot index
-    WAL-->>Leader: Compaction Complete
+    Syncer->>SnapshotStore: Compact logs (remove old entries)
+    SnapshotStore->>SnapshotStore: Remove entries before snapshot index
+    SnapshotStore-->>Syncer: Compaction Complete
 ```
 
 ### Creation Conditions
 
 1. **Log Threshold**
    - If `SnapshotThreshold` logs have been created since the last snapshot
-   - Configurable per ledger or globally
-
-2. **Minimum Interval**
-   - If `SnapshotInterval` has elapsed since the last snapshot
-   - Prevents creating too many snapshots
+   - Configurable globally via command line flags
 
 ### Snapshot Contents
 
 - **Metadata**: index, term, timestamp
-- **FSM State**: Complete FSM data
+- **FSM State**: Complete state for all ledgers
 - **Index**: Index of the last included entry
 
 ## Request Forwarding
@@ -323,7 +305,7 @@ sequenceDiagram
     participant Client
     participant Follower
     participant ConnectionPool
-    participant leader
+    participant Leader
     participant FSM
     
     Client->>Follower: Write Request
@@ -333,11 +315,11 @@ sequenceDiagram
     Follower->>ConnectionPool: Get Connection(leaderID)
     ConnectionPool-->>Follower: gRPC Connection
     
-    Follower->>leader: Forward Request (gRPC)
-    leader->>leader: Process Request
-    leader->>FSM: Apply Command
-    FSM-->>leader: Result
-    leader-->>Follower: Response
+    Follower->>Leader: Forward Request (gRPC)
+    Leader->>Leader: Process Request
+    Leader->>FSM: Apply Command
+    FSM-->>Leader: Result
+    Leader-->>Follower: Response
     
     Follower-->>Client: Response
 ```
@@ -365,18 +347,18 @@ sequenceDiagram
     participant Client
     participant BulkHandler
     participant Bulker
-    participant LedgerNode
+    participant RaftNode
     participant FSM
     
-    Client->>BulkHandler: POST /_bulk (stream)
+    Client->>BulkHandler: POST /{ledger}/_bulk (stream)
     BulkHandler->>BulkHandler: Parse Elements
     
     loop for each element
         BulkHandler->>Bulker: Send Element
-        Bulker->>LedgerNode: Process Element
-        LedgerNode->>FSM: Apply Command
-        FSM-->>LedgerNode: Result
-        LedgerNode-->>Bulker: Result
+        Bulker->>RaftNode: Process Element
+        RaftNode->>FSM: Apply Command
+        FSM-->>RaftNode: Result
+        RaftNode-->>Bulker: Result
         Bulker-->>BulkHandler: Result
     end
     

@@ -352,6 +352,11 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 
 	for ledgerName, oldLedgerState := range oldState.Ledgers {
 		if fsm.state.Ledgers[ledgerName].LastAppliedLogId > oldLedgerState.LastAppliedLogId {
+			fsm.logger.WithFields(map[string]any{
+				"ledger": ledgerName,
+				"lastAppliedLogId": oldLedgerState.LastAppliedLogId,
+				"newLastAppliedLogId": fsm.state.Ledgers[ledgerName].LastAppliedLogId,
+			}).Infof("Syncing logs from leader")
 			client := service.NewLedgerGrpcClient(
 				ledgerpb.NewLedgerServiceClient(
 					fsm.transport.GetPeerConnection(leader),

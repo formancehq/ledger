@@ -301,9 +301,9 @@ These read endpoints exist in the original ledger but are not documented here as
 ## Architecture Notes
 
 The POC uses a different architecture with Raft for replication:
-- Each ledger has its own Raft group
+- A single Raft group manages all ledgers and their transactions
 - Write operations go through the leader
-- Logs are stored via the LogStore (Pebble or SQLite)
+- Logs are stored via the RuntimeStore (Pebble or SQLite)
 
 This architecture impacts certain implementation decisions:
 - Bulk atomicity requires handling at the Raft level
