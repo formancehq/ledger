@@ -2,6 +2,7 @@ package raft
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,8 +16,13 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	walCreationCompletedFile = "WAL_CREATION_COMPLETED"
+	etcdWalDir               = "etcd"
+	stateFile                = "raft-state.pb"
+)
+
 // WAL implements raft.Storage interface for etcd/raft using etcd/wal
-// todo: add margin behind the snapshot
 type WAL struct {
 	mu sync.RWMutex
 
@@ -33,144 +39,110 @@ type WAL struct {
 	// This is rebuilt from WAL on startup
 	entries []raftpb.Entry
 
-	logger    logging.Logger
-	dataDir   string
-	stateFile string
-	walDir    string
+	logger     logging.Logger
+	dataDir    string
+	stateFile  string
+	etcdWalDir string
 }
 
 // NewWAL creates a new WAL instance
 func NewWAL(dataDir string, logger logging.Logger) (*WAL, error) {
-	// Create data directory if it doesn't exist
+
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
 	s := &WAL{
-		entries:   make([]raftpb.Entry, 0),
-		logger:    logger,
-		dataDir:   dataDir,
-		stateFile: filepath.Join(dataDir, "raft-state.pb"),
-		walDir:    filepath.Join(dataDir, "wal"),
+		entries:    make([]raftpb.Entry, 0),
+		logger:     logger,
+		dataDir:    dataDir,
+		stateFile:  filepath.Join(dataDir, stateFile),
+		etcdWalDir: filepath.Join(dataDir, etcdWalDir),
 	}
 
-	if err := s.restoreSnapshot(); err != nil {
-		logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to restore snapshot from disk, starting fresh")
-	}
-
-	// Open or create WAL
-	var err error
-	s.wal, err = s.openOrCreateWAL()
-	if err != nil {
-		return nil, fmt.Errorf("opening/creating WAL: %w", err)
-	}
-
-	// Replay WAL to rebuild entries cache
-	if err := s.replayWAL(); err != nil {
-		return nil, fmt.Errorf("replaying WAL: %w", err)
-	}
-
-	return s, nil
-}
-
-// openOrCreateWAL opens an existing WAL or creates a new one
-func (s *WAL) openOrCreateWAL() (*wal.WAL, error) {
-	// Convert logger to zap.Logger for etcd/wal
 	zapLogger, err := zap.NewDevelopment()
 	if err != nil {
 		return nil, fmt.Errorf("creating zap logger: %w", err)
 	}
 
-	// Check if WAL already exists
-	if _, err := os.Stat(s.walDir); err == nil {
-		// WAL exists, open it
-		// Read snapshot metadata if available
+	markerFilePath := filepath.Join(s.dataDir, walCreationCompletedFile)
+
+	_, err = os.Stat(markerFilePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("checking WAL creation completion marker: %w", err)
+	}
+	if err == nil {
+		s.logger.Infof("WAL creation completed, opening existing WAL")
+		data, err := os.ReadFile(s.stateFile)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+
 		var snap walpb.Snapshot
-		if s.snapshot.Metadata.Index > 0 {
+		if err == nil {
+			if err := unmarshalStateFile(data, &s.snapshot); err != nil {
+				return nil, err
+			}
+
 			snap = walpb.Snapshot{
 				Index: s.snapshot.Metadata.Index,
 				Term:  s.snapshot.Metadata.Term,
 			}
 		}
 
-		w, err := wal.Open(zapLogger, s.walDir, snap)
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening existing WAL: %w", err)
 		}
-		return w, nil
+
+	} else {
+		s.logger.Infof("WAL creation not completed, creating new WAL")
+		if err := os.RemoveAll(s.etcdWalDir); err != nil {
+			return nil, fmt.Errorf("removing existing WAL directory: %w", err)
+		}
+
+		w, err := wal.Create(zapLogger, s.etcdWalDir, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating new WAL: %w", err)
+		}
+
+		// Close the WAL created by wal.Create() and reopen it with wal.Open()
+		// This is necessary because wal.Create() returns a WAL in write mode,
+		// and ReadAll() requires a WAL opened with wal.Open()
+		if err := w.Close(); err != nil {
+			return nil, fmt.Errorf("closing newly created WAL: %w", err)
+		}
+
+		f, err := os.Create(markerFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("creating WAL creation completion marker: %w", err)
+		}
+
+		if err := f.Sync(); err != nil {
+			return nil, fmt.Errorf("syncing WAL creation completion marker: %w", err)
+		}
+
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("closing WAL creation completion marker: %w", err)
+		}
+
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, walpb.Snapshot{})
+		if err != nil {
+			return nil, fmt.Errorf("opening newly created WAL: %w", err)
+		}
 	}
 
-	// Create new WAL directory
-	if err := os.MkdirAll(s.walDir, 0755); err != nil {
-		return nil, fmt.Errorf("creating WAL directory: %w", err)
-	}
-
-	// Create new WAL
-	w, err := wal.Create(zapLogger, s.walDir, nil)
+	_, s.hardState, s.entries, err = s.wal.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("creating new WAL: %w", err)
+		return nil, fmt.Errorf("reading WAL entries: %w", err)
 	}
 
-	// Close the WAL created by wal.Create() and reopen it with wal.Open()
-	// This is necessary because wal.Create() returns a WAL in write mode,
-	// and ReadAll() requires a WAL opened with wal.Open()
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("closing newly created WAL: %w", err)
-	}
+	s.logger.WithFields(map[string]any{"entries": len(s.entries)}).Infof("WAL replay completed")
 
-	// Reopen the WAL with wal.Open() so it can be read
-	w, err = wal.Open(zapLogger, s.walDir, walpb.Snapshot{})
-	if err != nil {
-		return nil, fmt.Errorf("reopening newly created WAL: %w", err)
-	}
-
-	return w, nil
+	return s, nil
 }
 
-// replayWAL replays all entries from the WAL to rebuild the entries cache
-// todo: the underlying wal is not snapshotted yet, so all entries are reread
-func (s *WAL) replayWAL() error {
-	// Read all entries from WAL
-	// Note: ReadAll() can return an error if the WAL is empty or corrupted
-	// We handle the case where the WAL is empty (newly created) gracefully
-	_, state, entries, err := s.wal.ReadAll()
-	if err != nil {
-		// If the error is "decoder not found", it might mean the WAL is empty
-		// This can happen with a newly created WAL that hasn't been written to yet
-		if err.Error() == "wal: decoder not found" {
-			// Empty WAL, nothing to replay
-			s.logger.Infof("WAL is empty (newly created), nothing to replay")
-			return nil
-		}
-		return fmt.Errorf("reading WAL entries: %w", err)
-	}
-
-	// Update hard state from WAL if available (state is a struct, check if it's not zero)
-	if state.Term != 0 || state.Commit != 0 {
-		s.hardState = state
-	}
-
-	// Rebuild entries cache
-	s.mu.Lock()
-	s.entries = entries
-	s.mu.Unlock()
-
-	s.logger.WithFields(map[string]any{"entries": len(entries)}).Infof("WAL replay completed")
-	return nil
-}
-
-// restoreSnapshot restores snapshot from disk
-// Format: [snapshotLength (8 bytes)][snapshotData]
-func (s *WAL) restoreSnapshot() error {
-	data, err := os.ReadFile(s.stateFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist yet, start fresh
-			return nil
-		}
-		return fmt.Errorf("reading state file: %w", err)
-	}
-
+func unmarshalStateFile(data []byte, to *raftpb.Snapshot) error {
 	if len(data) < 8 {
 		return fmt.Errorf("state file too short")
 	}
@@ -181,17 +153,11 @@ func (s *WAL) restoreSnapshot() error {
 		return fmt.Errorf("state file truncated at snapshot")
 	}
 
-	snapshotData := data[8 : 8+snapshotLen]
-	if err := s.snapshot.Unmarshal(snapshotData); err != nil {
-		return fmt.Errorf("unmarshaling snapshot: %w", err)
-	}
-
-	return nil
+	return to.Unmarshal(data[8 : 8+snapshotLen])
 }
 
 // saveSnapshot saves snapshot to disk
 // Format: [snapshotLength (8 bytes)][snapshotData]
-// Note: Hard state is persisted in WAL, not in this file
 func (s *WAL) saveSnapshot() error {
 	// Marshal Snapshot
 	snapshotData, err := s.snapshot.Marshal()
@@ -210,7 +176,7 @@ func (s *WAL) saveSnapshot() error {
 	// Write snapshot data
 	copy(fileData[8:8+len(snapshotData)], snapshotData)
 
-	stateFile, err := os.Create(s.stateFile)
+	stateFile, err := os.Create(s.stateFile + ".tmp")
 	if err != nil {
 		return fmt.Errorf("creating state file: %w", err)
 	}
@@ -223,7 +189,19 @@ func (s *WAL) saveSnapshot() error {
 		return fmt.Errorf("writing state file: %w", err)
 	}
 
-	return stateFile.Sync()
+	if err := stateFile.Sync(); err != nil {
+		return fmt.Errorf("syncing state file: %w", err)
+	}
+
+	if err := stateFile.Close(); err != nil {
+		return fmt.Errorf("closing state file: %w", err)
+	}
+
+	if err := os.Rename(s.stateFile+".tmp", s.stateFile); err != nil {
+		return fmt.Errorf("renaming state file: %w", err)
+	}
+
+	return nil
 }
 
 // InitialState returns the saved HardState and ConfState information
@@ -358,7 +336,7 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 }
 
 // CreateSnapshot creates a snapshot at the given index
-func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftpb.Snapshot, error) {
+func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -369,7 +347,7 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftp
 		len(s.snapshot.Metadata.ConfState.Voters) == 0 &&
 		len(s.entries) == 0
 	if !isEmptyInitial && i <= s.snapshot.Metadata.Index {
-		return raftpb.Snapshot{}, raft.ErrSnapOutOfDate
+		return raft.ErrSnapOutOfDate
 	}
 
 	// Get term directly without taking another lock
@@ -382,7 +360,7 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftp
 	} else {
 		term, err = s.termLocked(i)
 		if err != nil {
-			return raftpb.Snapshot{}, err
+			return err
 		}
 	}
 
@@ -394,13 +372,8 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftp
 		},
 		Data: data,
 	}
-	snap := s.snapshot
 
-	if err := s.saveSnapshot(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
-	}
-
-	return snap, nil
+	return s.saveSnapshot()
 }
 
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held)

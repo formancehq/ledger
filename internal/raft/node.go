@@ -108,18 +108,14 @@ func NewNode(
 			voters = append(voters, peerEntry.ID)
 		}
 
-		// Create initial snapshot with ConfState at index 0
-		// This ensures FirstIndex() returns 1, which is the correct starting point
-		// The ConfState in the snapshot defines the initial cluster configuration
 		data, err := fsm.CreateSnapshot(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("creating initial snapshot data: %w", err)
 		}
 
-		_, err = wal.CreateSnapshot(0, &raftpb.ConfState{
+		if err := wal.CreateSnapshot(0, &raftpb.ConfState{
 			Voters: voters,
-		}, data)
-		if err != nil {
+		}, data); err != nil {
 			return nil, fmt.Errorf("creating initial snapshot: %w", err)
 		}
 	} else {

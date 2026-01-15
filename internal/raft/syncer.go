@@ -154,13 +154,11 @@ func (s *syncer) run() {
 								startTime := time.Now()
 								data, err := s.fsm.CreateSnapshot(ctx)
 								if err == nil {
-									_, err = s.wal.CreateSnapshot(cmd.appliedIndex, cmd.confState, data)
-								}
-
-								// Record metric for snapshot creation duration
-								if err == nil {
-									duration := time.Since(startTime)
-									s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+									err = s.wal.CreateSnapshot(cmd.appliedIndex, cmd.confState, data)
+									if err == nil {
+										duration := time.Since(startTime)
+										s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+									}
 								}
 
 								// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact

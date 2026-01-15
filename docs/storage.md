@@ -15,9 +15,9 @@ All ledgers share a **single storage layer**, with data organized by ledger name
 ```mermaid
 graph TB
     subgraph "Raft Storage"
-        WAL[WAL<br/>Write-Ahead Log]
-        HardState[HardState<br/>Term, Vote, Commit]
+        WAL[WAL<br/>Write-Ahead Log<br/>+ HardState]
         Snapshot[Raft Snapshot<br/>FSM State]
+        Marker[WAL Creation Marker]
     end
     
     subgraph "Application Storage"
@@ -25,18 +25,19 @@ graph TB
     end
     
     subgraph "Directory Structure"
-        WalDir[wal/]
-        WalSubdir[wal/]
+        RaftDir[raft/]
+        EtcdDir[etcd/]
         SpoolDir[spool/]
         DataDir[data/]
         RuntimeDB[runtime.db or runtime/]
     end
     
-    WAL --> WalSubdir
-    HardState --> WalSubdir
-    Snapshot --> SpoolDir
-    WalSubdir --> WalDir
-    SpoolDir --> WalDir
+    WAL --> EtcdDir
+    Snapshot --> RaftDir
+    Marker --> RaftDir
+    EtcdDir --> RaftDir
+    RaftDir --> DataDir
+    SpoolDir --> DataDir
     RuntimeStore --> RuntimeDB
     RuntimeDB --> DataDir
 ```
@@ -56,14 +57,16 @@ The WAL is the main log used by Raft to guarantee entry durability. It uses the 
 ```
 data/
 ├── raft/
-│   ├── wal/
+│   ├── etcd/                                         # etcd WAL directory
 │   │   ├── 0000000000000000-0000000000000000.wal
 │   │   ├── 0000000000000001-0000000000000001.wal
 │   │   └── ...
-│   ├── raft-hardstate.json
-│   └── raft-snapshot.json
+│   ├── raft-state.pb                                 # Snapshot state (protobuf)
+│   └── WAL_CREATION_COMPLETED                        # WAL creation marker
 └── runtime.db (SQLite) or runtime/ (Pebble)
 ```
+
+**Note**: The HardState is persisted inside the etcd WAL itself, not in a separate file.
 
 ### WAL Operations
 
@@ -93,6 +96,83 @@ The WAL grows indefinitely until a snapshot is created. After a snapshot:
 - The WAL is segmented to facilitate management
 - Old segments can be deleted
 
+### WAL Consistency Guarantees
+
+The WAL implementation ensures that the storage is always in a consistent state, even in the presence of crashes. This is achieved through two key mechanisms:
+
+#### 1. WAL Creation Completion Marker
+
+When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETED`) to track whether the WAL was successfully initialized:
+
+```
+data/
+├── raft/
+│   ├── etcd/                       # etcd WAL directory
+│   │   └── ...
+│   ├── raft-state.pb               # Snapshot state file
+│   └── WAL_CREATION_COMPLETED      # Marker file
+```
+
+**Initialization Flow**:
+
+1. Check if `WAL_CREATION_COMPLETED` marker exists
+2. **If marker exists**: Open the existing WAL normally
+3. **If marker does not exist**:
+   - Delete any existing WAL directory (incomplete previous creation)
+   - Create a new WAL using `wal.Create()`
+   - Close and reopen the WAL (required by etcd/wal)
+   - Create the marker file
+   - Sync and close the marker file
+   - Open the WAL for use
+
+This mechanism ensures that if the process crashes during WAL creation, the incomplete WAL will be detected and recreated on the next startup, preventing corruption.
+
+#### 2. Atomic Snapshot File Writes
+
+The snapshot state file is written atomically using the "write-to-temp-then-rename" pattern:
+
+```go
+// 1. Write to temporary file
+stateFile, err := os.Create(s.stateFile + ".tmp")
+stateFile.Write(fileData)
+
+// 2. Sync to ensure data is on disk
+stateFile.Sync()
+
+// 3. Close the file
+stateFile.Close()
+
+// 4. Atomic rename (atomic on POSIX systems)
+os.Rename(s.stateFile+".tmp", s.stateFile)
+```
+
+**Why this matters**:
+
+- **Without atomic writes**: If the process crashes while writing the state file, the file could be partially written (corrupted), leaving the system in an inconsistent state.
+- **With atomic writes**: The rename operation is atomic on POSIX filesystems. Either the old file exists (if crash before rename) or the new file exists (if crash after rename). There is no intermediate corrupted state.
+
+**Recovery scenarios**:
+
+| Crash Point | State After Restart |
+|-------------|---------------------|
+| Before `Sync()` | `.tmp` file may be incomplete, original file intact |
+| After `Sync()`, before `Rename()` | `.tmp` file complete but unused, original file intact |
+| After `Rename()` | New file is the current state |
+
+In all cases, the system starts with a valid state file.
+
+#### Snapshot State File Format
+
+The snapshot state file uses a length-prefixed binary format:
+
+```
+[snapshotLength (8 bytes, big-endian)][snapshotData (protobuf)]
+```
+
+This format allows:
+- Validation of file completeness (check length vs actual data)
+- Efficient parsing without scanning the entire file
+
 ## HardState
 
 ### Concept
@@ -105,21 +185,25 @@ The HardState contains the critical state of the Raft cluster:
 
 ### Persistence
 
-The HardState is persisted in `raft-hardstate.json`:
+The HardState is persisted inside the etcd WAL itself using `wal.Save()`. This ensures that:
 
-```json
-{
-  "term": 5,
-  "vote": 2,
-  "commit": 1234
-}
-```
+- HardState updates are atomic with log entry writes
+- The state is recovered automatically during WAL replay at startup
+- No separate file synchronization is required
 
 ### Update
 
 The HardState is updated when:
 - A new election occurs (term and vote change)
 - An entry is committed (commit changes)
+
+The WAL's `Append()` method checks if synchronization is needed using `raft.MustSync()` and persists both the HardState and entries atomically:
+
+```go
+if raft.MustSync(hardState, s.hardState, len(entries)) {
+    return s.wal.Save(s.hardState, entries)
+}
+```
 
 ## Snapshots
 
@@ -351,9 +435,10 @@ The `KeySetLocker` provides key-based locking for concurrent access to balance-r
 ```
 data/
 ├── raft/                          # Raft data
-│   ├── wal/                       # WAL segments
-│   ├── raft-hardstate.json        # HardState
-│   └── raft-snapshot.json         # Snapshot metadata
+│   ├── etcd/                      # etcd WAL directory
+│   │   └── *.wal                  # WAL segments (include HardState)
+│   ├── raft-state.pb              # Snapshot state (protobuf)
+│   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
 └── runtime.db (SQLite)            # All ledgers data
     OR
