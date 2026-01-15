@@ -47,14 +47,14 @@ type Node struct {
 	appendEntriesHistogram         metric.Int64Histogram
 	leadMonitorHistogram           metric.Int64Gauge
 	defaultLedger                  *service.DefaultController
-	runtimeStore                   store.Runtime
+	runtimeStore                   store.Store
 }
 
 // NewNode creates a new wrapper around a RawNode
 func NewNode(
 	cfg NodeConfig,
 	transport *GRPCTransport,
-	runtimeStore store.Runtime,
+	runtimeStore store.Store,
 	logger logging.Logger,
 	meter metric.Meter,
 ) (*Node, error) {

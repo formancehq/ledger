@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/big"
+	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -21,15 +24,20 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
-// ============================================================================
-// Pebble Runtime Store Implementation
-// ============================================================================
+const (
+	liveDir               = "live"
+	currentCheckpointFile = "CURRENT_CHECKPOINT"
+	checkpointsDir        = "checkpoints"
+)
 
-// RuntimeStore is a Pebble implementation of store.RuntimeStore
+// Store is a Pebble implementation of store.Store
 // It stores balances and account metadata
-type RuntimeStore struct {
-	db     *pebble.DB
-	logger logging.Logger
+// todo: add rotation of checkpoints
+type Store struct {
+	db                *pebble.DB
+	logger            logging.Logger
+	dataDir           string
+	currentCheckPoint uint64
 }
 
 // Key prefixes for Pebble storage (3 bytes max)
@@ -42,14 +50,12 @@ var (
 	keyPrefixRevertedTxID    byte = 0x06
 )
 
-// NewRuntimeStore creates a new RuntimeStore instance
-func NewRuntimeStore(
+// NewStore creates a new Store instance
+func NewStore(
 	dataDir string,
 	logger logging.Logger,
 	meter metric.Meter,
-) (*RuntimeStore, error) {
-	// Create data directory if it doesn't exist
-	dbPath := filepath.Join(dataDir, "runtime")
+) (*Store, error) {
 
 	opts := &pebble.Options{
 		EventListener: NewMetricsListener(meter),
@@ -81,21 +87,72 @@ func NewRuntimeStore(
 		// 5) Concurrence compaction: OK mais pas trop haut (sinon tu satures l’IO).
 		MaxConcurrentCompactions: func() int { return 2 }, // 2 ou 3 selon CPU/IO
 	}
-	db, err := pebble.Open(dbPath, opts)
-	if err != nil {
-		return nil, fmt.Errorf("opening pebble database: %w", err)
+
+	var (
+		db *pebble.DB
+	)
+
+	currentCheckpoint, err := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading current checkpoint: %w", err)
+	}
+	liveDir := filepath.Join(dataDir, liveDir)
+	if errors.Is(err, os.ErrNotExist) {
+		logger.Infof("No checkpoint found, creating new database in %s", liveDir)
+		if err := os.RemoveAll(dataDir); err != nil {
+			return nil, fmt.Errorf("removing old database: %w", err)
+		}
+
+		db, err = pebble.Open(liveDir, &pebble.Options{})
+		if err != nil {
+			return nil, fmt.Errorf("opening pebble database: %w", err)
+		}
+
+		if err := db.Checkpoint(filepath.Join(dataDir, checkpointsDir, "0")); err != nil {
+			return nil, fmt.Errorf("creating initial checkpoint: %w", err)
+		}
+
+		f, err := os.Create(filepath.Join(dataDir, currentCheckpointFile))
+		if err != nil {
+			return nil, fmt.Errorf("creating current checkpoint file: %w", err)
+		}
+
+		if _, err := f.WriteString("0"); err != nil {
+			return nil, fmt.Errorf("writing current checkpoint: %w", err)
+		}
+
+		if err := f.Sync(); err != nil {
+			return nil, fmt.Errorf("syncing current checkpoint file: %w", err)
+		}
+
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("closing current checkpoint file: %w", err)
+		}
+	} else {
+		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpoint), liveDir)
+		if err := os.RemoveAll(liveDir); err != nil {
+			return nil, fmt.Errorf("removing old database: %w", err)
+		}
+
+		if err := HardLink(filepath.Join(dataDir, checkpointsDir, string(currentCheckpoint)), liveDir); err != nil {
+			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
+		}
+
+		db, err = pebble.Open(liveDir, opts)
+		if err != nil {
+			return nil, fmt.Errorf("opening pebble database: %w", err)
+		}
 	}
 
-	s := &RuntimeStore{
-		db:     db,
-		logger: logger,
-	}
-
-	return s, nil
+	return &Store{
+		db:      db,
+		logger:  logger,
+		dataDir: dataDir,
+	}, nil
 }
 
 // Close closes the Pebble database
-func (s *RuntimeStore) Close(ctx context.Context) error {
+func (s *Store) Close(ctx context.Context) error {
 	var errs []error
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
@@ -108,12 +165,8 @@ func (s *RuntimeStore) Close(ctx context.Context) error {
 	return nil
 }
 
-// ============================================================================
-// RuntimeStore InsertLogs Implementation
-// ============================================================================
-
 // InsertLogs persists logs and updates runtime state.
-func (s *RuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+func (s *Store) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
@@ -254,14 +307,10 @@ func (s *RuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) er
 	return nil
 }
 
-// ============================================================================
-// LogReader Implementation
-// ============================================================================
-
 // logCursor implements store.Cursor[*ledgerpb.Log] for Pebble.
 type logCursor struct {
 	iter *pebble.Iterator
-	s    *RuntimeStore
+	s    *Store
 }
 
 func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
@@ -301,7 +350,7 @@ func (c *logCursor) Close() error {
 // Logs are returned in ascending order by id.
 // from: optional log id to start from (0 = from beginning).
 // to: optional log id to stop at (0 = until end, inclusive).
-func (s *RuntimeStore) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	// Set up iterator bounds
 
 	buf := bytes.NewBuffer(nil)
@@ -344,12 +393,12 @@ func (s *RuntimeStore) GetAllLogs(ctx context.Context, ledger string, from uint6
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *RuntimeStore) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
 	return s.GetLogWithID(ctx, ledger, id)
 }
 
 // GetLogWithID retrieves a log by its ID for a specific ledger.
-func (s *RuntimeStore) GetLogWithID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogWithID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -377,12 +426,12 @@ func (s *RuntimeStore) GetLogWithID(ctx context.Context, ledger string, id uint6
 }
 
 // ============================================================================
-// RuntimeStore Implementation
+// Store Implementation
 // ============================================================================
 
-// GetBalances retrieves balances from Pebble for a specific ledger (implements store.RuntimeStore)
+// GetBalances retrieves balances from Pebble for a specific ledger (implements store.Store)
 // Sums all balance diffs for each account/asset combination
-func (s *RuntimeStore) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
 	buf := bytes.NewBuffer(nil)
@@ -443,8 +492,8 @@ func (s *RuntimeStore) GetBalances(ctx context.Context, ledger string, balanceQu
 	return result, nil
 }
 
-// GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.RuntimeStore)
-func (s *RuntimeStore) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
+// GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)
+func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	// Initialize with empty metadata for all requested accounts
@@ -494,8 +543,8 @@ func (s *RuntimeStore) GetAccountMetadata(ctx context.Context, ledger string, ac
 	return result, nil
 }
 
-// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key for a specific ledger (implements store.RuntimeStore)
-func (s *RuntimeStore) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
+// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key for a specific ledger (implements store.Store)
+func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -516,8 +565,8 @@ func (s *RuntimeStore) GetLogIDForIdempotencyKey(ctx context.Context, ledger str
 	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
-// GetLogIDForTransactionID retrieves the log ID for a given transaction ID for a specific ledger (implements store.RuntimeStore)
-func (s *RuntimeStore) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
+// GetLogIDForTransactionID retrieves the log ID for a given transaction ID for a specific ledger (implements store.Store)
+func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -544,8 +593,8 @@ func (s *RuntimeStore) GetLogIDForTransactionID(ctx context.Context, ledger stri
 	return logID, nil
 }
 
-// IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.RuntimeStore)
-func (s *RuntimeStore) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
+// IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.Store)
+func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -566,8 +615,48 @@ func (s *RuntimeStore) IsTransactionReverted(ctx context.Context, ledger string,
 	return true, nil
 }
 
+func (s *Store) CreateSnapshot(ctx context.Context) error {
+
+	checkpointDir := filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", s.currentCheckPoint+1))
+	if err := os.RemoveAll(checkpointDir); err != nil {
+		return fmt.Errorf("removing checkpoint directory: %w", err)
+	}
+
+	if err := s.db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+		return fmt.Errorf("creating checkpoint: %w", err)
+	}
+
+	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"))
+	if err != nil {
+		return fmt.Errorf("creating checkpoint file: %w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if _, err := f.WriteString(fmt.Sprintf("%d", s.currentCheckPoint+1)); err != nil {
+		return fmt.Errorf("writing checkpoint file: %w", err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("syncing checkpoint file: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing checkpoint file: %w", err)
+	}
+
+	if err := os.Rename(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"), filepath.Join(s.dataDir, currentCheckpointFile)); err != nil {
+		return fmt.Errorf("renaming checkpoint file: %w", err)
+	}
+
+	s.currentCheckPoint++
+
+	return nil
+}
+
 // Metrics returns Pebble database metrics (implements MetricsAware)
-func (s *RuntimeStore) Metrics() any {
+func (s *Store) Metrics() any {
 	return s.db.Metrics()
 }
 
@@ -647,4 +736,118 @@ func unmarshalBigInt(b []byte) *big.Int {
 		x.Neg(x)
 	}
 	return x
+}
+
+func HardLink(srcDir, dstDir string) error {
+	srcDir = filepath.Clean(srcDir)
+	dstDir = filepath.Clean(dstDir)
+
+	srcInfo, err := os.Stat(srcDir)
+	if err != nil {
+		return fmt.Errorf("stat srcDir: %w", err)
+	}
+	if !srcInfo.IsDir() {
+		return fmt.Errorf("srcDir is not a directory: %s", srcDir)
+	}
+	if _, err := os.Stat(dstDir); err == nil {
+		return fmt.Errorf("dstDir already exists: %s", dstDir)
+	}
+
+	parent := filepath.Dir(dstDir)
+	base := filepath.Base(dstDir)
+	tmpDir := filepath.Join(parent, base+fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
+
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	// Create tmp root with same perms as source root (best effort).
+	if err := os.MkdirAll(tmpDir, srcInfo.Mode().Perm()); err != nil {
+		return fmt.Errorf("mkdir tmpDir: %w", err)
+	}
+	if err := fsyncDir(tmpDir); err != nil {
+		return err
+	}
+
+	err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+
+		dstPath := filepath.Join(tmpDir, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		switch {
+		case info.IsDir():
+			if err := os.MkdirAll(dstPath, info.Mode().Perm()); err != nil {
+				return fmt.Errorf("mkdir %s: %w", dstPath, err)
+			}
+			_ = os.Chmod(dstPath, info.Mode().Perm())
+			return fsyncDir(dstPath)
+
+		case info.Mode().Type() == 0: // regular file
+			if err := os.Link(path, dstPath); err != nil {
+				return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
+			}
+			_ = os.Chmod(dstPath, info.Mode().Perm())
+			return nil
+
+		case (info.Mode() & os.ModeSymlink) != 0:
+			target, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("readlink %s: %w", path, err)
+			}
+			if err := os.Symlink(target, dstPath); err != nil {
+				return fmt.Errorf("symlink %s -> %s: %w", dstPath, target, err)
+			}
+			return nil
+
+		default:
+			return fmt.Errorf("unsupported file type %s mode=%s", path, info.Mode().String())
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("walk: %w", err)
+	}
+
+	if err := fsyncDir(tmpDir); err != nil {
+		return err
+	}
+	if err := fsyncDir(parent); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpDir, dstDir); err != nil {
+		return fmt.Errorf("rename publish: %w", err)
+	}
+
+	return fsyncDir(parent)
+}
+
+// fsyncDir fsyncs a directory so its entries are durably recorded. On Windows, it's a no-op.
+func fsyncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open dir for fsync %s: %w", dir, err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("fsync dir %s: %w", dir, err)
+	}
+	return nil
 }

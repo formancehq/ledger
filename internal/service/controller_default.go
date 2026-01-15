@@ -34,7 +34,7 @@ type DefaultController struct {
 // NewDefaultLedger creates a new default ledger service
 func NewDefaultController(
 	logFactory LogFactory,
-	runtimeStore store.Runtime,
+	runtimeStore store.Store,
 	logger logging.Logger,
 ) *DefaultController {
 	l := &DefaultController{

@@ -111,9 +111,31 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return err
 		}
-		l.Data, err = LogPayloadToProtobuf(payload)
-		if err != nil {
-			return err
+		switch p := payload.(type) {
+		case *CreatedTransaction:
+			l.Data = &LogPayload{
+				Payload: &LogPayload_CreatedTransaction{
+					CreatedTransaction: p,
+				},
+			}
+		case *RevertedTransaction:
+			l.Data = &LogPayload{
+				Payload: &LogPayload_RevertedTransaction{
+					RevertedTransaction: p,
+				},
+			}
+		case *SavedMetadata:
+			l.Data = &LogPayload{
+				Payload: &LogPayload_SavedMetadata{
+					SavedMetadata: p,
+				},
+			}
+		case *DeletedMetadata:
+			l.Data = &LogPayload{
+				Payload: &LogPayload_DeletedMetadata{
+					DeletedMetadata: p,
+				},
+			}
 		}
 	}
 	return nil

@@ -18,6 +18,7 @@ import (
 
 type Store interface {
 	store.LogWriter
+	CreateSnapshot(ctx context.Context) error
 }
 
 // FSM implements the raft.FSM interface
@@ -284,7 +285,9 @@ func (fsm *defaultFSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	// todo: create snapshot on storage (pebble)
+	if err := fsm.store.CreateSnapshot(ctx); err != nil {
+		return nil, fmt.Errorf("creating snapshot: %w", err)
+	}
 
 	return proto.Marshal(fsm.state)
 }

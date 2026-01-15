@@ -11,7 +11,7 @@ import (
 )
 
 type unitOfWork struct {
-	store.Runtime
+	store.Store
 	KeySetLocker
 	ledger   string
 	releases []func()
@@ -50,7 +50,7 @@ func (s *unitOfWork) GetBalances(ctx context.Context, q numscript.BalanceQuery) 
 		return nil, err
 	}
 
-	balances, err := s.Runtime.GetBalances(ctx, s.ledger, balanceQuery)
+	balances, err := s.Store.GetBalances(ctx, s.ledger, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -104,15 +104,15 @@ func (s *unitOfWork) ReleaseLocks() {
 }
 
 func (s *unitOfWork) IsTransactionReverted(ctx context.Context, id uint64) (bool, error) {
-	return s.Runtime.IsTransactionReverted(ctx, s.ledger, id)
+	return s.Store.IsTransactionReverted(ctx, s.ledger, id)
 }
 
 func (s *unitOfWork) GetLogIDForTransactionID(ctx context.Context, id uint64) (uint64, error) {
-	return s.Runtime.GetLogIDForTransactionID(ctx, s.ledger, id)
+	return s.Store.GetLogIDForTransactionID(ctx, s.ledger, id)
 }
 
 func (s *unitOfWork) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
-	return s.Runtime.GetLogByID(ctx, s.ledger, id)
+	return s.Store.GetLogByID(ctx, s.ledger, id)
 }
 
 func makeBalanceLockKeys(balanceQuery map[string][]string) []string {

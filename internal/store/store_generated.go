@@ -186,32 +186,32 @@ func (mr *MockLogStoreMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockLogStore)(nil).InsertLogs), varargs...)
 }
 
-// MockRuntime is a mock of Runtime interface.
-type MockRuntime struct {
+// MockStore is a mock of Store interface.
+type MockStore struct {
 	ctrl     *gomock.Controller
-	recorder *MockRuntimeMockRecorder
+	recorder *MockStoreMockRecorder
 	isgomock struct{}
 }
 
-// MockRuntimeMockRecorder is the mock recorder for MockRuntime.
-type MockRuntimeMockRecorder struct {
-	mock *MockRuntime
+// MockStoreMockRecorder is the mock recorder for MockStore.
+type MockStoreMockRecorder struct {
+	mock *MockStore
 }
 
-// NewMockRuntime creates a new mock instance.
-func NewMockRuntime(ctrl *gomock.Controller) *MockRuntime {
-	mock := &MockRuntime{ctrl: ctrl}
-	mock.recorder = &MockRuntimeMockRecorder{mock}
+// NewMockStore creates a new mock instance.
+func NewMockStore(ctrl *gomock.Controller) *MockStore {
+	mock := &MockStore{ctrl: ctrl}
+	mock.recorder = &MockStoreMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockRuntime) EXPECT() *MockRuntimeMockRecorder {
+func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
 // Close mocks base method.
-func (m *MockRuntime) Close(ctx context.Context) error {
+func (m *MockStore) Close(ctx context.Context) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Close", ctx)
 	ret0, _ := ret[0].(error)
@@ -219,13 +219,27 @@ func (m *MockRuntime) Close(ctx context.Context) error {
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockRuntimeMockRecorder) Close(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) Close(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockRuntime)(nil).Close), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStore)(nil).Close), ctx)
+}
+
+// CreateSnapshot mocks base method.
+func (m *MockStore) CreateSnapshot(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSnapshot", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateSnapshot indicates an expected call of CreateSnapshot.
+func (mr *MockStoreMockRecorder) CreateSnapshot(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockStore)(nil).CreateSnapshot), ctx)
 }
 
 // GetAccountMetadata mocks base method.
-func (m *MockRuntime) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
+func (m *MockStore) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccountMetadata", ctx, ledger, accounts)
 	ret0, _ := ret[0].(map[string]metadata.Metadata)
@@ -234,13 +248,13 @@ func (m *MockRuntime) GetAccountMetadata(ctx context.Context, ledger string, acc
 }
 
 // GetAccountMetadata indicates an expected call of GetAccountMetadata.
-func (mr *MockRuntimeMockRecorder) GetAccountMetadata(ctx, ledger, accounts any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetAccountMetadata(ctx, ledger, accounts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountMetadata", reflect.TypeOf((*MockRuntime)(nil).GetAccountMetadata), ctx, ledger, accounts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountMetadata", reflect.TypeOf((*MockStore)(nil).GetAccountMetadata), ctx, ledger, accounts)
 }
 
 // GetAllLogs mocks base method.
-func (m *MockRuntime) GetAllLogs(ctx context.Context, ledger string, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+func (m *MockStore) GetAllLogs(ctx context.Context, ledger string, from, to uint64) (Cursor[*ledgerpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
 	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
@@ -249,13 +263,13 @@ func (m *MockRuntime) GetAllLogs(ctx context.Context, ledger string, from, to ui
 }
 
 // GetAllLogs indicates an expected call of GetAllLogs.
-func (mr *MockRuntimeMockRecorder) GetAllLogs(ctx, ledger, from, to any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetAllLogs(ctx, ledger, from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockRuntime)(nil).GetAllLogs), ctx, ledger, from, to)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockStore)(nil).GetAllLogs), ctx, ledger, from, to)
 }
 
 // GetBalances mocks base method.
-func (m *MockRuntime) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (m *MockStore) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, ledger, balanceQuery)
 	ret0, _ := ret[0].(ledgerpb.Balances)
@@ -264,13 +278,13 @@ func (m *MockRuntime) GetBalances(ctx context.Context, ledger string, balanceQue
 }
 
 // GetBalances indicates an expected call of GetBalances.
-func (mr *MockRuntimeMockRecorder) GetBalances(ctx, ledger, balanceQuery any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetBalances(ctx, ledger, balanceQuery any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockRuntime)(nil).GetBalances), ctx, ledger, balanceQuery)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockStore)(nil).GetBalances), ctx, ledger, balanceQuery)
 }
 
 // GetLogByID mocks base method.
-func (m *MockRuntime) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (m *MockStore) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogByID", ctx, ledger, id)
 	ret0, _ := ret[0].(*ledgerpb.Log)
@@ -279,13 +293,13 @@ func (m *MockRuntime) GetLogByID(ctx context.Context, ledger string, id uint64) 
 }
 
 // GetLogByID indicates an expected call of GetLogByID.
-func (mr *MockRuntimeMockRecorder) GetLogByID(ctx, ledger, id any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLogByID(ctx, ledger, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogByID", reflect.TypeOf((*MockRuntime)(nil).GetLogByID), ctx, ledger, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogByID", reflect.TypeOf((*MockStore)(nil).GetLogByID), ctx, ledger, id)
 }
 
 // GetLogIDForIdempotencyKey mocks base method.
-func (m *MockRuntime) GetLogIDForIdempotencyKey(ctx context.Context, ledger, idempotencyKey string) (uint64, error) {
+func (m *MockStore) GetLogIDForIdempotencyKey(ctx context.Context, ledger, idempotencyKey string) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogIDForIdempotencyKey", ctx, ledger, idempotencyKey)
 	ret0, _ := ret[0].(uint64)
@@ -294,13 +308,13 @@ func (m *MockRuntime) GetLogIDForIdempotencyKey(ctx context.Context, ledger, ide
 }
 
 // GetLogIDForIdempotencyKey indicates an expected call of GetLogIDForIdempotencyKey.
-func (mr *MockRuntimeMockRecorder) GetLogIDForIdempotencyKey(ctx, ledger, idempotencyKey any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLogIDForIdempotencyKey(ctx, ledger, idempotencyKey any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogIDForIdempotencyKey", reflect.TypeOf((*MockRuntime)(nil).GetLogIDForIdempotencyKey), ctx, ledger, idempotencyKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogIDForIdempotencyKey", reflect.TypeOf((*MockStore)(nil).GetLogIDForIdempotencyKey), ctx, ledger, idempotencyKey)
 }
 
 // GetLogIDForTransactionID mocks base method.
-func (m *MockRuntime) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
+func (m *MockStore) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogIDForTransactionID", ctx, ledger, transactionID)
 	ret0, _ := ret[0].(uint64)
@@ -309,13 +323,13 @@ func (m *MockRuntime) GetLogIDForTransactionID(ctx context.Context, ledger strin
 }
 
 // GetLogIDForTransactionID indicates an expected call of GetLogIDForTransactionID.
-func (mr *MockRuntimeMockRecorder) GetLogIDForTransactionID(ctx, ledger, transactionID any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLogIDForTransactionID(ctx, ledger, transactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogIDForTransactionID", reflect.TypeOf((*MockRuntime)(nil).GetLogIDForTransactionID), ctx, ledger, transactionID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogIDForTransactionID", reflect.TypeOf((*MockStore)(nil).GetLogIDForTransactionID), ctx, ledger, transactionID)
 }
 
 // InsertLogs mocks base method.
-func (m *MockRuntime) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+func (m *MockStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range logs {
@@ -327,14 +341,14 @@ func (m *MockRuntime) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) err
 }
 
 // InsertLogs indicates an expected call of InsertLogs.
-func (mr *MockRuntimeMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
+func (mr *MockStoreMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx}, logs...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockRuntime)(nil).InsertLogs), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockStore)(nil).InsertLogs), varargs...)
 }
 
 // IsTransactionReverted mocks base method.
-func (m *MockRuntime) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
+func (m *MockStore) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsTransactionReverted", ctx, ledger, transactionID)
 	ret0, _ := ret[0].(bool)
@@ -343,7 +357,7 @@ func (m *MockRuntime) IsTransactionReverted(ctx context.Context, ledger string, 
 }
 
 // IsTransactionReverted indicates an expected call of IsTransactionReverted.
-func (mr *MockRuntimeMockRecorder) IsTransactionReverted(ctx, ledger, transactionID any) *gomock.Call {
+func (mr *MockStoreMockRecorder) IsTransactionReverted(ctx, ledger, transactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTransactionReverted", reflect.TypeOf((*MockRuntime)(nil).IsTransactionReverted), ctx, ledger, transactionID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTransactionReverted", reflect.TypeOf((*MockStore)(nil).IsTransactionReverted), ctx, ledger, transactionID)
 }

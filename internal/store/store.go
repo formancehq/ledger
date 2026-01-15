@@ -54,17 +54,17 @@ func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger string, id uint64) 
 
 // RuntimeUpdate contains all the updates to apply to the runtime store
 type RuntimeUpdate struct {
-	BalanceDiffs map[string]map[string]map[string]*big.Int
-	AccountMetadata map[string]map[string]map[string]string
+	BalanceDiffs           map[string]map[string]map[string]*big.Int
+	AccountMetadata        map[string]map[string]map[string]string
 	AccountMetadataDeletes map[string]map[string][]string
-	TransactionIDs map[string]map[uint64]uint64
+	TransactionIDs         map[string]map[uint64]uint64
 	RevertedTransactionIDs map[string]map[uint64]bool
 }
 
 // Runtime handles runtime queries and provides log access.
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Runtime
-type Runtime interface {
+type Store interface {
 	LogStore
 	GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error)
@@ -75,4 +75,5 @@ type Runtime interface {
 	// IsTransactionReverted checks if a transaction has been reverted
 	IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
 	Close(ctx context.Context) error
+	CreateSnapshot(ctx context.Context) error
 }

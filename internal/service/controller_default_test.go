@@ -260,12 +260,12 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 	})
 }
 
-func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController, *store.MockRuntime, *MockLogFactory) {
+func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController, *store.MockStore, *MockLogFactory) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	logFactory := NewMockLogFactory(ctrl)
-	runtimeStore := store.NewMockRuntime(ctrl)
+	runtimeStore := store.NewMockStore(ctrl)
 	logger := logging.FromContext(ctx)
 
 	ledgerService := NewDefaultController(logFactory, runtimeStore, logger)

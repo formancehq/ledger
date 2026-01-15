@@ -17,14 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSQLiteMattnRuntimeStore(t *testing.T) {
-	testRuntimeStoreCommon(t, func(t *testing.T) store.Runtime {
+func TestSQLiteMattnStore(t *testing.T) {
+	testStoreCommon(t, func(t *testing.T) store.Store {
 		tmpDir := t.TempDir()
 		runtimeDSN := fmt.Sprintf("file:%s/test-runtime.db", tmpDir)
 		ctx := logging.TestingContext()
 		logger := logging.FromContext(ctx)
 
-		store, err := NewMattnRuntimeStore(runtimeDSN, logger)
+		store, err := NewMattnStore(runtimeDSN, logger)
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close(ctx) })
 
@@ -32,14 +32,14 @@ func TestSQLiteMattnRuntimeStore(t *testing.T) {
 	})
 }
 
-func TestSQLiteModernRuntimeStore(t *testing.T) {
-	testRuntimeStoreCommon(t, func(t *testing.T) store.Runtime {
+func TestSQLiteModernStore(t *testing.T) {
+	testStoreCommon(t, func(t *testing.T) store.Store {
 		tmpDir := t.TempDir()
 		runtimeDSN := fmt.Sprintf("file:%s/test-runtime.db", tmpDir)
 		ctx := logging.TestingContext()
 		logger := logging.FromContext(ctx)
 
-		store, err := NewModernRuntimeStore(runtimeDSN, logger)
+		store, err := NewModernStore(runtimeDSN, logger)
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close(ctx) })
 
@@ -47,7 +47,7 @@ func TestSQLiteModernRuntimeStore(t *testing.T) {
 	})
 }
 
-func testRuntimeStoreCommon(t *testing.T, createStore func(*testing.T) store.Runtime) {
+func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -198,71 +198,75 @@ func createTestLogs(ledger string) []*ledgerpb.Log {
 	now := libtime.New(time.Now())
 
 	logs := []*ledgerpb.Log{
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
-				Transaction: ledgerpb.NewTransaction().
-					WithPostings(
-						ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
-					).
-					WithID(1).
-					WithTimestamp(now),
-				AccountMetadata: map[string]*ledgerpb.Metadata{
-					"bank": {Entries: metadata.Metadata{
-						"account_type": "asset",
-					}},
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
+						WithPostings(
+							ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+						).
+						WithID(1).
+						WithTimestamp(now),
+					AccountMetadata: map[string]*ledgerpb.Metadata{
+						"bank": {Entries: metadata.Metadata{
+							"account_type": "asset",
+						}},
+					},
 				},
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(1).
-				WithIdempotency("idempotency-key-1", []byte("hash-1")).
-				WithDate(now)
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
-				Transaction: ledgerpb.NewTransaction().
-					WithPostings(
-						ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
-					).
-					WithID(2).
-					WithTimestamp(now),
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(2).
-				WithIdempotency("idempotency-key-2", []byte("hash-2")).
-				WithDate(now.Add(time.Second))
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
-				Target: &ledgerpb.Target{
-					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
-						Addr: "bank",
-					}},
+			},
+		}).
+			WithLedger(ledger).
+			WithID(1).
+			WithIdempotency("idempotency-key-1", []byte("hash-1")).
+			WithDate(now),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
+						WithPostings(
+							ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+						).
+						WithID(2).
+						WithTimestamp(now),
 				},
-				Metadata: metadata.Metadata{
-					"label": "Bank Account",
+			},
+		}).
+			WithLedger(ledger).
+			WithID(2).
+			WithIdempotency("idempotency-key-2", []byte("hash-2")).
+			WithDate(now.Add(time.Second)),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_SavedMetadata{
+				SavedMetadata: &ledgerpb.SavedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "bank",
+						}},
+					},
+					Metadata: metadata.Metadata{
+						"label": "Bank Account",
+					},
 				},
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(3).
-				WithDate(now.Add(2 * time.Second))
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
-				Target: &ledgerpb.Target{
-					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
-						Addr: "bank",
-					}},
+			},
+		}).
+			WithLedger(ledger).
+			WithID(3).
+			WithDate(now.Add(2 * time.Second)),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_DeletedMetadata{
+				DeletedMetadata: &ledgerpb.DeletedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "bank",
+						}},
+					},
+					Key: "old_key",
 				},
-				Key: "old_key",
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(4).
-				WithDate(now.Add(3 * time.Second))
-		}(),
+			},
+		}).
+			WithLedger(ledger).
+			WithID(4).
+			WithDate(now.Add(3 * time.Second)),
 	}
 
 	return logs

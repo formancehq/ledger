@@ -6,25 +6,25 @@ import (
 	"io"
 	"math/big"
 	"testing"
-	"time"
+
+	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
-	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func TestPebbleRuntimeStore(t *testing.T) {
-	testRuntimeStoreCommon(t, func(t *testing.T) store.Runtime {
+func TestPebbleStore(t *testing.T) {
+	testStoreCommon(t, func(t *testing.T) store.Store {
 		tmpDir := t.TempDir()
 		ctx := logging.TestingContext()
 		logger := logging.FromContext(ctx)
 		meter := noop.NewMeterProvider().Meter("test")
 
-		s, err := NewRuntimeStore(tmpDir, logger, meter)
+		s, err := NewStore(tmpDir, logger, meter)
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close(ctx) })
 
@@ -32,7 +32,7 @@ func TestPebbleRuntimeStore(t *testing.T) {
 	})
 }
 
-func testRuntimeStoreCommon(t *testing.T, createStore func(*testing.T) store.Runtime) {
+func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -180,75 +180,176 @@ func testRuntimeStoreCommon(t *testing.T, createStore func(*testing.T) store.Run
 }
 
 func createTestLogs(ledger string) []*ledgerpb.Log {
-	now := libtime.New(time.Now())
+	now := time.Now()
 
 	logs := []*ledgerpb.Log{
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
-				Transaction: ledgerpb.NewTransaction().
-					WithPostings(
-						ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
-					).
-					WithID(1).
-					WithTimestamp(now),
-				AccountMetadata: map[string]*ledgerpb.Metadata{
-					"bank": {Entries: metadata.Metadata{
-						"account_type": "asset",
-					}},
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
+						WithPostings(
+							ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+						).
+						WithID(1).
+						WithTimestamp(now),
+					AccountMetadata: map[string]*ledgerpb.Metadata{
+						"bank": {Entries: metadata.Metadata{
+							"account_type": "asset",
+						}},
+					},
 				},
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(1).
-				WithIdempotency("idempotency-key-1", []byte("hash-1")).
-				WithDate(now)
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.CreatedTransaction{
-				Transaction: ledgerpb.NewTransaction().
-					WithPostings(
-						ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
-					).
-					WithID(2).
-					WithTimestamp(now),
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(2).
-				WithIdempotency("idempotency-key-2", []byte("hash-2")).
-				WithDate(now.Add(time.Second))
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.SavedMetadata{
-				Target: &ledgerpb.Target{
-					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
-						Addr: "bank",
-					}},
+			},
+		}).
+			WithLedger(ledger).
+			WithID(1).
+			WithIdempotency("idempotency-key-1", []byte("hash-1")).
+			WithDate(now),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
+						WithPostings(
+							ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+						).
+						WithID(2).
+						WithTimestamp(now),
 				},
-				Metadata: metadata.Metadata{
-					"label": "Bank Account",
+			},
+		}).
+			WithLedger(ledger).
+			WithID(2).
+			WithIdempotency("idempotency-key-2", []byte("hash-2")).
+			WithDate(now.Add(time.Second)),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_SavedMetadata{
+				SavedMetadata: &ledgerpb.SavedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "bank",
+						}},
+					},
+					Metadata: metadata.Metadata{
+						"label": "Bank Account",
+					},
 				},
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(3).
-				WithDate(now.Add(2 * time.Second))
-		}(),
-		func() *ledgerpb.Log {
-			payload, _ := ledgerpb.LogPayloadToProtobuf(&ledgerpb.DeletedMetadata{
-				Target: &ledgerpb.Target{
-					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
-						Addr: "bank",
-					}},
+			},
+		}).
+			WithLedger(ledger).
+			WithID(3).
+			WithDate(now.Add(2 * time.Second)),
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_DeletedMetadata{
+				DeletedMetadata: &ledgerpb.DeletedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
+							Addr: "bank",
+						}},
+					},
+					Key: "old_key",
 				},
-				Key: "old_key",
-			})
-			return ledgerpb.NewLog(payload).
-				WithLedger(ledger).
-				WithID(4).
-				WithDate(now.Add(3 * time.Second))
-		}(),
+			},
+		}).
+			WithLedger(ledger).
+			WithID(4).
+			WithDate(now.Add(3 * time.Second)),
 	}
 
 	return logs
+}
+
+func TestPebbleStoreSnapshots(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := NewStore(tmpDir, logger, meter)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close(ctx) })
+
+	now := time.Now()
+	ledger := "default"
+	for i := range uint64(10) {
+		err := store.InsertLogs(ctx,
+			ledgerpb.NewLog(&ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: ledgerpb.NewTransaction().
+							WithPostings(
+								ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+							).
+							WithID(i).
+							WithTimestamp(now),
+					},
+				},
+			}).
+				WithLedger(ledger).
+				WithID(i).
+				WithDate(now),
+		)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, store.CreateSnapshot(ctx))
+
+	for i := range uint64(5) {
+		err := store.InsertLogs(ctx,
+			ledgerpb.NewLog(&ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
+						Transaction: ledgerpb.NewTransaction().
+							WithPostings(
+								ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+							).
+							WithID(10 + i).
+							WithTimestamp(now),
+					},
+				},
+			}).
+				WithLedger(ledger).
+				WithID(10+i).
+				WithDate(now),
+		)
+		require.NoError(t, err)
+	}
+
+	cursor, err := store.GetAllLogs(ctx, ledger, 0, 0)
+	require.NoError(t, err)
+
+	count := 0
+	for {
+		_, err := cursor.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		count++
+	}
+
+	require.Equal(t, 15, count)
+	require.NoError(t, cursor.Close())
+	require.NoError(t, store.Close(ctx))
+
+	store, err = NewStore(tmpDir, logger, meter)
+	require.NoError(t, err)
+
+	cursor, err = store.GetAllLogs(ctx, ledger, 0, 0)
+	require.NoError(t, err)
+
+	count = 0
+	for {
+		_, err := cursor.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		count++
+	}
+
+	// Should have restored the last snapshot
+	require.Equal(t, 10, count)
+	require.NoError(t, cursor.Close())
+
 }

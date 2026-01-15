@@ -12,7 +12,7 @@ import (
 
 type logProcessor[INPUT proto.Message] struct {
 	operation    string
-	runtimeStore store.Runtime
+	runtimeStore store.Store
 	logFactory   LogFactory
 	keySetLocker KeySetLocker
 	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
@@ -20,7 +20,7 @@ type logProcessor[INPUT proto.Message] struct {
 
 func newLogProcessor[INPUT proto.Message](
 	operation string,
-	runtimeStore store.Runtime,
+	runtimeStore store.Store,
 	logFactory LogFactory,
 	keySetLocker KeySetLocker,
 	builder func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
@@ -69,7 +69,7 @@ func (lp *logProcessor[INPUT]) forgeLog(
 
 	store := &unitOfWork{
 		KeySetLocker: lp.keySetLocker,
-		Runtime:      lp.runtimeStore,
+		Store:        lp.runtimeStore,
 		ledger:       ledger,
 	}
 	defer store.ReleaseLocks()

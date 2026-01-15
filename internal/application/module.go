@@ -29,18 +29,18 @@ func Module() fx.Option {
 		transport.Module(),
 		fx.Provide(
 			raft.NewTransport,
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Runtime, error) {
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Store, error) {
 				switch cfg.StorageType {
 				case "pebble":
-					return pebble.NewRuntimeStore(
+					return pebble.NewStore(
 						cfg.DataDir,
 						logger,
 						meterProvider.Meter("peeble.runtime_store"),
 					)
 				case "sqlite-mattn":
-					return sqlite.NewMattnRuntimeStore(cfg.DataDir, logger)
+					return sqlite.NewMattnStore(cfg.DataDir, logger)
 				case "sqlite-modernc":
-					return sqlite.NewModernRuntimeStore(cfg.DataDir, logger)
+					return sqlite.NewModernStore(cfg.DataDir, logger)
 				default:
 					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
 				}
@@ -52,7 +52,7 @@ func Module() fx.Option {
 					Logger        logging.Logger
 					Transport     *raft.GRPCTransport
 					MeterProvider metric.MeterProvider
-					RuntimeStore  store.Runtime
+					RuntimeStore  store.Store
 				},
 			) (*raft.Node, error) {
 				return raft.NewNode(
@@ -109,7 +109,7 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
-			func(lc fx.Lifecycle, runtime store.Runtime) {
+			func(lc fx.Lifecycle, runtime store.Store) {
 				lc.Append(fx.Hook{
 					OnStop: runtime.Close,
 				})

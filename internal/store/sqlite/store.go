@@ -22,8 +22,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
-// RuntimeStore is a SQLite implementation of store.RuntimeStore
-type RuntimeStore struct {
+// Store is a SQLite implementation of store.Store
+type Store struct {
 	db     *DB
 	logger logging.Logger
 
@@ -40,9 +40,9 @@ type RuntimeStore struct {
 	stmtIsTransactionReverted       *sql.Stmt
 }
 
-// NewRuntimeStore creates a new RuntimeStore instance
-func NewRuntimeStore(db *DB, logger logging.Logger) (*RuntimeStore, error) {
-	s := &RuntimeStore{
+// NewStore creates a new Store instance
+func NewStore(db *DB, logger logging.Logger) (*Store, error) {
+	s := &Store{
 		db:     db,
 		logger: logger,
 	}
@@ -59,8 +59,8 @@ func NewRuntimeStore(db *DB, logger logging.Logger) (*RuntimeStore, error) {
 	return s, nil
 }
 
-// NewMattnRuntimeStore creates a new SQLite Runtime store using github.com/mattn/go-sqlite3
-func NewMattnRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, error) {
+// NewMattnStore creates a new SQLite Runtime store using github.com/mattn/go-sqlite3
+func NewMattnStore(dsn string, logger logging.Logger) (*Store, error) {
 	db, err := OpenMattnDB(dsn, otelsql.WithAttributes(
 		attribute.String("store.type", "runtime"),
 	))
@@ -68,7 +68,7 @@ func NewMattnRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, err
 		return nil, err
 	}
 
-	s, err := NewRuntimeStore(db, logger)
+	s, err := NewStore(db, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating runtime store: %w", err)
 	}
@@ -76,8 +76,8 @@ func NewMattnRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, err
 	return s, nil
 }
 
-// NewModernRuntimeStore creates a new SQLite Modern Runtime store
-func NewModernRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, error) {
+// NewModernStore creates a new SQLite Modern Runtime store
+func NewModernStore(dsn string, logger logging.Logger) (*Store, error) {
 	db, err := OpenModernDB(dsn, otelsql.WithAttributes(
 		attribute.String("store.type", "runtime"),
 	))
@@ -85,7 +85,7 @@ func NewModernRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, er
 		return nil, err
 	}
 
-	s, err := NewRuntimeStore(db, logger)
+	s, err := NewStore(db, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating runtime store: %w", err)
 	}
@@ -93,7 +93,7 @@ func NewModernRuntimeStore(dsn string, logger logging.Logger) (*RuntimeStore, er
 	return s, nil
 }
 
-func (s *RuntimeStore) prepareStatements(ctx context.Context) error {
+func (s *Store) prepareStatements(ctx context.Context) error {
 	var err error
 	s.stmtGetLogByID, err = s.db.PrepareContext(ctx, `
 		SELECT id, ledger, data, date, idempotency_key, idempotency_hash
@@ -173,7 +173,7 @@ func (s *RuntimeStore) prepareStatements(ctx context.Context) error {
 	return nil
 }
 
-func (s *RuntimeStore) createTables(ctx context.Context) error {
+func (s *Store) createTables(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
 			ledger TEXT NOT NULL, 
@@ -240,7 +240,7 @@ func (s *RuntimeStore) createTables(ctx context.Context) error {
 }
 
 // InsertLogs persists logs and updates runtime state.
-func (s *RuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+func (s *Store) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
@@ -256,7 +256,7 @@ func (s *RuntimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) er
 	return s.applyRuntimeUpdate(ctx, update)
 }
 
-func (s *RuntimeStore) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+func (s *Store) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -317,7 +317,7 @@ func (s *RuntimeStore) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) er
 // logCursor implements store.Cursor[*ledgerpb.Log] for SQLite.
 type logCursor struct {
 	rows *sql.Rows
-	s    *RuntimeStore
+	s    *Store
 }
 
 func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
@@ -374,7 +374,7 @@ func (c *logCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger.
-func (s *RuntimeStore) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	query := `SELECT id, ledger, data, date, idempotency_key, idempotency_hash FROM logs WHERE ledger = ?`
 	args := []interface{}{ledger}
 	if from > 0 {
@@ -396,7 +396,7 @@ func (s *RuntimeStore) GetAllLogs(ctx context.Context, ledger string, from uint6
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *RuntimeStore) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
 	row := s.stmtGetLogByID.QueryRowContext(ctx, ledger, id)
 
 	var logID sql.NullInt64
@@ -440,7 +440,7 @@ func (s *RuntimeStore) GetLogByID(ctx context.Context, ledger string, id uint64)
 	return log, nil
 }
 
-func (s *RuntimeStore) applyRuntimeUpdate(ctx context.Context, update store.RuntimeUpdate) error {
+func (s *Store) applyRuntimeUpdate(ctx context.Context, update store.RuntimeUpdate) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -524,7 +524,7 @@ func (s *RuntimeStore) applyRuntimeUpdate(ctx context.Context, update store.Runt
 }
 
 // Close closes the database connection and prepared statements
-func (s *RuntimeStore) Close(ctx context.Context) error {
+func (s *Store) Close(ctx context.Context) error {
 	var errs []error
 	for _, stmt := range []*sql.Stmt{
 		s.stmtGetLogByID,
@@ -554,7 +554,7 @@ func (s *RuntimeStore) Close(ctx context.Context) error {
 }
 
 // GetBalances retrieves balances from the balances table for a specific ledger
-func (s *RuntimeStore) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
 	for account, assets := range balanceQuery {
@@ -606,7 +606,7 @@ func (s *RuntimeStore) GetBalances(ctx context.Context, ledger string, balanceQu
 }
 
 // GetAccountMetadata retrieves account metadata for multiple accounts
-func (s *RuntimeStore) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	for _, account := range accounts {
@@ -656,7 +656,7 @@ func (s *RuntimeStore) GetAccountMetadata(ctx context.Context, ledger string, ac
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log
-func (s *RuntimeStore) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
+func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
 
 	var logID uint64
 	err := s.stmtGetIdempotency.QueryRowContext(ctx, ledger, idempotencyKey).Scan(&logID)
@@ -670,7 +670,7 @@ func (s *RuntimeStore) GetLogIDForIdempotencyKey(ctx context.Context, ledger str
 }
 
 // GetLogIDForTransactionID retrieves the log ID for a given transaction ID
-func (s *RuntimeStore) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
+func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
 
 	var logID uint64
 	err := s.stmtGetLogIDForTransactionID.QueryRowContext(ctx, ledger, transactionID).Scan(&logID)
@@ -684,7 +684,7 @@ func (s *RuntimeStore) GetLogIDForTransactionID(ctx context.Context, ledger stri
 }
 
 // IsTransactionReverted checks if a transaction has been reverted
-func (s *RuntimeStore) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
+func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
 
 	var exists int
 	err := s.stmtIsTransactionReverted.QueryRowContext(ctx, ledger, transactionID).Scan(&exists)
@@ -698,7 +698,7 @@ func (s *RuntimeStore) IsTransactionReverted(ctx context.Context, ledger string,
 }
 
 // GetLastProcessedLogID retrieves the ID of the last inserted log.
-func (s *RuntimeStore) GetLastProcessedLogID(ctx context.Context, ledger string) (uint64, error) {
+func (s *Store) GetLastProcessedLogID(ctx context.Context, ledger string) (uint64, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id FROM logs WHERE ledger = ? ORDER BY id DESC LIMIT 1`, ledger)
 
 	var lastLogID uint64
@@ -711,7 +711,6 @@ func (s *RuntimeStore) GetLastProcessedLogID(ctx context.Context, ledger string)
 	return lastLogID, nil
 }
 
-// Metrics returns SQLite database metrics
-func (s *RuntimeStore) Metrics() any {
-	return getMetrics(s.db)
+func (s *Store) CreateSnapshot(ctx context.Context) error {
+	return nil
 }
