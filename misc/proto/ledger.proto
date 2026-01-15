@@ -238,7 +238,7 @@ message CreatedTransaction {
 }
 
 message RevertedTransaction {
-  Transaction reverted_transaction = 1;
+  uint64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
 }
 

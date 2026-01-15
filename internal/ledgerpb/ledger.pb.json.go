@@ -147,11 +147,11 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for RevertedTransaction
 func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		RevertedTransaction *Transaction `json:"revertedTransaction,omitempty"`
-		RevertTransaction   *Transaction `json:"revertTransaction,omitempty"`
+		RevertedTransactionID uint64 `json:"revertedTransactionID,omitempty"`
+		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
 	}{
-		RevertedTransaction: x.RevertedTransaction,
-		RevertTransaction:   x.RevertTransaction,
+		RevertedTransactionID: x.RevertedTransactionId,
+		RevertTransaction:     x.RevertTransaction,
 	})
 }
 

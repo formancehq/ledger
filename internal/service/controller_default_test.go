@@ -505,7 +505,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 					Data: &ledgerpb.LogPayload{
 						Payload: &ledgerpb.LogPayload_RevertedTransaction{
 							RevertedTransaction: &ledgerpb.RevertedTransaction{
-								RevertedTransaction: originalTx,
+								RevertedTransactionId: originalTx.Id,
 								RevertTransaction: &ledgerpb.Transaction{
 									Id:        2,
 									Timestamp: originalTimestamp,

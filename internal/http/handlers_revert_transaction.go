@@ -81,6 +81,6 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the revert transaction response
-	revertedPayload := log.Data.Payload.(*ledgerpb.LogPayload_RevertedTransaction).RevertedTransaction
+	revertedPayload := log.Data.Payload.(*ledgerpb.LogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
 	writeCreated(w, revertedPayload)
 }

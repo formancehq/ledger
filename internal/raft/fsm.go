@@ -16,23 +16,27 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// FSM implements the raft.FSM interface
-type defaultFSM struct {
-	mu           sync.RWMutex    // Protects access to state
-	state        *ledgerpb.State // FSM state
-	logger       logging.Logger
-	runtimeStore store.Runtime
-	transport    *GRPCTransport
+type Store interface {
+	store.LogWriter
 }
 
-func newFSM(logger logging.Logger, runtimeStore store.Runtime, transport *GRPCTransport) *defaultFSM {
+// FSM implements the raft.FSM interface
+type defaultFSM struct {
+	mu        sync.RWMutex    // Protects access to state
+	state     *ledgerpb.State // FSM state
+	logger    logging.Logger
+	store     Store
+	transport *GRPCTransport
+}
+
+func newFSM(logger logging.Logger, store Store, transport *GRPCTransport) *defaultFSM {
 	return &defaultFSM{
 		state: &ledgerpb.State{
 			Ledgers: make(map[string]*ledgerpb.LedgerState),
 		},
-		logger:       logger,
-		runtimeStore: runtimeStore,
-		transport:    transport,
+		logger:    logger,
+		store:     store,
+		transport: transport,
 	}
 }
 
@@ -154,53 +158,8 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 			},
 		}
 	case *ledgerpb.CommandInput_RevertTransaction: // todo: should not need to read the original data
-		revertCmd := cmd.RevertTransaction
-		if revertCmd == nil {
-			return nil, fmt.Errorf("revert transaction command is nil")
-		}
-		if revertCmd.RevertTransaction == nil {
-			return nil, fmt.Errorf("revert transaction is nil")
-		}
-
-		// Get the log ID for the transaction ID
-		logID, err := fsm.runtimeStore.GetLogIDForTransactionID(ctx, createCmd.Ledger, revertCmd.TransactionId)
-		if err != nil {
-			return nil, fmt.Errorf("getting log ID for transaction %d: %w", revertCmd.TransactionId, err)
-		}
-		if logID == 0 {
-			return nil, fmt.Errorf("transaction %d not found", revertCmd.TransactionId)
-		}
-
-		// Get the log containing the original transaction
-		originalLog, err := fsm.runtimeStore.GetLogByID(ctx, createCmd.Ledger, logID)
-		if err != nil {
-			return nil, fmt.Errorf("getting log %d: %w", logID, err)
-		}
-		if originalLog == nil {
-			return nil, fmt.Errorf("log %d not found", logID)
-		}
-
-		// Extract the original transaction from the log
-		var originalTx *ledgerpb.Transaction
-		switch payload := originalLog.Data.Payload.(type) {
-		case *ledgerpb.LogPayload_CreatedTransaction:
-			if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
-				return nil, fmt.Errorf("invalid log payload: missing transaction")
-			}
-			originalTx = payload.CreatedTransaction.Transaction
-		case *ledgerpb.LogPayload_RevertedTransaction:
-			return nil, fmt.Errorf("transaction %d is already reverted", revertCmd.TransactionId)
-		default:
-			return nil, fmt.Errorf("log %d does not contain a transaction", logID)
-		}
-
-		// Check if transaction is already reverted
-		if originalTx.Reverted || originalTx.RevertedAt != nil {
-			return nil, fmt.Errorf("transaction %d is already reverted", revertCmd.TransactionId)
-		}
-
 		// Use the revert transaction provided in the command
-		revertTx := proto.Clone(revertCmd.RevertTransaction).(*ledgerpb.Transaction)
+		revertTx := cmd.RevertTransaction.RevertTransaction
 
 		// Set timestamp if not provided (use current date)
 		if revertTx.Timestamp == nil || revertTx.Timestamp.Data == 0 {
@@ -212,16 +171,11 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 		revertTx.InsertedAt = raftCommand.Date
 		revertTx.UpdatedAt = raftCommand.Date
 
-		// Mark original transaction as reverted
-		revertedTxCopy := proto.Clone(originalTx).(*ledgerpb.Transaction)
-		revertedTxCopy.Reverted = true
-		revertedTxCopy.RevertedAt = raftCommand.Date
-
 		logPayload = &ledgerpb.LogPayload{
 			Payload: &ledgerpb.LogPayload_RevertedTransaction{
 				RevertedTransaction: &ledgerpb.RevertedTransaction{
-					RevertedTransaction: revertedTxCopy,
-					RevertTransaction:   revertTx,
+					RevertedTransactionId: cmd.RevertTransaction.TransactionId,
+					RevertTransaction:     revertTx,
 				},
 			},
 		}
@@ -288,7 +242,7 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, commands ...*ledgerpb.C
 		}
 
 		now := time.Now()
-		if err := fsm.runtimeStore.InsertLogs(ctx, logs...); err != nil {
+		if err := fsm.store.InsertLogs(ctx, logs...); err != nil {
 			return nil, fmt.Errorf("writing logs to runtime store: %w", err)
 		}
 
@@ -353,8 +307,8 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 	for ledgerName, oldLedgerState := range oldState.Ledgers {
 		if fsm.state.Ledgers[ledgerName].LastAppliedLogId > oldLedgerState.LastAppliedLogId {
 			fsm.logger.WithFields(map[string]any{
-				"ledger": ledgerName,
-				"lastAppliedLogId": oldLedgerState.LastAppliedLogId,
+				"ledger":              ledgerName,
+				"lastAppliedLogId":    oldLedgerState.LastAppliedLogId,
 				"newLastAppliedLogId": fsm.state.Ledgers[ledgerName].LastAppliedLogId,
 			}).Infof("Syncing logs from leader")
 			client := service.NewLedgerGrpcClient(
@@ -394,7 +348,7 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 
 			// Write all collected logs to the writer
 			if len(logsToWrite) > 0 {
-				if err := fsm.runtimeStore.InsertLogs(ctx, logsToWrite...); err != nil {
+				if err := fsm.store.InsertLogs(ctx, logsToWrite...); err != nil {
 					return fmt.Errorf("writing catch-up logs to runtime store: %w", err)
 				}
 

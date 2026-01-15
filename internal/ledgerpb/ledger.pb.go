@@ -2074,11 +2074,11 @@ func (x *CreatedTransaction) GetAccountMetadata() map[string]*Metadata {
 }
 
 type RevertedTransaction struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	RevertedTransaction *Transaction           `protobuf:"bytes,1,opt,name=reverted_transaction,json=revertedTransaction,proto3" json:"reverted_transaction,omitempty"`
-	RevertTransaction   *Transaction           `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	RevertedTransactionId uint64                 `protobuf:"varint,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
+	RevertTransaction     *Transaction           `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *RevertedTransaction) Reset() {
@@ -2111,11 +2111,11 @@ func (*RevertedTransaction) Descriptor() ([]byte, []int) {
 	return file_ledger_proto_rawDescGZIP(), []int{34}
 }
 
-func (x *RevertedTransaction) GetRevertedTransaction() *Transaction {
+func (x *RevertedTransaction) GetRevertedTransactionId() uint64 {
 	if x != nil {
-		return x.RevertedTransaction
+		return x.RevertedTransactionId
 	}
-	return nil
+	return 0
 }
 
 func (x *RevertedTransaction) GetRevertTransaction() *Transaction {
@@ -3789,9 +3789,9 @@ const file_ledger_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.ledger.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x1aT\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
-	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\xa1\x01\n" +
-	"\x13RevertedTransaction\x12F\n" +
-	"\x14reverted_transaction\x18\x01 \x01(\v2\x13.ledger.TransactionR\x13revertedTransaction\x12B\n" +
+	"\x05value\x18\x02 \x01(\v2\x10.ledger.MetadataR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x13RevertedTransaction\x126\n" +
+	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12B\n" +
 	"\x12revert_transaction\x18\x02 \x01(\v2\x13.ledger.TransactionR\x11revertTransaction\"#\n" +
 	"\rTargetAccount\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\tR\x04addr\"#\n" +
@@ -4082,76 +4082,75 @@ var file_ledger_proto_depIdxs = []int32{
 	40,  // 48: ledger.LogPayload.deleted_metadata:type_name -> ledger.DeletedMetadata
 	4,   // 49: ledger.CreatedTransaction.transaction:type_name -> ledger.Transaction
 	74,  // 50: ledger.CreatedTransaction.account_metadata:type_name -> ledger.CreatedTransaction.AccountMetadataEntry
-	4,   // 51: ledger.RevertedTransaction.reverted_transaction:type_name -> ledger.Transaction
-	4,   // 52: ledger.RevertedTransaction.revert_transaction:type_name -> ledger.Transaction
-	36,  // 53: ledger.Target.account:type_name -> ledger.TargetAccount
-	37,  // 54: ledger.Target.transaction:type_name -> ledger.TargetTransaction
-	38,  // 55: ledger.SavedMetadata.target:type_name -> ledger.Target
-	75,  // 56: ledger.SavedMetadata.metadata:type_name -> ledger.SavedMetadata.MetadataEntry
-	38,  // 57: ledger.DeletedMetadata.target:type_name -> ledger.Target
-	3,   // 58: ledger.TransactionResume.postings:type_name -> ledger.Posting
-	76,  // 59: ledger.TransactionResume.metadata:type_name -> ledger.TransactionResume.MetadataEntry
-	1,   // 60: ledger.TransactionResume.timestamp:type_name -> ledger.Timestamp
-	43,  // 61: ledger.CreatedTransactionMemento.transaction:type_name -> ledger.TransactionResume
-	77,  // 62: ledger.CreatedTransactionMemento.account_metadata:type_name -> ledger.CreatedTransactionMemento.AccountMetadataEntry
-	43,  // 63: ledger.RevertedTransactionMemento.revert_transaction:type_name -> ledger.TransactionResume
-	78,  // 64: ledger.LedgerInfo.metadata:type_name -> ledger.LedgerInfo.MetadataEntry
-	1,   // 65: ledger.LedgerInfo.created_at:type_name -> ledger.Timestamp
-	46,  // 66: ledger.LedgerState.ledger_info:type_name -> ledger.LedgerInfo
-	79,  // 67: ledger.AppendTransactionCommand.account_metadata:type_name -> ledger.AppendTransactionCommand.AccountMetadataEntry
-	80,  // 68: ledger.AppendTransactionCommand.metadata:type_name -> ledger.AppendTransactionCommand.MetadataEntry
-	1,   // 69: ledger.AppendTransactionCommand.timestamp:type_name -> ledger.Timestamp
-	3,   // 70: ledger.AppendTransactionCommand.postings:type_name -> ledger.Posting
-	38,  // 71: ledger.SaveMetadataCommand.target:type_name -> ledger.Target
-	81,  // 72: ledger.SaveMetadataCommand.metadata:type_name -> ledger.SaveMetadataCommand.MetadataEntry
-	38,  // 73: ledger.DeleteMetadataCommand.target:type_name -> ledger.Target
-	4,   // 74: ledger.RevertTransactionCommand.revert_transaction:type_name -> ledger.Transaction
-	48,  // 75: ledger.CommandInput.append_transaction:type_name -> ledger.AppendTransactionCommand
-	49,  // 76: ledger.CommandInput.save_metadata:type_name -> ledger.SaveMetadataCommand
-	50,  // 77: ledger.CommandInput.delete_metadata:type_name -> ledger.DeleteMetadataCommand
-	51,  // 78: ledger.CommandInput.revert_transaction:type_name -> ledger.RevertTransactionCommand
-	42,  // 79: ledger.CreateLogCommand.idempotency:type_name -> ledger.Idempotency
-	52,  // 80: ledger.CreateLogCommand.input:type_name -> ledger.CommandInput
-	82,  // 81: ledger.CreateLedgerCommand.metadata:type_name -> ledger.CreateLedgerCommand.MetadataEntry
-	83,  // 82: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
-	84,  // 83: ledger.State.ledgers:type_name -> ledger.State.LedgersEntry
-	0,   // 84: ledger.Command.type:type_name -> ledger.CommandType
-	1,   // 85: ledger.Command.date:type_name -> ledger.Timestamp
-	7,   // 86: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
-	9,   // 87: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
-	2,   // 88: ledger.CreateTransactionRequestPayload.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	2,   // 89: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	2,   // 90: ledger.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	2,   // 91: ledger.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> ledger.Metadata
-	46,  // 92: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> ledger.LedgerInfo
-	47,  // 93: ledger.State.LedgersEntry.value:type_name -> ledger.LedgerState
-	54,  // 94: ledger.LedgerService.CreateLedger:input_type -> ledger.CreateLedgerCommand
-	55,  // 95: ledger.LedgerService.DeleteLedger:input_type -> ledger.DeleteLedgerCommand
-	57,  // 96: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
-	59,  // 97: ledger.LedgerService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
-	19,  // 98: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
-	23,  // 99: ledger.LedgerService.RevertTransaction:input_type -> ledger.RevertTransactionRequest
-	21,  // 100: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
-	25,  // 101: ledger.LedgerService.SaveTransactionMetadata:input_type -> ledger.SaveTransactionMetadataRequest
-	27,  // 102: ledger.LedgerService.DeleteAccountMetadata:input_type -> ledger.DeleteAccountMetadataRequest
-	29,  // 103: ledger.LedgerService.DeleteTransactionMetadata:input_type -> ledger.DeleteTransactionMetadataRequest
-	30,  // 104: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
-	46,  // 105: ledger.LedgerService.CreateLedger:output_type -> ledger.LedgerInfo
-	56,  // 106: ledger.LedgerService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
-	58,  // 107: ledger.LedgerService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
-	46,  // 108: ledger.LedgerService.GetLedgerInfo:output_type -> ledger.LedgerInfo
-	32,  // 109: ledger.LedgerService.CreateTransaction:output_type -> ledger.Log
-	32,  // 110: ledger.LedgerService.RevertTransaction:output_type -> ledger.Log
-	32,  // 111: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.Log
-	32,  // 112: ledger.LedgerService.SaveTransactionMetadata:output_type -> ledger.Log
-	32,  // 113: ledger.LedgerService.DeleteAccountMetadata:output_type -> ledger.Log
-	32,  // 114: ledger.LedgerService.DeleteTransactionMetadata:output_type -> ledger.Log
-	31,  // 115: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
-	105, // [105:116] is the sub-list for method output_type
-	94,  // [94:105] is the sub-list for method input_type
-	94,  // [94:94] is the sub-list for extension type_name
-	94,  // [94:94] is the sub-list for extension extendee
-	0,   // [0:94] is the sub-list for field type_name
+	4,   // 51: ledger.RevertedTransaction.revert_transaction:type_name -> ledger.Transaction
+	36,  // 52: ledger.Target.account:type_name -> ledger.TargetAccount
+	37,  // 53: ledger.Target.transaction:type_name -> ledger.TargetTransaction
+	38,  // 54: ledger.SavedMetadata.target:type_name -> ledger.Target
+	75,  // 55: ledger.SavedMetadata.metadata:type_name -> ledger.SavedMetadata.MetadataEntry
+	38,  // 56: ledger.DeletedMetadata.target:type_name -> ledger.Target
+	3,   // 57: ledger.TransactionResume.postings:type_name -> ledger.Posting
+	76,  // 58: ledger.TransactionResume.metadata:type_name -> ledger.TransactionResume.MetadataEntry
+	1,   // 59: ledger.TransactionResume.timestamp:type_name -> ledger.Timestamp
+	43,  // 60: ledger.CreatedTransactionMemento.transaction:type_name -> ledger.TransactionResume
+	77,  // 61: ledger.CreatedTransactionMemento.account_metadata:type_name -> ledger.CreatedTransactionMemento.AccountMetadataEntry
+	43,  // 62: ledger.RevertedTransactionMemento.revert_transaction:type_name -> ledger.TransactionResume
+	78,  // 63: ledger.LedgerInfo.metadata:type_name -> ledger.LedgerInfo.MetadataEntry
+	1,   // 64: ledger.LedgerInfo.created_at:type_name -> ledger.Timestamp
+	46,  // 65: ledger.LedgerState.ledger_info:type_name -> ledger.LedgerInfo
+	79,  // 66: ledger.AppendTransactionCommand.account_metadata:type_name -> ledger.AppendTransactionCommand.AccountMetadataEntry
+	80,  // 67: ledger.AppendTransactionCommand.metadata:type_name -> ledger.AppendTransactionCommand.MetadataEntry
+	1,   // 68: ledger.AppendTransactionCommand.timestamp:type_name -> ledger.Timestamp
+	3,   // 69: ledger.AppendTransactionCommand.postings:type_name -> ledger.Posting
+	38,  // 70: ledger.SaveMetadataCommand.target:type_name -> ledger.Target
+	81,  // 71: ledger.SaveMetadataCommand.metadata:type_name -> ledger.SaveMetadataCommand.MetadataEntry
+	38,  // 72: ledger.DeleteMetadataCommand.target:type_name -> ledger.Target
+	4,   // 73: ledger.RevertTransactionCommand.revert_transaction:type_name -> ledger.Transaction
+	48,  // 74: ledger.CommandInput.append_transaction:type_name -> ledger.AppendTransactionCommand
+	49,  // 75: ledger.CommandInput.save_metadata:type_name -> ledger.SaveMetadataCommand
+	50,  // 76: ledger.CommandInput.delete_metadata:type_name -> ledger.DeleteMetadataCommand
+	51,  // 77: ledger.CommandInput.revert_transaction:type_name -> ledger.RevertTransactionCommand
+	42,  // 78: ledger.CreateLogCommand.idempotency:type_name -> ledger.Idempotency
+	52,  // 79: ledger.CreateLogCommand.input:type_name -> ledger.CommandInput
+	82,  // 80: ledger.CreateLedgerCommand.metadata:type_name -> ledger.CreateLedgerCommand.MetadataEntry
+	83,  // 81: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
+	84,  // 82: ledger.State.ledgers:type_name -> ledger.State.LedgersEntry
+	0,   // 83: ledger.Command.type:type_name -> ledger.CommandType
+	1,   // 84: ledger.Command.date:type_name -> ledger.Timestamp
+	7,   // 85: ledger.VolumesByAssets.VolumesEntry.value:type_name -> ledger.Volumes
+	9,   // 86: ledger.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> ledger.VolumesByAssets
+	2,   // 87: ledger.CreateTransactionRequestPayload.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	2,   // 88: ledger.CreatedTransaction.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	2,   // 89: ledger.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	2,   // 90: ledger.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> ledger.Metadata
+	46,  // 91: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> ledger.LedgerInfo
+	47,  // 92: ledger.State.LedgersEntry.value:type_name -> ledger.LedgerState
+	54,  // 93: ledger.LedgerService.CreateLedger:input_type -> ledger.CreateLedgerCommand
+	55,  // 94: ledger.LedgerService.DeleteLedger:input_type -> ledger.DeleteLedgerCommand
+	57,  // 95: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	59,  // 96: ledger.LedgerService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
+	19,  // 97: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
+	23,  // 98: ledger.LedgerService.RevertTransaction:input_type -> ledger.RevertTransactionRequest
+	21,  // 99: ledger.LedgerService.SaveAccountMetadata:input_type -> ledger.SaveAccountMetadataRequest
+	25,  // 100: ledger.LedgerService.SaveTransactionMetadata:input_type -> ledger.SaveTransactionMetadataRequest
+	27,  // 101: ledger.LedgerService.DeleteAccountMetadata:input_type -> ledger.DeleteAccountMetadataRequest
+	29,  // 102: ledger.LedgerService.DeleteTransactionMetadata:input_type -> ledger.DeleteTransactionMetadataRequest
+	30,  // 103: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
+	46,  // 104: ledger.LedgerService.CreateLedger:output_type -> ledger.LedgerInfo
+	56,  // 105: ledger.LedgerService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
+	58,  // 106: ledger.LedgerService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
+	46,  // 107: ledger.LedgerService.GetLedgerInfo:output_type -> ledger.LedgerInfo
+	32,  // 108: ledger.LedgerService.CreateTransaction:output_type -> ledger.Log
+	32,  // 109: ledger.LedgerService.RevertTransaction:output_type -> ledger.Log
+	32,  // 110: ledger.LedgerService.SaveAccountMetadata:output_type -> ledger.Log
+	32,  // 111: ledger.LedgerService.SaveTransactionMetadata:output_type -> ledger.Log
+	32,  // 112: ledger.LedgerService.DeleteAccountMetadata:output_type -> ledger.Log
+	32,  // 113: ledger.LedgerService.DeleteTransactionMetadata:output_type -> ledger.Log
+	31,  // 114: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
+	104, // [104:115] is the sub-list for method output_type
+	93,  // [93:104] is the sub-list for method input_type
+	93,  // [93:93] is the sub-list for extension type_name
+	93,  // [93:93] is the sub-list for extension extendee
+	0,   // [0:93] is the sub-list for field type_name
 }
 
 func init() { file_ledger_proto_init() }

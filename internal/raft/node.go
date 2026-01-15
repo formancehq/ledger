@@ -119,11 +119,6 @@ func NewNode(
 			return nil, fmt.Errorf("creating initial snapshot: %w", err)
 		}
 	} else {
-		snapshot, err := wal.Snapshot()
-		if err != nil {
-			return nil, fmt.Errorf("reading snapshot: %w", err)
-		}
-
 		if snapshot.Metadata.Index > 0 {
 			logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
 			if err := fsm.RestoreSnapshot(snapshot); err != nil {
