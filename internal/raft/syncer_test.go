@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -33,14 +32,14 @@ func TestSyncerApplyEntries(t *testing.T) {
 		10, 10,
 	)
 
-	cmd := &ledgerpb.Command{
-		Type: ledgerpb.CommandType_CreateLedger,
-	}
-
 	fsm.EXPECT().
-		ApplyEntries(gomock.Any(), cmd).
+		ApplyEntries(gomock.Any(), raftpb.Entry{
+			Index: 1,
+		}).
 		Return([]ApplyResult{{}}, nil)
 
-	_, err = syncer.ApplyEntries(ctx, 10, &raftpb.ConfState{}, cmd)
+	_, err = syncer.ApplyEntries(ctx, &raftpb.ConfState{}, raftpb.Entry{
+		Index: 1,
+	})
 	require.NoError(t, err)
 }

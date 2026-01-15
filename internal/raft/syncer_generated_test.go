@@ -11,7 +11,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	raftpb "go.etcd.io/etcd/raft/v3/raftpb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,7 +40,7 @@ func (m *MockFSM) EXPECT() *MockFSMMockRecorder {
 }
 
 // ApplyEntries mocks base method.
-func (m *MockFSM) ApplyEntries(ctx context.Context, commands ...*ledgerpb.Command) ([]ApplyResult, error) {
+func (m *MockFSM) ApplyEntries(ctx context.Context, commands ...raftpb.Entry) ([]ApplyResult, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range commands {

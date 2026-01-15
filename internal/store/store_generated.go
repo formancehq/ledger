@@ -40,23 +40,23 @@ func (m *MockLogWriter) EXPECT() *MockLogWriterMockRecorder {
 	return m.recorder
 }
 
-// InsertLogs mocks base method.
-func (m *MockLogWriter) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+// AppendLogs mocks base method.
+func (m *MockLogWriter) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
+	varargs := []any{ctx, lastAppliedIndex}
 	for _, a := range logs {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "InsertLogs", varargs...)
+	ret := m.ctrl.Call(m, "AppendLogs", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// InsertLogs indicates an expected call of InsertLogs.
-func (mr *MockLogWriterMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
+// AppendLogs indicates an expected call of AppendLogs.
+func (mr *MockLogWriterMockRecorder) AppendLogs(ctx, lastAppliedIndex any, logs ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, logs...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockLogWriter)(nil).InsertLogs), varargs...)
+	varargs := append([]any{ctx, lastAppliedIndex}, logs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockLogWriter)(nil).AppendLogs), varargs...)
 }
 
 // MockLogReader is a mock of LogReader interface.
@@ -137,6 +137,25 @@ func (m *MockLogStore) EXPECT() *MockLogStoreMockRecorder {
 	return m.recorder
 }
 
+// AppendLogs mocks base method.
+func (m *MockLogStore) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, lastAppliedIndex}
+	for _, a := range logs {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "AppendLogs", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendLogs indicates an expected call of AppendLogs.
+func (mr *MockLogStoreMockRecorder) AppendLogs(ctx, lastAppliedIndex any, logs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, lastAppliedIndex}, logs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockLogStore)(nil).AppendLogs), varargs...)
+}
+
 // GetAllLogs mocks base method.
 func (m *MockLogStore) GetAllLogs(ctx context.Context, ledger string, from, to uint64) (Cursor[*ledgerpb.Log], error) {
 	m.ctrl.T.Helper()
@@ -167,25 +186,6 @@ func (mr *MockLogStoreMockRecorder) GetLogByID(ctx, ledger, id any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogByID", reflect.TypeOf((*MockLogStore)(nil).GetLogByID), ctx, ledger, id)
 }
 
-// InsertLogs mocks base method.
-func (m *MockLogStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range logs {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "InsertLogs", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InsertLogs indicates an expected call of InsertLogs.
-func (mr *MockLogStoreMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, logs...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockLogStore)(nil).InsertLogs), varargs...)
-}
-
 // MockStore is a mock of Store interface.
 type MockStore struct {
 	ctrl     *gomock.Controller
@@ -208,6 +208,25 @@ func NewMockStore(ctrl *gomock.Controller) *MockStore {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
+}
+
+// AppendLogs mocks base method.
+func (m *MockStore) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, lastAppliedIndex}
+	for _, a := range logs {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "AppendLogs", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendLogs indicates an expected call of AppendLogs.
+func (mr *MockStoreMockRecorder) AppendLogs(ctx, lastAppliedIndex any, logs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, lastAppliedIndex}, logs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockStore)(nil).AppendLogs), varargs...)
 }
 
 // Close mocks base method.
@@ -236,6 +255,20 @@ func (m *MockStore) CreateSnapshot(ctx context.Context) error {
 func (mr *MockStoreMockRecorder) CreateSnapshot(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockStore)(nil).CreateSnapshot), ctx)
+}
+
+// DeleteLedger mocks base method.
+func (m *MockStore) DeleteLedger(name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLedger", name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLedger indicates an expected call of DeleteLedger.
+func (mr *MockStoreMockRecorder) DeleteLedger(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedger", reflect.TypeOf((*MockStore)(nil).DeleteLedger), name)
 }
 
 // GetAccountMetadata mocks base method.
@@ -283,6 +316,36 @@ func (mr *MockStoreMockRecorder) GetBalances(ctx, ledger, balanceQuery any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockStore)(nil).GetBalances), ctx, ledger, balanceQuery)
 }
 
+// GetLastAppliedIndex mocks base method.
+func (m *MockStore) GetLastAppliedIndex() (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastAppliedIndex")
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLastAppliedIndex indicates an expected call of GetLastAppliedIndex.
+func (mr *MockStoreMockRecorder) GetLastAppliedIndex() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastAppliedIndex", reflect.TypeOf((*MockStore)(nil).GetLastAppliedIndex))
+}
+
+// GetLastLogID mocks base method.
+func (m *MockStore) GetLastLogID(ctx context.Context, name string) (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastLogID", ctx, name)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLastLogID indicates an expected call of GetLastLogID.
+func (mr *MockStoreMockRecorder) GetLastLogID(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogID", reflect.TypeOf((*MockStore)(nil).GetLastLogID), ctx, name)
+}
+
 // GetLogByID mocks base method.
 func (m *MockStore) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
 	m.ctrl.T.Helper()
@@ -326,25 +389,6 @@ func (m *MockStore) GetLogIDForTransactionID(ctx context.Context, ledger string,
 func (mr *MockStoreMockRecorder) GetLogIDForTransactionID(ctx, ledger, transactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogIDForTransactionID", reflect.TypeOf((*MockStore)(nil).GetLogIDForTransactionID), ctx, ledger, transactionID)
-}
-
-// InsertLogs mocks base method.
-func (m *MockStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range logs {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "InsertLogs", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InsertLogs indicates an expected call of InsertLogs.
-func (mr *MockStoreMockRecorder) InsertLogs(ctx any, logs ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, logs...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLogs", reflect.TypeOf((*MockStore)(nil).InsertLogs), varargs...)
 }
 
 // IsTransactionReverted mocks base method.

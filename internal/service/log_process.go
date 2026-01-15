@@ -15,6 +15,7 @@ type logProcessor[INPUT proto.Message] struct {
 	runtimeStore store.Store
 	logFactory   LogFactory
 	keySetLocker KeySetLocker
+	logger logging.Logger
 	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
 }
 
@@ -23,6 +24,7 @@ func newLogProcessor[INPUT proto.Message](
 	runtimeStore store.Store,
 	logFactory LogFactory,
 	keySetLocker KeySetLocker,
+	logger logging.Logger,
 	builder func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
 
 ) *logProcessor[INPUT] {
@@ -32,6 +34,7 @@ func newLogProcessor[INPUT proto.Message](
 		keySetLocker: keySetLocker,
 		builder:      builder,
 		logFactory:   logFactory,
+		logger: logger,
 	}
 }
 
@@ -89,7 +92,7 @@ func (lp *logProcessor[INPUT]) forgeLog(
 
 	log, err := lp.logFactory.CreateLog(ctx, ledger, idp, input)
 	if err != nil {
-		logging.FromContext(ctx).WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
+		lp.logger.WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
 		return nil, false, err
 	}
 

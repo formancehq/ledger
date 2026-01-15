@@ -12,7 +12,7 @@ import (
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogWriter
 type LogWriter interface {
-	InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
+	AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
 }
 
 // LogReader handles log reading operations
@@ -76,4 +76,8 @@ type Store interface {
 	IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
 	Close(ctx context.Context) error
 	CreateSnapshot(ctx context.Context) error
+	AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
+	GetLastAppliedIndex() (uint64, error)
+	DeleteLedger(name string) error
+	GetLastLogID(ctx context.Context, name string) (uint64, error)
 }

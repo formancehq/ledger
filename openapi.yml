@@ -1011,7 +1011,6 @@ components:
         - ledgerInfo
         - nextLogId
         - nextTransactionId
-        - lastAppliedLogId
       properties:
         ledgerInfo:
           $ref: '#/components/schemas/LedgerInfo'
@@ -1025,11 +1024,6 @@ components:
           format: uint64
           minimum: 0
           description: Next transaction ID to be assigned
-        lastAppliedLogId:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Last applied log ID
 
     NodeInfo:
       type: object

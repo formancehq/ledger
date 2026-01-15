@@ -58,7 +58,7 @@ func TestRuntimeStoreIntegration(t *testing.T) {
     defer cleanupStore(t, store)
     
     log := &ledger.Log{...}
-    err := store.InsertLogs(ctx, log)
+    err := store.AppendLogs(ctx, 0, log)
     require.NoError(t, err)
     
     cursor, err := store.GetAllLogs(ctx, 0, 0)

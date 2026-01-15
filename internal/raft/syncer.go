@@ -10,37 +10,10 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 )
-
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source syncer.go -destination syncer_generated_test.go -package raft . FSM
-type FSM interface {
-	CreateSnapshot(ctx context.Context) ([]byte, error)
-	SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error
-	ApplyEntries(ctx context.Context, commands ...*ledgerpb.Command) ([]ApplyResult, error)
-}
-
-type createSnapshotTerminatedCommand struct {
-}
-type syncSnapshotCommand struct {
-	leader   uint64
-	snapshot raftpb.Snapshot
-}
-
-type unspoolCommand struct {
-	syncSnapshotCommand syncSnapshotCommand
-}
-
-type applyEntriesCommand struct {
-	commands     []*ledgerpb.Command
-	resultCh     chan []ApplyResult
-	errCh        chan error
-	appliedIndex uint64
-	confState    *raftpb.ConfState
-}
 
 type syncerStatus int
 
@@ -49,6 +22,7 @@ const (
 	syncerStatusSyncing
 )
 
+// todo: handle the case where the service is restarted when the spool is not empty
 type syncer struct {
 	mu                      sync.Mutex
 	spool                   Spool
@@ -63,88 +37,97 @@ type syncer struct {
 	taskExecutor      *singleTaskExecutor
 }
 
-func (s *syncer) ApplyEntries(ctx context.Context, index uint64, confState *raftpb.ConfState, commands ...*ledgerpb.Command) ([]ApplyResult, error) {
+func (s *syncer) ApplyEntries(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) ([]ApplyResult, error) {
 
 	switch s.status.Load() {
 	case syncerStatusNormal:
-		entries, err := s.fsm.ApplyEntries(ctx, commands...)
-		if err != nil {
-			panic(err)
-		}
-
-		lastSnapshot, err := s.wal.Snapshot()
-		if err != nil {
-			panic(fmt.Errorf("getting last snapshot: %w", err))
-		}
-
-		if index-lastSnapshot.Metadata.Index >= s.snapshotThreshold {
-			s.logger.WithFields(map[string]any{
-				"applied":           index,
-				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-				"snapshotThreshold": s.snapshotThreshold,
-				"compactionMargin":  s.compactionMargin,
-			}).Infof("Creating new snapshot")
-
-			startTime := time.Now()
-			data, err := s.fsm.CreateSnapshot(ctx)
-			if err != nil {
-				return nil, err
-			}
-			err = s.wal.CreateSnapshot(index, confState, data)
-			if err != nil {
-				return nil, err
-			}
-			duration := time.Since(startTime)
-			s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
-
-			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-			err = s.wal.Compact(index - s.compactionMargin)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		return entries, nil
+		return s.applyEntries(ctx, confState, entries...)
 	case syncerStatusSyncing:
-		s.logger.Infof("Spool committed entries")
+		s.logger.Debugf("Spool committed entries")
 		s.mu.Lock()
-		err := s.spool.AppendCommittedEntries(ctx, commands...)
+		err := s.spool.AppendCommittedEntries(ctx, entries...)
 		s.mu.Unlock()
 		if err != nil {
 			return nil, err
 		}
-		return make([]ApplyResult, len(commands)), nil
+		return make([]ApplyResult, len(entries)), nil
 	default:
 		panic("unreachable")
 	}
 }
 
 func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
+	s.logger.
+		WithFields(map[string]any{
+			"leader": leader,
+			"index":  snapshot.Metadata.Index,
+			"term":   snapshot.Metadata.Term,
+		}).
+		Infof("Syncing snapshot from leader")
 	status := s.status.Load()
 	if status == syncerStatusSyncing {
+		s.logger.Infof("Interrupting previous sync")
 		s.taskExecutor.interrupt()
 	}
 	s.status.Store(syncerStatusSyncing)
 
 	s.taskExecutor.run(ctx, func(ctx context.Context) error {
+		defer func() {
+			s.logger.Infof("Syncing snapshot terminated")
+		}()
 		err := s.fsm.SyncSnapshot(ctx, leader, snapshot)
 		if err != nil {
 			return err
 		}
 
+		s.logger.Infof("Snapshot synced from leader, applying spooled entries...")
+
+		applyEntries := func(entries ...raftpb.Entry) error {
+			s.logger.WithFields(map[string]any{
+				"count":    len(entries),
+				"maxIndex": entries[len(entries)-1].Index,
+			}).Infof("Applying spooled entries")
+			_, err := s.applyEntries(ctx, nil, entries...)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				panic(err)
+			}
+			return err
+		}
+
+		// todo: this way of doing cause massive back and forth on the underlying file
+		// I guess we could use a pipe here instead to write to the file, while writing in memory
+		const batchSize = 10000
+		batch := make([]raftpb.Entry, 0, batchSize)
+		count := 0
 		for {
-			s.logger.Infof("Unspooling...")
+
+			select {
+			// Check for context cancellation
+			case <-ctx.Done():
+				s.logger.Infof("Context cancelled, stopping unspooling")
+				return ctx.Err()
+			default:
+			}
 
 			s.mu.Lock()
-			spooledCmd, err := s.spool.Next()
+			spooledEntry, err := s.spool.Next()
 			s.mu.Unlock()
 
 			if err != nil && !errors.Is(err, io.EOF) {
 				panic(err)
 			}
 			if errors.Is(err, io.EOF) {
-				s.logger.Infof("No more entries in spool, resetting")
 				s.mu.Lock()
+				if len(batch) > 0 {
+					if err := applyEntries(batch...); err != nil {
+						return err
+					}
+					count += len(batch)
+				}
+				// todo: reset later, we have a pointer to the last read entry
+				s.logger.WithFields(map[string]any{
+					"totalCount": count,
+				}).Infof("No more entries in spool, resetting")
 				err := s.spool.Reset()
 				s.status.Store(syncerStatusNormal)
 				s.mu.Unlock()
@@ -153,15 +136,17 @@ func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftp
 				}
 				break
 			}
+			batch = append(batch, *spooledEntry)
 
-			_, err = s.fsm.ApplyEntries(context.Background(), spooledCmd)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				panic(err)
-			}
-			if errors.Is(err, context.Canceled) {
-				return err
+			if len(batch) >= batchSize {
+				if err := applyEntries(batch...); err != nil {
+					return err
+				}
+				count += len(batch)
+				batch = batch[:0]
 			}
 		}
+		s.logger.Infof("Unspooling done")
 
 		return nil
 	})
@@ -171,6 +156,47 @@ func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftp
 
 func (s *syncer) IsSyncing() bool {
 	return s.status.Load() == syncerStatusSyncing
+}
+
+func (s *syncer) applyEntries(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) ([]ApplyResult, error) {
+	results, err := s.fsm.ApplyEntries(ctx, entries...)
+	if err != nil {
+		panic(err)
+	}
+
+	lastSnapshot, err := s.wal.Snapshot()
+	if err != nil {
+		panic(fmt.Errorf("getting last snapshot: %w", err))
+	}
+
+	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= s.snapshotThreshold {
+		s.logger.WithFields(map[string]any{
+			"applied":           entries[len(entries)-1].Index,
+			"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+			"snapshotThreshold": s.snapshotThreshold,
+			"compactionMargin":  s.compactionMargin,
+		}).Infof("Creating new snapshot")
+
+		startTime := time.Now()
+		data, err := s.fsm.CreateSnapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		err = s.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
+		if err != nil {
+			return nil, err
+		}
+		duration := time.Since(startTime)
+		s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+
+		// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+		err = s.wal.Compact(entries[len(entries)-1].Index - s.compactionMargin)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
 }
 
 func newSyncer(

@@ -6,6 +6,8 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // LedgerGrpcClient implements Ledger by forwarding requests via gRPC to the leader
@@ -126,6 +128,9 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledger string, from u
 
 	stream, err := g.client.StreamLogs(ctx, req)
 	if err != nil {
+		if status.Code(err) == codes.Canceled {
+			return nil, context.Canceled
+		}
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
 

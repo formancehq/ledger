@@ -184,7 +184,7 @@ sequenceDiagram
         Controller->>RaftNode: CreateLog()
         RaftNode->>FSM: Propose CreateLogCommand (via Raft)
         FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        FSM->>RuntimeStore: AppendLogs() - Persist log and update balances
         FSM-->>RaftNode: Log
         RaftNode-->>Controller: Log
     else Node is Follower
@@ -226,7 +226,7 @@ All ledgers share a single RuntimeStore. The RuntimeStore implements the LogStor
 - Acts as the source of truth for transaction history
 
 **Usage in Raft**:
-- **During writes**: When logs are applied by the FSM, `RuntimeStore.InsertLogs()` persists logs and updates balances
+- **During writes**: When logs are applied by the FSM, `RuntimeStore.AppendLogs()` persists logs and updates balances
 - **During reads**: Logs can be read directly from RuntimeStore without going through Raft (local reads)
 - **During recovery**: Logs are replayed from RuntimeStore to rebuild state
 
@@ -241,7 +241,7 @@ All ledgers share a single RuntimeStore. The RuntimeStore implements the LogStor
 - Provides fast read access to current state
 
 **Usage in Raft**:
-- **During writes**: When logs are applied by the FSM, `RuntimeStore.InsertLogs()` persists logs and updates balances
+- **During writes**: When logs are applied by the FSM, `RuntimeStore.AppendLogs()` persists logs and updates balances
 - **During reads**: Balances and metadata are read directly from RuntimeStore (local reads, no Raft consensus needed)
 - **During recovery**: Balances are recalculated by replaying logs from RuntimeStore
 
@@ -272,7 +272,7 @@ sequenceDiagram
 **Write Flow**:
 1. Transaction is proposed to Raft leader
 2. Once committed, FSM applies the command
-3. FSM calls `RuntimeStore.InsertLogs()` to persist logs and update balances
+3. FSM calls `RuntimeStore.AppendLogs()` to persist logs and update balances
 4. Logs and runtime state are stored in the shared RuntimeStore
 
 **Read Flow**:

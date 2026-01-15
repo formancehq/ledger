@@ -2762,7 +2762,6 @@ type LedgerState struct {
 	LedgerInfo        *LedgerInfo            `protobuf:"bytes,1,opt,name=ledger_info,json=ledgerInfo,proto3" json:"ledger_info,omitempty"`
 	NextLogId         uint64                 `protobuf:"varint,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
 	NextTransactionId uint64                 `protobuf:"varint,3,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
-	LastAppliedLogId  uint64                 `protobuf:"varint,4,opt,name=last_applied_log_id,json=lastAppliedLogId,proto3" json:"last_applied_log_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2814,13 +2813,6 @@ func (x *LedgerState) GetNextLogId() uint64 {
 func (x *LedgerState) GetNextTransactionId() uint64 {
 	if x != nil {
 		return x.NextTransactionId
-	}
-	return 0
-}
-
-func (x *LedgerState) GetLastAppliedLogId() uint64 {
-	if x != nil {
-		return x.LastAppliedLogId
 	}
 	return 0
 }
@@ -3843,13 +3835,12 @@ const file_ledger_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x11.ledger.TimestampR\tcreatedAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc1\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\x01\n" +
 	"\vLedgerState\x123\n" +
 	"\vledger_info\x18\x01 \x01(\v2\x12.ledger.LedgerInfoR\n" +
 	"ledgerInfo\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12.\n" +
-	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\x12-\n" +
-	"\x13last_applied_log_id\x18\x04 \x01(\x04R\x10lastAppliedLogId\"\xd7\x03\n" +
+	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\"\xd7\x03\n" +
 	"\x18AppendTransactionCommand\x12`\n" +
 	"\x10account_metadata\x18\x02 \x03(\v25.ledger.AppendTransactionCommand.AccountMetadataEntryR\x0faccountMetadata\x12J\n" +
 	"\bmetadata\x18\x03 \x03(\v2..ledger.AppendTransactionCommand.MetadataEntryR\bmetadata\x12/\n" +

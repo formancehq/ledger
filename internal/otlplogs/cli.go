@@ -2,19 +2,17 @@ package otlplogs
 
 import (
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
-	"go.uber.org/fx"
-
-	"github.com/formancehq/go-libs/v3/otlp"
 )
 
 const (
-	OtelLogsExporterFlag               = "otel-logs-exporter"
-	OtelLogsExporterOTLPModeFlag       = "otel-logs-exporter-otlp-mode"
-	OtelLogsExporterOTLPEndpointFlag   = "otel-logs-exporter-otlp-endpoint"
-	OtelLogsExporterOTLPInsecureFlag   = "otel-logs-exporter-otlp-insecure"
+	OtelLogsExporterFlag             = "otel-logs-exporter"
+	OtelLogsExporterOTLPModeFlag     = "otel-logs-exporter-otlp-mode"
+	OtelLogsExporterOTLPEndpointFlag = "otel-logs-exporter-otlp-endpoint"
+	OtelLogsExporterOTLPInsecureFlag = "otel-logs-exporter-otlp-insecure"
 )
 
 func AddFlags(flags *flag.FlagSet) {
@@ -26,11 +24,11 @@ func AddFlags(flags *flag.FlagSet) {
 	flags.Bool(OtelLogsExporterOTLPInsecureFlag, false, "OpenTelemetry logs grpc insecure")
 }
 
-func FXModuleFromFlags(cmd *cobra.Command, defaultFields map[string]any) fx.Option {
+func LoggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.Logger, error) {
 	exporter, _ := cmd.Flags().GetString(OtelLogsExporterFlag)
 	jsonFormatting, _ := cmd.Flags().GetBool(logging.JsonFormattingLoggerFlag)
 
-	return LogsModule(ModuleConfig{
+	return Logger(ModuleConfig{
 		Exporter: exporter,
 		OTLPConfig: func() *OTLPConfig {
 			if exporter != OTLPExporter {
@@ -46,9 +44,9 @@ func FXModuleFromFlags(cmd *cobra.Command, defaultFields map[string]any) fx.Opti
 				Insecure: insecure,
 			}
 		}(),
-		Output:             cmd.OutOrStdout(),
-		Debug:              service.IsDebug(cmd),
-		FormatJSON:         jsonFormatting,
-		Fields: defaultFields,
+		Output:     cmd.OutOrStdout(),
+		Debug:      service.IsDebug(cmd),
+		FormatJSON: jsonFormatting,
+		Fields:     defaultFields,
 	})
 }

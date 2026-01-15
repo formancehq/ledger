@@ -22,6 +22,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
+var _ store.Store = (*Store)(nil)
+
 // Store is a SQLite implementation of store.Store
 type Store struct {
 	db     *DB
@@ -236,33 +238,62 @@ func (s *Store) createTables(ctx context.Context) error {
 		return fmt.Errorf("creating reverted_transaction_ids table: %w", err)
 	}
 
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS raft_state (
+			key TEXT NOT NULL PRIMARY KEY,
+			value INTEGER NOT NULL
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating raft_state table: %w", err)
+	}
+
 	return nil
 }
 
-// InsertLogs persists logs and updates runtime state.
-func (s *Store) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
-	if len(logs) == 0 {
-		return nil
-	}
-	if err := s.insertLogs(ctx, logs...); err != nil {
-		return err
-	}
-
-	update, err := store.LogsToRuntimeUpdate(logs)
-	if err != nil {
-		return err
-	}
-
-	return s.applyRuntimeUpdate(ctx, update)
-}
-
-func (s *Store) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+// AppendLogs persists logs and updates runtime state in a single transaction.
+func (s *Store) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if len(logs) > 0 {
+		if err := s.insertLogsInTx(ctx, tx, logs...); err != nil {
+			return err
+		}
+
+		update, err := store.LogsToRuntimeUpdate(logs)
+		if err != nil {
+			return err
+		}
+
+		if err := s.applyRuntimeUpdateInTx(ctx, tx, update); err != nil {
+			return err
+		}
+	}
+
+	// Update the lastAppliedIndex
+	if lastAppliedIndex > 0 {
+		_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO raft_state (key, value) VALUES ('last_applied_index', ?)`, lastAppliedIndex)
+		if err != nil {
+			return fmt.Errorf("updating last applied index: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	if len(logs) > 0 {
+		s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into SQLite")
+	}
+
+	return nil
+}
+
+func (s *Store) insertLogsInTx(ctx context.Context, tx *sql.Tx, logs ...*ledgerpb.Log) error {
 	stmt := tx.StmtContext(ctx, s.stmtInsertLog)
 	defer func() { _ = stmt.Close() }()
 
@@ -306,11 +337,6 @@ func (s *Store) insertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-
-	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into SQLite")
 	return nil
 }
 
@@ -440,13 +466,7 @@ func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledg
 	return log, nil
 }
 
-func (s *Store) applyRuntimeUpdate(ctx context.Context, update store.RuntimeUpdate) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
+func (s *Store) applyRuntimeUpdateInTx(ctx context.Context, tx *sql.Tx, update store.RuntimeUpdate) error {
 	if len(update.BalanceDiffs) > 0 {
 		stmt := tx.StmtContext(ctx, s.stmtInsertBalance)
 		defer func() { _ = stmt.Close() }()
@@ -492,7 +512,6 @@ func (s *Store) applyRuntimeUpdate(ctx context.Context, update store.RuntimeUpda
 				}
 			}
 		}
-
 	}
 
 	if len(update.TransactionIDs) > 0 {
@@ -520,7 +539,7 @@ func (s *Store) applyRuntimeUpdate(ctx context.Context, update store.RuntimeUpda
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // Close closes the database connection and prepared statements
@@ -713,4 +732,65 @@ func (s *Store) GetLastProcessedLogID(ctx context.Context, ledger string) (uint6
 
 func (s *Store) CreateSnapshot(ctx context.Context) error {
 	return nil
+}
+
+// GetLastAppliedIndex retrieves the last applied Raft index.
+func (s *Store) GetLastAppliedIndex() (uint64, error) {
+	row := s.db.QueryRow(`SELECT value FROM raft_state WHERE key = 'last_applied_index'`)
+
+	var lastAppliedIndex uint64
+	if err := row.Scan(&lastAppliedIndex); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("querying last applied index: %w", err)
+	}
+	return lastAppliedIndex, nil
+}
+
+// DeleteLedger deletes all data for a specific ledger.
+func (s *Store) DeleteLedger(name string) error {
+	ctx := context.Background()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Delete from all tables that have ledger data
+	tables := []string{
+		"logs",
+		"balances",
+		"account_metadata",
+		"transaction_ids",
+		"reverted_transaction_ids",
+	}
+
+	for _, table := range tables {
+		_, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE ledger = ?", table), name)
+		if err != nil {
+			return fmt.Errorf("deleting from %s: %w", table, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	return nil
+}
+
+// GetLastLogID retrieves the ID of the last log for a specific ledger.
+func (s *Store) GetLastLogID(ctx context.Context, ledger string) (uint64, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id FROM logs WHERE ledger = ? ORDER BY id DESC LIMIT 1`, ledger)
+
+	var lastLogID uint64
+	if err := row.Scan(&lastLogID); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("querying last log ID: %w", err)
+	}
+	return lastLogID, nil
 }

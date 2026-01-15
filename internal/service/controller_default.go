@@ -46,6 +46,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.createTransaction,
 	)
 	l.saveTransactionMetadataLp = newLogProcessor(
@@ -53,6 +54,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.saveTransactionMetadata,
 	)
 	l.saveAccountMetadataLp = newLogProcessor(
@@ -60,6 +62,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.saveAccountMetadata,
 	)
 	l.deleteTransactionMetadataLp = newLogProcessor(
@@ -67,6 +70,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.deleteTransactionMetadata,
 	)
 	l.deleteAccountMetadataLp = newLogProcessor(
@@ -74,6 +78,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.deleteAccountMetadata,
 	)
 	l.revertTransactionLp = newLogProcessor(
@@ -81,6 +86,7 @@ func NewDefaultController(
 		runtimeStore,
 		logFactory,
 		keySetLocker,
+		logger,
 		l.revertTransaction,
 	)
 

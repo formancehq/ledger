@@ -30,6 +30,8 @@ const (
 	checkpointsDir        = "checkpoints"
 )
 
+var _ store.Store = (*Store)(nil)
+
 // Store is a Pebble implementation of store.Store
 // It stores balances and account metadata
 // todo: add rotation of checkpoints
@@ -42,12 +44,13 @@ type Store struct {
 
 // Key prefixes for Pebble storage (3 bytes max)
 var (
-	keyPrefixLog             byte = 0x01
-	keyPrefixBalanceDiff     byte = 0x02
-	keyPrefixAccountMetadata byte = 0x03
-	keyPrefixIdempotency     byte = 0x04
-	keyPrefixTransactionID   byte = 0x05
-	keyPrefixRevertedTxID    byte = 0x06
+	keyPrefixLastAppliedIndex byte = 0x00
+	keyPrefixLog              byte = 0x01
+	keyPrefixBalanceDiff      byte = 0x02
+	keyPrefixAccountMetadata  byte = 0x03
+	keyPrefixIdempotency      byte = 0x04
+	keyPrefixTransactionID    byte = 0x05
+	keyPrefixRevertedTxID     byte = 0x06
 )
 
 // NewStore creates a new Store instance
@@ -99,7 +102,7 @@ func NewStore(
 	liveDir := filepath.Join(dataDir, liveDir)
 	if errors.Is(err, os.ErrNotExist) {
 		logger.Infof("No checkpoint found, creating new database in %s", liveDir)
-		if err := os.RemoveAll(dataDir); err != nil {
+		if err := os.RemoveAll(liveDir); err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
 
@@ -165,9 +168,17 @@ func (s *Store) Close(ctx context.Context) error {
 	return nil
 }
 
-// InsertLogs persists logs and updates runtime state.
-func (s *Store) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+// AppendLogs persists logs and updates runtime state.
+func (s *Store) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
 	if len(logs) == 0 {
+		// Still update the lastAppliedIndex even if there are no logs
+		if lastAppliedIndex > 0 {
+			lastAppliedIndexValue := make([]byte, 8)
+			binary.BigEndian.PutUint64(lastAppliedIndexValue, lastAppliedIndex)
+			if err := s.db.Set([]byte{keyPrefixLastAppliedIndex}, lastAppliedIndexValue, pebble.NoSync); err != nil {
+				return fmt.Errorf("updating last applied index: %w", err)
+			}
+		}
 		return nil
 	}
 
@@ -297,6 +308,14 @@ func (s *Store) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 				}
 			}
 		}
+	}
+
+	writeByte(buf, keyPrefixLastAppliedIndex)
+
+	lastAppliedIndexValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(lastAppliedIndexValue, lastAppliedIndex)
+	if err := setOnBatch(batch, buf, lastAppliedIndexValue); err != nil {
+		return nil
 	}
 
 	if err := batch.Commit(pebble.NoSync); err != nil {
@@ -652,9 +671,95 @@ func (s *Store) CreateSnapshot(ctx context.Context) error {
 		return fmt.Errorf("renaming checkpoint file: %w", err)
 	}
 
+	// todo: it can fail, leaving an old checkpoint on disk
+	// this is not critical, but we should fix it eventually
+	if err := os.RemoveAll(filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", s.currentCheckPoint))); err != nil {
+		return fmt.Errorf("removing old checkpoint directory: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{
+		"checkpoint": s.currentCheckPoint + 1,
+	}).Infof("Snapshot created")
 	s.currentCheckPoint++
 
 	return nil
+}
+
+func (s *Store) GetLastAppliedIndex() (uint64, error) {
+	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedIndex})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	if len(get) == 0 {
+		return 0, nil
+	}
+
+	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+func (s *Store) DeleteLedger(name string) error {
+	startBuf := bytes.NewBuffer(nil)
+	writeLedgerPrefix(startBuf, name)
+
+	endBuf := bytes.NewBuffer(nil)
+	writeLedgerPrefix(endBuf, name)
+	writeByte(endBuf, 0xFF)
+
+	return s.db.DeleteRange(startBuf.Bytes(), endBuf.Bytes(), pebble.NoSync)
+}
+
+func (s *Store) GetLastLogID(ctx context.Context, name string) (uint64, error) {
+	buf := bytes.NewBuffer(nil)
+	writeLedgerPrefix(buf, name)
+	writeByte(buf, keyPrefixLog)
+	lowerBound := buf.Bytes()
+
+	buf = bytes.NewBuffer(nil)
+	writeLedgerPrefix(buf, name)
+	writeByte(buf, keyPrefixLog)
+	if _, err := buf.Write([]byte{
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	}); err != nil {
+		return 0, err
+	}
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating iterator: %w", err)
+	}
+	defer func() {
+		_ = iter.Close()
+	}()
+
+	// Seek to the last key in the range
+	if !iter.Last() {
+		// No logs found for this ledger
+		return 0, nil
+	}
+
+	// Parse the log ID from the value (the log protobuf contains the ID)
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return 0, fmt.Errorf("reading log value: %w", err)
+	}
+
+	log := &ledgerpb.Log{}
+	if err := proto.Unmarshal(value, log); err != nil {
+		return 0, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+	}
+
+	return log.Id, nil
 }
 
 // Metrics returns Pebble database metrics (implements MetricsAware)

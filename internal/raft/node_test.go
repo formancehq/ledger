@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	storepkg "github.com/formancehq/ledger-v3-poc/internal/store"
@@ -62,13 +61,13 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Should not trigger any snapshotting at this point
 	for range 7 {
-		_, _, err := node.Apply(createTransaction(), time.Second)
+		_, err := node.Apply(createTransaction(), time.Second)
 		require.NoError(t, err)
 	}
 
 	// Now should trigger the snapshotting
 	go func() {
-		_, _, _ = node.Apply(createTransaction(), time.Second)
+		_, _ = node.Apply(createTransaction(), time.Second)
 	}()
 	select {
 	case <-time.After(5 * time.Second):
@@ -95,10 +94,9 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 		require.NoError(t, err)
 
 		worldBalance := balances["world"]["USD"]
-		spew.Dump(worldBalance)
 		return worldBalance.Cmp(big.NewInt(-800)) == 0
 
-	}, 2*time.Second, 10*time.Millisecond)
+	}, 2*time.Second, 1000*time.Millisecond)
 
 }
 
@@ -207,9 +205,19 @@ func buildSpiedStore(t *testing.T, ctrl *gomock.Controller, location string) (*s
 		DoAndReturn(store.CreateSnapshot)
 
 	spiedStore.EXPECT().
-		InsertLogs(gomock.Any(), gomock.Any()).
+		AppendLogs(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
-		DoAndReturn(store.InsertLogs)
+		DoAndReturn(store.AppendLogs)
+
+	spiedStore.EXPECT().
+		GetLastAppliedIndex().
+		AnyTimes().
+		DoAndReturn(store.GetLastAppliedIndex)
+
+	spiedStore.EXPECT().
+		GetLastLogID(gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(store.GetLastLogID)
 
 	return spiedStore, store
 }

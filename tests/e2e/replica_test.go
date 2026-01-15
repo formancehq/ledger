@@ -325,13 +325,11 @@ var _ = Describe("Simple cluster", func() {
 					Context("Then restarting again the follower", func() {
 						BeforeEach(func() {
 							By("Stopping the follower", func() {
-								By("Stopping the follower", func() {
-									Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
-								})
-								<-time.After(time.Second)
-								By("Starting the follower", func() {
-									Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
-								})
+								Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
+							})
+							<-time.After(time.Second)
+							By("Starting the follower", func() {
+								Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 							})
 						})
 						It("Should restart as expected", func() {

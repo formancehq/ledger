@@ -2,7 +2,9 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -308,6 +310,10 @@ func (conn *peerConnection) loop() {
 	defer otlplogs.RecoverAndLogPanics(conn.logger)
 
 	messageID := uint64(0)
+	pingInterval := time.NewTicker(time.Second)
+	opts := proto.MarshalOptions{}
+	buf := make([]byte, 0, 1024*1024*10) // todo: make configurable
+
 	for {
 		select {
 		case ch := <-conn.closeCh:
@@ -395,10 +401,6 @@ func (conn *peerConnection) loop() {
 			}
 		}, conn.logger)
 
-		pingInterval := time.NewTicker(time.Second)
-		opts := proto.MarshalOptions{}
-		buf := make([]byte, 0, 1024*1024*10) // todo: make configurable
-
 	l:
 		for {
 			select {
@@ -419,6 +421,10 @@ func (conn *peerConnection) loop() {
 					},
 				})
 				if err != nil {
+					if errors.Is(err, io.EOF) {
+						conn.logger.Errorf("Peer connection broken, reconnect")
+						break l
+					}
 					conn.logger.Errorf("Failed to send ping to peer: %v", err)
 				}
 			case msg := <-conn.sendCh.Recv():

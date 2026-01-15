@@ -52,6 +52,8 @@ func New(dataDir string, logger logging.Logger) (*WAL, error) {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
+	logger = logger.WithFields(map[string]any{"cmd": "wal"})
+
 	s := &WAL{
 		entries:    make([]raftpb.Entry, 0),
 		logger:     logger,
@@ -142,7 +144,14 @@ func New(dataDir string, logger logging.Logger) (*WAL, error) {
 		return nil, fmt.Errorf("reading WAL entries: %w", err)
 	}
 
-	s.logger.WithFields(map[string]any{"entries": len(s.entries)}).Infof("WAL replay completed")
+	s.logger.
+		WithFields(map[string]any{
+			"entries":          len(s.entries),
+			"hardState.Term":   s.hardState.Term,
+			"hardState.Commit": s.hardState.Commit,
+			"snapshot.Index":   s.snapshot.Metadata.Index,
+			"snapshot.Term":    s.snapshot.Metadata.Term,
+		}).Infof("WAL replay completed")
 
 	return s, nil
 }
@@ -341,19 +350,19 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 }
 
 // CreateSnapshot creates a snapshot at the given index
-func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) error {
+func (s *WAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.logger.WithFields(map[string]any{"index": i}).Infof("Creating snapshot")
+	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
 
 	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
 	// Otherwise, prevent creating snapshot at same or lower index
-	isEmptyInitial := i == 0 &&
+	isEmptyInitial := index == 0 &&
 		s.snapshot.Metadata.Index == 0 &&
 		len(s.snapshot.Metadata.ConfState.Voters) == 0 &&
 		len(s.entries) == 0
-	if !isEmptyInitial && i <= s.snapshot.Metadata.Index {
+	if !isEmptyInitial && index <= s.snapshot.Metadata.Index {
 		return raft.ErrSnapOutOfDate
 	}
 
@@ -361,11 +370,11 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) error 
 	// For initial snapshot (index 0 on empty storage), use term 0
 	var term uint64
 	var err error
-	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 && i == 0 {
+	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 && index == 0 {
 		// Initial snapshot at index 0 - use term 0
 		term = 0
 	} else {
-		term, err = s.termLocked(i)
+		term, err = s.termLocked(index)
 		if err != nil {
 			return err
 		}
@@ -373,7 +382,7 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) error 
 
 	s.snapshot = raftpb.Snapshot{
 		Metadata: raftpb.SnapshotMetadata{
-			Index:     i,
+			Index:     index,
 			Term:      term,
 			ConfState: *cs,
 		},

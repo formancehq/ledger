@@ -147,7 +147,7 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for RevertedTransaction
 func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		RevertedTransactionID uint64 `json:"revertedTransactionID,omitempty"`
+		RevertedTransactionID uint64       `json:"revertedTransactionID,omitempty"`
 		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
 	}{
 		RevertedTransactionID: x.RevertedTransactionId,
@@ -363,11 +363,9 @@ func (state *LedgerState) MarshalJSON() ([]byte, error) {
 		LedgerInfo        *LedgerInfo `json:"ledgerInfo,omitempty"`
 		NextLogId         uint64      `json:"nextLogId,omitempty"`
 		NextTransactionId uint64      `json:"nextTransactionId,omitempty"`
-		LastAppliedLogId  uint64      `json:"lastAppliedLogId,omitempty"`
 	}{
 		LedgerInfo:        state.LedgerInfo,
 		NextLogId:         state.NextLogId,
 		NextTransactionId: state.NextTransactionId,
-		LastAppliedLogId:  state.LastAppliedLogId,
 	})
 }

@@ -312,7 +312,6 @@ message LedgerState {
   LedgerInfo ledger_info = 1;
   uint64 next_log_id = 2;
   uint64 next_transaction_id = 3;
-  uint64 last_applied_log_id = 4;
 }
 
 message AppendTransactionCommand {

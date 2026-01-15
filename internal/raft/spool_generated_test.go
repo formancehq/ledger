@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	raftpb "go.etcd.io/etcd/raft/v3/raftpb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,7 +40,7 @@ func (m *MockSpool) EXPECT() *MockSpoolMockRecorder {
 }
 
 // AppendCommittedEntries mocks base method.
-func (m *MockSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
+func (m *MockSpool) AppendCommittedEntries(ctx context.Context, commands ...raftpb.Entry) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range commands {
@@ -71,13 +71,13 @@ func (c *MockSpoolAppendCommittedEntriesCall) Return(arg0 error) *MockSpoolAppen
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSpoolAppendCommittedEntriesCall) Do(f func(context.Context, ...*ledgerpb.Command) error) *MockSpoolAppendCommittedEntriesCall {
+func (c *MockSpoolAppendCommittedEntriesCall) Do(f func(context.Context, ...raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSpoolAppendCommittedEntriesCall) DoAndReturn(f func(context.Context, ...*ledgerpb.Command) error) *MockSpoolAppendCommittedEntriesCall {
+func (c *MockSpoolAppendCommittedEntriesCall) DoAndReturn(f func(context.Context, ...raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -121,10 +121,10 @@ func (c *MockSpoolCloseCall) DoAndReturn(f func() error) *MockSpoolCloseCall {
 }
 
 // Next mocks base method.
-func (m *MockSpool) Next() (*ledgerpb.Command, error) {
+func (m *MockSpool) Next() (*raftpb.Entry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(*ledgerpb.Command)
+	ret0, _ := ret[0].(*raftpb.Entry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -142,19 +142,19 @@ type MockSpoolNextCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockSpoolNextCall) Return(arg0 *ledgerpb.Command, arg1 error) *MockSpoolNextCall {
+func (c *MockSpoolNextCall) Return(arg0 *raftpb.Entry, arg1 error) *MockSpoolNextCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSpoolNextCall) Do(f func() (*ledgerpb.Command, error)) *MockSpoolNextCall {
+func (c *MockSpoolNextCall) Do(f func() (*raftpb.Entry, error)) *MockSpoolNextCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSpoolNextCall) DoAndReturn(f func() (*ledgerpb.Command, error)) *MockSpoolNextCall {
+func (c *MockSpoolNextCall) DoAndReturn(f func() (*raftpb.Entry, error)) *MockSpoolNextCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

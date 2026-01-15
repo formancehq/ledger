@@ -9,14 +9,13 @@ import (
 	"io"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"google.golang.org/protobuf/proto"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -typed -package raft . Spool
 type Spool interface {
-	AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error
-	Next() (*ledgerpb.Command, error)
+	AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error
+	Next() (*raftpb.Entry, error)
 	Reset() error
 	Close() error
 }
@@ -48,14 +47,14 @@ func (s *DefaultSpool) Close() error {
 	return s.f.Close()
 }
 
-func (s *DefaultSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
+func (s *DefaultSpool) AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error {
 
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
 
-	for _, cmd := range commands {
+	for _, cmd := range entries {
 		if err := writeRecord(s.w, cmd); err != nil {
 			return err
 		}
@@ -67,14 +66,14 @@ func (s *DefaultSpool) AppendCommittedEntries(ctx context.Context, commands ...*
 	return s.f.Sync()
 }
 
-func (s *DefaultSpool) Next() (*ledgerpb.Command, error) {
+func (s *DefaultSpool) Next() (*raftpb.Entry, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
 		return nil, err
 	}
 	r := bufio.NewReaderSize(s.f, 1<<20)
 
 	off := s.readOffset
-	cmd, n, err := readRecord(r)
+	entry, n, err := readRecord(r)
 	if err == io.EOF {
 		return nil, io.EOF
 	}
@@ -84,9 +83,9 @@ func (s *DefaultSpool) Next() (*ledgerpb.Command, error) {
 		return nil, err
 	}
 
-	// todo: write somewhere to avoid replaying all commands if the rawNode is restarted
+	// todo: write somewhere to avoid replaying all commands if the node is restarted
 	s.readOffset = off + int64(n)
-	return cmd, nil
+	return entry, nil
 }
 
 // Reset efface complètement le spool (ex: une fois que tu as fini le rattrapage + replay).
@@ -103,35 +102,20 @@ func (s *DefaultSpool) Reset() error {
 	return s.f.Sync()
 }
 
-/*
-Record format (little endian):
-
-u32  magic = 0x53504F4C ('SPOL')
-u32  len(payload)
-u32  crc32(payload)
-payload = Command marshaled
-*/
-
-const (
-	recordDelimiter = 0x53504F4C
-)
-
 var (
 	ErrCorrupt = fmt.Errorf("record corrupted")
 )
 
-func writeRecord(w io.Writer, cmd *ledgerpb.Command) error {
-	payload, err := proto.Marshal(cmd)
+func writeRecord(w io.Writer, cmd raftpb.Entry) error {
+	payload, err := cmd.Marshal()
 	if err != nil {
 		return err
 	}
 	crc := crc32.ChecksumIEEE(payload)
 
 	hdr := make([]byte, 16)
-	binary.LittleEndian.PutUint32(hdr[0:4], recordDelimiter) // "SPOL"
-	binary.LittleEndian.PutUint32(hdr[4:8], uint32(len(payload)))
-	binary.LittleEndian.PutUint32(hdr[8:12], crc)
-	// hdr[12:16] reserved
+	binary.LittleEndian.PutUint32(hdr[0:4], uint32(len(payload)))
+	binary.LittleEndian.PutUint32(hdr[4:8], crc)
 
 	if _, err := w.Write(hdr); err != nil {
 		return err
@@ -140,30 +124,27 @@ func writeRecord(w io.Writer, cmd *ledgerpb.Command) error {
 	return err
 }
 
-func readRecord(r *bufio.Reader) (*ledgerpb.Command, int, error) {
-	var cmd ledgerpb.Command
+func readRecord(r *bufio.Reader) (*raftpb.Entry, int, error) {
+	var entry raftpb.Entry
 
 	hdr := make([]byte, 16)
 	if _, err := io.ReadFull(r, hdr); err != nil {
 		return nil, 0, err
 	}
-	if binary.LittleEndian.Uint32(hdr[0:4]) != 0x53504F4C {
-		return nil, 0, ErrCorrupt
-	}
-	n := int(binary.LittleEndian.Uint32(hdr[4:8]))
-	wantCRC := binary.LittleEndian.Uint32(hdr[8:12])
+	n := int(binary.LittleEndian.Uint32(hdr[:4]))
+	crc := binary.LittleEndian.Uint32(hdr[4:8])
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
 		return nil, 0, err
 	}
-	if crc32.ChecksumIEEE(payload) != wantCRC {
+	if crc32.ChecksumIEEE(payload) != crc {
 		return nil, 0, ErrCorrupt
 	}
 
-	if err := proto.Unmarshal(payload, &cmd); err != nil {
+	if err := entry.Unmarshal(payload); err != nil {
 		return nil, 0, err
 	}
 
-	return &cmd, 16 + n, nil
+	return &entry, 16 + n, nil
 }

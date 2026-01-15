@@ -148,6 +148,7 @@ func Module() fx.Option {
 			) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
+						logger.Infof("Starting GRPC server")
 						otlplogs.Go(func() {
 							if err := grpcServer.Start(); err != nil {
 								panic(err)
@@ -163,23 +164,27 @@ func Module() fx.Option {
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping GRPC server")
 						return grpcServer.Stop()
 					},
 				})
 			},
 			func(lc fx.Lifecycle, raftTransport *raft.DefaultTransport, logger logging.Logger) {
 				lc.Append(fx.Hook{
-					OnStop: raftTransport.Stop,
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping raft transport")
+						return raftTransport.Stop(ctx)
+					},
 				})
 			},
 			func(lc fx.Lifecycle, node *raft.Node, logger logging.Logger) (*raft.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						go func() {
+						otlplogs.Go(func() {
 							if err := node.Start(context.WithoutCancel(ctx)); err != nil {
 								panic(err)
 							}
-						}()
+						}, logger)
 						logger.Infof("Raft cluster started successfully")
 						return nil
 					},

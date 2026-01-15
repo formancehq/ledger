@@ -95,7 +95,7 @@ func NewNode(
 		cfg.ProposeQueueCapacity = 100
 	}
 
-	fsm := newFSM(logger, store, transport)
+	fsm, _ := newFSM(logger, store, transport)
 
 	snapshot, err := wal.Snapshot()
 	if err != nil {
@@ -371,26 +371,8 @@ func (node *Node) processReady(ctx context.Context) error {
 	}
 
 	// Apply committed entries
-	var (
-		results        []ApplyResult
-		commands       = make([]*ledgerpb.Command, 0, len(rd.CommittedEntries))
-		commandIndexes = make([]uint64, 0, len(rd.CommittedEntries))
-	)
 	for _, entry := range rd.CommittedEntries {
 		switch entry.Type {
-		case raftpb.EntryNormal:
-			if len(entry.Data) == 0 {
-				continue
-			}
-
-			// Decode the command to get its ID
-			var cmd ledgerpb.Command
-			if err := proto.Unmarshal(entry.Data, &cmd); err != nil {
-				return fmt.Errorf("unmarshaling command: %w", err)
-			}
-
-			commands = append(commands, &cmd)
-			commandIndexes = append(commandIndexes, entry.Index)
 		case raftpb.EntryConfChange:
 			var cc raftpb.ConfChange
 			if err := cc.Unmarshal(entry.Data); err != nil {
@@ -421,37 +403,27 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	// Apply bucket-specific entries to bucket FSM
 	// Measure time spent in ApplyEntries
-	var (
-		err error
-	)
-	if len(commands) > 0 {
+	if len(rd.CommittedEntries) > 0 {
 		confState := *node.confState
 		start := time.Now()
-		results, err = node.syncer.ApplyEntries(
+		results, err := node.syncer.ApplyEntries(
 			node.ctx,
-			rd.CommittedEntries[len(rd.CommittedEntries)-1].Index,
 			&confState,
-			commands...,
+			rd.CommittedEntries...,
 		)
 		if err != nil {
 			return fmt.Errorf("applying entries to FSM: %w", err)
 		}
 
 		node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
-		node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(commands)))
-		node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(commands)))
-	}
+		node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
+		node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
 
-	for i, result := range results {
-		node.NotifyApplied(commands[i].Id, result.Result, commandIndexes[i], result.Error)
-		if result.Error != nil {
-			node.logger.
-				WithFields(map[string]any{
-					"error":     result.Error,
-					"index":     commandIndexes[i],
-					"commandID": commands[i].Id,
-				}).
-				Errorf("Failed to apply entry to bucket FSM")
+		for _, result := range results {
+			node.NotifyApplied(result.CommandID, result.Result, result.Error)
+			if result.Error != nil {
+				panic(result.Error)
+			}
 		}
 	}
 
@@ -463,7 +435,7 @@ func (node *Node) processReady(ctx context.Context) error {
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (uint64, any, error) {
+func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, error) {
 
 	future := &applyFuture{
 		ch: make(chan error, 1),
@@ -473,32 +445,32 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (uint64, a
 
 	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
-		return 0, nil, fmt.Errorf("marshaling command: %w", err)
+		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	if !node.proposeCh.Push(cmdData) {
-		return 0, nil, fmt.Errorf("propose channel full")
+		return nil, fmt.Errorf("propose channel full")
 	}
 
 	select {
 	case err := <-future.ch:
 		node.futures.Delete(cmd.Id)
 		if err != nil {
-			return 0, nil, err
+			return nil, err
 		}
-		return future.index, future.result, nil
+		return future.result, nil
 	case <-ctx.Done():
 		node.futures.Delete(cmd.Id)
-		return 0, nil, ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
-func (node *Node) NotifyApplied(commandID uint64, result any, index uint64, err error) {
+func (node *Node) NotifyApplied(commandID uint64, result any, err error) {
 	v, exists := node.futures.Load(commandID)
 	if !exists {
 		return
@@ -507,7 +479,6 @@ func (node *Node) NotifyApplied(commandID uint64, result any, index uint64, err 
 
 	if !future.done {
 		future.done = true
-		future.index = index
 		future.result = result
 		future.err = err
 		// Send error (or nil) to channel
@@ -644,7 +615,7 @@ func (node *Node) IsHealthy() bool {
 func (node *Node) CreateLedger(ctx context.Context, cmd *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
 
 	// Apply the command via Raft (waits for application)
-	_, ret, err := node.Apply(NewCreateLedgerCommand(cmd), 10*time.Second)
+	ret, err := node.Apply(NewCreateLedgerCommand(cmd), 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
@@ -665,6 +636,12 @@ func (node *Node) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.L
 
 // DeleteLedger deletes a ledger via a FSM command
 func (node *Node) DeleteLedger(ctx context.Context, name string) error {
+
+	// todo: optimist check but there can be concurrent requests
+	if _, err := node.fsm.GetLedger(name); err != nil {
+		return fmt.Errorf("ledger '%s' not found: %w", name, err)
+	}
+
 	// Create the command
 	cmd, err := NewDeleteLedgerCommand(name)
 	if err != nil {
@@ -672,12 +649,11 @@ func (node *Node) DeleteLedger(ctx context.Context, name string) error {
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, _, err = node.Apply(cmd, 5*time.Second)
+	_, err = node.Apply(cmd, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
-	node.logger.WithFields(map[string]any{"name": name, "commandID": cmd.Id}).Infof("Ledger deleted via Raft")
 	return nil
 }
 
@@ -721,7 +697,7 @@ func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *led
 
 	cmd := NewCreateLogCommand(input, ledger, idempotency)
 
-	_, log, err := node.Apply(cmd, 5*time.Second) // todo: make timeouts configurable
+	log, err := node.Apply(cmd, 5*time.Second) // todo: make timeouts configurable
 	if err != nil {
 		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
@@ -762,7 +738,6 @@ func (node *Node) Stop(ctx context.Context) error {
 
 // applyFuture represents a future for an applied entry
 type applyFuture struct {
-	index  uint64
 	ch     chan error
 	result any
 	done   bool

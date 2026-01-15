@@ -329,7 +329,7 @@ The Runtime Store is responsible for persistent storage of transactions (logs) a
 **Write**:
 
 ```go
-func (s *runtimeStore) InsertLogs(ctx context.Context, logs ...*ledgerpb.Log) error
+func (s *runtimeStore) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
 ```
 
 - Persists logs (each log includes its ledger name)

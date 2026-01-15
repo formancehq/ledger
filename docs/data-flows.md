@@ -89,7 +89,7 @@ sequenceDiagram
         Controller->>RaftNode: CreateLog()
         RaftNode->>FSM: Propose CreateLogCommand (via Raft)
         FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
+        FSM->>RuntimeStore: AppendLogs() - Persist log and update balances
         Note over FSM,RuntimeStore: Logs persisted during apply
         FSM-->>RaftNode: Log
         RaftNode-->>Controller: Log
@@ -220,7 +220,7 @@ sequenceDiagram
         Leader-->>Follower: Stream Logs (gRPC stream)
         
         loop for each log
-            Follower->>RuntimeStore: InsertLogs() - Persist log and update balances
+            Follower->>RuntimeStore: AppendLogs() - Persist log and update balances
         end
     end
     
