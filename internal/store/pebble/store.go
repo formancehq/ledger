@@ -146,7 +146,7 @@ func NewStore(
 
 	return &Store{
 		db:      db,
-		logger:  logger,
+		logger:  logger.WithField("cmd", "pebble"),
 		dataDir: dataDir,
 	}, nil
 }
@@ -616,6 +616,8 @@ func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transa
 }
 
 func (s *Store) CreateSnapshot(ctx context.Context) error {
+
+	s.logger.Infof("Creating snapshot")
 
 	checkpointDir := filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", s.currentCheckPoint+1))
 	if err := os.RemoveAll(checkpointDir); err != nil {

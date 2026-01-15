@@ -124,10 +124,14 @@ func RecoverAndLogPanics(logger logging.Logger) {
 	if e := recover(); e != nil {
 		logger.Errorf("Panicked: %v", e)
 		_, _ = logger.Writer().Write(debug.Stack())
-		loggerProvider := global.GetLoggerProvider().(*sdklog.LoggerProvider)
-		if err := loggerProvider.ForceFlush(context.Background()); err != nil {
-			logger.Errorf("Failed to flush logs: %v", err)
+
+		switch loggerProvider := global.GetLoggerProvider().(type) {
+		case *sdklog.LoggerProvider:
+			if err := loggerProvider.ForceFlush(context.Background()); err != nil {
+				logger.Errorf("Failed to flush logs: %v", err)
+			}
 		}
+
 		panic(e)
 	}
 }

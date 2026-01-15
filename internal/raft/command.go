@@ -73,7 +73,7 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 }
 
 // NewCreateLogCommand creates a new command
-func NewCreateLogCommand(input *ledgerpb.CommandInput, ledger string, idempotency *ledgerpb.Idempotency) (*ledgerpb.Command, error) {
+func NewCreateLogCommand(input *ledgerpb.CommandInput, ledger string, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
 	cmdProto := &ledgerpb.CreateLogCommand{
 		Input:       input,
 		Idempotency: idempotency,
@@ -82,7 +82,7 @@ func NewCreateLogCommand(input *ledgerpb.CommandInput, ledger string, idempotenc
 
 	data, err := proto.Marshal(cmdProto)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	return &ledgerpb.Command{
@@ -90,5 +90,5 @@ func NewCreateLogCommand(input *ledgerpb.CommandInput, ledger string, idempotenc
 		Type: ledgerpb.CommandType_CreateLog,
 		Data: data,
 		Date: ledgerpb.NewTimestamp(time.Now()),
-	}, nil
+	}
 }

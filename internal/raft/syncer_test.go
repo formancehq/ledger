@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -20,7 +21,7 @@ func TestSyncerApplyEntries(t *testing.T) {
 	fsm := NewMockFSM(ctrl)
 	spool := NewMockSpool(ctrl)
 
-	wal, err := NewWAL(t.TempDir(), logging.FromContext(ctx))
+	wal, err := wal.New(t.TempDir(), logging.FromContext(ctx))
 	require.NoError(t, err)
 
 	syncer := newSyncer(
@@ -31,8 +32,6 @@ func TestSyncerApplyEntries(t *testing.T) {
 		noop.Meter{},
 		10, 10,
 	)
-	go syncer.run()
-	t.Cleanup(syncer.stop)
 
 	cmd := &ledgerpb.Command{
 		Type: ledgerpb.CommandType_CreateLedger,

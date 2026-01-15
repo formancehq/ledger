@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
@@ -19,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/store/sqlite"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -45,22 +47,32 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
 				}
 			},
+			func(cfg Config, logger logging.Logger) (*wal.WAL, error) {
+				return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"))
+			},
+			func(cfg Config) (*raft.DefaultSpool, error) {
+				return raft.NewDefaultSpool(filepath.Join(cfg.RaftConfig.WalDir, "spool"))
+			},
 			func(
 				params struct {
 					fx.In
 					Config        raft.NodeConfig
 					Logger        logging.Logger
-					Transport     *raft.GRPCTransport
+					Transport     *raft.DefaultTransport
 					MeterProvider metric.MeterProvider
-					RuntimeStore  store.Store
+					Store         store.Store
+					WAL           *wal.WAL
+					Spool         *raft.DefaultSpool
 				},
 			) (*raft.Node, error) {
 				return raft.NewNode(
 					params.Config,
 					params.Transport,
-					params.RuntimeStore,
+					params.Store,
 					params.Logger,
 					params.MeterProvider.Meter("raft.node"),
+					params.Spool,
+					params.WAL,
 				)
 			},
 			func(cfg Config) raft.NodeConfig {
@@ -109,12 +121,17 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
-			func(lc fx.Lifecycle, runtime store.Store) {
+			func(lc fx.Lifecycle, runtime store.Store, wal *wal.WAL) {
+				lc.Append(fx.Hook{
+					OnStop: func(ctx context.Context) error {
+						return wal.Close()
+					},
+				})
 				lc.Append(fx.Hook{
 					OnStop: runtime.Close,
 				})
 			},
-			func(grpcServer *grpcserver.Server, transport *raft.GRPCTransport) error {
+			func(grpcServer *grpcserver.Server, transport *raft.DefaultTransport) error {
 				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
 				return nil
 			},
@@ -122,7 +139,13 @@ func Module() fx.Option {
 				RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
 				return nil
 			},
-			func(lc fx.Lifecycle, grpcServer *grpcserver.Server, logger logging.Logger) {
+			func(
+				lc fx.Lifecycle,
+				grpcServer *grpcserver.Server,
+				logger logging.Logger,
+				defaultTransport *raft.DefaultTransport,
+				cfg raft.NodeConfig,
+			) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						otlplogs.Go(func() {
@@ -130,6 +153,13 @@ func Module() fx.Option {
 								panic(err)
 							}
 						}, logger)
+
+						for _, peerEntry := range cfg.Peers {
+							logger := logger.WithFields(map[string]any{"peer": peerEntry})
+							logger.Debugf("Adding peer to transport")
+							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
+						}
+
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
@@ -137,23 +167,25 @@ func Module() fx.Option {
 					},
 				})
 			},
-			func(lc fx.Lifecycle, raftTransport *raft.GRPCTransport, logger logging.Logger) {
+			func(lc fx.Lifecycle, raftTransport *raft.DefaultTransport, logger logging.Logger) {
 				lc.Append(fx.Hook{
 					OnStop: raftTransport.Stop,
 				})
 			},
-			func(lc fx.Lifecycle, systemNode *raft.Node, logger logging.Logger) (*raft.Node, error) {
+			func(lc fx.Lifecycle, node *raft.Node, logger logging.Logger) (*raft.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						if err := systemNode.Start(ctx); err != nil {
-							return fmt.Errorf("starting raft cluster: %w", err)
-						}
+						go func() {
+							if err := node.Start(context.WithoutCancel(ctx)); err != nil {
+								panic(err)
+							}
+						}()
 						logger.Infof("Raft cluster started successfully")
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Shutting down raft cluster")
-						if err := systemNode.Stop(ctx); err != nil {
+						if err := node.Stop(ctx); err != nil {
 							return fmt.Errorf("shutting down raft cluster: %w", err)
 						}
 						logger.Infof("Raft cluster stopped successfully")
@@ -161,7 +193,7 @@ func Module() fx.Option {
 					},
 				})
 
-				return systemNode, nil
+				return node, nil
 			},
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(httpserver.NewHook(handler,

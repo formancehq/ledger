@@ -27,10 +27,10 @@ type defaultFSM struct {
 	state     *ledgerpb.State // FSM state
 	logger    logging.Logger
 	store     Store
-	transport *GRPCTransport
+	transport Transport
 }
 
-func newFSM(logger logging.Logger, store Store, transport *GRPCTransport) *defaultFSM {
+func newFSM(logger logging.Logger, store Store, transport Transport) *defaultFSM {
 	return &defaultFSM{
 		state: &ledgerpb.State{
 			Ledgers: make(map[string]*ledgerpb.LedgerState),

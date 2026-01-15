@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -package raft . Spool
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -typed -package raft . Spool
 type Spool interface {
 	AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error
 	Next() (*ledgerpb.Command, error)
@@ -21,7 +21,7 @@ type Spool interface {
 	Close() error
 }
 
-type fileSpool struct {
+type DefaultSpool struct {
 	f    *os.File
 	w    *bufio.Writer
 	path string
@@ -29,26 +29,26 @@ type fileSpool struct {
 	readOffset int64
 }
 
-func newFileSpool(path string) (*fileSpool, error) {
+func NewDefaultSpool(path string) (*DefaultSpool, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	return &fileSpool{
+	return &DefaultSpool{
 		f:    f,
 		w:    bufio.NewWriterSize(f, 1<<20),
 		path: path,
 	}, nil
 }
 
-func (s *fileSpool) Close() error {
+func (s *DefaultSpool) Close() error {
 	if s.w != nil {
 		_ = s.w.Flush()
 	}
 	return s.f.Close()
 }
 
-func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
+func (s *DefaultSpool) AppendCommittedEntries(ctx context.Context, commands ...*ledgerpb.Command) error {
 
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
@@ -67,7 +67,7 @@ func (s *fileSpool) AppendCommittedEntries(ctx context.Context, commands ...*led
 	return s.f.Sync()
 }
 
-func (s *fileSpool) Next() (*ledgerpb.Command, error) {
+func (s *DefaultSpool) Next() (*ledgerpb.Command, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (s *fileSpool) Next() (*ledgerpb.Command, error) {
 }
 
 // Reset efface complètement le spool (ex: une fois que tu as fini le rattrapage + replay).
-func (s *fileSpool) Reset() error {
+func (s *DefaultSpool) Reset() error {
 
 	if err := s.f.Truncate(0); err != nil {
 		return err

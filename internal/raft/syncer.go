@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -12,7 +14,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source syncer.go -destination syncer_generated_test.go -package raft . FSM
@@ -46,220 +47,153 @@ type syncerStatus int
 const (
 	syncerStatusNormal syncerStatus = iota
 	syncerStatusSyncing
-	syncerStatusSnapshotting
 )
 
 type syncer struct {
+	mu                      sync.Mutex
 	spool                   Spool
 	fsm                     FSM
 	logger                  logging.Logger
 	createSnapshotHistogram metric.Float64Histogram
 
-	status            syncerStatus
-	commands          chan any
-	wal               *WAL
-	stopCh            chan chan struct{}
+	status            atomic.Value
+	wal               WAL
 	snapshotThreshold uint64
 	compactionMargin  uint64
-}
-
-func (s *syncer) run() {
-
-	defer otlplogs.RecoverAndLogPanics(s.logger)
-
-	taskExecutor := newSingleTaskExecutor(s.logger, s.commands)
-	for {
-		select {
-		case stop := <-s.stopCh:
-			taskExecutor.interrupt()
-			close(stop)
-			return
-		case cmd := <-s.commands:
-			switch cmd := cmd.(type) {
-			case createSnapshotTerminatedCommand:
-				s.status = syncerStatusNormal
-			case syncSnapshotCommand:
-				switch s.status {
-				case syncerStatusNormal:
-				case syncerStatusSnapshotting:
-					s.logger.Infof("Snapshotting in progress, interrupting")
-					taskExecutor.interrupt()
-				case syncerStatusSyncing:
-					taskExecutor.interrupt()
-				}
-				s.status = syncerStatusSyncing
-
-				taskExecutor.run(context.Background(), func(ctx context.Context) (any, error) {
-					err := s.fsm.SyncSnapshot(ctx, cmd.leader, cmd.snapshot)
-					if err != nil {
-						return nil, err
-					}
-					return unspoolCommand{cmd}, nil
-				})
-
-			case unspoolCommand:
-				s.logger.Infof("Unspooling...")
-				spooledCmd, err := s.spool.Next()
-				if err != nil && !errors.Is(err, io.EOF) {
-					panic(err)
-				}
-				if errors.Is(err, io.EOF) {
-					s.logger.Infof("No more entries in spool, resetting")
-					if err := s.spool.Reset(); err != nil {
-						panic(err)
-					}
-					s.status = syncerStatusNormal
-					continue
-				}
-
-				_, err = s.fsm.ApplyEntries(context.Background(), spooledCmd)
-				if err != nil && !errors.Is(err, context.Canceled) {
-					panic(err)
-				}
-				if errors.Is(err, context.Canceled) {
-					continue
-				}
-
-				otlplogs.Go(func() {
-					s.commands <- cmd
-				}, s.logger)
-
-			case applyEntriesCommand:
-				switch s.status {
-				case syncerStatusNormal, syncerStatusSnapshotting:
-					entries, err := s.fsm.ApplyEntries(context.Background(), cmd.commands...)
-					if err != nil {
-						panic(err)
-					}
-					cmd.resultCh <- entries
-
-					// Check if we need to create a snapshot
-					lastSnapshot, err := s.wal.Snapshot()
-					if err != nil {
-						panic(fmt.Errorf("getting last snapshot: %w", err))
-					}
-
-					if cmd.appliedIndex-lastSnapshot.Metadata.Index > s.snapshotThreshold && s.status == syncerStatusNormal {
-						s.logger.WithFields(map[string]any{
-							"applied":           cmd.appliedIndex,
-							"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-							"snapshotThreshold": s.snapshotThreshold,
-							"compactionMargin":  s.compactionMargin,
-						}).Infof("Creating new snapshot")
-						s.status = syncerStatusSnapshotting
-
-						taskExecutor.run(
-							context.Background(),
-							func(ctx context.Context) (any, error) {
-								startTime := time.Now()
-								data, err := s.fsm.CreateSnapshot(ctx)
-								if err == nil {
-									err = s.wal.CreateSnapshot(cmd.appliedIndex, cmd.confState, data)
-									if err == nil {
-										duration := time.Since(startTime)
-										s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
-									}
-								}
-
-								// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-								err = s.wal.Compact(cmd.appliedIndex - s.compactionMargin)
-								if err != nil {
-									panic("Compacting storage failed: " + err.Error())
-								}
-
-								return createSnapshotTerminatedCommand{}, err
-							},
-						)
-					}
-				case syncerStatusSyncing:
-					s.logger.Infof("Spool committed entries")
-					err := s.spool.AppendCommittedEntries(context.Background(), cmd.commands...)
-					if err != nil {
-						cmd.errCh <- err
-						continue
-					}
-					cmd.resultCh <- make([]ApplyResult, len(cmd.commands))
-				}
-			default:
-				panic("unreachable")
-			}
-		}
-	}
+	taskExecutor      *singleTaskExecutor
 }
 
 func (s *syncer) ApplyEntries(ctx context.Context, index uint64, confState *raftpb.ConfState, commands ...*ledgerpb.Command) ([]ApplyResult, error) {
-	cmd := applyEntriesCommand{
-		commands:     commands,
-		resultCh:     make(chan []ApplyResult, 1),
-		errCh:        make(chan error, 1),
-		appliedIndex: index,
-		confState:    confState,
-	}
 
-	select {
-	case s.commands <- cmd:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	switch s.status.Load() {
+	case syncerStatusNormal:
+		entries, err := s.fsm.ApplyEntries(ctx, commands...)
+		if err != nil {
+			panic(err)
+		}
 
-	select {
-	case err := <-cmd.errCh:
-		return nil, err
-	case results := <-cmd.resultCh:
-		return results, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		lastSnapshot, err := s.wal.Snapshot()
+		if err != nil {
+			panic(fmt.Errorf("getting last snapshot: %w", err))
+		}
+
+		if index-lastSnapshot.Metadata.Index >= s.snapshotThreshold {
+			s.logger.WithFields(map[string]any{
+				"applied":           index,
+				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+				"snapshotThreshold": s.snapshotThreshold,
+				"compactionMargin":  s.compactionMargin,
+			}).Infof("Creating new snapshot")
+
+			startTime := time.Now()
+			data, err := s.fsm.CreateSnapshot(ctx)
+			if err != nil {
+				return nil, err
+			}
+			err = s.wal.CreateSnapshot(index, confState, data)
+			if err != nil {
+				return nil, err
+			}
+			duration := time.Since(startTime)
+			s.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+
+			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+			err = s.wal.Compact(index - s.compactionMargin)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return entries, nil
+	case syncerStatusSyncing:
+		s.logger.Infof("Spool committed entries")
+		s.mu.Lock()
+		err := s.spool.AppendCommittedEntries(ctx, commands...)
+		s.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		return make([]ApplyResult, len(commands)), nil
+	default:
+		panic("unreachable")
 	}
 }
 
 func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
-	cmd := syncSnapshotCommand{
-		leader:   leader,
-		snapshot: snapshot,
+	status := s.status.Load()
+	if status == syncerStatusSyncing {
+		s.taskExecutor.interrupt()
 	}
+	s.status.Store(syncerStatusSyncing)
 
-	select {
-	case s.commands <- cmd:
+	s.taskExecutor.run(ctx, func(ctx context.Context) error {
+		err := s.fsm.SyncSnapshot(ctx, leader, snapshot)
+		if err != nil {
+			return err
+		}
+
+		for {
+			s.logger.Infof("Unspooling...")
+
+			s.mu.Lock()
+			spooledCmd, err := s.spool.Next()
+			s.mu.Unlock()
+
+			if err != nil && !errors.Is(err, io.EOF) {
+				panic(err)
+			}
+			if errors.Is(err, io.EOF) {
+				s.logger.Infof("No more entries in spool, resetting")
+				s.mu.Lock()
+				err := s.spool.Reset()
+				s.status.Store(syncerStatusNormal)
+				s.mu.Unlock()
+				if err != nil {
+					return err
+				}
+				break
+			}
+
+			_, err = s.fsm.ApplyEntries(context.Background(), spooledCmd)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				panic(err)
+			}
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
+		}
+
 		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	})
+
+	return nil
 }
 
 func (s *syncer) IsSyncing() bool {
-	return s.status == syncerStatusSyncing
-}
-
-func (s *syncer) stop() {
-	ch := make(chan struct{})
-	s.stopCh <- ch
-	<-ch
+	return s.status.Load() == syncerStatusSyncing
 }
 
 func newSyncer(
 	spool Spool,
 	fsm FSM,
 	logger logging.Logger,
-	wal *WAL,
+	wal WAL,
 	meter metric.Meter,
 	snapshotThreshold, compactionMargin uint64,
 ) *syncer {
+	initialStatus := atomic.Value{}
+	initialStatus.Store(syncerStatusNormal)
 	s := &syncer{
 		snapshotThreshold: snapshotThreshold,
 		compactionMargin:  compactionMargin,
 		spool:             spool,
 		fsm:               fsm,
 		logger:            logger,
-		status:            0,
-		commands:          make(chan any, 1),
+		status:            initialStatus,
 		wal:               wal,
-		stopCh:            make(chan chan struct{}, 1),
+		taskExecutor:      newSingleTaskExecutor(logger),
 	}
 
-	// Create histogram metric for CreateSnapshot duration
-	if meter == nil {
-		meter = noop.Meter{}
-	}
 	histogram, err := meter.Float64Histogram("raft.syncer.create_snapshot.duration",
 		metric.WithDescription("Time spent creating snapshot in syncer"),
 		metric.WithUnit("ms"),
@@ -282,14 +216,13 @@ func newSyncer(
 }
 
 type singleTaskExecutor struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	terminated  chan struct{}
-	nextChannel chan any
-	logger      logging.Logger
+	ctx        context.Context
+	cancel     context.CancelFunc
+	terminated chan struct{}
+	logger     logging.Logger
 }
 
-func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Context) (any, error)) {
+func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Context) error) {
 	select {
 	case <-t.terminated:
 		t.terminated = make(chan struct{})
@@ -301,15 +234,13 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 				close(t.terminated)
 			}()
 
-			next, err := fn(t.ctx)
+			err := fn(t.ctx)
 			if errors.Is(err, context.Canceled) {
 				return
 			}
 			if err != nil {
 				panic(err)
 			}
-
-			t.nextChannel <- next
 		}, t.logger)
 	default:
 		panic("already running")
@@ -322,20 +253,14 @@ func (t *singleTaskExecutor) interrupt() {
 	default:
 		t.cancel()
 		<-t.terminated
-		select {
-		case <-t.nextChannel:
-			// Drain channel
-		default:
-		}
 	}
 }
 
-func newSingleTaskExecutor(logger logging.Logger, nextChannel chan any) *singleTaskExecutor {
+func newSingleTaskExecutor(logger logging.Logger) *singleTaskExecutor {
 	terminatedChan := make(chan struct{})
 	close(terminatedChan)
 	return &singleTaskExecutor{
-		terminated:  terminatedChan,
-		nextChannel: nextChannel,
-		logger:      logger,
+		terminated: terminatedChan,
+		logger:     logger,
 	}
 }

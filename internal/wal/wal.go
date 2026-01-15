@@ -1,4 +1,4 @@
-package raft
+package wal
 
 import (
 	"encoding/binary"
@@ -45,8 +45,8 @@ type WAL struct {
 	etcdWalDir string
 }
 
-// NewWAL creates a new WAL instance
-func NewWAL(dataDir string, logger logging.Logger) (*WAL, error) {
+// New creates a new WAL instance
+func New(dataDir string, logger logging.Logger) (*WAL, error) {
 
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -83,7 +83,12 @@ func NewWAL(dataDir string, logger logging.Logger) (*WAL, error) {
 			if err := unmarshalStateFile(data, &s.snapshot); err != nil {
 				return nil, err
 			}
-
+			s.logger.
+				WithFields(map[string]any{
+					"index": s.snapshot.Metadata.Index,
+					"term":  s.snapshot.Metadata.Term,
+				}).
+				Infof("Loaded snapshot from disk")
 			snap = walpb.Snapshot{
 				Index: s.snapshot.Metadata.Index,
 				Term:  s.snapshot.Metadata.Term,
@@ -340,6 +345,8 @@ func (s *WAL) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.logger.WithFields(map[string]any{"index": i}).Infof("Creating snapshot")
+
 	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
 	// Otherwise, prevent creating snapshot at same or lower index
 	isEmptyInitial := i == 0 &&
@@ -472,13 +479,7 @@ func (s *WAL) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.wal != nil {
-		if err := s.wal.Close(); err != nil {
-			return fmt.Errorf("closing WAL: %w", err)
-		}
-		s.wal = nil
-	}
-	return nil
+	return s.wal.Close()
 }
 
 func (s *WAL) firstIndexLocked() (uint64, error) {

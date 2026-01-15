@@ -18,9 +18,9 @@ import (
 	"google.golang.org/protobuf/protoadapt"
 )
 
-// GRPCTransport handles network communication between Raft nodes using gRPC
+// DefaultTransport handles network communication between Raft nodes using gRPC
 // It wraps GRPCClientPool and manages Raft-specific message routing and channels
-type GRPCTransport struct {
+type DefaultTransport struct {
 	UnimplementedRaftTransportServiceServer
 	connectionPool *transport.ConnectionPool
 
@@ -50,7 +50,7 @@ func NewTransport(
 	connectionPool *transport.ConnectionPool,
 	meterProvider metric.MeterProvider,
 	config TransportConfig,
-) *GRPCTransport {
+) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
 	createQueue := func(capacity, priority int) Queue[raftpb.Message] {
@@ -68,7 +68,7 @@ func NewTransport(
 		)
 	}
 
-	return &GRPCTransport{
+	return &DefaultTransport{
 		connectionPool: connectionPool,
 		recvCh: NewPriorityQueue[raftpb.Message](
 			RaftMessagePriority,
@@ -90,7 +90,7 @@ func NewTransport(
 }
 
 // Stop stops the transport
-func (t *GRPCTransport) Stop(ctx context.Context) error {
+func (t *DefaultTransport) Stop(ctx context.Context) error {
 	t.logger.Infof("Stopping raft transport")
 	for _, peerConnection := range t.peers {
 		if err := peerConnection.stop(ctx); err != nil {
@@ -108,7 +108,7 @@ func (t *GRPCTransport) Stop(ctx context.Context) error {
 }
 
 // AddPeer adds a peer to the transport
-func (t *GRPCTransport) AddPeer(id uint64, addr string) {
+func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	if err := t.connectionPool.AddPeer(id, addr); err != nil {
 		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
 		return
@@ -172,7 +172,7 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 }
 
 // Send sends a message to a peer
-func (t *GRPCTransport) Send(msg raftpb.Message) {
+func (t *DefaultTransport) Send(msg raftpb.Message) {
 	peer, exists := t.peers[msg.To]
 
 	if exists {
@@ -195,30 +195,30 @@ func (t *GRPCTransport) Send(msg raftpb.Message) {
 }
 
 // Recv returns the channel for receiving messages
-func (t *GRPCTransport) Recv() <-chan raftpb.Message {
+func (t *DefaultTransport) Recv() <-chan raftpb.Message {
 	return t.recvCh.Recv()
 }
 
 // Unreachable returns the channel for reporting unreachable peers
-func (t *GRPCTransport) Unreachable() <-chan uint64 {
+func (t *DefaultTransport) Unreachable() <-chan uint64 {
 	return t.unreachableCh.Recv()
 }
 
 // GetPeerConnection returns the gRPC connection for a specific peer, if it exists
 // This allows reusing existing connections for service calls instead of creating new ones
-func (t *GRPCTransport) GetPeerConnection(peerID uint64) *grpc.ClientConn {
+func (t *DefaultTransport) GetPeerConnection(peerID uint64) *grpc.ClientConn {
 	return t.connectionPool.GetConnection(peerID)
 }
 
 // GetPeerAddress returns the address for a specific peer, if it exists
-func (t *GRPCTransport) GetPeerAddress(peerID uint64) string {
+func (t *DefaultTransport) GetPeerAddress(peerID uint64) string {
 	return t.connectionPool.GetPeerAddress(peerID)
 }
 
 // HandleStreamMessages handles client streaming gRPC connection for receiving messages
 // This maintains a persistent connection to avoid frequent reconnections
 // The server receives all messages and sends a single response at the end
-func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error {
+func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error {
 
 	// Receive all messages from the stream
 	for {
@@ -284,12 +284,12 @@ func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessa
 }
 
 // RegisterRaftTransportService registers the RaftTransportService on the given gRPC server
-func RegisterRaftTransportService(server *grpc.Server, transport *GRPCTransport) {
+func RegisterRaftTransportService(server *grpc.Server, transport *DefaultTransport) {
 	transport.RegisterRaftService(server)
 }
 
 // RegisterRaftService registers the RaftTransportService on the given gRPC server
-func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
+func (t *DefaultTransport) RegisterRaftService(server *grpc.Server) {
 	RegisterRaftTransportServiceServer(server, t)
 }
 

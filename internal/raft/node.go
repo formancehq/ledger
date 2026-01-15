@@ -4,39 +4,53 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
+
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
+type WAL interface {
+	raft.Storage
+	CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte) error
+	Compact(u uint64) error
+	Append(state raftpb.HardState, entries []raftpb.Entry) error
+	ApplySnapshot(snapshot raftpb.Snapshot) error
+}
+
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . Transport
+type Transport interface {
+	GetPeerConnection(leader uint64) *grpc.ClientConn
+	Unreachable() <-chan uint64
+	Recv() <-chan raftpb.Message
+	Send(msg raftpb.Message)
+}
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
 	rawNode       *raft.RawNode
 	logger        logging.Logger
-	mu            sync.RWMutex
 	syncer        *syncer
 	fsm           *defaultFSM
-	wal           *WAL
-	transport     *GRPCTransport
+	wal           WAL
+	transport     Transport
 	config        NodeConfig
 	stopped       chan struct{}
 	ctx           context.Context
 	cancel        func()
 	proposeCh     Queue[[]byte]
 	confState     *raftpb.ConfState
-	futures       map[uint64]*applyFuture // Map of command ID -> future
+	futures       sync.Map
 	lastSoftState *raft.SoftState
 
 	meter                          metric.Meter
@@ -47,16 +61,18 @@ type Node struct {
 	appendEntriesHistogram         metric.Int64Histogram
 	leadMonitorHistogram           metric.Int64Gauge
 	defaultLedger                  *service.DefaultController
-	runtimeStore                   store.Store
+	store                          store.Store
 }
 
 // NewNode creates a new wrapper around a RawNode
 func NewNode(
 	cfg NodeConfig,
-	transport *GRPCTransport,
-	runtimeStore store.Store,
+	transport Transport,
+	store store.Store,
 	logger logging.Logger,
 	meter metric.Meter,
+	spool Spool,
+	wal WAL,
 ) (*Node, error) {
 
 	// Set defaults if not configured
@@ -79,21 +95,7 @@ func NewNode(
 		cfg.ProposeQueueCapacity = 100
 	}
 
-	if err := os.MkdirAll(cfg.WalDir, 0755); err != nil {
-		return nil, fmt.Errorf("creating wal directory: %w", err)
-	}
-
-	wal, err := NewWAL(filepath.Join(cfg.WalDir, "wal"), logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating storage: %w", err)
-	}
-
-	spool, err := newFileSpool(filepath.Join(cfg.WalDir, "spool"))
-	if err != nil {
-		return nil, fmt.Errorf("creating spool: %w", err)
-	}
-
-	fsm := newFSM(logger, runtimeStore, transport)
+	fsm := newFSM(logger, store, transport)
 
 	snapshot, err := wal.Snapshot()
 	if err != nil {
@@ -124,6 +126,7 @@ func NewNode(
 			if err := fsm.RestoreSnapshot(snapshot); err != nil {
 				panic(err)
 			}
+
 			logger.Infof("Snapshot restored successfully")
 		} else {
 			logger.Infof("No snapshot found, starting with empty FSM")
@@ -133,9 +136,8 @@ func NewNode(
 	}
 
 	node := &Node{
-		logger:  logger,
-		meter:   meter,
-		futures: make(map[uint64]*applyFuture),
+		logger: logger,
+		meter:  meter,
 		syncer: newSyncer(
 			spool,
 			fsm,
@@ -154,18 +156,11 @@ func NewNode(
 			WithLogger[[]byte](logger),
 			WithMeter[[]byte](meter),
 		),
-		runtimeStore: runtimeStore,
-		fsm:          fsm,
+		store: store,
+		fsm:   fsm,
 	}
-	go node.syncer.run()
 
-	node.defaultLedger = service.NewDefaultController(node, runtimeStore, logger)
-
-	for _, peerEntry := range cfg.Peers {
-		logger := logger.WithFields(map[string]any{"peer": peerEntry})
-		logger.Debugf("Adding peer to transport")
-		transport.AddPeer(peerEntry.ID, peerEntry.Address)
-	}
+	node.defaultLedger = service.NewDefaultController(node, store, logger)
 
 	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
 		metric.WithDescription("Time spent applying entries to FSM"),
@@ -227,11 +222,9 @@ func NewNode(
 }
 
 func (node *Node) Start(ctx context.Context) error {
-	node.mu.Lock()
-	defer node.mu.Unlock()
 
 	node.stopped = make(chan struct{})
-	node.ctx, node.cancel = context.WithCancel(context.Background())
+	node.ctx, node.cancel = context.WithCancel(ctx)
 
 	raftConfig := &raft.Config{
 		ID: node.config.NodeID,
@@ -255,25 +248,12 @@ func (node *Node) Start(ctx context.Context) error {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
 
-	go node.readyLoop()
-
-	return nil
-}
-
-// readyLoop processes Ready structures from etcd/raft for this bucket group with a specific message channel
-func (node *Node) readyLoop() {
-
-	defer otlplogs.RecoverAndLogPanics(node.logger)
-
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
 	}
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
-	defer func() {
-		_ = node.wal.Close()
-	}()
 
 	_, initialConfState, err := node.wal.InitialState()
 	if err != nil {
@@ -294,7 +274,7 @@ func (node *Node) readyLoop() {
 		case <-node.ctx.Done():
 			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			close(node.stopped)
-			return
+			return nil
 		case nodeID := <-node.transport.Unreachable():
 			node.logger.Errorf("Node %x is unreachable", nodeID)
 			node.rawNode.ReportUnreachable(nodeID)
@@ -321,6 +301,8 @@ func (node *Node) readyLoop() {
 			}
 		}
 	}
+
+	return nil
 }
 
 func (node *Node) processReady(ctx context.Context) error {
@@ -483,45 +465,33 @@ func (node *Node) processReady(ctx context.Context) error {
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (uint64, any, error) {
 
-	// Create a future for this application using command ID as key
 	future := &applyFuture{
-		index: 0, // Will be set when entry is applied
-		ch:    make(chan error, 1),
+		ch: make(chan error, 1),
 	}
 
-	// Register the future using command ID
-	node.mu.Lock()
-	node.futures[cmd.Id] = future
-	node.mu.Unlock()
+	node.futures.Store(cmd.Id, future)
 
 	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
 		return 0, nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
-	// Wait for the future to complete with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Propose the command
 	if !node.proposeCh.Push(cmdData) {
 		return 0, nil, fmt.Errorf("propose channel full")
 	}
 
 	select {
 	case err := <-future.ch:
-		node.mu.Lock()
-		delete(node.futures, cmd.Id)
-		node.mu.Unlock()
+		node.futures.Delete(cmd.Id)
 		if err != nil {
 			return 0, nil, err
 		}
 		return future.index, future.result, nil
 	case <-ctx.Done():
-		// Timeout - clean up the future
-		node.mu.Lock()
-		delete(node.futures, cmd.Id)
-		node.mu.Unlock()
+		node.futures.Delete(cmd.Id)
 		return 0, nil, ctx.Err()
 	}
 }
@@ -529,15 +499,12 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (uint64, a
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
 func (node *Node) NotifyApplied(commandID uint64, result any, index uint64, err error) {
-	node.mu.RLock()
-	future, exists := node.futures[commandID]
-	node.mu.RUnlock()
-
+	v, exists := node.futures.Load(commandID)
 	if !exists {
 		return
 	}
+	future := v.(*applyFuture)
 
-	future.mu.Lock()
 	if !future.done {
 		future.done = true
 		future.index = index
@@ -550,20 +517,20 @@ func (node *Node) NotifyApplied(commandID uint64, result any, index uint64, err 
 			// Channel already closed or error already sent
 		}
 	}
-	future.mu.Unlock()
-}
-
-// Status returns the current status of the rawNode
-func (node *Node) Status() raft.Status {
-	return node.rawNode.Status()
 }
 
 func (node *Node) IsLeader() bool {
+	if node.rawNode == nil {
+		return false
+	}
 	status := node.rawNode.Status()
 	return status.Lead == status.ID
 }
 
 func (node *Node) GetLeader() uint64 {
+	if node.rawNode == nil {
+		return 0
+	}
 	return node.rawNode.Status().Lead
 }
 
@@ -747,19 +714,14 @@ func (node *Node) Export(ctx context.Context, ledger string, w service.ExportWri
 }
 
 func (node *Node) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
-	return node.runtimeStore.GetAllLogs(ctx, ledger, from, to)
+	return node.store.GetAllLogs(ctx, ledger, from, to)
 }
 
 func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 
-	// Create a command to insert the log
-	cmd, err := NewCreateLogCommand(input, ledger, idempotency)
-	if err != nil {
-		return nil, fmt.Errorf("creating insert log command: %w", err)
-	}
+	cmd := NewCreateLogCommand(input, ledger, idempotency)
 
-	// Apply the command via Raft (waits for application)
-	_, log, err := node.Apply(cmd, 5*time.Second)
+	_, log, err := node.Apply(cmd, 5*time.Second) // todo: make timeouts configurable
 	if err != nil {
 		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
@@ -773,9 +735,7 @@ func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *led
 
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
-	node.mu.Lock()
 	isStarted := node.stopped != nil
-	node.mu.Unlock()
 	if !isStarted {
 		node.logger.Infof("Node is not started, skipping stop")
 		return nil
@@ -794,7 +754,6 @@ func (node *Node) Stop(ctx context.Context) error {
 	}
 
 	node.logger.Infof("Stopping syncer...")
-	node.syncer.stop()
 
 	// todo: close channels
 
@@ -806,7 +765,6 @@ type applyFuture struct {
 	index  uint64
 	ch     chan error
 	result any
-	mu     sync.Mutex
 	done   bool
 	err    error
 }
