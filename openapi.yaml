@@ -1483,6 +1483,9 @@ paths:
       summary: Insert a schema for a ledger
       operationId: v2InsertSchema
       x-speakeasy-name-override: InsertSchema
+      x-speakeasy-errors:
+        statusCodes:
+          - "default"
       tags:
         - ledger.v2
       parameters:
