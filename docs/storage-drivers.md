@@ -149,6 +149,125 @@ CREATE TABLE last_applied_index (
 data/runtime.db
 ```
 
+### ⚠️ Performance Impact of Random UUIDs as Account Addresses
+
+When inserting accounts with UUID v4 (or any random identifier) as account addresses, SQLite exhibits significant performance degradation. This section explains why and provides recommendations.
+
+#### The Problem
+
+SQLite uses B-tree data structures for both tables and indexes. The `balances` and `account_metadata` tables use `WITHOUT ROWID`, meaning they are organized as **clustered B-trees** keyed directly by the primary key (which includes the account address).
+
+When inserting accounts with **random UUIDs**:
+
+```
+INSERT account: a3f2e8d1-7b4c-4e9a-8f6d-2c1b0a9e8d7f  → goes to middle of B-tree
+INSERT account: f8c1d9e2-3a6b-4c5d-9e8f-1a2b3c4d5e6f  → goes to another random position
+INSERT account: 1b2c3d4e-5f6a-7b8c-9d0e-f1a2b3c4d5e6  → goes near the beginning
+...
+```
+
+Each insert lands at a **random position** in the B-tree, causing:
+
+1. **Page Splits**: When a B-tree page is full and a new key must be inserted in the middle, SQLite splits the page into two. With random inserts, this happens frequently and unpredictably.
+
+2. **Write Amplification**: A single logical insert may require:
+   - Reading multiple pages to find the insertion point
+   - Splitting one or more pages
+   - Updating parent pages up to the root
+   - Writing all modified pages to the WAL
+
+3. **Poor Cache Utilization**: Random access patterns defeat caching strategies. Pages loaded into the buffer pool are evicted before they can be reused, resulting in constant disk I/O.
+
+4. **Index Fragmentation**: The B-tree becomes fragmented over time, with pages at low fill factors (around 50% after many splits) instead of the optimal ~90%.
+
+#### Performance Comparison
+
+| Insert Pattern | Pages Read/Insert | Pages Written/Insert | Relative Speed |
+|----------------|-------------------|---------------------|----------------|
+| Sequential (incrementing IDs) | ~1 | ~1 | ⭐⭐⭐⭐⭐ (baseline) |
+| Random (UUID v4) | 3-10+ | 2-5+ | ⭐ (5-20x slower) |
+
+For a table with 1 million accounts:
+- **Sequential inserts**: B-tree depth ~3-4, mostly appending to the rightmost leaf
+- **Random inserts**: Every insert traverses the full tree depth, potentially causing splits at multiple levels
+
+#### Why UUID v4 is Particularly Bad
+
+UUID v4 is designed to be **cryptographically random**:
+
+```
+xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        ^    ^
+        |    └── version 4 indicator
+        └── variant bits
+```
+
+This randomness, while excellent for uniqueness and security, is the **worst case** for B-tree insertion performance.
+
+#### Recommendations
+
+1. **Use Sequential or Time-Based Identifiers When Possible**
+   
+   If you control account address generation:
+   
+   ```
+   # UUID v7 (time-ordered) - Much better B-tree performance
+   018f6e8a-1234-7abc-8def-123456789abc
+   018f6e8a-1235-7abc-8def-123456789abc
+   018f6e8a-1236-7abc-8def-123456789abc
+   
+   # Or prefixed sequential IDs
+   user:000001
+   user:000002
+   user:000003
+   ```
+
+2. **Use Pebble for Random Insert Workloads**
+   
+   Pebble's LSM-tree architecture handles random inserts much better than B-trees:
+   - Writes go to an in-memory memtable (always fast)
+   - Background compaction sorts and organizes data
+   - No page splits during writes
+   
+   ```bash
+   ./ledger serve --storage-type pebble
+   ```
+
+3. **Batch Inserts When Possible**
+   
+   If you must use random UUIDs with SQLite, batch inserts reduce overhead:
+   ```
+   # Instead of 1000 individual transactions
+   # Use single transaction with 1000 inserts
+   ```
+
+4. **Pre-sort Bulk Imports**
+   
+   When loading many accounts, sort by address first:
+   ```bash
+   sort accounts.csv | import-tool
+   ```
+
+#### Technical Details
+
+The `WITHOUT ROWID` optimization (used for all our tables) makes this effect more pronounced:
+
+```sql
+CREATE TABLE balances (
+    ledger TEXT NOT NULL,
+    account TEXT NOT NULL,    -- ← Random UUID here
+    asset TEXT NOT NULL,
+    balance TEXT NOT NULL DEFAULT '0',
+    PRIMARY KEY (ledger, account, asset)
+) WITHOUT ROWID;  -- ← Table is the B-tree itself
+```
+
+In a regular table, SQLite would:
+1. Insert a row with an auto-incrementing rowid (sequential, fast)
+2. Update secondary indexes (random, slower)
+
+With `WITHOUT ROWID`, there's no fast sequential path - every insert goes directly to a position determined by the primary key.
+
 ---
 
 ## SQLite Modern (`sqlite-modern`)

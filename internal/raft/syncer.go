@@ -38,7 +38,6 @@ func (s *syncer) ApplyEntries(ctx context.Context, confState *raftpb.ConfState, 
 	select {
 	case <-s.syncTerminated:
 		s.logger.Infof("Syncing terminated, applying spooled entries before resuming...")
-		s.syncTerminated = nil
 		position, err := s.spool.End()
 		if err != nil {
 			return nil, fmt.Errorf("getting spool end position: %w", err)
@@ -59,6 +58,7 @@ func (s *syncer) ApplyEntries(ctx context.Context, confState *raftpb.ConfState, 
 			return nil, fmt.Errorf("pruning spool: %w", err)
 		}
 
+		s.syncTerminated = nil
 		s.status.Store(syncerStatusNormal)
 	default:
 	}

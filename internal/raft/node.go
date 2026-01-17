@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -36,6 +35,11 @@ type Transport interface {
 	Send(msg raftpb.Message)
 }
 
+type proposal struct {
+	data     []byte
+	rejected chan error
+}
+
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
 	rawNode       *raft.RawNode
@@ -48,9 +52,9 @@ type Node struct {
 	stopped       chan struct{}
 	ctx           context.Context
 	cancel        func()
-	proposeCh     Queue[[]byte]
+	proposeCh     Queue[proposal]
 	confState     *raftpb.ConfState
-	futures       sync.Map
+	futures       SyncMap[uint64, *applyFuture]
 	lastSoftState *raft.SoftState
 
 	meter                          metric.Meter
@@ -151,11 +155,11 @@ func NewNode(
 		wal:       wal,
 		transport: transport,
 		config:    cfg,
-		proposeCh: NewQueueObserver[[]byte](
+		proposeCh: NewQueueObserver[proposal](
 			"raft.node.propose",
-			NewSimpleQueue[[]byte](cfg.ProposeQueueCapacity),
-			WithLogger[[]byte](logger),
-			WithMeter[[]byte](meter),
+			NewSimpleQueue[proposal](cfg.ProposeQueueCapacity),
+			WithLogger[proposal](logger),
+			WithMeter[proposal](meter),
 		),
 		store: store,
 		fsm:   fsm,
@@ -287,12 +291,8 @@ func (node *Node) Start(ctx context.Context) error {
 			if err := node.rawNode.Step(msg); err != nil {
 				panic(err)
 			}
-		case cmd := <-node.proposeCh.Recv():
-			// todo: handle raft propose dropped, indicating the cluster has no leader
-			// need to propagate ErrNoLeader to the caller?
-			if err := node.rawNode.Propose(cmd); err != nil {
-				panic(err)
-			}
+		case proposal := <-node.proposeCh.Recv():
+			proposal.rejected <- node.rawNode.Propose(proposal.data)
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
 				now := time.Now()
@@ -445,6 +445,7 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 	}
 
 	node.futures.Store(cmd.Id, future)
+	defer node.futures.Delete(cmd.Id)
 
 	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
@@ -454,19 +455,31 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if !node.proposeCh.Push(cmdData) {
+	proposal := proposal{
+		data:     cmdData,
+		rejected: make(chan error, 1),
+	}
+
+	if !node.proposeCh.Push(proposal) {
 		return nil, fmt.Errorf("propose channel full")
 	}
 
 	select {
+	case err := <-proposal.rejected:
+		if err != nil {
+			return nil, err
+		}
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	select {
 	case err := <-future.ch:
-		node.futures.Delete(cmd.Id)
 		if err != nil {
 			return nil, err
 		}
 		return future.result, nil
 	case <-ctx.Done():
-		node.futures.Delete(cmd.Id)
 		return nil, ctx.Err()
 	}
 }
@@ -474,11 +487,10 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
 func (node *Node) NotifyApplied(commandID uint64, result any, err error) {
-	v, exists := node.futures.Load(commandID)
+	future, exists := node.futures.Load(commandID)
 	if !exists {
 		return
 	}
-	future := v.(*applyFuture)
 
 	if !future.done {
 		future.done = true

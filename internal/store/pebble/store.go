@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -95,7 +96,7 @@ func NewStore(
 		db *pebble.DB
 	)
 
-	currentCheckpoint, err := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
+	currentCheckpointRaw, err := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading current checkpoint: %w", err)
 	}
@@ -132,12 +133,12 @@ func NewStore(
 			return nil, fmt.Errorf("closing current checkpoint file: %w", err)
 		}
 	} else {
-		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpoint), liveDir)
+		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpointRaw), liveDir)
 		if err := os.RemoveAll(liveDir); err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
 
-		if err := HardLink(filepath.Join(dataDir, checkpointsDir, string(currentCheckpoint)), liveDir); err != nil {
+		if err := HardLink(filepath.Join(dataDir, checkpointsDir, string(currentCheckpointRaw)), liveDir); err != nil {
 			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
 		}
 
@@ -147,10 +148,19 @@ func NewStore(
 		}
 	}
 
+	var currentCheckpoint uint64
+	if len(currentCheckpointRaw) > 0 {
+		currentCheckpoint, err = strconv.ParseUint(string(currentCheckpointRaw), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Store{
-		db:      db,
-		logger:  logger.WithField("cmp", "pebble"),
-		dataDir: dataDir,
+		db:                db,
+		logger:            logger.WithField("cmp", "pebble"),
+		dataDir:           dataDir,
+		currentCheckPoint: currentCheckpoint,
 	}, nil
 }
 
