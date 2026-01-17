@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source fsm.go -destination fsm_generated_test.go -package raft . FSM
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source fsm.go -destination fsm_generated_test.go -package raft . FSM
 type FSM interface {
 	CreateSnapshot(ctx context.Context) ([]byte, error)
 	SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error

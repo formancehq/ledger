@@ -75,7 +75,7 @@ sequenceDiagram
     participant HTTP as HTTP Handler
     participant RaftNode as Raft Node
     participant Controller as Controller
-    participant RuntimeStore as Runtime Store
+    participant Store as Store
     participant FSM as FSM
     
     Client->>HTTP: POST /my-ledger/transactions
@@ -83,20 +83,20 @@ sequenceDiagram
     RaftNode->>Controller: CreateTransaction()
     
     alt Node is leader
-        Controller->>RuntimeStore: Check Balances
-        RuntimeStore-->>Controller: Balances OK
+        Controller->>Store: Check Balances
+        Store-->>Controller: Balances OK
         Controller->>Controller: Validate Transaction
         Controller->>RaftNode: CreateLog()
         RaftNode->>FSM: Propose CreateLogCommand (via Raft)
         FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>RuntimeStore: AppendLogs() - Persist log and update balances
-        Note over FSM,RuntimeStore: Logs persisted during apply
+        FSM->>Store: AppendLogs() - Persist log and update balances
+        Note over FSM,Store: Logs persisted during apply
         FSM-->>RaftNode: Log
         RaftNode-->>Controller: Log
     else Node is Follower
         Controller->>Controller: Find leader
         Controller->>RaftNode: Forward via gRPC (to leader)
-        Note over FSM,RuntimeStore: Same as leader path
+        Note over FSM,Store: Same as leader path
         RaftNode-->>Controller: Log
     end
     
@@ -112,7 +112,7 @@ sequenceDiagram
 
 2. **Transaction Validation**
    - Validates postings (valid accounts, positive amounts)
-   - Checks balances (if necessary) from RuntimeStore
+   - Checks balances (if necessary) from Store
    - Verifies the idempotency key
    - Executes script if present
 
@@ -123,7 +123,7 @@ sequenceDiagram
 
 4. **FSM Application**
    - The FSM generates the next log ID and transaction ID for this ledger
-   - The log is written to the RuntimeStore
+   - The log is written to the Store
    - Balances are updated
 
 5. **Response Return**
@@ -196,16 +196,180 @@ sequenceDiagram
 
 ### Overview
 
-When a follower joins the cluster or recovers after a failure, it must synchronize with the leader.
+When a follower joins the cluster or recovers after a failure, it must synchronize with the leader. This process involves two levels of synchronization:
+1. **Raft log synchronization** via the Spool (committed but not yet applied entries)
+2. **Business log synchronization** via gRPC streaming (per-ledger transaction logs)
+
+> **🔗 Raft Mechanics**: The synchronization is triggered when the Raft leader detects that a follower is too far behind (entries have been compacted from the WAL). The leader then sends a **MsgSnap** message containing the FSM snapshot. See [Desynchronized Follower Detection](./raft-consensus.md#desynchronized-follower-detection) for details on how Raft detects and handles this scenario.
+
+### Syncer State Machine
+
+The **Syncer** component manages the synchronization process. It has two states:
+
+| State | Value | Description |
+|-------|-------|-------------|
+| `syncerStatusNormal` | 0 | Normal operation, entries applied directly to FSM |
+| `syncerStatusSyncing` | 1 | Synchronization in progress, entries spooled |
+
+#### Synchronization Trigger
+
+When a `MsgSnap` is received from the leader, the following sequence occurs:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SyncSnapshot() called                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. Status change: Normal → Syncing                                     │
+│     └── status.Swap(syncerStatusSyncing)                                │
+│                                                                          │
+│  2. If already syncing: interrupt previous sync                         │
+│     └── taskExecutor.interrupt()                                        │
+│                                                                          │
+│  3. Create termination channel                                          │
+│     └── syncTerminated = make(chan struct{})                            │
+│                                                                          │
+│  4. Start background goroutine (taskExecutor.run)                       │
+│     ┌──────────────────────────────────────────────────────────────┐    │
+│     │  Background task:                                            │    │
+│     │  a. fsm.SyncSnapshot() - restore FSM + sync business logs    │    │
+│     │  b. spool.End() - get current watermark                      │    │
+│     │  c. spool.ReplayUntil() - apply spooled entries              │    │
+│     │  d. close(syncTerminated) - signal completion                │    │
+│     └──────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  5. Return immediately (non-blocking)                                   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Entry Processing During Sync
+
+While synchronization is in progress (`status == syncerStatusSyncing`), the `ApplyEntries()` method behaves differently:
+
+```go
+// In syncer.ApplyEntries():
+switch s.status.Load() {
+case syncerStatusNormal:
+    // Normal: apply directly to FSM
+    return s.applyEntries(ctx, confState, entries...)
+    
+case syncerStatusSyncing:
+    // Syncing: spool entries for later
+    s.spool.AppendCommittedEntries(ctx, entries...)
+    return emptyResults, nil
+}
+```
+
+This ensures that new Raft entries committed during synchronization are not lost—they are buffered in the Spool.
+
+#### Sync Completion
+
+When the background sync completes:
+
+1. The `syncTerminated` channel is closed
+2. On the next `ApplyEntries()` call, the syncer detects completion:
+   ```go
+   select {
+   case <-s.syncTerminated:
+       // Replay any remaining spooled entries
+       s.spool.ReplayUntil(ctx, position, lastAppliedIndex, applyFn)
+       // Prune applied entries
+       s.spool.Prune(lastAppliedIndex)
+       // Return to normal mode
+       s.status.Store(syncerStatusNormal)
+   default:
+       // Still syncing, continue spooling
+   }
+   ```
+
+#### Complete Timeline
+
+```mermaid
+sequenceDiagram
+    participant Raft as Raft Node
+    participant Syncer
+    participant Spool
+    participant FSM
+    participant Store
+    participant Leader as Leader (gRPC)
+    
+    Note over Raft: MsgSnap received
+    Raft->>Syncer: SyncSnapshot(leader, snapshot)
+    Syncer->>Syncer: status = Syncing
+    Syncer->>Syncer: Start background task
+    Syncer-->>Raft: return (non-blocking)
+    
+    par Background Sync
+        Syncer->>FSM: SyncSnapshot()
+        FSM->>FSM: Restore state from snapshot
+        loop For each ledger
+            FSM->>Leader: StreamLogs gRPC
+            Leader-->>FSM: Business logs
+            FSM->>Store: AppendLogs()
+        end
+        FSM-->>Syncer: Sync complete
+        Syncer->>Spool: End() → watermark
+        Syncer->>Spool: ReplayUntil(watermark)
+        Spool-->>FSM: Apply spooled entries
+        Syncer->>Syncer: close(syncTerminated)
+    and Normal Raft Operations
+        Raft->>Syncer: ApplyEntries(newEntries)
+        Syncer->>Spool: AppendCommittedEntries()
+        Note over Spool: Entries buffered
+    end
+    
+    Raft->>Syncer: ApplyEntries(moreEntries)
+    Syncer->>Syncer: Detect syncTerminated closed
+    Syncer->>Spool: ReplayUntil() + Prune()
+    Syncer->>Syncer: status = Normal
+    Syncer->>FSM: Apply directly
+```
+
+### The Spool
+
+The **Spool** is a temporary buffer that stores committed Raft entries that haven't been applied to the FSM yet. It acts as a staging area between Raft consensus and FSM application.
+
+#### Purpose
+
+1. **Decoupling**: Separates the Raft commit path from the FSM apply path
+2. **Durability**: Ensures committed entries survive crashes before FSM application
+3. **Bounded replay**: On recovery, only entries in the Spool need to be replayed. Note that for long-running clusters, old WAL entries are compacted (deleted after snapshots), making full WAL replay impossible anyway.
+4. **Efficient catch-up**: Followers can catch up from a known watermark position
+
+#### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Raft Node                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────┐    commit    ┌──────────┐    apply    ┌──────────┐   │
+│  │   WAL    │ ──────────► │  Spool   │ ──────────► │   FSM    │   │
+│  └──────────┘             └──────────┘             └──────────┘   │
+│                                 │                                   │
+│                           End() returns                             │
+│                           watermark position                        │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Append**: When Raft commits entries, they are appended to the Spool via `AppendCommittedEntries()`
+2. **Watermark**: `End()` returns the current position (segment ID + offset) for replay bounds
+3. **Replay**: `ReplayUntil()` replays entries from the cached read position to the watermark
+4. **Prune**: Old segments are pruned when all entries have been applied
+
+For detailed implementation, see [Spool Technical Documentation](./spool.md).
 
 ### Synchronization Flow
 
 ```mermaid
 sequenceDiagram
     participant Follower as Follower Node
+    participant Spool as Spool
     participant Leader as Leader Node
     participant Storage as WAL Storage
-    participant RuntimeStore as Runtime Store
+    participant Store as Store
     participant FSM as FSM
     
     Follower->>Follower: Start/Recover
@@ -213,14 +377,18 @@ sequenceDiagram
     Storage-->>Follower: Snapshot Data
     Follower->>FSM: Restore FSM State
     
+    Note over Follower,Spool: Replay Spool entries (committed but not applied)
+    Follower->>Spool: ReplayUntil(end, lastApplied)
+    Spool-->>FSM: Apply pending entries
+    
     loop For each ledger with missing logs
         Follower->>Leader: StreamLogs gRPC (ledger, from, to)
-        Leader->>RuntimeStore: GetAllLogs(ledger, from, to)
-        RuntimeStore-->>Leader: Stream Logs
+        Leader->>Store: GetAllLogs(ledger, from, to)
+        Store-->>Leader: Stream Logs
         Leader-->>Follower: Stream Logs (gRPC stream)
         
         loop for each log
-            Follower->>RuntimeStore: AppendLogs() - Persist log and update balances
+            Follower->>Store: AppendLogs() - Persist log and update balances
         end
     end
     
@@ -235,17 +403,22 @@ sequenceDiagram
    - The FSM state is restored from the snapshot
    - The last applied log ID for each ledger is noted
 
-2. **Log Streaming**
+2. **Spool Replay**
+   - The Spool is replayed from the last known position
+   - Only entries with `Index > lastApplied` are applied
+   - The read cache advances, avoiding re-parsing on subsequent calls
+
+3. **Log Streaming**
    - For each ledger with missing logs (based on LastAppliedLogId)
    - The follower requests logs from the leader via gRPC
-   - The leader streams logs from its RuntimeStore
+   - The leader streams logs from its Store
 
-3. **Log Application**
-   - Each log is inserted into the follower's RuntimeStore
+4. **Log Application**
+   - Each log is inserted into the follower's Store
    - Balances and metadata are updated
    - The state is progressively updated
 
-4. **Catch-up Complete**
+5. **Catch-up Complete**
    - Once all logs are applied, the follower is up to date
    - The follower can now participate in replication
    - The follower votes during elections
@@ -291,6 +464,79 @@ sequenceDiagram
 - **Metadata**: index, term, timestamp
 - **FSM State**: Complete state for all ledgers
 - **Index**: Index of the last included entry
+
+## WAL Compaction
+
+### Overview
+
+WAL compaction is a critical mechanism that removes old log entries to prevent unbounded storage growth. It is tightly coupled with snapshots.
+
+### How Compaction Works
+
+```
+Before Compaction:
+┌─────────────────────────────────────────────────────────────────────┐
+│ WAL: [Entry 1] [Entry 2] ... [Entry 1000] [Entry 1001] ... [Entry N]│
+│                              ↑                                       │
+│                     Snapshot at index 1000                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+After Compaction:
+┌─────────────────────────────────────────────────────────────────────┐
+│ WAL: [Entry 1001] [Entry 1002] ... [Entry N]                        │
+│      ↑                                                               │
+│      First entry after snapshot                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Compaction Trigger
+
+Compaction is triggered automatically after a snapshot is created:
+
+1. A snapshot is created at index `N`
+2. The system keeps a **compaction margin** (configurable via `CompactionMargin`)
+3. Entries before `N - CompactionMargin` are deleted from the WAL
+4. Old WAL segment files are removed
+
+### Compaction Margin
+
+The compaction margin (`CompactionMargin` in configuration) determines how many entries are kept before the snapshot index:
+
+```
+snapshotIndex = 1000
+compactionMargin = 100
+compactIndex = 1000 - 100 = 900
+
+→ Entries 1-900 are deleted
+→ Entries 901-1000 are kept (margin for safety)
+→ Entries 1001+ are the new entries
+```
+
+**Why keep a margin?**
+- Allows followers slightly behind to catch up without needing a full snapshot transfer
+- Provides a safety buffer in case of partial replication failures
+
+### Implications for Recovery
+
+Because old WAL entries are compacted:
+
+1. **A node cannot recover from the beginning of time** - it must use snapshots
+2. **Late-joining nodes** receive the latest snapshot + recent WAL entries
+3. **Very late followers** (behind the compaction point) must receive a full snapshot from the leader
+
+### Configuration
+
+```yaml
+config:
+  raft:
+    snapshotThreshold: 5000   # Create snapshot every 5000 entries
+    compactionMargin: 500     # Keep 500 entries before snapshot as margin
+```
+
+**Recommendations**:
+- `compactionMargin` should be at least 1-2× the typical replication lag
+- Larger margins use more disk but allow slower followers to catch up
+- Smaller margins save disk but may force more snapshot transfers
 
 ## Request Forwarding
 
@@ -378,3 +624,4 @@ To deepen your understanding:
 1. [Raft Consensus](./raft-consensus.md) - Details on Raft replication
 2. [Storage and Persistence](./storage.md) - How data is persisted
 3. [API and Interfaces](./api.md) - API endpoint documentation
+4. [Spool](./spool.md) - Technical details of the Spool component

@@ -337,11 +337,19 @@ func (conn *peerConnection) loop() {
 			}
 
 			// Wait before retrying
-			select {
-			case ch := <-conn.closeCh:
-				close(ch)
-				return
-			case <-time.After(300 * time.Millisecond): //todo: make configurable
+			//todo: make configurable
+			waitingDelayBeforeReconnect := time.Now().Add(time.Second)
+		drainLoop:
+			for {
+				select {
+				case ch := <-conn.closeCh:
+					close(ch)
+					return
+				case <-conn.sendCh.Recv():
+					conn.unreachableCh.Push(conn.peerID)
+				case <-time.After(time.Until(waitingDelayBeforeReconnect)):
+					break drainLoop
+				}
 			}
 			continue
 		}

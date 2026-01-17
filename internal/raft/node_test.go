@@ -26,23 +26,77 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	walDir := t.TempDir()
 	dataDir := t.TempDir()
+	spoolDir := t.TempDir()
 
-	node, spiedWAL, wal, _, store := newTestingNode(t, ctrl, walDir, dataDir)
+	wal, err := wal.New(walDir, logging.Testing())
+	require.NoError(t, err)
+
+	spool, err := NewDefaultSpool(DefaultSpoolConfig{
+		Dir: spoolDir,
+	})
+	require.NoError(t, err)
+
+	store, err := pebble.NewStore(dataDir, logging.Testing(), noop.Meter{})
+	require.NoError(t, err)
+
+	interceptedWAL := NewMockWAL(ctrl)
+	require.NoError(t, err)
+
+	// Set all methods to passthrough
+	interceptedWAL.EXPECT().
+		Snapshot().
+		AnyTimes().
+		DoAndReturn(wal.Snapshot)
+
+	interceptedWAL.EXPECT().
+		Compact(gomock.Any()).
+		AnyTimes().
+		DoAndReturn(wal.Compact)
+
+	interceptedWAL.EXPECT().
+		FirstIndex().
+		AnyTimes().
+		DoAndReturn(wal.FirstIndex)
+
+	interceptedWAL.EXPECT().
+		LastIndex().
+		AnyTimes().
+		DoAndReturn(wal.LastIndex)
+
+	interceptedWAL.EXPECT().
+		InitialState().
+		AnyTimes().
+		DoAndReturn(wal.InitialState)
+
+	interceptedWAL.EXPECT().
+		Term(gomock.Any()).
+		AnyTimes().
+		DoAndReturn(wal.Term)
+
+	interceptedWAL.EXPECT().
+		Append(gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(wal.Append)
+
+	interceptedWAL.EXPECT().
+		Entries(gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(wal.Entries)
+
+	// Expect a first snapshot creation with no error
+	interceptedWAL.EXPECT().
+		CreateSnapshot(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(wal.CreateSnapshot)
+
+	node := newTestingNode(t, ctrl, spool, interceptedWAL, store)
 	nodeError := startAndCatchError(node)
 
 	require.Eventually(t, node.IsLeader, 2*time.Second, 10*time.Millisecond)
 
-	_, err := node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
+	_, err = node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
 		Name: "default",
 	})
 	require.NoError(t, err)
-
-	var errUnexpected = errors.New("unexpected error")
-	spiedWAL.EXPECT().
-		CreateSnapshot(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(u uint64, state *raftpb.ConfState, bytes []byte) error {
-			return errUnexpected
-		})
 
 	createTransaction := func() *ledgerpb.Command {
 		return NewCreateLogCommand(&ledgerpb.CommandInput{
@@ -65,13 +119,20 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	var errUnexpected = errors.New("unexpected error")
+	interceptedWAL.EXPECT().
+		CreateSnapshot(uint64(10), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(u uint64, state *raftpb.ConfState, bytes []byte) error {
+			return errUnexpected
+		})
+
 	// Now should trigger the snapshotting
 	go func() {
 		_, _ = node.Apply(createTransaction(), time.Second)
 	}()
 	select {
 	case <-time.After(5 * time.Second):
-		require.Fail(t, "node did not fail")
+		require.Fail(t, "node did not fail and it should")
 	case err := <-nodeError:
 		require.Error(t, err)
 		require.ErrorIs(t, err, errUnexpected)
@@ -79,16 +140,26 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	require.NoError(t, wal.Close())
 	require.NoError(t, store.Close(ctx))
+	require.NoError(t, spool.Close())
 
 	// Start a new fresh node
 	t.Log("Starting a new node")
-	node, spiedWAL, wal, _, store = newTestingNode(t, ctrl, walDir, dataDir)
+
+	spool, err = NewDefaultSpool(DefaultSpoolConfig{
+		Dir: spoolDir,
+	})
+	require.NoError(t, err)
+
+	store, err = pebble.NewStore(dataDir, logging.Testing(), noop.Meter{})
+	require.NoError(t, err)
+
+	node = newTestingNode(t, ctrl, spool, wal, store)
 	nodeError = startAndCatchError(node)
 
 	require.Eventually(t, node.IsLeader, 2*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		balances, err := store.GetBalances(logging.TestingContext(), "default", map[string][]string{
+		balances, err := node.store.GetBalances(logging.TestingContext(), "default", map[string][]string{
 			"world": {"USD"},
 		})
 		require.NoError(t, err)
@@ -100,14 +171,13 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 }
 
-func newTestingNode(t *testing.T, ctrl *gomock.Controller, walDir, dataDir string) (*Node, *MockWAL, *wal.WAL, *storepkg.MockStore, *pebble.Store) {
+func newTestingNode(t *testing.T, ctrl *gomock.Controller, spool Spool, wal WAL, store storepkg.Store) *Node {
 
 	var (
 		unreachableCh = make(<-chan uint64)
 		recvCh        = make(<-chan raftpb.Message)
 	)
 
-	spool := NewMockSpool(ctrl)
 	transport := NewMockTransport(ctrl)
 	transport.EXPECT().
 		Recv().
@@ -118,108 +188,21 @@ func newTestingNode(t *testing.T, ctrl *gomock.Controller, walDir, dataDir strin
 		Return(unreachableCh).
 		AnyTimes()
 
-	spiedWAL, wal := buildSpiedWAL(t, ctrl, walDir)
-	spiedStore, store := buildSpiedStore(t, ctrl, dataDir)
-
 	node, err := NewNode(
 		NodeConfig{
 			NodeID:            1,
 			SnapshotThreshold: 10,
 		},
 		transport,
-		spiedStore,
+		store,
 		logging.Testing(),
 		noop.Meter{},
 		spool,
-		spiedWAL,
+		wal,
 	)
 	require.NoError(t, err)
 
-	return node, spiedWAL, wal, spiedStore, store
-}
-
-func buildSpiedWAL(t *testing.T, ctrl *gomock.Controller, location string) (*MockWAL, *wal.WAL) {
-	wal, err := wal.New(location, logging.Testing())
-	require.NoError(t, err)
-
-	spiedWAL := NewMockWAL(ctrl)
-	require.NoError(t, err)
-
-	spiedWAL.EXPECT().
-		Snapshot().
-		AnyTimes().
-		DoAndReturn(wal.Snapshot)
-
-	spiedWAL.EXPECT().
-		CreateSnapshot(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(wal.CreateSnapshot)
-
-	spiedWAL.EXPECT().
-		Compact(gomock.Any()).
-		AnyTimes().
-		DoAndReturn(wal.Compact)
-
-	spiedWAL.EXPECT().
-		FirstIndex().
-		AnyTimes().
-		DoAndReturn(wal.FirstIndex)
-
-	spiedWAL.EXPECT().
-		LastIndex().
-		AnyTimes().
-		DoAndReturn(wal.LastIndex)
-
-	spiedWAL.EXPECT().
-		InitialState().
-		AnyTimes().
-		DoAndReturn(wal.InitialState)
-
-	spiedWAL.EXPECT().
-		Term(gomock.Any()).
-		AnyTimes().
-		DoAndReturn(wal.Term)
-
-	spiedWAL.EXPECT().
-		Append(gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(wal.Append)
-
-	spiedWAL.EXPECT().
-		Entries(gomock.Any(), gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(wal.Entries)
-
-	return spiedWAL, wal
-}
-
-func buildSpiedStore(t *testing.T, ctrl *gomock.Controller, location string) (*storepkg.MockStore, *pebble.Store) {
-	store, err := pebble.NewStore(location, logging.Testing(), noop.Meter{})
-	require.NoError(t, err)
-
-	spiedStore := storepkg.NewMockStore(ctrl)
-	require.NoError(t, err)
-
-	spiedStore.EXPECT().
-		CreateSnapshot(gomock.Any()).
-		AnyTimes().
-		DoAndReturn(store.CreateSnapshot)
-
-	spiedStore.EXPECT().
-		AppendLogs(gomock.Any(), gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(store.AppendLogs)
-
-	spiedStore.EXPECT().
-		GetLastAppliedIndex().
-		AnyTimes().
-		DoAndReturn(store.GetLastAppliedIndex)
-
-	spiedStore.EXPECT().
-		GetLastLogID(gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(store.GetLastLogID)
-
-	return spiedStore, store
+	return node
 }
 
 func startAndCatchError(node *Node) chan error {

@@ -367,6 +367,17 @@ config:
     snapshotInterval: "30s"     # Minimum interval between snapshots
 ```
 
+> **📊 Calibrating Snapshot Threshold**: The `snapshotThreshold` should be calibrated based on your expected throughput to avoid excessive snapshotting. A snapshot every ~2 seconds is generally sufficient.
+>
+> **Formula**: `snapshotThreshold = expected_transactions_per_second × 2`
+>
+> **Examples**:
+> - 100 tx/s → `snapshotThreshold: 200`
+> - 1000 tx/s → `snapshotThreshold: 2000`
+> - 5000 tx/s → `snapshotThreshold: 10000`
+>
+> Setting the threshold too low will cause constant snapshotting, impacting performance. Setting it too high will increase recovery time after a restart.
+
 ### Storage
 
 #### SQLite
@@ -457,6 +468,13 @@ kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/ledgers/my-ledger/ledger
 4. **Secrets Management**: Use Kubernetes Secrets or Vault
 5. **RBAC**: Configure appropriate Kubernetes permissions
 
+### Storage Recommendations
+
+1. **Fast disk for WAL**: The Raft WAL directory (`data/raft/`) should be on a fast SSD/NVMe disk. WAL writes are synchronous and on the critical path of every write operation.
+2. **Separate disks**: For high-throughput workloads, consider using separate disks for WAL and data directories to avoid I/O contention.
+3. **Persistent volumes**: In Kubernetes, use fast storage classes (e.g., `gp3` on AWS, `pd-ssd` on GCP) for persistent volume claims.
+4. **IOPS provisioning**: For cloud deployments, provision sufficient IOPS for the storage volumes based on expected write throughput.
+
 ### Ingress Configuration
 
 ```yaml
@@ -535,6 +553,134 @@ ingress:
 3. Check storage performance
 4. Consider horizontal scaling
 
+## Development Environment (Pulumi)
+
+The project includes a Pulumi-based development environment in `misc/devenv/` that deploys a complete observability stack and development tools to a Kubernetes cluster.
+
+### Components Deployed
+
+| Component | Purpose | Namespace |
+|-----------|---------|-----------|
+| **VictoriaMetrics** | Metrics storage and querying (Prometheus-compatible) | `monitoring` |
+| **Grafana** | Dashboards and visualization | `monitoring` |
+| **Loki** | Log aggregation | `monitoring` |
+| **Tempo** | Distributed tracing backend | `monitoring` |
+| **OpenTelemetry Collector** | Metrics, traces, and logs collection | `monitoring` |
+| **k6-operator** | Kubernetes operator for running k6 load tests | `bench` |
+| **Benchmark Operator** | Automated test reporting and Grafana snapshots | `bench` |
+| **Ledger v3 POC** | The application itself | `ledger` |
+
+### Quick Start
+
+```bash
+cd misc/devenv
+
+# Install dependencies
+go mod download
+
+# Configure Pulumi stack
+pulumi stack init dev
+pulumi config set formance-dev-registry-username <username>
+pulumi config set formance-dev-registry-password <password> --secret
+
+# Deploy
+pulumi up
+```
+
+### Pre-configured Dashboards
+
+The environment includes pre-configured Grafana dashboards:
+
+- **Ledger Metrics Dashboard**: Shows Raft metrics, transaction rates, latencies
+- **k6 Dashboard**: Displays load test results in real-time
+
+Dashboards are automatically provisioned via ConfigMaps with the `grafana_dashboard: "1"` label.
+
+### Accessing Services
+
+After deployment:
+
+```bash
+# Grafana (default credentials: admin/admin)
+kubectl port-forward -n monitoring svc/grafana 3000:80
+
+# VictoriaMetrics
+kubectl port-forward -n monitoring svc/vm-victoria-metrics-single-server 8428:8428
+
+# Ledger HTTP API
+kubectl port-forward -n ledger svc/ledger-exp 9000:9000
+
+# OpenTelemetry Collector (OTLP gRPC)
+kubectl port-forward -n monitoring svc/otel-opentelemetry-collector 4317:4317
+```
+
+### k6 Operator
+
+The k6 operator allows running load tests as Kubernetes-native resources:
+
+```yaml
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: my-test
+  namespace: bench
+spec:
+  parallelism: 4
+  script:
+    configMap:
+      name: test-script
+      file: script.js
+```
+
+Pre-built k6 test scripts are available in `misc/k6/scripts/`.
+
+### Benchmark Operator
+
+The benchmark operator automates post-test reporting:
+
+1. Watches for `TestRun` completions
+2. Creates Grafana dashboard snapshots
+3. Generates Markdown reports with metrics
+
+Enable it in the Pulumi configuration:
+
+```yaml
+# Pulumi.dev.yaml
+config:
+  devenv:benchmarkOperator:
+    file: values/benchmark-operator.yaml
+```
+
+Configure in `values/benchmark-operator.yaml`:
+```yaml
+enabled: true
+grafana:
+  url: http://grafana.monitoring:80
+  username: admin
+  password: admin
+```
+
+### Configuration Files
+
+| File | Description |
+|------|-------------|
+| `values/ledger.yaml` | Ledger Helm values |
+| `values/victoriametrics.yaml` | VictoriaMetrics configuration |
+| `values/grafana.yaml` | Grafana configuration |
+| `values/loki.yaml` | Loki configuration |
+| `values/tempo.yaml` | Tempo configuration |
+| `values/otlp.yaml` | OpenTelemetry Collector configuration |
+| `values/k6operator.yaml` | k6 operator configuration |
+| `values/benchmark-operator.yaml` | Benchmark operator configuration |
+| `config/grafana/provisioning/dashboards/` | Grafana dashboard JSON files |
+| `config/grafana/provisioning/datasources/` | Grafana datasource configurations |
+
+### Destroying the Environment
+
+```bash
+pulumi destroy
+```
+
 ## Next Steps
 
 To deepen your understanding:
@@ -542,3 +688,4 @@ To deepen your understanding:
 1. [General Architecture](./architecture.md) - Understand the architecture
 2. [Consensus Raft](./raft-consensus.md) - Optimize Raft parameters
 3. [Storage and Persistence](./storage.md) - Configure storage
+4. [Metrics](./metrics.md) - Available application metrics

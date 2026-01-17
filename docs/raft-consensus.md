@@ -257,6 +257,94 @@ When a node joins the cluster or recovers after a failure:
 2. The missing follower is marked as unreachable
 3. When the follower returns, it synchronizes automatically
 
+### Desynchronized Follower Detection
+
+The Raft leader maintains a **progress tracker** for each follower that tracks:
+- `Match`: The highest log index known to be replicated on this follower
+- `Next`: The next log index to send to this follower
+
+#### Detection Mechanism
+
+```
+Leader Progress Tracker:
+┌────────────────────────────────────────────────────────────────────┐
+│ Follower 2:  Match=950   Next=951   State=Replicate               │
+│ Follower 3:  Match=100   Next=101   State=Probe       ← Behind!   │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Normal operation**: When a follower successfully receives `AppendEntries`, it returns success and the leader advances `Match` and `Next`
+
+2. **Follower behind**: When `AppendEntries` fails (term mismatch or log inconsistency), the leader decreases `Next` and retries with earlier entries. The follower enters `StateProbe`.
+
+3. **Follower too far behind**: If the required entries have been compacted from the WAL (index < compactIndex), the leader **cannot** send the missing entries.
+
+#### Snapshot Transfer (MsgSnap)
+
+When a follower is too far behind for log replay, the leader sends a **MsgSnap** (InstallSnapshot) message:
+
+```mermaid
+sequenceDiagram
+    participant Leader
+    participant Follower as Follower (behind)
+    
+    Leader->>Leader: Check: follower.Next < compactIndex?
+    Note over Leader: Yes → WAL entries no longer available
+    
+    Leader->>Leader: Create snapshot at lastIndex
+    Leader->>Follower: MsgSnap (full snapshot data)
+    Note over Follower: Progress state → StateSnapshot
+    
+    Follower->>Follower: Apply snapshot to WAL
+    Follower->>Follower: Restore FSM state
+    Follower->>Follower: Sync business logs via gRPC
+    
+    Follower->>Leader: MsgSnapStatus (success)
+    Note over Follower: Progress state → StateReplicate
+    
+    Leader->>Follower: Resume normal AppendEntries
+```
+
+#### Progress States
+
+The leader tracks each follower's state:
+
+| State | Description |
+|-------|-------------|
+| `StateProbe` | Follower's `Match` is unknown, sending one entry at a time |
+| `StateReplicate` | Normal operation, pipeline enabled |
+| `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
+
+#### Code Reference
+
+In `node.go`, the follower receives and applies the snapshot:
+
+```go
+if !raft.IsEmptySnap(rd.Snapshot) {
+    node.logger.Infof("Applying snapshot sent by leader")
+    
+    // Write snapshot to WAL
+    node.wal.ApplySnapshot(rd.Snapshot)
+    
+    // Report success to Raft
+    node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+    
+    // Sync business data from leader
+    node.syncer.SyncSnapshot(ctx, leader, rd.Snapshot)
+}
+```
+
+#### Why Two-Level Synchronization?
+
+The snapshot contains only the **FSM state** (ledger metadata, next IDs). After receiving a snapshot, the follower must also sync **business logs** from the leader's Store:
+
+1. **Snapshot** → FSM state (lightweight, ~KB)
+2. **gRPC StreamLogs** → Transaction logs per ledger (can be large, ~GB)
+
+This two-level approach avoids embedding large transaction data in Raft snapshots.
+
+See [Follower Synchronization](./data-flows.md#follower-synchronization) for the detailed synchronization flow
+
 #### Network Partition
 
 If the cluster is partitioned:

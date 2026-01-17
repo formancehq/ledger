@@ -20,7 +20,7 @@ graph TB
         LedgerC[Ledger C<br/>NextLogId: 5<br/>NextTxId: 3]
     end
     
-    subgraph "Shared Runtime Store"
+    subgraph "Shared Store"
         Logs[Logs Table<br/>ledger, id, data]
         Balances[Balances Table<br/>ledger, account, asset]
         Metadata[Metadata Table<br/>ledger, account, key]
@@ -163,7 +163,7 @@ The transaction creation process:
 6. FSM:
    - Generates the next log ID and transaction ID for this ledger
    - Returns the log to be persisted
-7. RuntimeStore persists the log and updates balances
+7. Store persists the log and updates balances
 
 ```mermaid
 sequenceDiagram
@@ -172,25 +172,25 @@ sequenceDiagram
     participant RaftNode
     participant Controller
     participant FSM
-    participant RuntimeStore
+    participant Store
     
     Client->>HTTP: POST /my-ledger/transactions
     HTTP->>RaftNode: CreateTransaction()
     RaftNode->>Controller: CreateTransaction()
     
     alt Node is leader
-        Controller->>RuntimeStore: Check Balances
+        Controller->>Store: Check Balances
         Controller->>Controller: Validate Transaction
         Controller->>RaftNode: CreateLog()
         RaftNode->>FSM: Propose CreateLogCommand (via Raft)
         FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>RuntimeStore: AppendLogs() - Persist log and update balances
+        FSM->>Store: AppendLogs() - Persist log and update balances
         FSM-->>RaftNode: Log
         RaftNode-->>Controller: Log
     else Node is Follower
         Controller->>Controller: Find leader
         Controller->>RaftNode: Forward via gRPC (to leader)
-        Note over RaftNode,RuntimeStore: Same as leader path
+        Note over RaftNode,Store: Same as leader path
         RaftNode-->>Controller: Log
     end
     
@@ -211,9 +211,9 @@ Each transaction is stored as a **log** with:
 
 Sequences are generated sequentially by the FSM per ledger, ensuring global transaction order within each ledger.
 
-## Storage Architecture: RuntimeStore (logs + runtime state)
+## Storage Architecture: Store (logs + runtime state)
 
-All ledgers share a single RuntimeStore. The RuntimeStore implements the LogStore interface and persists the immutable log history alongside derived state (balances, account metadata, idempotency).
+All ledgers share a single Store. The Store implements the LogStore interface and persists the immutable log history alongside derived state (balances, account metadata, idempotency).
 
 ### Log persistence (LogStore interface)
 
@@ -222,13 +222,14 @@ All ledgers share a single RuntimeStore. The RuntimeStore implements the LogStor
 **Responsibilities**:
 - Stores all transaction logs with their sequence numbers, keyed by `(ledger, id)`
 - Maintains idempotency key indexes per ledger
-- Provides log streaming capabilities (`GetAllLogs`)
+- Provides log streaming capabilities (`GetAllLogs`, `GetLogByID`)
 - Acts as the source of truth for transaction history
+- Tracks the last applied Raft index for recovery
 
 **Usage in Raft**:
-- **During writes**: When logs are applied by the FSM, `RuntimeStore.AppendLogs()` persists logs and updates balances
-- **During reads**: Logs can be read directly from RuntimeStore without going through Raft (local reads)
-- **During recovery**: Logs are replayed from RuntimeStore to rebuild state
+- **During writes**: When logs are applied by the FSM, `Store.AppendLogs()` persists logs and updates balances
+- **During reads**: Logs can be read directly from Store without going through Raft (local reads)
+- **During recovery**: The FSM uses `GetLastAppliedIndex()` to know where to resume
 
 ### Runtime state
 
@@ -237,13 +238,15 @@ All ledgers share a single RuntimeStore. The RuntimeStore implements the LogStor
 **Responsibilities**:
 - Stores account balances (calculated from transactions), keyed by `(ledger, account, asset)`
 - Stores account metadata, keyed by `(ledger, account, key)`
-- Maintains idempotency key lookups per ledger
+- Maintains idempotency key lookups per ledger (`GetLogIDForIdempotencyKey`)
+- Tracks transaction ID to log ID mappings (`GetLogIDForTransactionID`)
+- Tracks reverted transactions (`IsTransactionReverted`)
 - Provides fast read access to current state
 
 **Usage in Raft**:
-- **During writes**: When logs are applied by the FSM, `RuntimeStore.AppendLogs()` persists logs and updates balances
-- **During reads**: Balances and metadata are read directly from RuntimeStore (local reads, no Raft consensus needed)
-- **During recovery**: Balances are recalculated by replaying logs from RuntimeStore
+- **During writes**: When logs are applied by the FSM, `Store.AppendLogs()` persists logs and updates balances
+- **During reads**: Balances and metadata are read directly from Store (local reads, no Raft consensus needed)
+- **During recovery**: State is rebuilt from the last Store snapshot + recent Raft entries (not by replaying all logs, which would be too slow)
 
 ### How It Works
 
@@ -252,38 +255,39 @@ sequenceDiagram
     participant Client
     participant Leader
     participant FSM
-    participant RuntimeStore
+    participant Store
     
     Client->>Leader: Create Transaction
     Leader->>FSM: Apply CreateLogCommand (via Raft)
-    FSM->>RuntimeStore: InsertLogs() - Persist log and update balances
-    RuntimeStore->>RuntimeStore: Calculate new balances
+    FSM->>Store: AppendLogs() - Persist log and update balances
+    Store->>Store: Calculate new balances
     FSM-->>Leader: Transaction committed
-    Note over FSM,RuntimeStore: Logs persisted during apply
+    Note over FSM,Store: Logs persisted during apply
     Leader-->>Client: Success
     
     Note over Client,FSM: Read operations (no Raft)
     Client->>Leader: Get Balances
-    Leader->>RuntimeStore: GetBalances(ledger, ...) - Read current balances
-    RuntimeStore-->>Leader: Balances
+    Leader->>Store: GetBalances(ledger, ...) - Read current balances
+    Store-->>Leader: Balances
     Leader-->>Client: Response
 ```
 
 **Write Flow**:
 1. Transaction is proposed to Raft leader
 2. Once committed, FSM applies the command
-3. FSM calls `RuntimeStore.AppendLogs()` to persist logs and update balances
-4. Logs and runtime state are stored in the shared RuntimeStore
+3. FSM calls `Store.AppendLogs()` to persist logs and update balances
+4. Logs and runtime state are stored in the shared Store
 
 **Read Flow**:
 1. Client requests balances
-2. Node reads directly from **RuntimeStore** (no Raft consensus needed)
-3. Since RuntimeStore is updated during writes, it always reflects the latest committed state
+2. Node reads directly from **Store** (no Raft consensus needed)
+3. Since Store is updated during writes, it always reflects the latest committed state
 
 **Recovery Flow**:
-1. On startup, FSM loads the last snapshot
-2. For each ledger, FSM streams missing logs from the leader via gRPC
-3. For each log, FSM calls `RuntimeStore.InsertLogs()` to rebuild balances
+1. On startup, the Store is restored from its last snapshot (balances already included)
+2. FSM loads the Raft snapshot and uses `Store.GetLastAppliedIndex()` to determine where to resume
+3. For each ledger, FSM streams missing logs from the leader via gRPC
+4. For each log, FSM calls `Store.AppendLogs()` to persist logs and update balances incrementally
 
 ### Why One Shared Store?
 
@@ -291,8 +295,9 @@ sequenceDiagram
 - **Simpler configuration**: Single store for all ledgers
 - **Consistent reads**: The same store provides both history and current state
 - **Simpler operations**: One database to backup, monitor, and maintain
+- **Snapshot support**: `CreateSnapshot()` for checkpoint-based recovery
 
-**Note**: To keep RuntimeStore compact and efficient, balances should be set to zero whenever possible. Zero balances can be omitted from storage, reducing the size of the RuntimeStore and improving query performance.
+**Note**: To keep Store compact and efficient, balances should be set to zero whenever possible. Zero balances can be omitted from storage, reducing the size of the Store and improving query performance.
 
 ## Data Isolation
 
@@ -320,11 +325,11 @@ Transaction metadata is stored in the log and can be:
 - Added during transaction creation
 - Modified via the API
 - Deleted via the API
-It is not stored separately in the RuntimeStore.
+It is not stored separately in the Store.
 
 ### Account Metadata
 
-Account metadata is stored in the RuntimeStore and can be:
+Account metadata is stored in the Store and can be:
 - Added during transaction creation
 - Modified via the API
 - Deleted via the API
@@ -341,9 +346,10 @@ The system supports idempotency keys to avoid duplicate transactions:
 
 ### Storage
 
-Idempotency keys are stored in the RuntimeStore:
-- Keyed by `(ledger, idempotency_key)`
-- Contains the idempotency hash and log ID
+Idempotency keys are stored in the Store:
+- Keyed by `(ledger, idempotency_key)` 
+- Stored directly in the logs table (for SQLite) or with dedicated prefix (for Pebble)
+- Use `GetLogIDForIdempotencyKey()` to retrieve the associated log ID
 - Persisted alongside runtime state
 
 ## Performance and Optimizations
@@ -353,8 +359,10 @@ Idempotency keys are stored in the RuntimeStore:
 Reads can be served locally without going through Raft:
 - `GetLedger`: Local read (FSM state)
 - `GetAllLedgers`: Local read (FSM state)
-- `GetBalances`: Local read from RuntimeStore
-- `GetAllLogs`: Local read from RuntimeStore
+- `GetBalances`: Local read from Store
+- `GetAllLogs`: Local read from Store
+- `GetLogByID`: Local read from Store
+- `GetAccountMetadata`: Local read from Store
 
 ### Writes via Leader
 

@@ -6,9 +6,11 @@ The Ledger v3 POC system uses multiple storage layers to ensure data durability 
 
 1. **WAL (Write-Ahead Log)**: Raft log for consensus
 2. **Snapshots**: Periodic restoration points
-3. **Runtime Store**: Logs + runtime state (balances, account metadata, idempotency)
+3. **Store**: Logs + runtime state (balances, account metadata, idempotency)
 
 All ledgers share a **single storage layer**, with data organized by ledger name prefixes.
+
+For detailed information on specific storage backends (SQLite, Pebble), see [Storage Drivers](./storage-drivers.md).
 
 ## Storage Architecture
 
@@ -21,7 +23,7 @@ graph TB
     end
     
     subgraph "Application Storage"
-        RuntimeStore[Runtime Store<br/>All Ledgers]
+        Store[Store<br/>All Ledgers]
     end
     
     subgraph "Directory Structure"
@@ -38,7 +40,7 @@ graph TB
     EtcdDir --> RaftDir
     RaftDir --> DataDir
     SpoolDir --> DataDir
-    RuntimeStore --> RuntimeDB
+    Store --> RuntimeDB
     RuntimeDB --> DataDir
 ```
 
@@ -67,6 +69,8 @@ data/
 ```
 
 **Note**: The HardState is persisted inside the etcd WAL itself, not in a separate file.
+
+> **⚡ Performance Recommendation**: The WAL directory (`data/raft/`) should be placed on a fast disk (SSD/NVMe) for optimal performance. WAL writes are synchronous and on the critical path of every write operation. Using a slow disk (HDD) will significantly impact write latency and throughput. In production environments, consider using a dedicated fast disk for the WAL directory separate from the data directory.
 
 ### WAL Operations
 
@@ -104,15 +108,6 @@ The WAL implementation ensures that the storage is always in a consistent state,
 
 When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETED`) to track whether the WAL was successfully initialized:
 
-```
-data/
-├── raft/
-│   ├── etcd/                       # etcd WAL directory
-│   │   └── ...
-│   ├── raft-state.pb               # Snapshot state file
-│   └── WAL_CREATION_COMPLETED      # Marker file
-```
-
 **Initialization Flow**:
 
 1. Check if `WAL_CREATION_COMPLETED` marker exists
@@ -146,11 +141,6 @@ stateFile.Close()
 os.Rename(s.stateFile+".tmp", s.stateFile)
 ```
 
-**Why this matters**:
-
-- **Without atomic writes**: If the process crashes while writing the state file, the file could be partially written (corrupted), leaving the system in an inconsistent state.
-- **With atomic writes**: The rename operation is atomic on POSIX filesystems. Either the old file exists (if crash before rename) or the new file exists (if crash after rename). There is no intermediate corrupted state.
-
 **Recovery scenarios**:
 
 | Crash Point | State After Restart |
@@ -168,10 +158,6 @@ The snapshot state file uses a length-prefixed binary format:
 ```
 [snapshotLength (8 bytes, big-endian)][snapshotData (protobuf)]
 ```
-
-This format allows:
-- Validation of file completeness (check length vs actual data)
-- Efficient parsing without scanning the entire file
 
 ## HardState
 
@@ -197,13 +183,7 @@ The HardState is updated when:
 - A new election occurs (term and vote change)
 - An entry is committed (commit changes)
 
-The WAL's `Append()` method checks if synchronization is needed using `raft.MustSync()` and persists both the HardState and entries atomically:
-
-```go
-if raft.MustSync(hardState, s.hardState, len(entries)) {
-    return s.wal.Save(s.hardState, entries)
-}
-```
+The WAL's `Append()` method checks if synchronization is needed using `raft.MustSync()` and persists both the HardState and entries atomically.
 
 ## Snapshots
 
@@ -256,7 +236,7 @@ When a node starts or recovers:
 4. Commands buffered during synchronization are replayed from the spool
 5. The final state is reached
 
-#### Spool: Command Buffer During Synchronization
+## Spool: Command Buffer During Synchronization
 
 When a node is synchronizing from a snapshot (e.g., after joining the cluster or recovering from a failure), it enters a "syncing" mode. During this mode:
 
@@ -286,7 +266,7 @@ func (s *spool) Reset() error
 
 **Spool Location**: `{dataDir}/spool`
 
-#### Syncer: FSM Synchronization Manager
+### Syncer: FSM Synchronization Manager
 
 The syncer manages the synchronization process between the Raft log and the FSM:
 
@@ -308,129 +288,43 @@ The syncer manages the synchronization process between the Raft log and the FSM:
 6. **Syncing mode deactivated**: `syncing = false` after replay completes
 7. **Spool reset**: Spool file is cleared
 
-**During Synchronization**:
-- New committed entries are appended to the spool instead of being applied directly
-- The node cannot serve writes until synchronization completes
-- Reads may be blocked or delayed depending on implementation
-
-**After Synchronization**:
-- Normal operation resumes
-- Committed entries are applied directly to the FSM
-- The spool is empty and ready for the next synchronization cycle
-
-## Runtime Store (logs + runtime state)
+## Store
 
 ### Concept
 
-The Runtime Store is responsible for persistent storage of transactions (logs) and derived runtime state (balances, account metadata, idempotency). It implements the `RuntimeStore` interface. **All ledgers share the same Runtime Store instance**, with data keyed by ledger name.
+The Store is responsible for persistent storage of transactions (logs) and derived runtime state (balances, account metadata, idempotency). **All ledgers share the same Store instance**, with data keyed by ledger name.
 
-### Log Operations
+For detailed information on available storage backends and their configuration, see [Storage Drivers](./storage-drivers.md).
 
-**Write**:
+### What the Store Persists
 
-```go
-func (s *runtimeStore) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
-```
-
-- Persists logs (each log includes its ledger name)
-- Updates balances and metadata in the same store
-- Records idempotency entries
-
-**Read**:
-
-```go
-func (s *runtimeStore) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
-```
-
-- Reads logs for a specific ledger starting from sequence `from` (exclusive)
-- Stops at sequence `to` (inclusive) if `to > 0`, otherwise reads until the end
-- Returns a cursor for iteration
-
-### Interface
-
-```go
-type RuntimeStore interface {
-    LogStore
-    GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error)
-    GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error)
-    GetLogForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) ([]byte, uint64, error)
-    GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error)
-    IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
-    GetLastProcessedLogID(ctx context.Context, ledger string) (uint64, error)
-}
-```
-
-The `RuntimeStore` interface combines runtime queries with log access, providing runtime data access and log storage for all ledgers.
-
-### Implementation
-
-#### SQLite
-
-**Files**: `internal/store/sqlite/runtime.go`, `internal/store/sqlite/db.go`
-
-**Characteristics**:
-- Single SQLite database for all ledgers
-- No external dependencies
-- Ideal for development and small deployments
-- Logs and runtime state stored together with ledger prefixes
-
-**Schema**:
-```sql
-CREATE TABLE logs (
-    ledger TEXT NOT NULL,
-    id INTEGER NOT NULL,
-    data BLOB NOT NULL,
-    date TEXT,
-    idempotency_key TEXT,
-    idempotency_hash TEXT,
-    PRIMARY KEY (ledger, id)
-);
-
-CREATE UNIQUE INDEX idx_logs_idempotency_key ON logs(ledger, idempotency_key) WHERE idempotency_key IS NOT NULL;
-
-CREATE TABLE balances (
-    ledger TEXT NOT NULL,
-    account TEXT NOT NULL,
-    asset TEXT NOT NULL,
-    balance TEXT NOT NULL DEFAULT '0',
-    PRIMARY KEY (ledger, account, asset)
-);
-
-CREATE TABLE account_metadata (
-    ledger TEXT NOT NULL,
-    account_address TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (ledger, account_address, key)
-);
-```
-
-#### Pebble
-
-**File**: `internal/store/pebble/runtime.go`
-
-**Characteristics**:
-- Single Pebble database for all ledgers
-- High-performance LSM-tree based storage
-- Data keyed with ledger name prefixes
+- **Transaction logs** - Immutable record of all ledger operations
+- **Balances** - Current balance for each account/asset combination
+- **Account metadata** - Key-value metadata associated with accounts
+- **Idempotency entries** - Track processed requests to prevent duplicates
+- **Transaction ID mappings** - Map transaction IDs to log IDs
+- **Reverted transaction IDs** - Track which transactions have been reverted
+- **Last applied Raft index** - For recovery after restart
 
 ### Key Set Locker
 
 **File**: `internal/service/keysetlocker.go`
 
-The `KeySetLocker` provides key-based locking for concurrent access to balance-related operations:
+The `KeySetLocker` provides key-based locking for concurrent access to various resources:
 
-- **Purpose**: Ensures safe concurrent access to balances during transaction processing
-- **Mechanism**: Uses mutexes keyed by `ledger:account:asset` combinations
-- **Behavior**: Locks are acquired before reading balances and released after transaction processing
+- **Purpose**: Ensures safe concurrent access during transaction processing
+- **Mechanism**: Uses mutexes keyed by arbitrary string keys
 - **Cleanup**: Locks are removed from the internal map when no goroutine holds a reference
 - **No caching**: Always reads from the underlying database store
 
-**Note**: This is NOT a cache. It only provides locking - balances are always read from the database.
+**Locked resources**:
+- **Balances**: Keys like `ledger:account:asset` - ensures consistent balance reads during transaction validation
+- **References**: Keys like `tx/references/{reference}` - prevents duplicate transaction references
+- **Idempotency keys**: Keys like `tx/ik/{idempotency_key}` - ensures idempotent transaction creation
 
-## Data Organization
+**Note**: This is NOT a cache. It only provides locking - data is always read from the database.
 
-### Directory Structure
+## Directory Structure
 
 ```
 data/
@@ -440,26 +334,20 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
-└── runtime.db (SQLite)            # All ledgers data
+└── runtime.db (SQLite)            # All ledgers data (sqlite-mattn or sqlite-modern)
     OR
-└── runtime/ (Pebble)              # All ledgers data
-    ├── 000001.sst
-    ├── MANIFEST-000001
-    └── ...
+└── runtime/ (Pebble)              # All ledgers data (pebble driver)
+    ├── live/                      # Active database
+    ├── checkpoints/               # Checkpoint directories for snapshots
+    └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
-
-### Data Isolation
-
-- **Raft data**: Unified in `data/raft/`
-- **Ledgers**: All stored in shared Runtime Store with ledger name as key prefix
-- **Logs**: Stored with `(ledger, id)` composite key
 
 ## Durability and Guarantees
 
 ### Write Durability
 
 1. **WAL**: Synchronized on disk before commit
-2. **RuntimeStore**: ACID transactions for SQLite, durable writes for Pebble
+2. **Store**: ACID transactions for SQLite, durable writes for Pebble
 3. **Snapshots**: Created periodically for recovery
 
 ### Recovery after Failure
@@ -468,7 +356,7 @@ The system can recover completely from:
 
 1. **Snapshot + WAL**: Rapid restoration from the last snapshot
 2. **Complete WAL**: If no snapshot, complete replay of the WAL
-3. **RuntimeStore**: Reconstruction of balances from the logs
+3. **Store**: Reconstruction of balances from the logs
 
 ### ACID Guarantees
 
@@ -487,8 +375,32 @@ The system can recover completely from:
 
 ### Compaction
 
-- **WAL**: Compacted after snapshots
-- **RuntimeStore**: Pebble performs automatic LSM compaction
+#### WAL Compaction
+
+The WAL is compacted after snapshots to prevent unbounded growth:
+
+1. When a snapshot is created at index `N`, entries before `N - CompactionMargin` are deleted
+2. The `CompactionMargin` keeps a buffer for slow followers to catch up
+3. Old WAL segment files are removed from disk
+
+For detailed explanation, see [WAL Compaction in Data Flows](./data-flows.md#wal-compaction).
+
+#### Spool Compaction
+
+The Spool (committed entry buffer) prunes old segments:
+
+- Segments where `MaxIndex <= lastApplied` are deleted
+- The trailer metadata allows fast segment skipping during replay
+
+See [Spool Technical Documentation](./spool.md#pruning) for details.
+
+#### Store Compaction (Pebble)
+
+Pebble performs automatic LSM-tree compaction:
+
+- **L0 → L1 compaction**: Triggered when L0 files exceed threshold
+- **Background compaction**: Runs concurrently with writes
+- **Write stalls**: May occur if compaction falls behind (see [Metrics](./metrics.md#write-stall-metrics))
 
 ### Indexing
 
@@ -500,7 +412,7 @@ The system can recover completely from:
 
 To deepen your understanding:
 
-1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on each storage driver
+1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on each storage driver (SQLite, Pebble)
 2. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
 3. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
 4. [Deployment](./deployment.md) - Storage configuration in production

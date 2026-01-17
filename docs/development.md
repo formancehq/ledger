@@ -32,9 +32,9 @@ ledger-v3-poc/
 └── docs/                  # Technical documentation
 ```
 
-## Conventions de Code
+## Code Conventions
 
-### organisation des Files
+### File Organization
 
 #### HTTP handlers
 
@@ -174,7 +174,7 @@ The retry configuration is defined in `openapi.yml` under `x-speakeasy-retries` 
 - Batch operations when possible
 - Consider async I/O for non-critical operations
 
-**Note**: While I/O is not strictly forbidden, it should be minimized and optimized. The ledger FSM performs I/O to update RuntimeStore, but this is done efficiently and is necessary for maintaining balances.
+**Note**: While I/O is not strictly forbidden, it should be minimized and optimized. The ledger FSM performs I/O to update Store, but this is done efficiently and is necessary for maintaining balances.
 
 ### Request Forwarding
 

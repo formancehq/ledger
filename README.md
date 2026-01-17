@@ -1,7 +1,54 @@
 # Ledger v3 POC - Raft Cluster
 
-Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system allows managing ledgers (accounting books) with financial transactions, where each ledger has its own independent Raft group.
+Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, providing strong consistency and simplified operations.
 
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Distributed Consensus** | Uses etcd/raft for strong consistency across cluster nodes |
+| **Single Raft Architecture** | All ledgers managed by one Raft group for atomic operations |
+| **Multiple Storage Backends** | SQLite (mattn/modern) and Pebble for different use cases |
+| **Numscript Support** | Full support for Numscript transaction scripting |
+| **Idempotency** | Built-in idempotency key support for safe retries |
+| **Bulk Operations** | Process multiple transactions in a single request |
+| **OpenTelemetry** | Comprehensive observability with traces, metrics, and logs |
+| **Pure Go Options** | Pebble and sqlite-modern drivers require no CGO |
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Client Applications                      │
+│              (HTTP REST / gRPC / CLI Client)                │
+└─────────────────────────────────────────────────────────────┘
+                              │
+         ┌────────────────────┼────────────────────┐
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│     Node 1      │  │     Node 2      │  │     Node 3      │
+│   (Leader)      │  │   (Follower)    │  │   (Follower)    │
+├─────────────────┤  ├─────────────────┤  ├─────────────────┤
+│ HTTP :9000      │  │ HTTP :9000      │  │ HTTP :9000      │
+│ gRPC :8888      │  │ gRPC :8888      │  │ gRPC :8888      │
+├─────────────────┤  ├─────────────────┤  ├─────────────────┤
+│  Single Raft    │◄─┼─Raft Protocol──►│◄─┤  Single Raft    │
+│     Group       │  │                 │  │     Group       │
+├─────────────────┤  ├─────────────────┤  ├─────────────────┤
+│ FSM (All Ledgers)│ │ FSM (All Ledgers)│ │ FSM (All Ledgers)│
+├─────────────────┤  ├─────────────────┤  ├─────────────────┤
+│  Store (SQLite/ │  │  Store (SQLite/ │  │  Store (SQLite/ │
+│   Pebble)       │  │   Pebble)       │  │   Pebble)       │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+### Storage Backends
+
+| Driver | Library | CGO | Best For |
+|--------|---------|-----|----------|
+| `sqlite-mattn` | github.com/mattn/go-sqlite3 | Yes | Production (best performance) |
+| `sqlite-modern` | modernc.org/sqlite | No | Cross-compilation, Docker scratch |
+| `pebble` | github.com/cockroachdb/pebble | No | High-throughput workloads |
 
 ## Documentation
 
@@ -45,11 +92,31 @@ After setup, `direnv` will automatically load the Nix development environment wh
 ### Local mode (single node)
 
 ```bash
-# Start a single node
+# Start a single node with default settings
 just run
 
-# Or manually
-go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
+# Or manually with specific storage driver
+go run ./cmd/server \
+  --node-id 1 \
+  --bind-addr 127.0.0.1:8888 \
+  --data-dir ./data/node-1 \
+  --http-port 9000 \
+  --storage-type pebble  # or sqlite-mattn, sqlite-modern
+```
+
+### Storage Configuration
+
+Choose your storage backend based on your needs:
+
+```bash
+# SQLite with CGO (best performance, requires C compiler)
+./ledger serve --storage-type sqlite-mattn
+
+# SQLite pure Go (no CGO, works with scratch Docker images)
+./ledger serve --storage-type sqlite-modern
+
+# Pebble (high-throughput LSM-tree, no CGO)
+./ledger serve --storage-type pebble
 ```
 
 ### Development Environment with Pulumi
@@ -136,6 +203,38 @@ For detailed documentation, see the [Pulumi Development Environment README](misc
 
 For other deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
 
+## API Quick Reference
+
+### Ledger Operations
+
+```bash
+# Create a ledger
+curl -X POST http://localhost:9000/my-ledger \
+  -H "Content-Type: application/json" \
+  -d '{"metadata": {"description": "My ledger"}}'
+
+# Create a transaction
+curl -X POST http://localhost:9000/my-ledger/transactions \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: unique-key-123" \
+  -d '{
+    "postings": [
+      {"source": "world", "destination": "bank", "amount": 100, "asset": "USD"}
+    ]
+  }'
+
+# Check cluster state
+curl http://localhost:9000/cluster/state
+```
+
+### API Versioning
+
+All endpoints support an optional `/v2` prefix for future versioning:
+- `GET /` and `GET /v2/` are equivalent
+- `POST /{ledger}/transactions` and `POST /v2/{ledger}/transactions` are equivalent
+
+For complete API documentation, see the [API Reference](./docs/api.md).
+
 ## Development
 
 ```bash
@@ -144,6 +243,15 @@ just build
 
 # Run tests
 just test
+
+# Run end-to-end tests
+just test-e2e
+
+# Generate protobuf code
+just generate-proto
+
+# Generate SDK from OpenAPI
+just generate-sdk
 
 # Clean build artifacts
 just clean

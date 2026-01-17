@@ -19,7 +19,7 @@ graph TB
         GRPCServer1[gRPC Server<br/>Port 8888]
         RaftNode1[Raft Node]
         FSM1[FSM<br/>All Ledgers]
-        Storage1[Runtime Store]
+        Storage1[Store]
     end
     
     subgraph "Node 2"
@@ -27,7 +27,7 @@ graph TB
         GRPCServer2[gRPC Server<br/>Port 8888]
         RaftNode2[Raft Node]
         FSM2[FSM<br/>All Ledgers]
-        Storage2[Runtime Store]
+        Storage2[Store]
     end
     
     subgraph "Node 3"
@@ -35,7 +35,7 @@ graph TB
         GRPCServer3[gRPC Server<br/>Port 8888]
         RaftNode3[Raft Node]
         FSM3[FSM<br/>All Ledgers]
-        Storage3[Runtime Store]
+        Storage3[Store]
     end
     
     HTTPClient --> HTTPServer1
@@ -69,7 +69,7 @@ Each node in the cluster runs the following components:
 - **gRPC Server**: Inter-node communication and gRPC API (port 8888)
 - **Raft Node**: Single Raft group managing all ledgers and transactions
 - **Finite State Machine (FSM)**: State machine for applying commands (ledger and log operations)
-- **Runtime Store**: Persistent storage for logs, balances, and metadata
+- **Store**: Persistent storage for logs, balances, and metadata
 
 ### 2. Abstraction Layers
 
@@ -91,14 +91,14 @@ graph TB
     
     subgraph "Storage Layer"
         WAL[WAL Storage]
-        RuntimeStore[Runtime Store<br/>Logs + Balances]
+        Store[Store<br/>Logs + Balances]
         Snapshot[Snapshot Store]
     end
     
     HTTP --> RaftNode
     GRPC --> RaftNode
     RaftNode --> Controller
-    Controller --> RuntimeStore
+    Controller --> Store
     
     RaftNode --> Transport
     
@@ -178,7 +178,7 @@ sequenceDiagram
     participant HTTP as HTTP Handler
     participant RaftNode as Raft Node
     participant FSM as FSM
-    participant Storage as Runtime Store
+    participant Storage as Store
     
     Client->>HTTP: POST /{ledgerName}
     HTTP->>RaftNode: CreateLedger()
@@ -207,25 +207,25 @@ sequenceDiagram
     participant RaftNode as Raft Node
     participant Controller as Controller
     participant FSM as FSM
-    participant RuntimeStore as Runtime Store
+    participant Store as Store
     
     Client->>HTTP: POST /{ledgerName}/transactions
     HTTP->>RaftNode: CreateTransaction()
     RaftNode->>Controller: CreateTransaction()
     
     alt Node is leader
-        Controller->>RuntimeStore: Check Balances
+        Controller->>Store: Check Balances
         Controller->>Controller: Validate Transaction
         Controller->>RaftNode: CreateLog()
         RaftNode->>FSM: Propose CreateLogCommand (via Raft)
         FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>RuntimeStore: AppendLogs() - Persist log and update balances
+        FSM->>Store: AppendLogs() - Persist log and update balances
         FSM-->>RaftNode: Log
         RaftNode-->>Controller: Log
     else Node is follower
         Controller->>Controller: Find leader
         Controller->>RaftNode: Forward via gRPC (to leader)
-        Note over RaftNode,RuntimeStore: Same as leader path
+        Note over RaftNode,Store: Same as leader path
         RaftNode-->>Controller: Log
     end
     
@@ -276,7 +276,7 @@ Although all ledgers share the same Raft group and storage:
 
 ### Storage Organization
 
-All ledgers share a single Runtime Store with data prefixed by ledger name:
+All ledgers share a single Store with data prefixed by ledger name:
 - `logs` table: Contains `(ledger, id)` as primary key
 - `balances` table: Contains `(ledger, account, asset)` as key
 - `account_metadata` table: Contains `(ledger, account_address, key)` as key

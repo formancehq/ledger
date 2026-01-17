@@ -186,14 +186,14 @@ Idempotency keys allow avoiding duplicate transactions in case of retry.
 ### Storage
 
 Idempotency keys are stored:
-- **In the RuntimeStore**: For fast access and persistence
+- **In the Store**: For fast access and persistence
 - **Per ledger**: Keyed by `(ledger, idempotency_key)`
 
 ### Verification
 
 Verification is done before proposing commands:
 
-1. **Check in RuntimeStore**: Query `GetLogForIdempotencyKey()`
+1. **Check in Store**: Query `GetLogIDForIdempotencyKey()`
 2. **If found**: Return existing log without creating a new one
 3. **If not found**: Proceed with command proposal
 
@@ -210,22 +210,22 @@ type IdempotencyEntry struct {
 
 ### Problem
 
-Balances must be recalculated after a failure or at startup of a new node.
+Balances must be available after a failure or at startup of a new node.
 
 ### Solution
 
-Balances are reconstructed from the logs:
+Balances are **not** reconstructed by replaying all logs (which would be too slow). Instead:
 
-1. Load all logs from the RuntimeStore
-2. Replay each transaction
-3. Update balances progressively
+1. **Persistent balances**: Balances are stored in the Store alongside logs and updated on every write
+2. **Snapshot-based recovery**: On restart, state is rebuilt from the last Store snapshot
+3. **Incremental catch-up**: Only Raft entries after the snapshot need to be applied
 
-### Optimization
+### How It Works
 
-To avoid replaying all logs at each startup:
-
-- **Persistent balances**: Stored in RuntimeStore alongside logs
-- **Incremental updates**: Only new logs need to be processed after recovery
+- The Store persists balances directly (SQLite: `balances` table, Pebble: balance diff entries)
+- On `AppendLogs()`, balances are updated atomically with the log insertion
+- On recovery, the Store snapshot already contains the correct balances up to the snapshot point
+- Only the recent Raft entries (after the snapshot) need to be replayed
 
 ## Timeout Management
 
@@ -284,8 +284,8 @@ Reads can be served locally without going through Raft:
 
 - `GetLedger`: Read from the local FSM
 - `GetAllLedgers`: Read from the local FSM
-- `GetBalances`: Read from the local RuntimeStore
-- `GetAllLogs`: Read from the local RuntimeStore
+- `GetBalances`: Read from the local Store
+- `GetAllLogs`: Read from the local Store
 
 ### Writes via Leader
 
@@ -339,7 +339,7 @@ Authorization can be added:
 
 ### Adding a New Storage Driver
 
-1. Implement the `RuntimeStore` interface
+1. Implement the `Store` interface
 2. Add the driver in the factory function
 3. Register the storage type flag
 
@@ -354,7 +354,7 @@ Authorization can be added:
 
 1. Define the type in `internal/ledgerpb/`
 2. Implement the conversion protobuf ↔ Go
-3. Add support in the RuntimeStore
+3. Add support in the Store
 4. Update the handlers
 
 ## Known Limitations

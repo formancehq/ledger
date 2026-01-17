@@ -51,7 +51,9 @@ func Module() fx.Option {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"))
 			},
 			func(cfg Config) (*raft.DefaultSpool, error) {
-				return raft.NewDefaultSpool(filepath.Join(cfg.RaftConfig.WalDir, "spool"))
+				return raft.NewDefaultSpool(raft.DefaultSpoolConfig{
+					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
+				})
 			},
 			func(
 				params struct {

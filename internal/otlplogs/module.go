@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"runtime/debug"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -140,7 +139,7 @@ func RecoverAndLogPanics(logger logging.Logger) {
 			logger.Errorf("Unknown logger provider type: %T", loggerProvider)
 		}
 
-		os.Exit(28) // Why 28? I don't know...
+		panic(e)
 	}
 }
 

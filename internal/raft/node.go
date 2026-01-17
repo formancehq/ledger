@@ -129,7 +129,7 @@ func NewNode(
 
 			logger.Infof("Snapshot restored successfully")
 		} else {
-			logger.Infof("No snapshot found, starting with empty FSM")
+			logger.Infof("Empty snapshot found, starting with empty FSM")
 		}
 
 		logger.Infof("Finished restoring FSM from storage")
@@ -144,6 +144,7 @@ func NewNode(
 			logger,
 			wal,
 			meter,
+			store,
 			cfg.SnapshotThreshold,
 			cfg.CompactionMargin,
 		),
@@ -261,6 +262,10 @@ func (node *Node) Start(ctx context.Context) error {
 	}
 	node.confState = &initialConfState
 
+	if err := node.syncer.Replay(ctx); err != nil {
+		return fmt.Errorf("replaying storage: %w", err)
+	}
+
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
 	defer processingTick.Stop()
 
@@ -338,13 +343,11 @@ func (node *Node) processReady(ctx context.Context) error {
 		node.lastSoftState = ss
 	}
 
-	if len(rd.Entries) > 0 {
-		now := time.Now()
-		if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
-			return fmt.Errorf("appending entries to storage: %w", err)
-		}
-		node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
+	now := time.Now()
+	if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+		return fmt.Errorf("appending entries to storage: %w", err)
 	}
+	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		node.logger.

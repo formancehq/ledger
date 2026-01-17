@@ -52,7 +52,7 @@ func New(dataDir string, logger logging.Logger) (*WAL, error) {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
-	logger = logger.WithFields(map[string]any{"cmd": "wal"})
+	logger = logger.WithFields(map[string]any{"cmp": "wal"})
 
 	s := &WAL{
 		entries:    make([]raftpb.Entry, 0),
@@ -316,37 +316,55 @@ func (s *WAL) Snapshot() (raftpb.Snapshot, error) {
 
 // Append appends entries to the log
 func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
+	if hardState == s.hardState && len(entries) == 0 {
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if len(s.entries) > 0 {
-		offset := s.entries[0].Index
-		last := entries[0].Index + uint64(len(entries)) - 1
-		if last < offset {
-			return nil
-		}
-		if entries[0].Index > offset+uint64(len(s.entries)) {
-			s.entries = append(s.entries, entries...)
-		} else {
-			truncateIndex := entries[0].Index
-			if truncateIndex > offset {
-				s.entries = s.entries[:truncateIndex-offset]
+	logger := s.logger.WithFields(map[string]any{
+		"entries":          len(entries),
+		"hardState.Term":   hardState.Term,
+		"hardState.Vote":   hardState.Vote,
+		"hardState.Commit": hardState.Commit,
+	})
+	logger.Debugf("Appending entries")
+
+	if len(entries) > 0 {
+		if len(s.entries) > 0 {
+			offset := s.entries[0].Index
+			last := entries[0].Index + uint64(len(entries)) - 1
+			if last < offset {
+				return nil
 			}
+			if entries[0].Index > offset+uint64(len(s.entries)) {
+				s.entries = append(s.entries, entries...)
+			} else {
+				truncateIndex := entries[0].Index
+				if truncateIndex > offset {
+					s.entries = s.entries[:truncateIndex-offset]
+				}
+				s.entries = append(s.entries, entries...)
+			}
+		} else {
 			s.entries = append(s.entries, entries...)
 		}
-	} else {
-		s.entries = append(s.entries, entries...)
 	}
 
 	if !raft.IsEmptyHardState(hardState) {
 		s.hardState = hardState
 	}
 
-	if raft.MustSync(hardState, s.hardState, len(entries)) {
-		return s.wal.Save(s.hardState, entries)
-	}
+	s.logger.
+		WithFields(map[string]any{
+			"hardState.Term":   s.hardState.Term,
+			"hardState.Vote":   s.hardState.Vote,
+			"hardState.Commit": s.hardState.Commit,
+		}).
+		Debug("Saving WAL entries to disk")
 
-	return nil
+	return s.wal.Save(s.hardState, entries)
 }
 
 // CreateSnapshot creates a snapshot at the given index
@@ -389,7 +407,13 @@ func (s *WAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) er
 		Data: data,
 	}
 
-	return s.saveSnapshot()
+	if err := s.saveSnapshot(); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{"index": index}).Infof("Snapshot created")
+
+	return nil
 }
 
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held)
@@ -476,9 +500,6 @@ func (s *WAL) Compact(compactIndex uint64) error {
 	} else {
 		s.entries = s.entries[:0]
 	}
-
-	// Note: WAL compaction is handled by etcd/wal itself when we create snapshots
-	// We just update our in-memory cache here
 
 	return nil
 }

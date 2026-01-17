@@ -6,15 +6,15 @@ Ledger v3 POC uses a multi-level testing strategy to ensure system quality and r
 
 ## Test Types
 
-### Tests Unit
+### Unit Tests
 
 **Location**: Files `*_test.go` in each package
 
-**Objectif** : Tester les fonctions and méthodes individuelles
+**Objective**: Test individual functions and methods
 
-**Example** :
+**Example**:
 ```go
-func TestValidatebucketConfig(t *testing.T) {
+func TestValidateBucketConfig(t *testing.T) {
     tests := []struct {
         name    string
         driver  string
@@ -32,29 +32,29 @@ func TestValidatebucketConfig(t *testing.T) {
     
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            err := service.ValidatebucketConfig(tt.driver, tt.config)
+            err := service.ValidateBucketConfig(tt.driver, tt.config)
             if (err != nil) != tt.wantErr {
-                t.Errorf("ValidatebucketConfig() error = %v, wantErr %v", err, tt.wantErr)
+                t.Errorf("ValidateBucketConfig() error = %v, wantErr %v", err, tt.wantErr)
             }
         })
     }
 }
 ```
 
-### Integration tests
+### Integration Tests
 
 **Location**: Files `*_integration_test.go`
 
-**Objectif** : Tester l'integration entre composants
+**Objective**: Test integration between components
 
-Runtime store integration tests cover both runtime state and log persistence now that log storage is part of the runtime store.
+Store integration tests cover both runtime state and log persistence now that log storage is part of the store.
 
-**Example** :
+**Example**:
 ```go
 //go:build integration
 
-func TestRuntimeStoreIntegration(t *testing.T) {
-    store := setupRuntimeStore(t)
+func TestStoreIntegration(t *testing.T) {
+    store := setupStore(t)
     defer cleanupStore(t, store)
     
     log := &ledger.Log{...}
@@ -67,15 +67,15 @@ func TestRuntimeStoreIntegration(t *testing.T) {
 }
 ```
 
-### End-to-end tests (e2e)
+### End-to-End Tests (E2E)
 
 **Location**: `tests/e2e/`
 
-**Objectif** : Tester le System complet with un cluster réel
+**Objective**: Test the complete system with a real cluster
 
-**Framework** : Ginkgo/Gomega
+**Framework**: Ginkgo/Gomega
 
-**Example** :
+**Example**:
 ```go
 //go:build e2e
 
@@ -83,32 +83,32 @@ var _ = Describe("Simple cluster", func() {
     It("should start successfully", func() {
         Eventually(func(g Gomega) bool {
             state, err := servers[0].client.Cluster.GetClusterState(ctx)
-            g.Expect(err).to(Succeed())
+            g.Expect(err).To(Succeed())
             return state.ClusterStateResponse.Data.Leader != nil
-        }).within(5 * time.Second).to(BeTrue())
+        }).Within(5 * time.Second).Should(BeTrue())
     })
 })
 ```
 
-## Test Structure e2e
+## E2E Test Structure
 
-### setup du Cluster
+### Cluster Setup
 
-Les tests e2e créent un cluster de 3 nœuds :
+E2E tests create a 3-node cluster:
 
 ```go
 BeforeEach(func() {
-    servers = make([]servicewithclient, 0, 3)
+    servers = make([]serviceWithClient, 0, 3)
     for i := range 3 {
         server := testservice.New(
             cmdserver.NewRootCommand,
-            testservice.withinstruments(
-                testserver.withNodeID(i+1),
-                testserver.withHTTPPort(9000+i),
+            testservice.WithInstruments(
+                testserver.WithNodeID(i+1),
+                testserver.WithHTTPPort(9000+i),
                 // ...
             ),
         )
-        servers = append(servers, servicewithclient{
+        servers = append(servers, serviceWithClient{
             service: server,
             client: client.New(...),
         })
@@ -118,83 +118,83 @@ BeforeEach(func() {
 
 ### Test Helpers
 
-The package `pkg/testserver` forrnit des helpers :
+The package `pkg/testserver` provides helpers:
 
-- `withNodeID()` : Configure the Node ID
-- `withHTTPPort()` : Configure the port HTTP
-- `withRaftElectionTick()` : Configure parameters Raft
-- `withRaftTickinterval()` : Configure the interval de tick
+- `WithNodeID()`: Configure the Node ID
+- `WithHTTPPort()`: Configure the HTTP port
+- `WithRaftElectionTick()`: Configure Raft parameters
+- `WithRaftTickInterval()`: Configure the tick interval
 
-## Bonnes Pratiques
+## Best Practices
 
-### Éviter les `time.Sleep`
+### Avoid `time.Sleep`
 
-❌ **Mtovais** :
+❌ **Bad**:
 ```go
 time.Sleep(2 * time.Second)
-// Check l'état
+// Check state
 ```
 
-✅ **Bon** :
+✅ **Good**:
 ```go
 Eventually(func(g Gomega) bool {
-    state, err := client.GandState()
-    g.Expect(err).to(Succeed())
+    state, err := client.GetState()
+    g.Expect(err).To(Succeed())
     return state.IsReady()
-}).within(10 * time.Second).withPolling(500 * time.Millisecond).to(BeTrue())
+}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).Should(BeTrue())
 ```
 
-### Verifications Défensives
+### Defensive Checks
 
-torjorrs Check que les IDs sont valides avant utilisation :
+Always check that IDs are valid before use:
 
 ```go
-Expect(followerID).Notto(BeZero(), "followerID should not be zero")
-Expect(followerID).to(BeNumerically(">", 0))
-Expect(followerID).to(BeNumerically("<=", corntinstances))
+Expect(followerID).NotTo(BeZero(), "followerID should not be zero")
+Expect(followerID).To(BeNumerically(">", 0))
+Expect(followerID).To(BeNumerically("<=", countInstances))
 ```
 
-### Nandtoyage
+### Cleanup
 
-Use `DeferCleanup` for the nandtoyage automatic :
+Use `DeferCleanup` for automatic cleanup:
 
 ```go
 BeforeEach(func() {
     tmpDir := GinkgoT().TempDir()
     DeferCleanup(func() {
-        Expect(os.RemoveAll(tmpDir)).to(Succeed())
+        Expect(os.RemoveAll(tmpDir)).To(Succeed())
     })
 })
 ```
 
 ## Test Execution
 
-### Tests Unit
+### Unit Tests
 
 ```bash
 go test ./...
 ```
 
-### Integration tests
+### Integration Tests
 
 ```bash
 go test -tags integration ./...
 ```
 
-### Tests e2e
+### E2E Tests
 
 ```bash
-# with Ginkgo
+# With Ginkgo
 ginkgo run -tags e2e ./tests/e2e
 
-# or with go test
+# Or with go test
 go test -tags e2e ./tests/e2e/...
 ```
 
-### Tests specifics
+### Specific Tests
 
 ```bash
-# Un seul test
+# Single test
 ginkgo run -tags e2e ./tests/e2e -focus "should continue to work"
 
 # Tests with debug
@@ -203,66 +203,113 @@ DEBUG=true ginkgo run -tags e2e ./tests/e2e
 
 ## Coverage
 
-### Générer le Coverage
+### Generate Coverage
 
 ```bash
-go test -coverprofile=coverage.ort ./...
-go tool cover -html=coverage.ort
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
 ```
 
-### Objectif de Coverage
+### Coverage Goals
 
-- **Minimum** : 70% for the code CRITICAL
-- **Idéal** : 80%+ for thes composants principtox
-- **Focus** : FSM, Business services, HTTP handlers
+- **Minimum**: 70% for critical code
+- **Ideal**: 80%+ for main components
+- **Focus**: FSM, Business services, HTTP handlers
 
-## Tests de Performance
+## Performance Tests
 
-Les tests de performance utilisent k6 pour les tests de charge. Voir `k6/README.md` pour la documentation complète.
+Performance tests use k6 for load testing. See `k6/README.md` for complete documentation.
 
-### Exécution des tests k6
+### Running k6 Tests Locally
 
 ```bash
-# Exécuter un scénario spécifique
+# Run a specific scenario
 k6 run k6/scripts/world_to_bank.js
 
-# Avec variables d'environnement
+# With environment variables
 LEDGER_URL=http://localhost:9000 \
 LEDGER_NAME=my-ledger \
 DURATION=60s \
 VUS=20 \
 k6 run k6/scripts/world_to_bank.js
 
-# Exécuter tous les scénarios
+# Run all scenarios
 for test in k6/scripts/*.js; do
   echo "Running $test..."
   k6 run "$test"
 done
 ```
 
-### Benchmark Go (pour tests unitaires)
+### Running k6 Tests with the Kubernetes Operator
 
-Pour les benchmarks Go intégrés dans les tests unitaires :
+The development environment includes the **k6-operator** which allows running k6 tests as Kubernetes-native workloads. This is particularly useful for:
+
+- Running distributed load tests across multiple pods
+- Integrating load tests into CI/CD pipelines
+- Automated benchmarking in the development cluster
+
+#### Using the k6 Operator
+
+1. **Deploy the development environment** (includes k6-operator):
+   ```bash
+   cd misc/devenv
+   pulumi up
+   ```
+
+2. **Create a TestRun resource**:
+   ```yaml
+   apiVersion: k6.io/v1alpha1
+   kind: TestRun
+   metadata:
+     name: ledger-benchmark
+     namespace: bench
+   spec:
+     parallelism: 4
+     script:
+       configMap:
+         name: k6-test-script
+         file: world_to_bank.js
+     arguments: -e LEDGER_URL=http://ledger-exp.ledger:9000 -e LEDGER_NAME=benchmark
+   ```
+
+3. **Monitor the test**:
+   ```bash
+   kubectl get testrun -n bench
+   kubectl logs -f -l k6_cr=ledger-benchmark -n bench
+   ```
+
+#### Benchmark Operator Integration
+
+The development environment also includes a **benchmark-operator** that watches for `TestRun` completions and automatically:
+- Generates Grafana dashboard snapshots
+- Creates Markdown reports with test results
+- Stores artifacts for later analysis
+
+See [Deployment - Development Environment](./deployment.md#development-environment-pulumi) for more details on the available tools.
+
+### Go Benchmarks (for unit tests)
+
+For Go benchmarks integrated in unit tests:
 
 ```bash
 go test -bench=. -benchmem ./...
 ```
 
-## Tests de Charge
+## Load Tests
 
-Les tests e2e peuvent être utilisés for des tests de charge :
+E2E tests can be used for load testing:
 
 ```go
 It("should handle high load", func() {
-    const numTransActions = 1000
-    var wg sync.WaitGrorp
+    const numTransactions = 1000
+    var wg sync.WaitGroup
     
-    for i := 0; i < numTransActions; i++ {
+    for i := 0; i < numTransactions; i++ {
         wg.Add(1)
         go func() {
             defer wg.Done()
-            _, err := client.TransActions.CreateTransAction(...)
-            Expect(err).to(Succeed())
+            _, err := client.Transactions.CreateTransaction(...)
+            Expect(err).To(Succeed())
         }()
     }
     
@@ -270,33 +317,33 @@ It("should handle high load", func() {
 })
 ```
 
-## Debugging des Tests
+## Debugging Tests
 
-### Logs Détaillés
+### Detailed Logs
 
-Enable logs of debug :
+Enable debug logs:
 
 ```bash
 DEBUG=true ginkgo run -tags e2e ./tests/e2e -v
 ```
 
-### Ptose sur Erreur
+### Pause on Error
 
-Use `GinkgoT().Fail()` for faire une ptose :
+Use `GinkgoT().Fail()` to pause for inspection:
 
 ```go
 if err != nil {
-    GinkgoT().Fail() // Ptose ici for inspection
+    GinkgoT().Fail() // Pause here for inspection
 }
 ```
 
-### inspection Manuelle
+### Manual Inspection
 
-for inspecter l'Cluster State pendant un test :
+To inspect the cluster state during a test:
 
-1. Ne pas nandtoyer immédiatement
-2. Use `time.Sleep` temporairement for inspection
-3. Accéder tox endpoints HTTP directement
+1. Don't cleanup immediately
+2. Use `time.Sleep` temporarily for inspection
+3. Access HTTP endpoints directly
 
 ## CI/CD
 
@@ -311,8 +358,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: Actions/checkort@v3
-      - uses: Actions/setup-go@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: '1.25'
       - run: go test ./...
@@ -322,8 +369,8 @@ jobs:
 
 ## Next Steps
 
-for approfondir :
+To learn more:
 
-1. [Development](./development.md) - likent écrire du code testable
+1. [Development](./development.md) - How to write testable code
 2. [Architecture](./architecture.md) - Understand the system to test
 3. [Data Flows](./data-flows.md) - Understand the flows to test

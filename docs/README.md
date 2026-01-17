@@ -6,6 +6,17 @@ Welcome to the technical documentation for the Ledger v3 POC project. This docum
 
 Ledger v3 POC is a distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, with all data stored in a unified storage layer.
 
+### Key Features
+
+- **Distributed Consensus**: Uses etcd/raft for strong consistency across cluster nodes
+- **Single Raft Architecture**: All ledgers managed by one Raft group for simplicity and atomic operations
+- **Multiple Storage Backends**: SQLite (mattn/modern) and Pebble for different use cases
+- **Numscript Support**: Full support for Numscript transaction scripting
+- **Idempotency**: Built-in idempotency key support for safe retries
+- **Bulk Operations**: Process multiple transactions in a single request
+- **OpenTelemetry**: Comprehensive observability with traces, metrics, and logs
+- **Pure Go Options**: Pebble and sqlite-modern drivers require no CGO (sqlite-mattn requires CGO)
+
 ## Documentation Structure
 
 ### 📚 [General Architecture](./architecture.md)
@@ -44,6 +55,12 @@ Diagrams and explanations of data flows for main operations (ledger creation, tr
 ### 🧪 [Testing](./testing.md)
 Testing strategy, unit tests, integration, and end-to-end tests.
 
+### 📊 [Metrics](./metrics.md)
+Application metrics reference: Raft, transport, storage, and alerting recommendations.
+
+### 📝 [Spool](./spool.md)
+Technical documentation for the Spool component (committed entry buffer).
+
 ## Key Concepts
 
 ### Ledgers
@@ -61,14 +78,48 @@ This architecture simplifies operations while maintaining strong consistency gua
 
 ## Technologies Used
 
-- **Go 1.25+** : Main programming language
-- **etcd/raft** : Raft consensus library
-- **gRPC** : Inter-node communication
-- **HTTP/REST** : Public API
-- **Protocol Buffers** : Data serialization
-- **SQLite/Pebble**: Transaction log and runtime state storage
-- **fx (Uber)** : Dependency injection
-- **OpenTelemetry** : Observability and tracing
+| Technology | Purpose |
+|------------|---------|
+| **Go 1.25+** | Main programming language |
+| **etcd/raft** | Raft consensus library (same as used by etcd) |
+| **gRPC** | Inter-node communication and request forwarding |
+| **HTTP/REST** | Public API with OpenAPI specification |
+| **Protocol Buffers** | Data serialization for Raft entries and storage |
+| **SQLite** | Relational storage option (mattn: CGO, modern: pure Go) |
+| **Pebble** | LSM-tree storage option (CockroachDB's engine, pure Go) |
+| **fx (Uber)** | Dependency injection and lifecycle management |
+| **OpenTelemetry** | Observability: traces, metrics, and logs |
+| **Speakeasy** | SDK generation from OpenAPI specification |
+
+## Storage Architecture
+
+The system provides a unified `Store` interface with multiple backend implementations:
+
+```go
+type Store interface {
+    // Log operations
+    AppendLogs(ctx, lastAppliedIndex, logs...) error
+    GetAllLogs(ctx, ledger, from, to) (Cursor, error)
+    GetLogByID(ctx, ledger, id) (*Log, error)
+    
+    // Runtime queries
+    GetBalances(ctx, ledger, query) (Balances, error)
+    GetAccountMetadata(ctx, ledger, accounts) (Metadata, error)
+    
+    // Idempotency and transaction tracking
+    GetLogIDForIdempotencyKey(ctx, ledger, key) (uint64, error)
+    GetLogIDForTransactionID(ctx, ledger, txID) (uint64, error)
+    IsTransactionReverted(ctx, ledger, txID) (bool, error)
+    
+    // Lifecycle and snapshots
+    CreateSnapshot(ctx) error
+    GetLastAppliedIndex() (uint64, error)
+    DeleteLedger(name) error
+    Close(ctx) error
+}
+```
+
+See [Storage Drivers](./storage-drivers.md) for detailed backend comparison.
 
 ## Quick Start
 

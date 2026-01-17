@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,38 +13,62 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-type syncerStatus int
-
 const (
-	syncerStatusNormal syncerStatus = iota
+	syncerStatusNormal = iota
 	syncerStatusSyncing
 )
 
 // todo: handle the case where the service is restarted when the spool is not empty
 type syncer struct {
-	mu                      sync.Mutex
 	spool                   Spool
 	fsm                     FSM
+	store                   Store
 	logger                  logging.Logger
 	createSnapshotHistogram metric.Float64Histogram
 
-	status            atomic.Value
+	status            *atomic.Int32
 	wal               WAL
 	snapshotThreshold uint64
 	compactionMargin  uint64
 	taskExecutor      *singleTaskExecutor
+	syncTerminated    chan struct{}
 }
 
 func (s *syncer) ApplyEntries(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) ([]ApplyResult, error) {
+	select {
+	case <-s.syncTerminated:
+		s.logger.Infof("Syncing terminated, applying spooled entries before resuming...")
+		s.syncTerminated = nil
+		position, err := s.spool.End()
+		if err != nil {
+			return nil, fmt.Errorf("getting spool end position: %w", err)
+		}
+		lastAppliedIndex, err := s.store.GetLastAppliedIndex()
+		if err != nil {
+			return nil, fmt.Errorf("getting last applied index: %w", err)
+		}
+
+		if err := s.spool.ReplayUntil(ctx, *position, lastAppliedIndex, func(entry raftpb.Entry) error {
+			_, err := s.applyEntries(ctx, confState, entry)
+			return err
+		}); err != nil {
+			return nil, fmt.Errorf("replaying spool: %w", err)
+		}
+
+		if err := s.spool.Prune(lastAppliedIndex); err != nil {
+			return nil, fmt.Errorf("pruning spool: %w", err)
+		}
+
+		s.status.Store(syncerStatusNormal)
+	default:
+	}
 
 	switch s.status.Load() {
 	case syncerStatusNormal:
 		return s.applyEntries(ctx, confState, entries...)
 	case syncerStatusSyncing:
 		s.logger.Debugf("Spool committed entries")
-		s.mu.Lock()
 		err := s.spool.AppendCommittedEntries(ctx, entries...)
-		s.mu.Unlock()
 		if err != nil {
 			return nil, err
 		}
@@ -64,12 +86,12 @@ func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftp
 			"term":   snapshot.Metadata.Term,
 		}).
 		Infof("Syncing snapshot from leader")
-	status := s.status.Load()
-	if status == syncerStatusSyncing {
+	if s.status.Swap(syncerStatusSyncing) == syncerStatusSyncing {
 		s.logger.Infof("Interrupting previous sync")
 		s.taskExecutor.interrupt()
 	}
-	s.status.Store(syncerStatusSyncing)
+	syncTerminated := make(chan struct{})
+	s.syncTerminated = syncTerminated
 
 	s.taskExecutor.run(ctx, func(ctx context.Context) error {
 		defer func() {
@@ -81,71 +103,26 @@ func (s *syncer) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftp
 		}
 
 		s.logger.Infof("Snapshot synced from leader, applying spooled entries...")
-
-		applyEntries := func(entries ...raftpb.Entry) error {
-			s.logger.WithFields(map[string]any{
-				"count":    len(entries),
-				"maxIndex": entries[len(entries)-1].Index,
-			}).Infof("Applying spooled entries")
-			_, err := s.applyEntries(ctx, nil, entries...)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				panic(err)
-			}
+		end, err := s.spool.End()
+		if err != nil {
 			return err
 		}
 
-		// todo: this way of doing cause massive back and forth on the underlying file
-		// I guess we could use a pipe here instead to write to the file, while writing in memory
-		const batchSize = 10000
-		batch := make([]raftpb.Entry, 0, batchSize)
-		count := 0
-		for {
-
-			select {
-			// Check for context cancellation
-			case <-ctx.Done():
-				s.logger.Infof("Context cancelled, stopping unspooling")
-				return ctx.Err()
-			default:
-			}
-
-			s.mu.Lock()
-			spooledEntry, err := s.spool.Next()
-			s.mu.Unlock()
-
-			if err != nil && !errors.Is(err, io.EOF) {
-				panic(err)
-			}
-			if errors.Is(err, io.EOF) {
-				s.mu.Lock()
-				if len(batch) > 0 {
-					if err := applyEntries(batch...); err != nil {
-						return err
-					}
-					count += len(batch)
-				}
-				// todo: reset later, we have a pointer to the last read entry
-				s.logger.WithFields(map[string]any{
-					"totalCount": count,
-				}).Infof("No more entries in spool, resetting")
-				err := s.spool.Reset()
-				s.status.Store(syncerStatusNormal)
-				s.mu.Unlock()
-				if err != nil {
-					return err
-				}
-				break
-			}
-			batch = append(batch, *spooledEntry)
-
-			if len(batch) >= batchSize {
-				if err := applyEntries(batch...); err != nil {
-					return err
-				}
-				count += len(batch)
-				batch = batch[:0]
-			}
+		lastAppliedIndex, err := s.store.GetLastAppliedIndex()
+		if err != nil {
+			return err
 		}
+
+		err = s.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
+			_, err := s.fsm.ApplyEntries(ctx, entry)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		close(syncTerminated)
+
 		s.logger.Infof("Unspooling done")
 
 		return nil
@@ -199,15 +176,33 @@ func (s *syncer) applyEntries(ctx context.Context, confState *raftpb.ConfState, 
 	return results, nil
 }
 
+func (s *syncer) Replay(ctx context.Context) error {
+	lastAppliedIndex, err := s.store.GetLastAppliedIndex()
+	if err != nil {
+		return err
+	}
+
+	end, err := s.spool.End()
+	if err != nil {
+		return err
+	}
+
+	return s.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
+		_, err := s.fsm.ApplyEntries(ctx, entry)
+		return err
+	})
+}
+
 func newSyncer(
 	spool Spool,
 	fsm FSM,
 	logger logging.Logger,
 	wal WAL,
 	meter metric.Meter,
+	store Store,
 	snapshotThreshold, compactionMargin uint64,
 ) *syncer {
-	initialStatus := atomic.Value{}
+	initialStatus := atomic.Int32{}
 	initialStatus.Store(syncerStatusNormal)
 	s := &syncer{
 		snapshotThreshold: snapshotThreshold,
@@ -215,8 +210,9 @@ func newSyncer(
 		spool:             spool,
 		fsm:               fsm,
 		logger:            logger,
-		status:            initialStatus,
+		status:            &initialStatus,
 		wal:               wal,
+		store:             store,
 		taskExecutor:      newSingleTaskExecutor(logger),
 	}
 

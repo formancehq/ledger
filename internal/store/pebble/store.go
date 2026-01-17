@@ -149,7 +149,7 @@ func NewStore(
 
 	return &Store{
 		db:      db,
-		logger:  logger.WithField("cmd", "pebble"),
+		logger:  logger.WithField("cmp", "pebble"),
 		dataDir: dataDir,
 	}, nil
 }
