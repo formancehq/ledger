@@ -1,5 +1,7 @@
 package raft
 
+import "context"
+
 // future represents a future for an applied entry
 type future struct {
 	ch     chan error
@@ -29,6 +31,18 @@ func (f *future) Resolve(result any, err error) {
 	case f.ch <- err:
 	default:
 		// Channel already closed or error already sent
+	}
+}
+
+func (f *future) wait(ctx context.Context) (any, error) {
+	select {
+	case err := <-f.Err():
+		if err != nil {
+			return nil, err
+		}
+		return f.Result(), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 

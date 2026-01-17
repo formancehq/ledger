@@ -40,6 +40,18 @@ type proposal struct {
 	rejected chan error
 }
 
+func (p proposal) wait(ctx context.Context) error {
+	select {
+	case err := <-p.rejected:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
+}
+
 func newProposal(data []byte) proposal {
 	return proposal{
 		data:     data,
@@ -445,7 +457,7 @@ func (node *Node) processReady(ctx context.Context) error {
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, error) {
+func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
 
 	future := newFuture()
 
@@ -457,33 +469,17 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	proposal := newProposal(cmdData)
 
 	if !node.proposeCh.Push(proposal) {
 		return nil, fmt.Errorf("propose channel full")
 	}
 
-	select {
-	case err := <-proposal.rejected:
-		if err != nil {
-			return nil, err
-		}
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	if err := proposal.wait(ctx); err != nil {
+		return nil, err
 	}
 
-	select {
-	case err := <-future.Err():
-		if err != nil {
-			return nil, err
-		}
-		return future.Result(), nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return future.wait(ctx)
 }
 
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
@@ -625,7 +621,7 @@ func (node *Node) IsHealthy() bool {
 func (node *Node) CreateLedger(ctx context.Context, cmd *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
 
 	// Apply the command via Raft (waits for application)
-	ret, err := node.Apply(NewCreateLedgerCommand(cmd), 10*time.Second)
+	ret, err := node.Apply(ctx, NewCreateLedgerCommand(cmd))
 	if err != nil {
 		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
@@ -659,7 +655,7 @@ func (node *Node) DeleteLedger(ctx context.Context, name string) error {
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, err = node.Apply(cmd, 5*time.Second)
+	_, err = node.Apply(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
@@ -705,16 +701,10 @@ func (node *Node) GetAllLogs(ctx context.Context, ledger string, from uint64, to
 
 func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 
-	cmd := NewCreateLogCommand(input, ledger, idempotency)
-
-	log, err := node.Apply(cmd, 5*time.Second) // todo: make timeouts configurable
+	log, err := node.Apply(ctx, NewCreateLogCommand(input, ledger, idempotency))
 	if err != nil {
 		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
-
-	node.logger.
-		WithFields(map[string]any{"commandID": cmd.Id}).
-		Debugf("Log inserted via ledger Raft")
 
 	return log.(*ledgerpb.Log), nil
 }
