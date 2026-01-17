@@ -115,7 +115,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Should not trigger any snapshotting at this point
 	for range 7 {
-		_, err := node.Apply(createTransaction(), time.Second)
+		_, err := node.Apply(ctx, createTransaction())
 		require.NoError(t, err)
 	}
 
@@ -128,7 +128,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Now should trigger the snapshotting
 	go func() {
-		_, _ = node.Apply(createTransaction(), time.Second)
+		_, _ = node.Apply(ctx, createTransaction())
 	}()
 	select {
 	case <-time.After(5 * time.Second):

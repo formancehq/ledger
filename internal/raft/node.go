@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -16,6 +17,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	statusNormal = iota
+	statusSyncing
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
@@ -35,35 +41,10 @@ type Transport interface {
 	Send(msg raftpb.Message)
 }
 
-type proposal struct {
-	data     []byte
-	rejected chan error
-}
-
-func (p proposal) wait(ctx context.Context) error {
-	select {
-	case err := <-p.rejected:
-		if err != nil {
-			return err
-		}
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	return nil
-}
-
-func newProposal(data []byte) proposal {
-	return proposal{
-		data:     data,
-		rejected: make(chan error, 1),
-	}
-}
-
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
 	rawNode       *raft.RawNode
 	logger        logging.Logger
-	syncer        *syncer
 	fsm           *defaultFSM
 	wal           WAL
 	transport     Transport
@@ -85,6 +66,15 @@ type Node struct {
 	leadMonitorHistogram           metric.Int64Gauge
 	defaultLedger                  *service.DefaultController
 	store                          store.Store
+
+	// Syncer fields (previously in syncer struct)
+	spool                   Spool
+	createSnapshotHistogram metric.Float64Histogram
+	status                  *atomic.Int32
+	snapshotThreshold       uint64
+	compactionMargin        uint64
+	taskExecutor            *singleTaskExecutor
+	syncTerminated          chan struct{}
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -158,19 +148,12 @@ func NewNode(
 		logger.Infof("Finished restoring FSM from storage")
 	}
 
+	initialStatus := atomic.Int32{}
+	initialStatus.Store(statusNormal)
+
 	node := &Node{
-		logger: logger,
-		meter:  meter,
-		syncer: newSyncer(
-			spool,
-			fsm,
-			logger,
-			wal,
-			meter,
-			store,
-			cfg.SnapshotThreshold,
-			cfg.CompactionMargin,
-		),
+		logger:    logger,
+		meter:     meter,
 		wal:       wal,
 		transport: transport,
 		config:    cfg,
@@ -182,6 +165,12 @@ func NewNode(
 		),
 		store: store,
 		fsm:   fsm,
+		// Syncer fields
+		spool:             spool,
+		snapshotThreshold: cfg.SnapshotThreshold,
+		compactionMargin:  cfg.CompactionMargin,
+		status:            &initialStatus,
+		taskExecutor:      newSingleTaskExecutor(logger),
 	}
 
 	node.defaultLedger = service.NewDefaultController(node, store, logger)
@@ -242,6 +231,24 @@ func NewNode(
 		panic(err)
 	}
 
+	node.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
+		metric.WithDescription("Time spent creating snapshot in syncer"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(
+			// Fine-grained buckets for small values (0-100ms)
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+			12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
+			60, 70, 80, 90, 100,
+			// Medium buckets (100-500ms)
+			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+			// Larger buckets (500ms-5s)
+			600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return node, nil
 }
 
@@ -285,8 +292,21 @@ func (node *Node) Start(ctx context.Context) error {
 	}
 	node.confState = &initialConfState
 
-	if err := node.syncer.Replay(ctx); err != nil {
-		return fmt.Errorf("replaying storage: %w", err)
+	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
+	if err != nil {
+		return err
+	}
+
+	end, err := node.spool.End()
+	if err != nil {
+		return err
+	}
+
+	if err := node.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
+		_, err := node.fsm.ApplyEntries(ctx, entry)
+		return err
+	}); err != nil {
+		return fmt.Errorf("replaying spool: %w", err)
 	}
 
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
@@ -296,7 +316,7 @@ func (node *Node) Start(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			// Prevent election timeouts from happening while syncing the FSM
-			if !node.syncer.IsSyncing() {
+			if node.status.Load() != statusSyncing {
 				node.rawNode.Tick()
 			}
 		case <-node.ctx.Done():
@@ -308,23 +328,53 @@ func (node *Node) Start(ctx context.Context) error {
 			node.rawNode.ReportUnreachable(nodeID)
 		case msg := <-node.transport.Recv():
 			if err := node.rawNode.Step(msg); err != nil {
-				panic(err)
+				return err
 			}
 		case proposal := <-node.proposeCh.Recv():
 			proposal.rejected <- node.rawNode.Propose(proposal.data)
+		case <-node.syncTerminated:
+			if err := node.finalizeSynchronization(ctx); err != nil {
+				return err
+			}
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
 				now := time.Now()
 				err := node.processReady(node.ctx)
 				if err != nil {
 					if !errors.Is(err, context.Canceled) {
-						panic(err)
+						return err
 					}
 				}
 				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
 			}
 		}
 	}
+}
+
+func (node *Node) finalizeSynchronization(ctx context.Context) error {
+	node.logger.Infof("Syncing terminated, applying spooled entries before resuming...")
+	position, err := node.spool.End()
+	if err != nil {
+		return fmt.Errorf("getting spool end position: %w", err)
+	}
+	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
+	if err != nil {
+		return fmt.Errorf("getting last applied index: %w", err)
+	}
+
+	if err := node.spool.ReplayUntil(ctx, *position, lastAppliedIndex, func(entry raftpb.Entry) error {
+		_, err := node.applyEntriesToFSM(ctx, node.confState, entry)
+		return err
+	}); err != nil {
+		return fmt.Errorf("replaying spool: %w", err)
+	}
+
+	if err := node.spool.Prune(lastAppliedIndex); err != nil {
+		return fmt.Errorf("pruning spool: %w", err)
+	}
+
+	node.syncTerminated = nil
+	node.status.Store(statusNormal)
 
 	return nil
 }
@@ -338,24 +388,18 @@ func (node *Node) processReady(ctx context.Context) error {
 		ss := rd.SoftState
 		if node.lastSoftState != nil {
 			status := node.rawNode.Status()
+			logger := node.logger.WithFields(map[string]any{
+				"lead": ss.Lead,
+				"term": status.Term,
+			})
 
 			// leadership loss
 			if node.lastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
-				node.logger.
-					WithFields(map[string]any{
-						"lead": ss.Lead,
-						"term": status.Term,
-					}).
-					Infof("Leadership lost")
+				logger.Infof("Leadership lost")
 			}
 			// acquire leadership
 			if node.lastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
-				node.logger.
-					WithFields(map[string]any{
-						"lead": ss.Lead,
-						"term": status.Term,
-					}).
-					Infof("Leadership gained")
+				node.logger.Infof("Leadership gained")
 			}
 		}
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
@@ -382,8 +426,8 @@ func (node *Node) processReady(ctx context.Context) error {
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
 		// in case of rawNode recover
-		if err := node.syncer.SyncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
-			panic(fmt.Errorf("restoring snapshot in storage: %w", err))
+		if err := node.syncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
+			return fmt.Errorf("restoring snapshot in storage: %w", err)
 		}
 	}
 
@@ -394,57 +438,60 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	// Apply committed entries
 	for _, entry := range rd.CommittedEntries {
+		var cc raftpb.ConfChangeV2
 		switch entry.Type {
 		case raftpb.EntryConfChange:
-			var cc raftpb.ConfChange
-			if err := cc.Unmarshal(entry.Data); err != nil {
-				node.logger.
-					WithFields(map[string]any{"error": err}).
-					Errorf("Failed to unmarshal ConfChange")
-				continue
+			var ccV1 raftpb.ConfChange
+			if err := ccV1.Unmarshal(entry.Data); err != nil {
+				return fmt.Errorf("unmarshaling ConfChange: %w", err)
 			}
-			node.logger.
-				WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).
-				Infof("Applying configuration change")
-			node.confState = node.rawNode.ApplyConfChange(cc)
+			cc = ccV1.AsV2()
 		case raftpb.EntryConfChangeV2:
-			var cc raftpb.ConfChangeV2
 			if err := cc.Unmarshal(entry.Data); err != nil {
-				node.logger.
-					WithFields(map[string]any{"error": err}).
-					Errorf("Failed to unmarshal ConfChangeV2")
-				continue
+				return fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
 			}
-			node.logger.
-				WithFields(map[string]any{"transition": cc.Transition.String()}).
-				Infof("Applying configuration change V2")
-			// ApplyConfChange accepts ConfChangeI interface, which is implemented by both ConfChange and ConfChangeV2
-			node.confState = node.rawNode.ApplyConfChange(cc)
+		default:
+			continue
 		}
+		node.logger.
+			WithFields(map[string]any{"transition": cc.Transition.String()}).
+			Infof("Applying configuration change")
+		node.confState = node.rawNode.ApplyConfChange(cc)
 	}
 
-	// Apply bucket-specific entries to bucket FSM
-	// Measure time spent in ApplyEntries
+	var (
+		results []ApplyResult
+		err     error
+	)
 	if len(rd.CommittedEntries) > 0 {
-		confState := *node.confState
-		start := time.Now()
-		results, err := node.syncer.ApplyEntries(
-			node.ctx,
-			&confState,
-			rd.CommittedEntries...,
-		)
-		if err != nil {
-			return fmt.Errorf("applying entries to FSM: %w", err)
+		switch node.status.Load() {
+		case statusNormal:
+			start := time.Now()
+			results, err = node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
+			if err != nil {
+				return fmt.Errorf("applying entries to FSM: %w", err)
+			}
+			node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
+			node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
+			node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
+		case statusSyncing:
+			node.logger.Debugf("Spool committed entries")
+			err = node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
+			if err != nil {
+				return err
+			}
+			results = make([]ApplyResult, len(rd.CommittedEntries))
+		default:
+			panic("unreachable")
 		}
 
-		node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
-		node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
-		node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
-
 		for _, result := range results {
-			node.NotifyApplied(result.CommandID, result.Result, result.Error)
-			if result.Error != nil {
-				panic(result.Error)
+			future, exists := node.futures.Load(result.CommandID)
+			if !exists {
+				continue
+			}
+			if !future.Done() {
+				future.Resolve(result.Result, result.Error)
 			}
 		}
 	}
@@ -709,6 +756,102 @@ func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *led
 	return log.(*ledgerpb.Log), nil
 }
 
+// syncSnapshot syncs a snapshot from a leader
+func (node *Node) syncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
+	node.logger.
+		WithFields(map[string]any{
+			"leader": leader,
+			"index":  snapshot.Metadata.Index,
+			"term":   snapshot.Metadata.Term,
+		}).
+		Infof("Syncing snapshot from leader")
+	if node.status.Swap(statusSyncing) == statusSyncing {
+		node.logger.Infof("Interrupting previous sync")
+		node.taskExecutor.interrupt()
+	}
+	syncTerminated := make(chan struct{})
+	node.syncTerminated = syncTerminated
+
+	node.taskExecutor.run(ctx, func(ctx context.Context) error {
+		defer func() {
+			node.logger.Infof("Syncing snapshot terminated")
+		}()
+		err := node.fsm.SyncSnapshot(ctx, leader, snapshot)
+		if err != nil {
+			return err
+		}
+
+		node.logger.Infof("Snapshot synced from leader, applying spooled entries...")
+		end, err := node.spool.End()
+		if err != nil {
+			return err
+		}
+
+		lastAppliedIndex, err := node.store.GetLastAppliedIndex()
+		if err != nil {
+			return err
+		}
+
+		err = node.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
+			_, err := node.fsm.ApplyEntries(ctx, entry)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		close(syncTerminated)
+
+		node.logger.Infof("Unspooling done")
+
+		return nil
+	})
+
+	return nil
+}
+
+// applyEntriesToFSM applies entries directly to the FSM
+func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) ([]ApplyResult, error) {
+	results, err := node.fsm.ApplyEntries(ctx, entries...)
+	if err != nil {
+		panic(err)
+	}
+
+	lastSnapshot, err := node.wal.Snapshot()
+	if err != nil {
+		panic(fmt.Errorf("getting last snapshot: %w", err))
+	}
+
+	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
+		node.logger.WithFields(map[string]any{
+			"applied":           entries[len(entries)-1].Index,
+			"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+			"snapshotThreshold": node.snapshotThreshold,
+			"compactionMargin":  node.compactionMargin,
+		}).Infof("Creating new snapshot")
+
+		startTime := time.Now()
+		data, err := node.fsm.CreateSnapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
+		if err != nil {
+			return nil, err
+		}
+		duration := time.Since(startTime)
+		node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+
+		// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+		err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 	isStarted := node.stopped != nil
@@ -729,9 +872,31 @@ func (node *Node) Stop(ctx context.Context) error {
 		node.logger.Infof("Node stopped as expected")
 	}
 
-	node.logger.Infof("Stopping syncer...")
-
 	// todo: close channels
 
 	return nil
+}
+
+type proposal struct {
+	data     []byte
+	rejected chan error
+}
+
+func (p proposal) wait(ctx context.Context) error {
+	select {
+	case err := <-p.rejected:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
+}
+
+func newProposal(data []byte) proposal {
+	return proposal{
+		data:     data,
+		rejected: make(chan error, 1),
+	}
 }
