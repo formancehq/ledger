@@ -40,6 +40,13 @@ type proposal struct {
 	rejected chan error
 }
 
+func newProposal(data []byte) proposal {
+	return proposal{
+		data:     data,
+		rejected: make(chan error, 1),
+	}
+}
+
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
 	rawNode       *raft.RawNode
@@ -54,7 +61,7 @@ type Node struct {
 	cancel        func()
 	proposeCh     Queue[proposal]
 	confState     *raftpb.ConfState
-	futures       SyncMap[uint64, *applyFuture]
+	futures       SyncMap[uint64, *future]
 	lastSoftState *raft.SoftState
 
 	meter                          metric.Meter
@@ -440,11 +447,9 @@ func (node *Node) processReady(ctx context.Context) error {
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, error) {
 
-	future := &applyFuture{
-		ch: make(chan error, 1),
-	}
+	future := newFuture()
 
-	node.futures.Store(cmd.Id, future)
+	node.futures.Store(cmd.Id, &future)
 	defer node.futures.Delete(cmd.Id)
 
 	cmdData, err := proto.Marshal(cmd)
@@ -455,10 +460,7 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	proposal := proposal{
-		data:     cmdData,
-		rejected: make(chan error, 1),
-	}
+	proposal := newProposal(cmdData)
 
 	if !node.proposeCh.Push(proposal) {
 		return nil, fmt.Errorf("propose channel full")
@@ -474,11 +476,11 @@ func (node *Node) Apply(cmd *ledgerpb.Command, timeout time.Duration) (any, erro
 	}
 
 	select {
-	case err := <-future.ch:
+	case err := <-future.Err():
 		if err != nil {
 			return nil, err
 		}
-		return future.result, nil
+		return future.Result(), nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -492,16 +494,8 @@ func (node *Node) NotifyApplied(commandID uint64, result any, err error) {
 		return
 	}
 
-	if !future.done {
-		future.done = true
-		future.result = result
-		future.err = err
-		// Send error (or nil) to channel
-		select {
-		case future.ch <- err:
-		default:
-			// Channel already closed or error already sent
-		}
+	if !future.Done() {
+		future.Resolve(result, err)
 	}
 }
 
@@ -529,6 +523,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 
 	// Convert state to string
 	stateStr := "Unknown"
+	// todo: use to string of status.RaftState (work for cursor)
 	switch status.RaftState {
 	case raft.StateLeader:
 		stateStr = "Leader"
@@ -749,12 +744,4 @@ func (node *Node) Stop(ctx context.Context) error {
 	// todo: close channels
 
 	return nil
-}
-
-// applyFuture represents a future for an applied entry
-type applyFuture struct {
-	ch     chan error
-	result any
-	done   bool
-	err    error
 }
