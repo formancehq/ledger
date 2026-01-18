@@ -100,15 +100,15 @@ The spool is a persistent buffer that stores commands during synchronization:
 [Magic: 4 bytes] [Length: 4 bytes] [CRC32: 4 bytes] [Reserved: 4 bytes] [Payload: variable]
 ```
 
-### Syncer: Synchronization Manager
+### Synchronization Manager
 
-**File**: `internal/raft/syncer.go`
+**File**: `internal/raft/node.go`
 
-The syncer manages the synchronization lifecycle:
+The Node manages the synchronization lifecycle directly (previously in a separate `syncer.go` file):
 
-- **Syncing State**: Tracks whether the node is currently synchronizing
+- **Syncing State**: Tracks whether the node is currently synchronizing (`status` field)
 - **Command Routing**: Routes commands to spool during sync, to FSM during normal operation
-- **Replay Coordination**: Manages the replay of spool commands after catch-up
+- **Replay Coordination**: Manages the replay of spool commands after catch-up via `finalizeSynchronization()`
 
 **Synchronization Flow**:
 
@@ -123,19 +123,21 @@ sequenceDiagram
     Node->>Leader: Request snapshot
     Leader->>Node: Send snapshot
     Node->>FSM: RestoreSnapshot()
-    Note over Node: syncing = true
+    Note over Node: status = statusSyncing
     Node->>Spool: AppendCommittedEntries()
     Note over Node: Commands buffered
     Node->>Leader: StreamLogs(from, to)
     Leader->>Node: Stream logs
     Node->>FSM: Apply logs
+    Note over Node: syncTerminated closed
+    Node->>Node: finalizeSynchronization()
     loop Replay spool
-        Node->>Spool: Next()
-        Spool->>Node: Command
+        Node->>Spool: ReplayUntil()
+        Spool->>Node: Entry
         Node->>FSM: ApplyEntries()
     end
-    Node->>Spool: Reset()
-    Note over Node: syncing = false
+    Node->>Spool: Prune()
+    Note over Node: status = statusNormal
 ```
 
 ### Log Range Queries

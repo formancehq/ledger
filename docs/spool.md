@@ -241,20 +241,23 @@ The DefaultSpool uses a **batched sync** strategy:
 
 ## Integration with Raft
 
-The Spool is used by the Syncer component:
+The Spool is used by the Node component:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                           Syncer                                 │
+│                            Node                                  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  On committed entries (from Raft):                              │
-│    1. spool.AppendCommittedEntries(entries)                     │
-│    2. end := spool.End()                                        │
-│    3. spool.ReplayUntil(end, lastApplied, fsm.Apply)            │
+│    1. If syncing: spool.AppendCommittedEntries(entries)         │
+│    2. If normal: applyEntriesToFSM(entries)                     │
+│    3. On sync completion (finalizeSynchronization):             │
+│       - end := spool.End()                                      │
+│       - spool.ReplayUntil(end, lastApplied, fsm.Apply)          │
+│       - spool.Prune(lastApplied)                                │
 │    4. If snapshot threshold reached:                            │
 │       - Create snapshot                                         │
-│       - spool.Prune(snapshotIndex)                              │
+│       - wal.Compact()                                           │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```

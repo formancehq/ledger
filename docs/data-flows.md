@@ -202,14 +202,14 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 
 > **🔗 Raft Mechanics**: The synchronization is triggered when the Raft leader detects that a follower is too far behind (entries have been compacted from the WAL). The leader then sends a **MsgSnap** message containing the FSM snapshot. See [Desynchronized Follower Detection](./raft-consensus.md#desynchronized-follower-detection) for details on how Raft detects and handles this scenario.
 
-### Syncer State Machine
+### Node Synchronization State Machine
 
-The **Syncer** component manages the synchronization process. It has two states:
+The **Node** manages the synchronization process directly. It has two states:
 
 | State | Value | Description |
 |-------|-------|-------------|
-| `syncerStatusNormal` | 0 | Normal operation, entries applied directly to FSM |
-| `syncerStatusSyncing` | 1 | Synchronization in progress, entries spooled |
+| `statusNormal` | 0 | Normal operation, entries applied directly to FSM |
+| `statusSyncing` | 1 | Synchronization in progress, entries spooled |
 
 #### Synchronization Trigger
 
@@ -217,11 +217,11 @@ When a `MsgSnap` is received from the leader, the following sequence occurs:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    SyncSnapshot() called                                 │
+│                    syncSnapshot() called                                 │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  1. Status change: Normal → Syncing                                     │
-│     └── status.Swap(syncerStatusSyncing)                                │
+│     └── status.Swap(statusSyncing)                                      │
 │                                                                          │
 │  2. If already syncing: interrupt previous sync                         │
 │     └── taskExecutor.interrupt()                                        │
@@ -245,19 +245,19 @@ When a `MsgSnap` is received from the leader, the following sequence occurs:
 
 #### Entry Processing During Sync
 
-While synchronization is in progress (`status == syncerStatusSyncing`), the `ApplyEntries()` method behaves differently:
+While synchronization is in progress (`status == statusSyncing`), entry processing behaves differently:
 
 ```go
-// In syncer.ApplyEntries():
-switch s.status.Load() {
-case syncerStatusNormal:
+// In node.processReady():
+switch node.status.Load() {
+case statusNormal:
     // Normal: apply directly to FSM
-    return s.applyEntries(ctx, confState, entries...)
+    results, err = node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
     
-case syncerStatusSyncing:
+case statusSyncing:
     // Syncing: spool entries for later
-    s.spool.AppendCommittedEntries(ctx, entries...)
-    return emptyResults, nil
+    node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
+    results = make([]ApplyResult, len(rd.CommittedEntries))
 }
 ```
 
@@ -268,18 +268,15 @@ This ensures that new Raft entries committed during synchronization are not lost
 When the background sync completes:
 
 1. The `syncTerminated` channel is closed
-2. On the next `ApplyEntries()` call, the syncer detects completion:
+2. The Node's event loop detects the channel close and calls `finalizeSynchronization()`:
    ```go
-   select {
-   case <-s.syncTerminated:
+   func (node *Node) finalizeSynchronization(ctx context.Context) error {
        // Replay any remaining spooled entries
-       s.spool.ReplayUntil(ctx, position, lastAppliedIndex, applyFn)
+       node.spool.ReplayUntil(ctx, position, lastAppliedIndex, applyFn)
        // Prune applied entries
-       s.spool.Prune(lastAppliedIndex)
+       node.spool.Prune(lastAppliedIndex)
        // Return to normal mode
-       s.status.Store(syncerStatusNormal)
-   default:
-       // Still syncing, continue spooling
+       node.status.Store(statusNormal)
    }
    ```
 
@@ -287,43 +284,41 @@ When the background sync completes:
 
 ```mermaid
 sequenceDiagram
-    participant Raft as Raft Node
-    participant Syncer
+    participant Node as Raft Node
     participant Spool
     participant FSM
     participant Store
     participant Leader as Leader (gRPC)
     
-    Note over Raft: MsgSnap received
-    Raft->>Syncer: SyncSnapshot(leader, snapshot)
-    Syncer->>Syncer: status = Syncing
-    Syncer->>Syncer: Start background task
-    Syncer-->>Raft: return (non-blocking)
+    Note over Node: MsgSnap received
+    Node->>Node: syncSnapshot(leader, snapshot)
+    Node->>Node: status = Syncing
+    Node->>Node: Start background task
     
     par Background Sync
-        Syncer->>FSM: SyncSnapshot()
+        Node->>FSM: SyncSnapshot()
         FSM->>FSM: Restore state from snapshot
         loop For each ledger
             FSM->>Leader: StreamLogs gRPC
             Leader-->>FSM: Business logs
             FSM->>Store: AppendLogs()
         end
-        FSM-->>Syncer: Sync complete
-        Syncer->>Spool: End() → watermark
-        Syncer->>Spool: ReplayUntil(watermark)
+        FSM-->>Node: Sync complete
+        Node->>Spool: End() → watermark
+        Node->>Spool: ReplayUntil(watermark)
         Spool-->>FSM: Apply spooled entries
-        Syncer->>Syncer: close(syncTerminated)
+        Node->>Node: close(syncTerminated)
     and Normal Raft Operations
-        Raft->>Syncer: ApplyEntries(newEntries)
-        Syncer->>Spool: AppendCommittedEntries()
+        Note over Node: New entries committed
+        Node->>Spool: AppendCommittedEntries()
         Note over Spool: Entries buffered
     end
     
-    Raft->>Syncer: ApplyEntries(moreEntries)
-    Syncer->>Syncer: Detect syncTerminated closed
-    Syncer->>Spool: ReplayUntil() + Prune()
-    Syncer->>Syncer: status = Normal
-    Syncer->>FSM: Apply directly
+    Node->>Node: Detect syncTerminated closed
+    Node->>Node: finalizeSynchronization()
+    Node->>Spool: ReplayUntil() + Prune()
+    Node->>Node: status = Normal
+    Node->>FSM: Apply directly
 ```
 
 ### The Spool
@@ -433,24 +428,24 @@ Snapshots are created periodically to compact logs and accelerate recovery.
 
 ```mermaid
 sequenceDiagram
-    participant Syncer as Syncer
+    participant Node as Node
     participant FSM as FSM
     participant SnapshotStore as WAL Storage
     
-    Syncer->>Syncer: Check Snapshot Conditions
-    Note over Syncer: Threshold reached
+    Node->>Node: Check Snapshot Conditions
+    Note over Node: Threshold reached
     
-    Syncer->>FSM: Create Snapshot
+    Node->>FSM: Create Snapshot
     FSM->>FSM: Serialize State (all ledgers)
-    FSM-->>Syncer: Snapshot Data
+    FSM-->>Node: Snapshot Data
     
-    Syncer->>SnapshotStore: Save Snapshot
+    Node->>SnapshotStore: Save Snapshot
     SnapshotStore->>SnapshotStore: Write to Disk
-    SnapshotStore-->>Syncer: Snapshot Saved
+    SnapshotStore-->>Node: Snapshot Saved
     
-    Syncer->>SnapshotStore: Compact logs (remove old entries)
+    Node->>SnapshotStore: Compact logs (remove old entries)
     SnapshotStore->>SnapshotStore: Remove entries before snapshot index
-    SnapshotStore-->>Syncer: Compaction Complete
+    SnapshotStore-->>Node: Compaction Complete
 ```
 
 ### Creation Conditions

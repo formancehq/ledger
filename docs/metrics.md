@@ -23,11 +23,11 @@ Metrics are organized into several categories:
 | `raft.append_entries` | Histogram | µs | Time spent appending entries to WAL |
 | `raft.process_entry` | Histogram | µs | Time spent processing ready from Raft |
 
-### Syncer Metrics
+### Snapshot Metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.syncer.create_snapshot.duration` | Histogram | ms | Time spent creating snapshot in syncer |
+| `raft.syncer.create_snapshot.duration` | Histogram | ms | Time spent creating snapshot |
 
 ### Queue Metrics
 

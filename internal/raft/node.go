@@ -67,7 +67,6 @@ type Node struct {
 	defaultLedger                  *service.DefaultController
 	store                          store.Store
 
-	// Syncer fields (previously in syncer struct)
 	spool                   Spool
 	createSnapshotHistogram metric.Float64Histogram
 	status                  *atomic.Int32
@@ -843,9 +842,11 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
 
 		// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-		err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
-		if err != nil {
-			return nil, err
+		if entries[len(entries)-1].Index > node.compactionMargin {
+			err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

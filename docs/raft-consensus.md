@@ -330,7 +330,7 @@ if !raft.IsEmptySnap(rd.Snapshot) {
     node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
     
     // Sync business data from leader
-    node.syncer.SyncSnapshot(ctx, leader, rd.Snapshot)
+    node.syncSnapshot(ctx, leader, rd.Snapshot)
 }
 ```
 
