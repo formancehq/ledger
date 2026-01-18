@@ -431,6 +431,7 @@ func (node *Node) processReady(ctx context.Context) error {
 	}
 
 	// Send messages via transport
+	node.logger.Debugf("Sending messages via transport")
 	for _, msg := range rd.Messages {
 		node.transport.Send(msg)
 	}

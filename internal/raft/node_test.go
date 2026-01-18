@@ -28,7 +28,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
 	spoolDir := t.TempDir()
 
-	wal, err := wal.New(walDir, logging.Testing())
+	w, err := wal.New(walDir, logging.Testing())
 	require.NoError(t, err)
 
 	spool, err := NewDefaultSpool(DefaultSpoolConfig{
@@ -46,47 +46,47 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	interceptedWAL.EXPECT().
 		Snapshot().
 		AnyTimes().
-		DoAndReturn(wal.Snapshot)
+		DoAndReturn(w.Snapshot)
 
 	interceptedWAL.EXPECT().
 		Compact(gomock.Any()).
 		AnyTimes().
-		DoAndReturn(wal.Compact)
+		DoAndReturn(w.Compact)
 
 	interceptedWAL.EXPECT().
 		FirstIndex().
 		AnyTimes().
-		DoAndReturn(wal.FirstIndex)
+		DoAndReturn(w.FirstIndex)
 
 	interceptedWAL.EXPECT().
 		LastIndex().
 		AnyTimes().
-		DoAndReturn(wal.LastIndex)
+		DoAndReturn(w.LastIndex)
 
 	interceptedWAL.EXPECT().
 		InitialState().
 		AnyTimes().
-		DoAndReturn(wal.InitialState)
+		DoAndReturn(w.InitialState)
 
 	interceptedWAL.EXPECT().
 		Term(gomock.Any()).
 		AnyTimes().
-		DoAndReturn(wal.Term)
+		DoAndReturn(w.Term)
 
 	interceptedWAL.EXPECT().
 		Append(gomock.Any(), gomock.Any()).
 		AnyTimes().
-		DoAndReturn(wal.Append)
+		DoAndReturn(w.Append)
 
 	interceptedWAL.EXPECT().
 		Entries(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
-		DoAndReturn(wal.Entries)
+		DoAndReturn(w.Entries)
 
 	// Expect a first snapshot creation with no error
 	interceptedWAL.EXPECT().
 		CreateSnapshot(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(wal.CreateSnapshot)
+		DoAndReturn(w.CreateSnapshot)
 
 	node := newTestingNode(t, ctrl, spool, interceptedWAL, store)
 	nodeError := startAndCatchError(node)
@@ -138,7 +138,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 		require.ErrorIs(t, err, errUnexpected)
 	}
 
-	require.NoError(t, wal.Close())
+	require.NoError(t, w.Close())
 	require.NoError(t, store.Close(ctx))
 	require.NoError(t, spool.Close())
 
@@ -153,7 +153,10 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	store, err = pebble.NewStore(dataDir, logging.Testing(), noop.Meter{})
 	require.NoError(t, err)
 
-	node = newTestingNode(t, ctrl, spool, wal, store)
+	w, err = wal.New(walDir, logging.Testing())
+	require.NoError(t, err)
+
+	node = newTestingNode(t, ctrl, spool, w, store)
 	nodeError = startAndCatchError(node)
 
 	require.Eventually(t, node.IsLeader, 2*time.Second, 10*time.Millisecond)
