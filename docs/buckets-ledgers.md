@@ -57,6 +57,7 @@ type LedgerInfo struct {
     Name      string            // Ledger name (unique identifier)
     Metadata  metadata.Metadata // Ledger metadata
     CreatedAt time.Time         // Creation date
+    Id        uint32            // Numeric ledger ID (auto-assigned)
 }
 
 type LedgerState struct {
@@ -66,6 +67,14 @@ type LedgerState struct {
     LastAppliedLogId  uint64  // Last applied log for sync
 }
 ```
+
+### Limits
+
+| Resource | Maximum | Notes |
+|----------|---------|-------|
+| Ledgers | **65,535** | Limited by 16-bit numeric ID |
+
+> **Note**: The maximum number of ledgers is limited to 65,535 per cluster. Each ledger is assigned a unique numeric ID (stored as uint32 but limited to uint16 range). This limit is intentional to keep the system simple and efficient.
 
 ### Ledger Creation
 

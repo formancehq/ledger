@@ -361,6 +361,12 @@ Authorization can be added:
 
 ## Known Limitations
 
+### Maximum Ledgers
+
+- Limited to **65,535 ledgers** per cluster
+- Each ledger is assigned a unique numeric ID (16-bit)
+- This limit is intentional to keep the system simple and efficient
+
 ### Message Size
 
 - Limited by `MaxSizePerMsg` (default: 1MB)

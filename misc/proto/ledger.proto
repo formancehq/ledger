@@ -303,9 +303,10 @@ message RevertedTransactionMemento {
 
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
-  string name = 1;                          // Ledger name/ID
+  string name = 1;                          // Ledger name
   map<string, string> metadata = 2;         // Optional metadata
   Timestamp created_at = 3;                 // Creation timestamp
+  uint32 id = 4;                            // Numeric ledger ID (auto-assigned, max 65535)
 }
 
 message LedgerState {
@@ -377,6 +378,7 @@ message GetLedgerByNameRequest {
 
 message State {
   map<string, LedgerState> ledgers = 1;
+  uint32 next_ledger_id = 2;                // Next available ledger ID (max 65535)
 }
 
 // CommandProto represents a command to be executed in the FSM (protobuf serialization format)

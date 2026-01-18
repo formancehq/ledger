@@ -171,6 +171,7 @@ Content-Type: application/json
 {
   "data": {
     "name": "my-ledger",
+    "id": 1,
     "metadata": {
       "key": "value"
     },
@@ -190,6 +191,7 @@ GET /{ledgerName}
 {
   "data": {
     "name": "my-ledger",
+    "id": 1,
     "metadata": {},
     "createdAt": "2024-01-01T00:00:00Z"
   }
@@ -208,11 +210,13 @@ GET /
   "data": [
     {
       "name": "ledger1",
+      "id": 1,
       "metadata": {},
       "createdAt": "2024-01-01T00:00:00Z"
     },
     {
       "name": "ledger2",
+      "id": 2,
       "metadata": {},
       "createdAt": "2024-01-01T00:00:00Z"
     }

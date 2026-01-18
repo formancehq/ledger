@@ -47,7 +47,8 @@ func newFSM(logger logging.Logger, store Store, transport Transport) (*defaultFS
 	}
 	return &defaultFSM{
 		state: &ledgerpb.State{
-			Ledgers: make(map[string]*ledgerpb.LedgerState),
+			Ledgers:      make(map[string]*ledgerpb.LedgerState),
+			NextLedgerId: 1,
 		},
 		logger:           logger,
 		store:            store,
@@ -85,11 +86,16 @@ func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.Ledg
 		return nil, fmt.Errorf("ledger already exists: %s", createCmd.Name)
 	}
 
+	// Assign a numeric ID and increment the counter
+	ledgerID := fsm.state.NextLedgerId
+	fsm.state.NextLedgerId++
+
 	// Create ledger info using protobuf types directly
 	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name:      createCmd.Name,
 		Metadata:  createCmd.Metadata,
 		CreatedAt: cmd.Date,
+		Id:        ledgerID,
 	}
 	fsm.state.Ledgers[ledgerInfo.Name] = &ledgerpb.LedgerState{
 		LedgerInfo:        ledgerInfo,
