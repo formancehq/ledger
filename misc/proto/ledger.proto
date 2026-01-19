@@ -155,7 +155,7 @@ message CreateTransactionRequest {
 
 message SaveAccountMetadataRequestPayload {
   string address = 9;
-  map<string, string> metadata = 3;
+  Metadata metadata = 3;
 }
 
 message SaveAccountMetadataRequest {
@@ -177,7 +177,7 @@ message RevertTransactionRequest {
 
 message SaveTransactionMetadataRequestPayload {
   uint64 transaction_id = 2;
-  map<string, string> metadata = 3;
+  Metadata metadata = 3;
 }
 
 message SaveTransactionMetadataRequest {
@@ -259,7 +259,7 @@ message Target {
 
 message SavedMetadata {
   Target target = 1;
-  map<string, string> metadata = 2;
+  Metadata metadata = 2;
 }
 
 message DeletedMetadata {
@@ -325,7 +325,7 @@ message AppendTransactionCommand {
 
 message SaveMetadataCommand {
   Target target = 2;
-  map<string, string> metadata = 3;
+  Metadata metadata = 3;
 }
 
 message DeleteMetadataCommand {

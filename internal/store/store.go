@@ -8,27 +8,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
-// LogWriter handles log writing operations
-//
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogWriter
-type LogWriter interface {
-	AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
-}
-
 // LogReader handles log reading operations
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
 type LogReader interface {
 	GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
 	GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error)
-}
-
-// LogStore combines LogWriter and LogReader
-//
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogStore
-type LogStore interface {
-	LogWriter
-	LogReader
 }
 
 // LogReaderFn is a functional type that implements LogReader
@@ -52,20 +37,35 @@ func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger string, id uint64) 
 	return cursor.Next(ctx)
 }
 
-// RuntimeUpdate contains all the updates to apply to the runtime store
-type RuntimeUpdate struct {
-	BalanceDiffs           map[string]map[string]map[string]*big.Int
-	AccountMetadata        map[string]map[string]map[string]string
-	AccountMetadataDeletes map[string]map[string][]string
-	TransactionIDs         map[string]map[uint64]uint64
-	RevertedTransactionIDs map[string]map[uint64]bool
+// Batch allows atomic operations on the store.
+// All operations are buffered until Commit is called.
+// Cancel must be called if the batch is not committed to release resources.
+type Batch interface {
+	// AppendLogs appends logs to the store
+	AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error
+	// AppendBalanceDiff appends a balance diff for an account/asset pair
+	AppendBalanceDiff(ctx context.Context, ledger, account, asset string, diff *big.Int) error
+	// SaveAccountMetadata saves metadata for an account
+	SaveAccountMetadata(ctx context.Context, ledger, account string, metadata *ledgerpb.Metadata) error
+	// DeleteAccountMetadata deletes metadata keys for an account
+	DeleteAccountMetadata(ctx context.Context, ledger, account string, keys []string) error
+	// StoreTransactionID stores the log ID associated to a transaction ID
+	StoreTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error
+	// StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted
+	StoreRevertedTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error
+	// DeleteLedger deletes all data for a ledger
+	DeleteLedger(ctx context.Context, name string) error
+	// Cancel cancels the batch and releases resources
+	Cancel(ctx context.Context) error
+	// Commit commits all buffered operations atomically
+	Commit(ctx context.Context) error
 }
 
-// Runtime handles runtime queries and provides log access.
+// Store handles runtime queries and provides log access.
 //
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Runtime
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Store
 type Store interface {
-	LogStore
+	LogReader
 	GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
@@ -75,9 +75,11 @@ type Store interface {
 	// IsTransactionReverted checks if a transaction has been reverted
 	IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
 	Close(ctx context.Context) error
+	// NewBatch creates a new batch for atomic operations.
+	// lastAppliedIndex is the raft index that will be stored when the batch is committed.
+	NewBatch(lastAppliedIndex uint64) Batch
 	CreateSnapshot(ctx context.Context) error
-	AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
 	GetLastAppliedIndex() (uint64, error)
-	DeleteLedger(name string) error
+	DeleteLedger(ctx context.Context, name string) error
 	GetLastLogID(ctx context.Context, name string) (uint64, error)
 }

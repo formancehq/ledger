@@ -37,7 +37,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 			Address:  address,
-			Metadata: inputMetadata,
+			Metadata: &ledgerpb.Metadata{Entries: inputMetadata},
 		},
 	}
 

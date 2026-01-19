@@ -37,7 +37,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		log, err := ledgerService.SaveAccountMetadata(ctx, "default", Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: md,
+				Metadata: &ledgerpb.Metadata{Entries: md},
 			},
 		})
 		require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		log, err := ledgerService.SaveAccountMetadata(ctx, "default", Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "",
-				Metadata: md1,
+				Metadata: &ledgerpb.Metadata{Entries: md1},
 			},
 		})
 		require.Error(t, err)
@@ -84,14 +84,16 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		md := metadata.Metadata{
-			"tx_label": "Test Transaction",
+		md := ledgerpb.Metadata{
+			Entries: metadata.Metadata{
+				"tx_label": "Test Transaction",
+			},
 		}
 
 		log, err := ledgerService.SaveTransactionMetadata(ctx, "default", Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 				TransactionId: 42,
-				Metadata:      md,
+				Metadata:      &md,
 			},
 		})
 		require.NoError(t, err)
@@ -102,7 +104,9 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		md := metadata.Metadata{"key": "value"}
+		md := &ledgerpb.Metadata{
+			Entries: metadata.Metadata{"key": "value"},
+		}
 		log, err := ledgerService.SaveTransactionMetadata(ctx, "default", Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 				TransactionId: 0,
@@ -265,11 +269,11 @@ func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController
 
 	ctrl := gomock.NewController(t)
 	logFactory := NewMockLogFactory(ctrl)
-	runtimeStore := store.NewMockStore(ctrl)
+	store := store.NewMockStore(ctrl)
 	logger := logging.FromContext(ctx)
 
-	ledgerService := NewDefaultController(logFactory, runtimeStore, logger)
-	return ledgerService, runtimeStore, logFactory
+	ledgerService := NewDefaultController(logFactory, store, logger)
+	return ledgerService, store, logFactory
 }
 
 func expectCreateLogsWithSequentialIDs(logFactory *MockLogFactory, times int) {

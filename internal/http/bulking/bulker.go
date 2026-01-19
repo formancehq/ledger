@@ -106,7 +106,6 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	}
 
 	// Note: Atomic transactions are not yet supported in this implementation
-	// as we don't have transaction support in the LedgerCluster interface
 	if bulkOptions.Atomic {
 		return fmt.Errorf("atomic bulk transactions are not yet supported")
 	}
@@ -152,7 +151,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 					Address:  address,
-					Metadata: req.Metadata,
+					Metadata: &ledgerpb.Metadata{Entries: req.Metadata},
 				},
 			})
 		case "TRANSACTION":
@@ -162,7 +161,7 @@ func (b *Bulker) processElement(ctx context.Context, data BulkElement) (any, uin
 				IdempotencyKey: data.IdempotencyKey,
 				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 					TransactionId: transactionID,
-					Metadata:      req.Metadata,
+					Metadata:      &ledgerpb.Metadata{Entries: req.Metadata},
 				},
 			})
 		default:

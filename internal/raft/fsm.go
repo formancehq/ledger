@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/big"
 	"sync"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 )
@@ -22,25 +23,17 @@ type FSM interface {
 	ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error)
 }
 
-type Store interface {
-	AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error
-	CreateSnapshot(ctx context.Context) error
-	GetLastAppliedIndex() (uint64, error)
-	DeleteLedger(name string) error
-	GetLastLogID(ctx context.Context, name string) (uint64, error)
-}
-
 // FSM implements the raft.FSM interface
 type defaultFSM struct {
 	mu               sync.RWMutex    // Protects access to state
 	state            *ledgerpb.State // FSM state
 	logger           logging.Logger
-	store            Store
+	store            store.Store
 	transport        Transport
 	lastAppliedIndex uint64
 }
 
-func newFSM(logger logging.Logger, store Store, transport Transport) (*defaultFSM, error) {
+func newFSM(logger logging.Logger, store store.Store, transport Transport) (*defaultFSM, error) {
 	lastAppliedIndex, err := store.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -110,7 +103,7 @@ func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.Ledg
 }
 
 // handleDeleteLedger handles the delete ledger command (hard delete)
-func (fsm *defaultFSM) handleDeleteLedger(cmd *ledgerpb.Command) error {
+func (fsm *defaultFSM) handleDeleteLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) error {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
@@ -120,17 +113,17 @@ func (fsm *defaultFSM) handleDeleteLedger(cmd *ledgerpb.Command) error {
 		return fmt.Errorf("unmarshaling delete ledger command: %w", err)
 	}
 
-	return fsm.deleteLedger(deleteCmd.Name)
+	return fsm.deleteLedger(ctx, batch, deleteCmd.Name)
 }
 
-func (fsm *defaultFSM) deleteLedger(name string) error {
+func (fsm *defaultFSM) deleteLedger(ctx context.Context, batch store.Batch, name string) error {
 	// Check if ledger exists
 	_, ok := fsm.state.Ledgers[name]
 	if !ok {
 		return ledgerpb.NewNotFoundError("ledger %s does not exist", name)
 	}
 
-	if err := fsm.store.DeleteLedger(name); err != nil {
+	if err := batch.DeleteLedger(ctx, name); err != nil {
 		return fmt.Errorf("deleting ledger from runtime store: %w", err)
 	}
 
@@ -228,6 +221,10 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 
 func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error) {
 
+	batch := fsm.store.NewBatch(entries[len(entries)-1].Index + 1)
+	defer func() {
+		_ = batch.Cancel(ctx)
+	}()
 	cmd := &ledgerpb.Command{}
 
 	ret := make([]ApplyResult, 0, len(entries))
@@ -268,7 +265,7 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 			})
 		case ledgerpb.CommandType_DeleteLedger:
 			ret = append(ret, ApplyResult{
-				Error:     fsm.handleDeleteLedger(cmd),
+				Error:     fsm.handleDeleteLedger(ctx, batch, cmd),
 				CommandID: cmd.Id,
 			})
 		case ledgerpb.CommandType_CreateLog:
@@ -285,6 +282,14 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 				CommandID: cmd.Id,
 			})
 			logs = append(logs, log)
+
+			if err := fsm.projectLog(ctx, batch, log); err != nil {
+				return nil, fmt.Errorf("projecting log %d: %w", log.Id, err)
+			}
+
+			if err := batch.AppendLogs(ctx, log); err != nil {
+				return nil, fmt.Errorf("writing log to runtime store: %w", err)
+			}
 		default:
 			ret = append(ret, ApplyResult{
 				Error:     fmt.Errorf("unknown command type: %s", cmd.Type),
@@ -293,18 +298,8 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 		}
 	}
 
-	if len(logs) > 0 {
-		now := time.Now()
-		if err := fsm.store.AppendLogs(ctx, fsm.lastAppliedIndex, logs...); err != nil {
-			return nil, fmt.Errorf("writing logs to runtime store: %w", err)
-		}
-
-		fsm.logger.
-			WithFields(map[string]any{
-				"count":   len(logs),
-				"latency": time.Since(now),
-			}).
-			Debugf("Runtime store updated via FSM")
+	if err := batch.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing batch: %w", err)
 	}
 
 	return ret, nil
@@ -370,10 +365,15 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 		"state": fsm.state,
 	}).Infof("Syncing snapshot...")
 
+	batch := fsm.store.NewBatch(snapshot.Metadata.Index)
+	defer func() {
+		_ = batch.Cancel(ctx)
+	}()
+
 	for ledgerName := range oldState.Ledgers {
 		_, ok := fsm.state.Ledgers[ledgerName]
 		if !ok {
-			if err := fsm.deleteLedger(ledgerName); err != nil {
+			if err := fsm.deleteLedger(ctx, batch, ledgerName); err != nil {
 				return fmt.Errorf("deleting ledger %s from runtime store: %w", ledgerName, err)
 			}
 		}
@@ -401,8 +401,7 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 				return fmt.Errorf("streaming logs from peer %d: %w", leader, err)
 			}
 
-			// todo: flush regularly
-			var logsToWrite []*ledgerpb.Log
+			count := 0
 			for {
 				log, err := logStream.Next(ctx)
 				if err != nil {
@@ -411,32 +410,91 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 					}
 					return fmt.Errorf("reading log during catch-up: %w", err)
 				}
+				count++
 
-				logsToWrite = append(logsToWrite, log)
-			}
-
-			// Write all collected logs to the writer
-			if len(logsToWrite) > 0 {
-				if err := fsm.store.AppendLogs(ctx, 0, logsToWrite...); err != nil {
-					return fmt.Errorf("writing catch-up logs to runtime store: %w", err)
+				if err := fsm.projectLog(ctx, batch, log); err != nil {
+					return fmt.Errorf("projecting log %d: %w", log.Id, err)
 				}
 
-				fsm.logger.WithFields(map[string]any{
-					"logsWritten": len(logsToWrite),
-					"leader":      leader,
-				}).Infof("Synced logs from leader")
+				if err := batch.AppendLogs(ctx, log); err != nil {
+					return fmt.Errorf("writing catch-up logs to runtime store: %w", err)
+				}
 			}
+
+			fsm.logger.WithFields(map[string]any{
+				"logsWritten": count,
+				"leader":      leader,
+			}).Infof("Synced logs from leader")
 		}
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("committing batch: %w", err)
 	}
 
 	fsm.lastAppliedIndex = snapshot.Metadata.Index
 
-	if err := fsm.store.AppendLogs(ctx, snapshot.Metadata.Index); err != nil {
-		return fmt.Errorf("writing catch-up logs to runtime store: %w", err)
-	}
-
 	if err := fsm.store.CreateSnapshot(ctx); err != nil {
 		return fmt.Errorf("creating snapshot: %w", err)
+	}
+
+	return nil
+}
+
+func (fsm *defaultFSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb.Log) error {
+	projectTransaction := func(ctx context.Context, batch store.Batch, tx *ledgerpb.Transaction) error {
+		for _, posting := range tx.Postings {
+			if err := batch.AppendBalanceDiff(ctx, log.Ledger, posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount.Value())); err != nil {
+				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
+			}
+			if err := batch.AppendBalanceDiff(ctx, log.Ledger, posting.Destination, posting.Asset, posting.Amount.Value()); err != nil {
+				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
+			}
+		}
+
+		return nil
+	}
+
+	switch payload := log.Data.Payload.(type) {
+	case *ledgerpb.LogPayload_CreatedTransaction:
+		if err := projectTransaction(ctx, batch, payload.CreatedTransaction.Transaction); err != nil {
+			return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
+		}
+		if err := batch.StoreTransactionID(ctx, log.Ledger, payload.CreatedTransaction.Transaction.Id, log.Id); err != nil {
+			return err
+		}
+		if payload.CreatedTransaction.AccountMetadata != nil {
+			for account, metadata := range payload.CreatedTransaction.AccountMetadata {
+				err := batch.SaveAccountMetadata(ctx, log.Ledger, account, metadata)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+	case *ledgerpb.LogPayload_RevertedTransaction:
+		if err := projectTransaction(ctx, batch, payload.RevertedTransaction.RevertTransaction); err != nil {
+			return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
+		}
+		if err := batch.StoreRevertedTransactionID(ctx, log.Ledger, payload.RevertedTransaction.RevertedTransactionId, log.Id); err != nil {
+			return err
+		}
+	case *ledgerpb.LogPayload_SavedMetadata:
+		if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
+			if err := batch.SaveAccountMetadata(ctx, log.Ledger, account.Addr, payload.SavedMetadata.Metadata); err != nil {
+				return err
+			}
+		}
+	case *ledgerpb.LogPayload_DeletedMetadata:
+		if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
+			if err := batch.DeleteAccountMetadata(ctx, log.Ledger, account.Addr, []string{
+				payload.DeletedMetadata.Key,
+			}); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unhandled log payload type: %T", payload)
 	}
 
 	return nil

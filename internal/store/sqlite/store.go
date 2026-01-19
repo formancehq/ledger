@@ -251,95 +251,6 @@ func (s *Store) createTables(ctx context.Context) error {
 	return nil
 }
 
-// AppendLogs persists logs and updates runtime state in a single transaction.
-func (s *Store) AppendLogs(ctx context.Context, lastAppliedIndex uint64, logs ...*ledgerpb.Log) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if len(logs) > 0 {
-		if err := s.insertLogsInTx(ctx, tx, logs...); err != nil {
-			return err
-		}
-
-		update, err := store.LogsToRuntimeUpdate(logs)
-		if err != nil {
-			return err
-		}
-
-		if err := s.applyRuntimeUpdateInTx(ctx, tx, update); err != nil {
-			return err
-		}
-	}
-
-	// Update the lastAppliedIndex
-	if lastAppliedIndex > 0 {
-		_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO raft_state (key, value) VALUES ('last_applied_index', ?)`, lastAppliedIndex)
-		if err != nil {
-			return fmt.Errorf("updating last applied index: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-
-	if len(logs) > 0 {
-		s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into SQLite")
-	}
-
-	return nil
-}
-
-func (s *Store) insertLogsInTx(ctx context.Context, tx *sql.Tx, logs ...*ledgerpb.Log) error {
-	stmt := tx.StmtContext(ctx, s.stmtInsertLog)
-	defer func() { _ = stmt.Close() }()
-
-	for _, log := range logs {
-		if log.Data == nil {
-			return fmt.Errorf("log data is nil for id %d", log.Id)
-		}
-
-		dataBinary, err := proto.Marshal(log.Data)
-		if err != nil {
-			return fmt.Errorf("marshaling log payload to protobuf: %w", err)
-		}
-
-		var dateStr string
-		if log.Date != nil {
-			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
-		}
-
-		var idempotencyKey sql.NullString
-		var idempotencyHash sql.Null[[]byte]
-		if log.Idempotency != nil && log.Idempotency.Key != "" {
-			idempotencyKey = sql.NullString{String: log.Idempotency.Key, Valid: true}
-			idempotencyHash = sql.Null[[]byte]{V: log.Idempotency.Hash, Valid: true}
-		}
-
-		var id sql.NullInt64
-		if log.Id != 0 {
-			id = sql.NullInt64{Int64: int64(log.Id), Valid: true}
-		}
-
-		_, err = stmt.ExecContext(ctx, log.Ledger, dataBinary,
-			sql.NullString{String: dateStr, Valid: dateStr != ""},
-			idempotencyKey, idempotencyHash, id)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				return fmt.Errorf("inserting log: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
 // logCursor implements store.Cursor[*ledgerpb.Log] for SQLite.
 type logCursor struct {
 	rows *sql.Rows
@@ -464,82 +375,6 @@ func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledg
 	}
 
 	return log, nil
-}
-
-func (s *Store) applyRuntimeUpdateInTx(ctx context.Context, tx *sql.Tx, update store.RuntimeUpdate) error {
-	if len(update.BalanceDiffs) > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtInsertBalance)
-		defer func() { _ = stmt.Close() }()
-		for ledger, ledgerDiffs := range update.BalanceDiffs {
-			for account, assets := range ledgerDiffs {
-				for asset, diff := range assets {
-					if _, err := stmt.ExecContext(ctx, ledger, account, asset, diff.String()); err != nil {
-						return fmt.Errorf("updating balance: %w", err)
-					}
-				}
-			}
-		}
-	}
-
-	if len(update.AccountMetadata) > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtUpsertAccountMetadata)
-		defer func() { _ = stmt.Close() }()
-
-		for ledger, ledgerAccountMetadata := range update.AccountMetadata {
-			for account, metadataMap := range ledgerAccountMetadata {
-				for metaKey, value := range metadataMap {
-					valueJSON, err := json.Marshal(value)
-					if err != nil {
-						return fmt.Errorf("marshaling metadata value: %w", err)
-					}
-					if _, err := stmt.ExecContext(ctx, ledger, account, metaKey, string(valueJSON)); err != nil {
-						return fmt.Errorf("upserting account metadata: %w", err)
-					}
-				}
-			}
-		}
-	}
-
-	if len(update.AccountMetadataDeletes) > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtDeleteAccountMetadata)
-		defer func() { _ = stmt.Close() }()
-		for ledger, ledgerAccountMetadata := range update.AccountMetadata {
-			for account, keys := range ledgerAccountMetadata {
-				for _, metaKey := range keys {
-					if _, err := stmt.ExecContext(ctx, ledger, account, metaKey); err != nil {
-						return fmt.Errorf("deleting account metadata key: %w", err)
-					}
-				}
-			}
-		}
-	}
-
-	if len(update.TransactionIDs) > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtInsertTransactionID)
-		defer func() { _ = stmt.Close() }()
-		for ledger, transactionIDs := range update.TransactionIDs {
-			for transactionID, logID := range transactionIDs {
-				if _, err := stmt.ExecContext(ctx, ledger, transactionID, logID); err != nil {
-					return fmt.Errorf("inserting transaction ID mapping: %w", err)
-				}
-			}
-		}
-	}
-
-	if len(update.RevertedTransactionIDs) > 0 {
-		stmt := tx.StmtContext(ctx, s.stmtInsertRevertedTransactionID)
-		defer func() { _ = stmt.Close() }()
-
-		for ledger, revertedTransactionIDs := range update.RevertedTransactionIDs {
-			for transactionID := range revertedTransactionIDs {
-				if _, err := stmt.ExecContext(ctx, ledger, transactionID); err != nil {
-					return fmt.Errorf("inserting reverted transaction ID: %w", err)
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 // Close closes the database connection and prepared statements
@@ -716,20 +551,6 @@ func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transa
 	return exists == 1, nil
 }
 
-// GetLastProcessedLogID retrieves the ID of the last inserted log.
-func (s *Store) GetLastProcessedLogID(ctx context.Context, ledger string) (uint64, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id FROM logs WHERE ledger = ? ORDER BY id DESC LIMIT 1`, ledger)
-
-	var lastLogID uint64
-	if err := row.Scan(&lastLogID); err != nil {
-		if err == sql.ErrNoRows {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("querying last processed log ID: %w", err)
-	}
-	return lastLogID, nil
-}
-
 func (s *Store) CreateSnapshot(ctx context.Context) error {
 	return nil
 }
@@ -749,9 +570,7 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 }
 
 // DeleteLedger deletes all data for a specific ledger.
-func (s *Store) DeleteLedger(name string) error {
-	ctx := context.Background()
-
+func (s *Store) DeleteLedger(ctx context.Context, name string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)

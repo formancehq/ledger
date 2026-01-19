@@ -42,7 +42,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 			TransactionId: transactionID,
-			Metadata:      inputMetadata,
+			Metadata:      &ledgerpb.Metadata{Entries: inputMetadata},
 		},
 	}
 

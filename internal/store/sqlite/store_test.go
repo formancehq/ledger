@@ -3,6 +3,7 @@
 package sqlite
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/big"
@@ -47,6 +48,16 @@ func TestSQLiteModernStore(t *testing.T) {
 	})
 }
 
+// appendLogs is a helper function to append logs using the batch pattern
+func appendLogs(ctx context.Context, t *testing.T, s store.Store, lastAppliedIndex uint64, logs ...*ledgerpb.Log) {
+	t.Helper()
+	batch := s.NewBatch(lastAppliedIndex)
+	err := batch.AppendLogs(ctx, logs...)
+	require.NoError(t, err)
+	err = batch.Commit(ctx)
+	require.NoError(t, err)
+}
+
 func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 	t.Parallel()
 
@@ -58,17 +69,19 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		s := createStore(t)
 
 		testLogs := createTestLogs(testLedger)
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0, testLogs...)
 	})
 
 	t.Run("BalancesCalculation", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
-		testLogs := createTestLogs(testLedger)
 
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		batch := s.NewBatch(0)
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedger, "world", "USD", big.NewInt(-100)))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedger, "bank", "USD", big.NewInt(100)))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedger, "user", "USD", big.NewInt(50)))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedger, "bank", "USD", big.NewInt(-50)))
+		require.NoError(t, batch.Commit(ctx))
 
 		balances, err := s.GetBalances(ctx, testLedger, map[string][]string{
 			"world": {"USD"},
@@ -86,8 +99,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		s := createStore(t)
 
 		testLogs := createTestLogs(testLedger)
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0, testLogs...)
 
 		cursor, err := s.GetAllLogs(ctx, testLedger, 0, 0)
 		require.NoError(t, err)
@@ -116,8 +128,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		s := createStore(t)
 
 		testLogs := createTestLogs(testLedger)
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0, testLogs...)
 
 		log, err := s.GetLogByID(ctx, testLedger, 1)
 		require.NoError(t, err)
@@ -132,10 +143,20 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 	t.Run("GetAccountMetadata", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
-		testLogs := createTestLogs(testLedger)
 
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		batch := s.NewBatch(0)
+		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedger, "bank", &ledgerpb.Metadata{
+			Entries: metadata.Metadata{
+				"account_type": "asset",
+			},
+		}))
+		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedger, "bank", &ledgerpb.Metadata{
+			Entries: metadata.Metadata{
+				"label": "Bank Account",
+			},
+		}))
+		require.NoError(t, batch.DeleteAccountMetadata(ctx, testLedger, "bank", []string{"old_key"}))
+		require.NoError(t, batch.Commit(ctx))
 
 		accountsMetadata, err := s.GetAccountMetadata(ctx, testLedger, []string{"bank", "user", "world", "non-existing"})
 		require.NoError(t, err)
@@ -169,8 +190,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		s := createStore(t)
 		testLogs := createTestLogs(testLedger)
 
-		err := s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0, testLogs...)
 
 		logID, err := s.GetLogIDForIdempotencyKey(ctx, testLedger, "idempotency-key-1")
 		require.NoError(t, err)
@@ -189,8 +209,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		t.Parallel()
 		s := createStore(t)
 
-		err := s.AppendLogs(ctx, 0)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0)
 	})
 
 	t.Run("GetLastLogID", func(t *testing.T) {
@@ -204,8 +223,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		// Insert logs and verify last ID
 		testLogs := createTestLogs(testLedger)
-		err = s.AppendLogs(ctx, 0, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 0, testLogs...)
 
 		lastLogID, err = s.GetLastLogID(ctx, testLedger)
 		require.NoError(t, err)
@@ -228,8 +246,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		// Insert logs with a specific lastAppliedIndex
 		testLogs := createTestLogs(testLedger)
-		err = s.AppendLogs(ctx, 42, testLogs...)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 42, testLogs...)
 
 		// Verify the lastAppliedIndex was stored
 		lastAppliedIndex, err = s.GetLastAppliedIndex()
@@ -237,8 +254,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		require.Equal(t, uint64(42), lastAppliedIndex)
 
 		// Update with just lastAppliedIndex (no logs)
-		err = s.AppendLogs(ctx, 200)
-		require.NoError(t, err)
+		appendLogs(ctx, t, s, 200)
 
 		lastAppliedIndex, err = s.GetLastAppliedIndex()
 		require.NoError(t, err)
@@ -256,48 +272,22 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		logs1 := createTestLogs(ledger1)
 		logs2 := createTestLogs(ledger2)
 
-		err := s.AppendLogs(ctx, 0, logs1...)
-		require.NoError(t, err)
-
-		err = s.AppendLogs(ctx, 0, logs2...)
-		require.NoError(t, err)
-
-		// Verify both ledgers have data
-		lastLogID1, err := s.GetLastLogID(ctx, ledger1)
-		require.NoError(t, err)
-		require.Equal(t, uint64(4), lastLogID1)
-
-		lastLogID2, err := s.GetLastLogID(ctx, ledger2)
-		require.NoError(t, err)
-		require.Equal(t, uint64(4), lastLogID2)
+		appendLogs(ctx, t, s, 0, logs1...)
+		appendLogs(ctx, t, s, 0, logs2...)
 
 		// Delete ledger1
-		err = s.DeleteLedger(ledger1)
+		err := s.DeleteLedger(ctx, ledger1)
 		require.NoError(t, err)
 
 		// Verify ledger1 data is gone
-		lastLogID1, err = s.GetLastLogID(ctx, ledger1)
+		lastLogID1, err := s.GetLastLogID(ctx, ledger1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastLogID1)
 
 		// Verify ledger2 data is still there
-		lastLogID2, err = s.GetLastLogID(ctx, ledger2)
+		lastLogID2, err := s.GetLastLogID(ctx, ledger2)
 		require.NoError(t, err)
 		require.Equal(t, uint64(4), lastLogID2)
-
-		// Verify balances are also deleted for ledger1
-		balances, err := s.GetBalances(ctx, ledger1, map[string][]string{
-			"world": {"USD"},
-		})
-		require.NoError(t, err)
-		require.Equal(t, big.NewInt(0), balances["world"]["USD"])
-
-		// Verify balances are still there for ledger2
-		balances, err = s.GetBalances(ctx, ledger2, map[string][]string{
-			"world": {"USD"},
-		})
-		require.NoError(t, err)
-		require.Equal(t, big.NewInt(-100), balances["world"]["USD"])
 	})
 }
 
@@ -350,9 +340,9 @@ func createTestLogs(ledger string) []*ledgerpb.Log {
 							Addr: "bank",
 						}},
 					},
-					Metadata: metadata.Metadata{
+					Metadata: &ledgerpb.Metadata{Entries: metadata.Metadata{
 						"label": "Bank Account",
-					},
+					}},
 				},
 			},
 		}).

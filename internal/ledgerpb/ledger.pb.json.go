@@ -103,7 +103,7 @@ func (x *SaveTransactionMetadataRequestPayload) MarshalJSON() ([]byte, error) {
 		Metadata      map[string]string `json:"metadata,omitempty"`
 	}{
 		TransactionId: x.TransactionId,
-		Metadata:      x.Metadata,
+		Metadata:      x.Metadata.Entries,
 	})
 }
 
@@ -164,7 +164,7 @@ func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 		Metadata      map[string]string `json:"metadata,omitempty"`
 	}{
 		TargetType: x.Target.AsConst(),
-		Metadata:   x.Metadata,
+		Metadata:   x.Metadata.Entries,
 	}
 
 	// Handle oneof target_id
@@ -317,7 +317,9 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	sm.Metadata = x.Metadata
+	sm.Metadata = &Metadata{
+		Entries: x.Metadata,
+	}
 
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):

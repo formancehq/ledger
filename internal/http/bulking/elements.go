@@ -20,6 +20,7 @@ const (
 
 type Bulk chan BulkElement
 
+// todo: define protobuf types
 type BulkElement struct {
 	Action         string `json:"action"`
 	IdempotencyKey string `json:"ik"`
@@ -84,11 +85,11 @@ type BulkElementResult struct {
 type AddMetadataRequest struct {
 	TargetType string            `json:"targetType"`
 	TargetID   UInt64OrString    `json:"targetId"`
-	Metadata   metadata.Metadata `json:"metadata"`
+	Metadata   metadata.Metadata `json:"metadata"` // todo: use protobuf
 }
 
 type UInt64OrString struct {
-	Int   *uint64  `json:"int,omitempty"`
+	Int   *uint64 `json:"int,omitempty"`
 	Str   *string `json:"str,omitempty"`
 	IsInt bool    `json:"isint"`
 }
@@ -122,9 +123,9 @@ type RevertTransactionRequest struct {
 }
 
 type DeleteMetadataRequest struct {
-	TargetType string        `json:"targetType"`
+	TargetType string         `json:"targetType"`
 	TargetID   jsontext.Value `json:"targetId"`
-	Key        string        `json:"key"`
+	Key        string         `json:"key"`
 }
 
 type TransactionRequest struct {
