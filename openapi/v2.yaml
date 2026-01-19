@@ -2415,11 +2415,16 @@ components:
         - transactions
     V2Log:
       type: object
+      description: |
+        Represents an immutable log entry in the ledger. Each log captures an atomic operation
+        with its full payload, enabling audit trails and event sourcing patterns.
+        The data field structure depends on the log type.
       properties:
         id:
           type: integer
           format: bigint
           minimum: 0
+          description: Unique sequential identifier for this log entry within the ledger
           example: 1234
         type:
           type: string
@@ -2429,19 +2434,32 @@ components:
             - REVERTED_TRANSACTION
             - DELETE_METADATA
             - INSERTED_SCHEMA
+          description: The type of operation this log represents
         data:
-          type: object
-          properties: {}
-          additionalProperties: true
+          description: |
+            The payload of the log entry. Structure depends on the log type:
+            - NEW_TRANSACTION: V2LogDataNewTransaction
+            - SET_METADATA: V2LogDataSetMetadata
+            - REVERTED_TRANSACTION: V2LogDataRevertedTransaction
+            - DELETE_METADATA: V2LogDataDeleteMetadata
+            - INSERTED_SCHEMA: V2LogDataInsertedSchema
+          oneOf:
+            - $ref: "#/components/schemas/V2LogDataNewTransaction"
+            - $ref: "#/components/schemas/V2LogDataSetMetadata"
+            - $ref: "#/components/schemas/V2LogDataRevertedTransaction"
+            - $ref: "#/components/schemas/V2LogDataDeleteMetadata"
+            - $ref: "#/components/schemas/V2LogDataInsertedSchema"
         hash:
           type: string
+          description: SHA256 hash of the log entry, chained from the previous log for integrity verification
           example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
         date:
           type: string
           format: date-time
+          description: Timestamp when the operation was recorded
         schemaVersion:
           type: string
-          description: Schema version used for validation
+          description: Schema version used for validation when the log was created
           example: v1.0.0
       required:
         - id
@@ -2449,6 +2467,184 @@ components:
         - data
         - hash
         - date
+    # Log payload schemas - used to document the structure of log data field
+    V2LogTransaction:
+      type: object
+      description: Transaction structure as it appears in log payloads
+      properties:
+        id:
+          type: integer
+          format: bigint
+          minimum: 0
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2Posting"
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+        timestamp:
+          type: string
+          format: date-time
+        reference:
+          type: string
+        insertedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        revertedAt:
+          type: string
+          format: date-time
+        reverted:
+          type: boolean
+          description: Indicates if the transaction has been reverted
+        template:
+          type: string
+          description: Transaction template used
+        postCommitVolumes:
+          $ref: "#/components/schemas/V2AggregatedVolumes"
+        postCommitEffectiveVolumes:
+          $ref: "#/components/schemas/V2AggregatedVolumes"
+        preCommitVolumes:
+          $ref: "#/components/schemas/V2AggregatedVolumes"
+        preCommitEffectiveVolumes:
+          $ref: "#/components/schemas/V2AggregatedVolumes"
+      required:
+        - id
+        - postings
+        - metadata
+        - timestamp
+        - reverted
+    V2LogDataNewTransaction:
+      type: object
+      description: Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
+      properties:
+        transaction:
+          $ref: "#/components/schemas/V2LogTransaction"
+        accountMetadata:
+          type: object
+          description: Metadata applied to accounts involved in the transaction
+          additionalProperties:
+            $ref: "#/components/schemas/V2Metadata"
+      required:
+        - transaction
+        - accountMetadata
+      example:
+        transaction:
+          id: 1234
+          postings:
+            - source: "world"
+              destination: "users:001"
+              amount: 100
+              asset: "USD/2"
+          metadata: {}
+          timestamp: "2024-01-15T10:30:00Z"
+          insertedAt: "2024-01-15T10:30:00Z"
+          reverted: false
+        accountMetadata:
+          "users:001":
+            created_by: "system"
+    V2LogDataSetMetadata:
+      type: object
+      description: Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
+      properties:
+        targetType:
+          type: string
+          enum:
+            - ACCOUNT
+            - TRANSACTION
+          description: Type of the target entity
+        targetId:
+          oneOf:
+            - type: string
+              description: Account address (when targetType is ACCOUNT)
+            - type: integer
+              format: bigint
+              description: Transaction ID (when targetType is TRANSACTION)
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+      required:
+        - targetType
+        - targetId
+        - metadata
+      example:
+        targetType: "ACCOUNT"
+        targetId: "users:001"
+        metadata:
+          status: "active"
+          tier: "premium"
+    V2LogDataRevertedTransaction:
+      type: object
+      description: Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
+      properties:
+        revertedTransaction:
+          $ref: "#/components/schemas/V2LogTransaction"
+          description: The original transaction that was reverted
+        transaction:
+          $ref: "#/components/schemas/V2LogTransaction"
+          description: The new reverting transaction created to cancel the original
+      required:
+        - revertedTransaction
+        - transaction
+      example:
+        revertedTransaction:
+          id: 1234
+          postings:
+            - source: "world"
+              destination: "users:001"
+              amount: 100
+              asset: "USD/2"
+          metadata: {}
+          timestamp: "2024-01-15T10:30:00Z"
+          reverted: true
+        transaction:
+          id: 1235
+          postings:
+            - source: "users:001"
+              destination: "world"
+              amount: 100
+              asset: "USD/2"
+          metadata:
+            revert: "1234"
+          timestamp: "2024-01-15T11:00:00Z"
+          reverted: false
+    V2LogDataDeleteMetadata:
+      type: object
+      description: Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.
+      properties:
+        targetType:
+          type: string
+          enum:
+            - ACCOUNT
+            - TRANSACTION
+          description: Type of the target entity
+        targetId:
+          oneOf:
+            - type: string
+              description: Account address (when targetType is ACCOUNT)
+            - type: integer
+              format: bigint
+              description: Transaction ID (when targetType is TRANSACTION)
+        key:
+          type: string
+          description: The metadata key that was deleted
+      required:
+        - targetType
+        - targetId
+        - key
+      example:
+        targetType: "ACCOUNT"
+        targetId: "users:001"
+        key: "temporary_flag"
+    V2LogDataInsertedSchema:
+      type: object
+      description: Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
+      properties:
+        schema:
+          $ref: "#/components/schemas/V2Schema"
+      required:
+        - schema
     V2CreateTransactionResponse:
       properties:
         data:
