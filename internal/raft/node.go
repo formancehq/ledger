@@ -22,6 +22,7 @@ import (
 const (
 	statusNormal = iota
 	statusSyncing
+	statusSnapshotting
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
@@ -73,7 +74,7 @@ type Node struct {
 	snapshotThreshold       uint64
 	compactionMargin        uint64
 	taskExecutor            *singleTaskExecutor
-	syncTerminated          chan struct{}
+	gatingTerminated        chan struct{}
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -301,9 +302,9 @@ func (node *Node) Start(ctx context.Context) error {
 		return err
 	}
 
+	// todo: batch
 	if err := node.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
-		_, err := node.fsm.ApplyEntries(ctx, entry)
-		return err
+		return node.applyEntriesAndResolveCommands(ctx, entry)
 	}); err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
@@ -331,10 +332,12 @@ func (node *Node) Start(ctx context.Context) error {
 			}
 		case proposal := <-node.proposeCh.Recv():
 			proposal.rejected <- node.rawNode.Propose(proposal.data)
-		case <-node.syncTerminated:
-			if err := node.finalizeSynchronization(ctx); err != nil {
+		case <-node.gatingTerminated:
+			if err := node.unspoolThenResume(ctx); err != nil {
 				return err
 			}
+		case err := <-node.taskExecutor.error():
+			return fmt.Errorf("task executor error: %w", err)
 		case <-processingTick.C:
 			if node.rawNode.HasReady() {
 				now := time.Now()
@@ -350,8 +353,11 @@ func (node *Node) Start(ctx context.Context) error {
 	}
 }
 
-func (node *Node) finalizeSynchronization(ctx context.Context) error {
-	node.logger.Infof("Syncing terminated, applying spooled entries before resuming...")
+func (node *Node) unspoolThenResume(ctx context.Context) error {
+	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
+	node.gatingTerminated = nil
+	node.status.Store(statusNormal)
+
 	position, err := node.spool.End()
 	if err != nil {
 		return fmt.Errorf("getting spool end position: %w", err)
@@ -361,19 +367,20 @@ func (node *Node) finalizeSynchronization(ctx context.Context) error {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
 
+	node.logger.Infof("Unspooling from %d", lastAppliedIndex)
+
 	if err := node.spool.ReplayUntil(ctx, *position, lastAppliedIndex, func(entry raftpb.Entry) error {
-		_, err := node.applyEntriesToFSM(ctx, node.confState, entry)
-		return err
+		return node.applyEntriesAndResolveCommands(ctx, entry)
 	}); err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 
+	// todo: decorallate, this is not needed at this point
 	if err := node.spool.Prune(lastAppliedIndex); err != nil {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
 
-	node.syncTerminated = nil
-	node.status.Store(statusNormal)
+	node.logger.Infof("Unspooling operation terminated, resuming...")
 
 	return nil
 }
@@ -459,45 +466,47 @@ func (node *Node) processReady(ctx context.Context) error {
 		node.confState = node.rawNode.ApplyConfChange(cc)
 	}
 
-	var (
-		results []ApplyResult
-		err     error
-	)
 	if len(rd.CommittedEntries) > 0 {
 		switch node.status.Load() {
 		case statusNormal:
-			start := time.Now()
-			results, err = node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
+			err := node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
 			if err != nil {
 				return fmt.Errorf("applying entries to FSM: %w", err)
 			}
-			node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
-			node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
-			node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
-		case statusSyncing:
-			node.logger.Debugf("Spool committed entries")
-			err = node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
-			if err != nil {
-				return err
-			}
-			results = make([]ApplyResult, len(rd.CommittedEntries))
 		default:
-			panic("unreachable")
-		}
-
-		for _, result := range results {
-			future, exists := node.futures.Load(result.CommandID)
-			if !exists {
-				continue
-			}
-			if !future.Done() {
-				future.Resolve(result.Result, result.Error)
+			node.logger.Debugf("Spool committed entries")
+			err := node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
+			if err != nil {
+				return fmt.Errorf("spooling committed entries: %w", err)
 			}
 		}
 	}
 
 	// Advance the rawNode
 	node.rawNode.Advance(rd)
+
+	return nil
+}
+
+func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) error {
+	start := time.Now()
+	results, err := node.fsm.ApplyEntries(ctx, entries...)
+	if err != nil {
+		return fmt.Errorf("applying entries to FSM: %w", err)
+	}
+	node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
+	node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
+	node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
+
+	for _, result := range results {
+		future, exists := node.futures.Load(result.CommandID)
+		if !exists {
+			continue
+		}
+		if !future.Done() {
+			future.Resolve(result.Result, result.Error)
+		}
+	}
 
 	return nil
 }
@@ -765,14 +774,13 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64, snapshot raft
 			"term":   snapshot.Metadata.Term,
 		}).
 		Infof("Syncing snapshot from leader")
-	if node.status.Swap(statusSyncing) == statusSyncing {
-		node.logger.Infof("Interrupting previous sync")
-		node.taskExecutor.interrupt()
-	}
-	syncTerminated := make(chan struct{})
-	node.syncTerminated = syncTerminated
 
-	node.taskExecutor.run(ctx, func(ctx context.Context) error {
+	oldStatus := node.status.Swap(statusSyncing)
+	if oldStatus != statusNormal {
+		node.logger.Infof("Interrupting previous task")
+	}
+
+	node.runMaintenanceTask(ctx, func(ctx context.Context) error {
 		defer func() {
 			node.logger.Infof("Syncing snapshot terminated")
 		}()
@@ -787,34 +795,33 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64, snapshot raft
 			return err
 		}
 
-		lastAppliedIndex, err := node.store.GetLastAppliedIndex()
-		if err != nil {
-			return err
-		}
-
-		err = node.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
+		return node.spool.ReplayUntil(ctx, *end, snapshot.Metadata.Index, func(entry raftpb.Entry) error {
 			_, err := node.fsm.ApplyEntries(ctx, entry)
 			return err
 		})
-		if err != nil {
-			return err
-		}
-
-		close(syncTerminated)
-
-		node.logger.Infof("Unspooling done")
-
-		return nil
 	})
 
 	return nil
 }
 
+func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) error) {
+	gatingTerminated := make(chan struct{})
+	node.gatingTerminated = gatingTerminated
+
+	node.taskExecutor.interrupt()
+	node.taskExecutor.run(ctx, func(ctx context.Context) error {
+		defer func() {
+			close(gatingTerminated)
+		}()
+		return task(ctx)
+	})
+}
+
 // applyEntriesToFSM applies entries directly to the FSM
-func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) ([]ApplyResult, error) {
-	results, err := node.fsm.ApplyEntries(ctx, entries...)
+func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
+	err := node.applyEntriesAndResolveCommands(ctx, entries...)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	lastSnapshot, err := node.wal.Snapshot()
@@ -823,35 +830,45 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 	}
 
 	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
-		node.logger.WithFields(map[string]any{
-			"applied":           entries[len(entries)-1].Index,
-			"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-			"snapshotThreshold": node.snapshotThreshold,
-			"compactionMargin":  node.compactionMargin,
-		}).Infof("Creating new snapshot")
+		// Short circuit the state machine
+		// Futures entries will be spooled and applied later
+		node.status.Store(statusSnapshotting)
 
-		startTime := time.Now()
-		data, err := node.fsm.CreateSnapshot(ctx)
-		if err != nil {
-			return nil, err
-		}
-		err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
-		if err != nil {
-			return nil, err
-		}
-		duration := time.Since(startTime)
-		node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+		node.runMaintenanceTask(ctx, func(ctx context.Context) error {
+			node.logger.WithFields(map[string]any{
+				"applied":           entries[len(entries)-1].Index,
+				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+				"snapshotThreshold": node.snapshotThreshold,
+				"compactionMargin":  node.compactionMargin,
+			}).Infof("Creating new snapshot")
 
-		// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-		if entries[len(entries)-1].Index > node.compactionMargin {
-			err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
+			startTime := time.Now()
+			data, err := node.fsm.CreateSnapshot(ctx)
 			if err != nil {
-				return nil, err
+				return err
 			}
-		}
+
+			err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
+			if err != nil {
+				return err
+			}
+			duration := time.Since(startTime)
+			node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+
+			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+			// todo: decorallate compaction as it increase the spooling time and this is not needed
+			if entries[len(entries)-1].Index > node.compactionMargin {
+				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
 	}
 
-	return results, nil
+	return nil
 }
 
 func (node *Node) Stop(ctx context.Context) error {

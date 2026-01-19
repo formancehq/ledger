@@ -259,7 +259,6 @@ var _ = Describe("Simple cluster", func() {
 					// Restart the follower
 					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 				})
-
 				It("Should restore the state", func() {
 					// Wait for follower to reconnect and sync, then verify it can see the ledger
 					Eventually(servers[followerID-1]).To(BeFollower())
@@ -290,6 +289,7 @@ var _ = Describe("Simple cluster", func() {
 				BeforeEach(func() {
 					// Create enough transactions to trigger a snapshot
 					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
+					GinkgoLogr.Info("Creating transactions")
 					for i := 0; i < countTransactions; i++ {
 						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
 							LedgerName: ledgerName,
@@ -303,7 +303,9 @@ var _ = Describe("Simple cluster", func() {
 							},
 						})
 						Expect(err).To(Succeed())
+						GinkgoLogr.Info(fmt.Sprintf("Transactions %d created", i))
 					}
+					GinkgoLogr.Info("Transactions created")
 
 					// todo: check the snapshot has been created
 				})

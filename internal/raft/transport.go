@@ -431,6 +431,7 @@ func (conn *peerConnection) loop() {
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						conn.logger.Errorf("Peer connection broken, reconnect")
+						_ = stream.CloseSend()
 						break l
 					}
 					conn.logger.Errorf("Failed to send ping to peer: %v", err)

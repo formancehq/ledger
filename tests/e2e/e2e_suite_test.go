@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	debug            = os.Getenv("DEBUG") == "true"
+	debug = os.Getenv("DEBUG") == "true"
 )
 
 func TestE2E(t *testing.T) {
-	SetDefaultEventuallyPollingInterval(100*time.Millisecond)
-	SetDefaultEventuallyTimeout(10*time.Second)
+	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
+	SetDefaultEventuallyTimeout(5 * time.Second)
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Suite")
 }

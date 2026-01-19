@@ -25,6 +25,8 @@ type FSM interface {
 
 // FSM implements the raft.FSM interface
 type defaultFSM struct {
+	// todo: don't expose the state, to avoid the lock
+	// use the store directly
 	mu               sync.RWMutex    // Protects access to state
 	state            *ledgerpb.State // FSM state
 	logger           logging.Logger
@@ -221,7 +223,7 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 
 func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error) {
 
-	batch := fsm.store.NewBatch(entries[len(entries)-1].Index + 1)
+	batch := fsm.store.NewBatch(entries[len(entries)-1].Index)
 	defer func() {
 		_ = batch.Cancel(ctx)
 	}()
@@ -237,7 +239,7 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 		// Well, in a perfect world, we wouldn't have to check this
 		// But, as error is human, this adds a small safeguard to avoid corrupting the runtime store
 		if entry.Index > fsm.lastAppliedIndex+1 {
-			panic(fmt.Errorf("invalid index, got %d, expected %d", entry.Index, fsm.lastAppliedIndex+1))
+			return nil, fmt.Errorf("invalid index, got %d, expected %d", entry.Index, fsm.lastAppliedIndex+1)
 		}
 		fsm.lastAppliedIndex++
 
@@ -370,6 +372,7 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 		_ = batch.Cancel(ctx)
 	}()
 
+	// todo: add soft delete
 	for ledgerName := range oldState.Ledgers {
 		_, ok := fsm.state.Ledgers[ledgerName]
 		if !ok {

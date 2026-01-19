@@ -3,6 +3,7 @@ package raft
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
@@ -10,17 +11,23 @@ import (
 
 // singleTaskExecutor manages a single background task that can be interrupted
 type singleTaskExecutor struct {
+	mu         sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
 	terminated chan struct{}
 	logger     logging.Logger
+	errChan    chan error
 }
 
 func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Context) error) {
 	select {
 	case <-t.terminated:
+		t.mu.Lock()
 		t.terminated = make(chan struct{})
 		t.ctx, t.cancel = context.WithCancel(ctx)
+		errCh := make(chan error, 1)
+		t.errChan = errCh
+		t.mu.Unlock()
 
 		otlplogs.Go(func() {
 			defer func() {
@@ -33,7 +40,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 				return
 			}
 			if err != nil {
-				panic(err)
+				errCh <- err
 			}
 		}, t.logger)
 	default:
@@ -48,6 +55,13 @@ func (t *singleTaskExecutor) interrupt() {
 		t.cancel()
 		<-t.terminated
 	}
+}
+
+func (t *singleTaskExecutor) error() chan error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.errChan
 }
 
 func newSingleTaskExecutor(logger logging.Logger) *singleTaskExecutor {
