@@ -231,35 +231,35 @@ var _ = Context("Ledger logs list API tests", func() {
 			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Type).To(Equal(components.V2LogTypeNewTransaction))
 			// Cannot check date and txid inside Data since they are changing at
 			// every run
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["accountMetadata"]).To(Equal(map[string]any{}))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
-			transaction := response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"].(map[string]any)
-			Expect(transaction["metadata"]).To(Equal(map[string]any{
+			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction).NotTo(BeNil())
+			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
+			transaction := response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction.Transaction
+			Expect(transaction.Metadata).To(Equal(map[string]string{
 				"clientType": "silver",
 			}))
-			Expect(transaction["timestamp"]).To(Equal("2023-04-12T10:00:00Z"))
-			Expect(transaction["postings"]).To(Equal([]any{
-				map[string]any{
-					"amount":      float64(200),
-					"asset":       "USD",
-					"source":      "world",
-					"destination": "foo:bar",
+			Expect(transaction.Timestamp.Format(time.RFC3339)).To(Equal("2023-04-12T10:00:00Z"))
+			Expect(transaction.Postings).To(Equal([]components.V2Posting{
+				{
+					Amount:      big.NewInt(200),
+					Asset:       "USD",
+					Source:      "world",
+					Destination: "foo:bar",
 				},
 			}))
 
 			Expect(response.V2LogsCursorResponse.Cursor.Data[2].ID).To(Equal(big.NewInt(1)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Type).To(Equal(components.V2LogTypeNewTransaction))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["accountMetadata"]).To(Equal(map[string]any{}))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
-			transaction = response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"].(map[string]any)
-			Expect(transaction["metadata"]).To(Equal(map[string]any{}))
-			Expect(transaction["timestamp"]).To(Equal("2023-04-11T10:00:00Z"))
-			Expect(transaction["postings"]).To(Equal([]any{
-				map[string]any{
-					"amount":      float64(100),
-					"asset":       "USD",
-					"source":      "world",
-					"destination": "foo:foo",
+			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction).NotTo(BeNil())
+			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
+			transaction = response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction.Transaction
+			Expect(transaction.Metadata).To(Equal(map[string]string{}))
+			Expect(transaction.Timestamp.Format(time.RFC3339)).To(Equal("2023-04-11T10:00:00Z"))
+			Expect(transaction.Postings).To(Equal([]components.V2Posting{
+				{
+					Amount:      big.NewInt(100),
+					Asset:       "USD",
+					Source:      "world",
+					Destination: "foo:foo",
 				},
 			}))
 		})
@@ -268,18 +268,18 @@ var _ = Context("Ledger logs list API tests", func() {
 	type expectedLog struct {
 		id       *big.Int
 		typ      components.V2LogType
-		postings []any
+		postings []components.V2Posting
 	}
 
 	var (
 		compareLogs = func(log components.V2Log, expected expectedLog) {
 			Expect(log.ID).To(Equal(expected.id))
 			Expect(log.Type).To(Equal(expected.typ))
-			Expect(log.Data["accountMetadata"]).To(Equal(map[string]any{}))
-			Expect(log.Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
-			transaction := log.Data["transaction"].(map[string]any)
-			Expect(transaction["metadata"]).To(Equal(map[string]any{}))
-			Expect(transaction["postings"]).To(Equal(expected.postings))
+			Expect(log.Data.V2LogDataNewTransaction).NotTo(BeNil())
+			Expect(log.Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
+			transaction := log.Data.V2LogDataNewTransaction.Transaction
+			Expect(transaction.Metadata).To(Equal(map[string]string{}))
+			Expect(transaction.Postings).To(Equal(expected.postings))
 		}
 	)
 
@@ -316,12 +316,12 @@ var _ = Context("Ledger logs list API tests", func() {
 				expectedLogs = append(expectedLogs, expectedLog{
 					id:  big.NewInt(i + 1),
 					typ: components.V2LogTypeNewTransaction,
-					postings: []any{
-						map[string]any{
-							"amount":      float64(100),
-							"asset":       "USD",
-							"source":      "world",
-							"destination": fmt.Sprintf("foo:%d", i),
+					postings: []components.V2Posting{
+						{
+							Amount:      big.NewInt(100),
+							Asset:       "USD",
+							Source:      "world",
+							Destination: fmt.Sprintf("foo:%d", i),
 						},
 					},
 				})
