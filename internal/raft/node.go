@@ -430,11 +430,11 @@ func (node *Node) processReady(ctx context.Context) error {
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
-		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-
 		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
+
+		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
