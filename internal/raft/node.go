@@ -297,16 +297,8 @@ func (node *Node) Start(ctx context.Context) error {
 		return err
 	}
 
-	end, err := node.spool.End()
-	if err != nil {
+	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
 		return err
-	}
-
-	// todo: batch
-	if err := node.spool.ReplayUntil(ctx, *end, lastAppliedIndex, func(entry raftpb.Entry) error {
-		return node.applyEntriesAndResolveCommands(ctx, entry)
-	}); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
 	}
 
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
@@ -358,20 +350,13 @@ func (node *Node) unspoolThenResume(ctx context.Context) error {
 	node.gatingTerminated = nil
 	node.status.Store(statusNormal)
 
-	position, err := node.spool.End()
-	if err != nil {
-		return fmt.Errorf("getting spool end position: %w", err)
-	}
 	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
 
 	node.logger.Infof("Unspooling from %d", lastAppliedIndex)
-
-	if err := node.spool.ReplayUntil(ctx, *position, lastAppliedIndex, func(entry raftpb.Entry) error {
-		return node.applyEntriesAndResolveCommands(ctx, entry)
-	}); err != nil {
+	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 
@@ -780,31 +765,45 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64, snapshot raft
 		node.logger.Infof("Interrupting previous task")
 	}
 
-	node.runMaintenanceTask(ctx, func(ctx context.Context) error {
-		defer func() {
-			node.logger.Infof("Syncing snapshot terminated")
-		}()
-		err := node.fsm.SyncSnapshot(ctx, leader, snapshot)
-		if err != nil {
-			return err
-		}
-
-		node.logger.Infof("Snapshot synced from leader, applying spooled entries...")
-		end, err := node.spool.End()
-		if err != nil {
-			return err
-		}
-
-		return node.spool.ReplayUntil(ctx, *end, snapshot.Metadata.Index, func(entry raftpb.Entry) error {
-			_, err := node.fsm.ApplyEntries(ctx, entry)
-			return err
-		})
+	node.runMaintenanceTask(ctx, snapshot.Metadata.Index, func(ctx context.Context) error {
+		return node.fsm.SyncSnapshot(ctx, leader, snapshot)
 	})
 
 	return nil
 }
 
-func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) error) {
+func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
+
+	node.logger.Infof("Replaying spool")
+
+	until, err := node.spool.End()
+	if err != nil {
+		return fmt.Errorf("getting spool end position: %w", err)
+	}
+
+	batch := make([]raftpb.Entry, 0, 1000)
+	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
+		batch = append(batch, entry)
+		if len(batch) >= 1000 { // todo: configure
+			if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+				return err
+			}
+			batch = batch[:0]
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("replaying spool: %w", err)
+	}
+	if len(batch) > 0 {
+		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (node *Node) runMaintenanceTask(ctx context.Context, frozenAtIndex uint64, task func(ctx context.Context) error) {
 	gatingTerminated := make(chan struct{})
 	node.gatingTerminated = gatingTerminated
 
@@ -813,7 +812,12 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 		defer func() {
 			close(gatingTerminated)
 		}()
-		return task(ctx)
+
+		if err := task(ctx); err != nil {
+			return err
+		}
+
+		return node.replaySpool(ctx, frozenAtIndex)
 	})
 }
 
@@ -834,7 +838,7 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		// Futures entries will be spooled and applied later
 		node.status.Store(statusSnapshotting)
 
-		node.runMaintenanceTask(ctx, func(ctx context.Context) error {
+		node.runMaintenanceTask(ctx, entries[len(entries)-1].Index, func(ctx context.Context) error {
 			node.logger.WithFields(map[string]any{
 				"applied":           entries[len(entries)-1].Index,
 				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
