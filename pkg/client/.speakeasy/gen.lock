@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ea145c98b439cd8986d2f3f6160fe430
+  docChecksum: 21347a677b23d73593e490cbb2a55502
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -109,7 +109,13 @@ generatedFiles:
   - /models/components/v2listexportersresponse.go
   - /models/components/v2listpipelinesresponse.go
   - /models/components/v2log.go
+  - /models/components/v2logdatadeletemetadata.go
+  - /models/components/v2logdatainsertedschema.go
+  - /models/components/v2logdatanewtransaction.go
+  - /models/components/v2logdatarevertedtransaction.go
+  - /models/components/v2logdatasetmetadata.go
   - /models/components/v2logscursorresponse.go
+  - /models/components/v2logtransaction.go
   - /models/components/v2migrationinfo.go
   - /models/components/v2pipeline.go
   - /models/components/v2posting.go
@@ -236,6 +242,8 @@ generatedFiles:
   - docs/models/components/stats.md
   - docs/models/components/statsresponse.md
   - docs/models/components/storage.md
+  - docs/models/components/targetid.md
+  - docs/models/components/targettype.md
   - docs/models/components/transaction.md
   - docs/models/components/transactiondata.md
   - docs/models/components/transactionresponse.md
@@ -293,8 +301,17 @@ generatedFiles:
   - docs/models/components/v2listpipelinesresponsecursor.md
   - docs/models/components/v2listpipelinesresponsecursorcursor.md
   - docs/models/components/v2log.md
+  - docs/models/components/v2logdata.md
+  - docs/models/components/v2logdatadeletemetadata.md
+  - docs/models/components/v2logdatadeletemetadatatargetid.md
+  - docs/models/components/v2logdatadeletemetadatatargettype.md
+  - docs/models/components/v2logdatainsertedschema.md
+  - docs/models/components/v2logdatanewtransaction.md
+  - docs/models/components/v2logdatarevertedtransaction.md
+  - docs/models/components/v2logdatasetmetadata.md
   - docs/models/components/v2logscursorresponse.md
   - docs/models/components/v2logscursorresponsecursor.md
+  - docs/models/components/v2logtransaction.md
   - docs/models/components/v2logtype.md
   - docs/models/components/v2migrationinfo.md
   - docs/models/components/v2migrationinfostate.md
@@ -1034,7 +1051,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {"transaction": {"id": 1234, "postings": [{"amount": 100, "asset": "USD/2", "destination": "users:001", "source": "world"}], "metadata": {}, "timestamp": "2024-01-15T10:30:00Z", "insertedAt": "2024-01-15T10:30:00Z", "reverted": false}, "accountMetadata": {"users:001": {"created_by": "system"}}}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ImportLogs:

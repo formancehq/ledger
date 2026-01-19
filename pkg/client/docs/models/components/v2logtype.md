@@ -1,5 +1,7 @@
 # V2LogType
 
+The type of operation this log represents
+
 
 ## Values
 

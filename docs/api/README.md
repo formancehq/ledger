@@ -2293,7 +2293,28 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
       {
         "id": 1234,
         "type": "NEW_TRANSACTION",
-        "data": {},
+        "data": {
+          "transaction": {
+            "id": 1234,
+            "postings": [
+              {
+                "source": "world",
+                "destination": "users:001",
+                "amount": 100,
+                "asset": "USD/2"
+              }
+            ],
+            "metadata": {},
+            "timestamp": "2024-01-15T10:30:00Z",
+            "insertedAt": "2024-01-15T10:30:00Z",
+            "reverted": false
+          },
+          "accountMetadata": {
+            "users:001": {
+              "created_by": "system"
+            }
+          }
+        },
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
         "date": "2019-08-24T14:15:22Z",
         "schemaVersion": "v1.0.0"
@@ -3581,7 +3602,28 @@ This operation does not require authentication
       {
         "id": 1234,
         "type": "NEW_TRANSACTION",
-        "data": {},
+        "data": {
+          "transaction": {
+            "id": 1234,
+            "postings": [
+              {
+                "source": "world",
+                "destination": "users:001",
+                "amount": 100,
+                "asset": "USD/2"
+              }
+            ],
+            "metadata": {},
+            "timestamp": "2024-01-15T10:30:00Z",
+            "insertedAt": "2024-01-15T10:30:00Z",
+            "reverted": false
+          },
+          "accountMetadata": {
+            "users:001": {
+              "created_by": "system"
+            }
+          }
+        },
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
         "date": "2019-08-24T14:15:22Z",
         "schemaVersion": "v1.0.0"
@@ -3601,7 +3643,7 @@ This operation does not require authentication
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Log](#schemav2log)]|true|none|none|
+|» data|[[V2Log](#schemav2log)]|true|none|[Represents an immutable log entry in the ledger. Each log captures an atomic operation<br>with its full payload, enabling audit trails and event sourcing patterns.<br>The data field structure depends on the log type.<br>]|
 
 <h2 id="tocS_V2AccountResponse">V2AccountResponse</h2>
 <!-- backwards compatibility -->
@@ -4100,7 +4142,28 @@ This operation does not require authentication
 {
   "id": 1234,
   "type": "NEW_TRANSACTION",
-  "data": {},
+  "data": {
+    "transaction": {
+      "id": 1234,
+      "postings": [
+        {
+          "source": "world",
+          "destination": "users:001",
+          "amount": 100,
+          "asset": "USD/2"
+        }
+      ],
+      "metadata": {},
+      "timestamp": "2024-01-15T10:30:00Z",
+      "insertedAt": "2024-01-15T10:30:00Z",
+      "reverted": false
+    },
+    "accountMetadata": {
+      "users:001": {
+        "created_by": "system"
+      }
+    }
+  },
   "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
   "date": "2019-08-24T14:15:22Z",
   "schemaVersion": "v1.0.0"
@@ -4108,16 +4171,55 @@ This operation does not require authentication
 
 ```
 
+Represents an immutable log entry in the ledger. Each log captures an atomic operation
+with its full payload, enabling audit trails and event sourcing patterns.
+The data field structure depends on the log type.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|integer(bigint)|true|none|none|
-|type|string|true|none|none|
-|data|object|true|none|none|
-|hash|string|true|none|none|
-|date|string(date-time)|true|none|none|
-|schemaVersion|string|false|none|Schema version used for validation|
+|id|integer(bigint)|true|none|Unique sequential identifier for this log entry within the ledger|
+|type|string|true|none|The type of operation this log represents|
+|data|any|true|none|The payload of the log entry. Structure depends on the log type:<br>- NEW_TRANSACTION: V2LogDataNewTransaction<br>- SET_METADATA: V2LogDataSetMetadata<br>- REVERTED_TRANSACTION: V2LogDataRevertedTransaction<br>- DELETE_METADATA: V2LogDataDeleteMetadata<br>- INSERTED_SCHEMA: V2LogDataInsertedSchema|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[V2LogDataNewTransaction](#schemav2logdatanewtransaction)|false|none|Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[V2LogDataSetMetadata](#schemav2logdatasetmetadata)|false|none|Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[V2LogDataRevertedTransaction](#schemav2logdatarevertedtransaction)|false|none|Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[V2LogDataDeleteMetadata](#schemav2logdatadeletemetadata)|false|none|Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[V2LogDataInsertedSchema](#schemav2logdatainsertedschema)|false|none|Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.|
+
+continued
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|hash|string|true|none|SHA256 hash of the log entry, chained from the previous log for integrity verification|
+|date|string(date-time)|true|none|Timestamp when the operation was recorded|
+|schemaVersion|string|false|none|Schema version used for validation when the log was created|
 
 #### Enumerated Values
 
@@ -4128,6 +4230,365 @@ This operation does not require authentication
 |type|REVERTED_TRANSACTION|
 |type|DELETE_METADATA|
 |type|INSERTED_SCHEMA|
+
+<h2 id="tocS_V2LogTransaction">V2LogTransaction</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logtransaction"></a>
+<a id="schema_V2LogTransaction"></a>
+<a id="tocSv2logtransaction"></a>
+<a id="tocsv2logtransaction"></a>
+
+```json
+{
+  "id": 0,
+  "postings": [
+    {
+      "amount": 100,
+      "asset": "COIN",
+      "destination": "users:002",
+      "source": "users:001"
+    }
+  ],
+  "metadata": {
+    "admin": "true"
+  },
+  "timestamp": "2019-08-24T14:15:22Z",
+  "reference": "string",
+  "insertedAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z",
+  "revertedAt": "2019-08-24T14:15:22Z",
+  "reverted": true,
+  "template": "string",
+  "postCommitVolumes": {
+    "orders:1": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    },
+    "orders:2": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    }
+  },
+  "postCommitEffectiveVolumes": {
+    "orders:1": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    },
+    "orders:2": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    }
+  },
+  "preCommitVolumes": {
+    "orders:1": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    },
+    "orders:2": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    }
+  },
+  "preCommitEffectiveVolumes": {
+    "orders:1": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    },
+    "orders:2": {
+      "USD": {
+        "input": 100,
+        "output": 10,
+        "balance": 90
+      }
+    }
+  }
+}
+
+```
+
+Transaction structure as it appears in log payloads
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|integer(bigint)|true|none|none|
+|postings|[[V2Posting](#schemav2posting)]|true|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|timestamp|string(date-time)|true|none|none|
+|reference|string|false|none|none|
+|insertedAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+|revertedAt|string(date-time)|false|none|none|
+|reverted|boolean|true|none|Indicates if the transaction has been reverted|
+|template|string|false|none|Transaction template used|
+|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+
+<h2 id="tocS_V2LogDataNewTransaction">V2LogDataNewTransaction</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logdatanewtransaction"></a>
+<a id="schema_V2LogDataNewTransaction"></a>
+<a id="tocSv2logdatanewtransaction"></a>
+<a id="tocsv2logdatanewtransaction"></a>
+
+```json
+{
+  "transaction": {
+    "id": 1234,
+    "postings": [
+      {
+        "source": "world",
+        "destination": "users:001",
+        "amount": 100,
+        "asset": "USD/2"
+      }
+    ],
+    "metadata": {},
+    "timestamp": "2024-01-15T10:30:00Z",
+    "insertedAt": "2024-01-15T10:30:00Z",
+    "reverted": false
+  },
+  "accountMetadata": {
+    "users:001": {
+      "created_by": "system"
+    }
+  }
+}
+
+```
+
+Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|Transaction structure as it appears in log payloads|
+|accountMetadata|object|true|none|Metadata applied to accounts involved in the transaction|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+
+<h2 id="tocS_V2LogDataSetMetadata">V2LogDataSetMetadata</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logdatasetmetadata"></a>
+<a id="schema_V2LogDataSetMetadata"></a>
+<a id="tocSv2logdatasetmetadata"></a>
+<a id="tocsv2logdatasetmetadata"></a>
+
+```json
+{
+  "targetType": "ACCOUNT",
+  "targetId": "users:001",
+  "metadata": {
+    "status": "active",
+    "tier": "premium"
+  }
+}
+
+```
+
+Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|targetType|string|true|none|Type of the target entity|
+|targetId|any|true|none|none|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|string|false|none|Account address (when targetType is ACCOUNT)|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|integer(bigint)|false|none|Transaction ID (when targetType is TRANSACTION)|
+
+continued
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+
+<h2 id="tocS_V2LogDataRevertedTransaction">V2LogDataRevertedTransaction</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logdatarevertedtransaction"></a>
+<a id="schema_V2LogDataRevertedTransaction"></a>
+<a id="tocSv2logdatarevertedtransaction"></a>
+<a id="tocsv2logdatarevertedtransaction"></a>
+
+```json
+{
+  "revertedTransaction": {
+    "id": 1234,
+    "postings": [
+      {
+        "source": "world",
+        "destination": "users:001",
+        "amount": 100,
+        "asset": "USD/2"
+      }
+    ],
+    "metadata": {},
+    "timestamp": "2024-01-15T10:30:00Z",
+    "reverted": true
+  },
+  "transaction": {
+    "id": 1235,
+    "postings": [
+      {
+        "source": "users:001",
+        "destination": "world",
+        "amount": 100,
+        "asset": "USD/2"
+      }
+    ],
+    "metadata": {
+      "revert": "1234"
+    },
+    "timestamp": "2024-01-15T11:00:00Z",
+    "reverted": false
+  }
+}
+
+```
+
+Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|revertedTransaction|[V2LogTransaction](#schemav2logtransaction)|true|none|The original transaction that was reverted|
+|transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|The new reverting transaction created to cancel the original|
+
+<h2 id="tocS_V2LogDataDeleteMetadata">V2LogDataDeleteMetadata</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logdatadeletemetadata"></a>
+<a id="schema_V2LogDataDeleteMetadata"></a>
+<a id="tocSv2logdatadeletemetadata"></a>
+<a id="tocsv2logdatadeletemetadata"></a>
+
+```json
+{
+  "targetType": "ACCOUNT",
+  "targetId": "users:001",
+  "key": "temporary_flag"
+}
+
+```
+
+Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|targetType|string|true|none|Type of the target entity|
+|targetId|any|true|none|none|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|string|false|none|Account address (when targetType is ACCOUNT)|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|integer(bigint)|false|none|Transaction ID (when targetType is TRANSACTION)|
+
+continued
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|key|string|true|none|The metadata key that was deleted|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+
+<h2 id="tocS_V2LogDataInsertedSchema">V2LogDataInsertedSchema</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logdatainsertedschema"></a>
+<a id="schema_V2LogDataInsertedSchema"></a>
+<a id="tocSv2logdatainsertedschema"></a>
+<a id="tocsv2logdatainsertedschema"></a>
+
+```json
+{
+  "schema": {
+    "version": "v1.0.0",
+    "createdAt": "2023-01-01T00:00:00Z",
+    "chart": {
+      "users": {
+        "$userID": {
+          ".pattern": "^[0-9]{16}$"
+        }
+      }
+    },
+    "transactions": {
+      "property1": {
+        "description": "string",
+        "script": "string",
+        "runtime": "experimental-interpreter"
+      },
+      "property2": {
+        "description": "string",
+        "script": "string",
+        "runtime": "experimental-interpreter"
+      }
+    }
+  }
+}
+
+```
+
+Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|schema|[V2Schema](#schemav2schema)|true|none|Complete schema structure with metadata|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->

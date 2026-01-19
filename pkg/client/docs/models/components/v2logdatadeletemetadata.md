@@ -1,0 +1,12 @@
+# V2LogDataDeleteMetadata
+
+Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.
+
+
+## Fields
+
+| Field                                                                                                        | Type                                                                                                         | Required                                                                                                     | Description                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `TargetType`                                                                                                 | [components.V2LogDataDeleteMetadataTargetType](../../models/components/v2logdatadeletemetadatatargettype.md) | :heavy_check_mark:                                                                                           | Type of the target entity                                                                                    |
+| `TargetID`                                                                                                   | [components.V2LogDataDeleteMetadataTargetID](../../models/components/v2logdatadeletemetadatatargetid.md)     | :heavy_check_mark:                                                                                           | N/A                                                                                                          |
+| `Key`                                                                                                        | *string*                                                                                                     | :heavy_check_mark:                                                                                           | The metadata key that was deleted                                                                            |
