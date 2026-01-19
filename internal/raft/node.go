@@ -15,7 +15,6 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
 	"go.opentelemetry.io/otel/metric"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,31 +32,46 @@ type WAL interface {
 	Compact(u uint64) error
 	Append(state raftpb.HardState, entries []raftpb.Entry) error
 	ApplySnapshot(snapshot raftpb.Snapshot) error
+	Close() error
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . Transport
-type Transport interface {
-	GetPeerConnection(leader uint64) *grpc.ClientConn
-	Unreachable() <-chan uint64
-	Recv() <-chan raftpb.Message
-	Send(msg raftpb.Message)
+type LogReaderProvider interface {
+	GetForPeer(id uint64) (store.LogReader, error)
+}
+type LogReaderProviderFunc func(id uint64) (store.LogReader, error)
+
+func (f LogReaderProviderFunc) GetForPeer(id uint64) (store.LogReader, error) {
+	return f(id)
+}
+
+func GRPCLogReaderProvider(transport *DefaultTransport) LogReaderProviderFunc {
+	return func(id uint64) (store.LogReader, error) {
+		conn := transport.GetPeerConnection(id)
+		if conn == nil {
+			return nil, fmt.Errorf("no connection for peer %x", id)
+		}
+		return service.NewLedgerGrpcClient(
+			ledgerpb.NewLedgerServiceClient(conn),
+		), nil
+	}
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
-	rawNode       *raft.RawNode
-	logger        logging.Logger
-	fsm           *FSM
-	wal           WAL
-	transport     Transport
-	config        NodeConfig
-	stopped       chan struct{}
-	ctx           context.Context
-	cancel        func()
-	proposeCh     Queue[proposal]
-	confState     *raftpb.ConfState
-	futures       SyncMap[uint64, *future]
-	lastSoftState *raft.SoftState
+	rawNode           *raft.RawNode
+	logger            logging.Logger
+	fsm               *FSM
+	wal               WAL
+	transport         Transport
+	config            NodeConfig
+	stopped           chan struct{}
+	ctx               context.Context
+	cancel            func()
+	proposeCh         Queue[proposal]
+	confState         *raftpb.ConfState
+	futures           SyncMap[uint64, *future]
+	lastSoftState     *raft.SoftState
+	logReaderProvider LogReaderProvider
 
 	meter                          metric.Meter
 	applyEntriesHistogram          metric.Int64Histogram
@@ -87,6 +101,7 @@ func NewNode(
 	meter metric.Meter,
 	spool Spool,
 	wal WAL,
+	logReaderProvider LogReaderProvider,
 ) (*Node, error) {
 
 	// Set defaults if not configured
@@ -170,15 +185,15 @@ func NewNode(
 			WithLogger[proposal](logger),
 			WithMeter[proposal](meter),
 		),
-		store: store,
-		fsm:   fsm,
-		// Syncer fields
+		store:             store,
+		fsm:               fsm,
 		spool:             spool,
 		snapshotThreshold: cfg.SnapshotThreshold,
 		compactionMargin:  cfg.CompactionMargin,
 		status:            &initialStatus,
 		taskExecutor:      newSingleTaskExecutor(logger),
 		confState:         &initialConfState,
+		logReaderProvider: logReaderProvider,
 	}
 
 	node.defaultLedger = service.NewDefaultController(node, store, logger)
@@ -368,7 +383,6 @@ func (node *Node) unspoolThenResume(ctx context.Context) error {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	node.logger.Infof("Unspooling from %d", lastAppliedIndex)
 	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
@@ -391,7 +405,7 @@ func (node *Node) processReady(ctx context.Context) error {
 	if rd.SoftState != nil {
 		ss := rd.SoftState
 		if ss.Lead != 0 && node.status.Load() == statusOutOfSync {
-			if err := node.syncSnapshot(ctx, ss.Lead, rd.HardState.Commit); err != nil {
+			if err := node.syncSnapshot(ctx, ss.Lead); err != nil {
 				return fmt.Errorf("syncing snapshot: %w", err)
 			}
 		}
@@ -439,7 +453,7 @@ func (node *Node) processReady(ctx context.Context) error {
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
 		// in case of rawNode recover
-		if err := node.syncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot.Metadata.Index); err != nil {
+		if err := node.syncSnapshot(ctx, node.lastSoftState.Lead); err != nil {
 			return fmt.Errorf("restoring snapshot in storage: %w", err)
 		}
 	}
@@ -768,7 +782,7 @@ func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *l
 }
 
 // syncSnapshot syncs a snapshot from a leader
-func (node *Node) syncSnapshot(ctx context.Context, leader uint64, frozenAtIndex uint64) error {
+func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 	node.logger.
 		WithFields(map[string]any{
 			"leader": leader,
@@ -777,8 +791,12 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64, frozenAtIndex
 
 	node.status.Store(statusSyncing)
 
-	node.runMaintenanceTask(ctx, frozenAtIndex, func(ctx context.Context) error {
-		return node.fsm.SynchronizeWithLeader(ctx, leader)
+	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+		logReader, err := node.logReaderProvider.GetForPeer(leader)
+		if err != nil {
+			return 0, fmt.Errorf("getting log reader for leader %d: %w", leader, err)
+		}
+		return node.fsm.SynchronizeWithLeader(ctx, logReader)
 	})
 
 	return nil
@@ -793,6 +811,7 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		return fmt.Errorf("getting spool end position: %w", err)
 	}
 
+	count := 0
 	batch := make([]raftpb.Entry, 0, 1000)
 	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
 		batch = append(batch, entry)
@@ -800,6 +819,7 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 			if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
 				return err
 			}
+			count += len(batch)
 			batch = batch[:0]
 		}
 		return nil
@@ -807,15 +827,17 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 	if len(batch) > 0 {
+		count += len(batch)
 		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
 			return err
 		}
 	}
+	node.logger.WithField("count", count).Infof("Replayed spool")
 
 	return nil
 }
 
-func (node *Node) runMaintenanceTask(ctx context.Context, frozenAtIndex uint64, task func(ctx context.Context) error) {
+func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) (uint64, error)) {
 	gatingTerminated := make(chan struct{})
 	node.gatingTerminated = gatingTerminated
 
@@ -825,7 +847,8 @@ func (node *Node) runMaintenanceTask(ctx context.Context, frozenAtIndex uint64, 
 			close(gatingTerminated)
 		}()
 
-		if err := task(ctx); err != nil {
+		frozenAtIndex, err := task(ctx)
+		if err != nil {
 			return err
 		}
 
@@ -850,7 +873,7 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		// Futures entries will be spooled and applied later
 		node.status.Store(statusSnapshotting)
 
-		node.runMaintenanceTask(ctx, entries[len(entries)-1].Index, func(ctx context.Context) error {
+		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 			node.logger.WithFields(map[string]any{
 				"applied":           entries[len(entries)-1].Index,
 				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
@@ -861,12 +884,12 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 			startTime := time.Now()
 			data, err := node.fsm.CreateSnapshot(ctx)
 			if err != nil {
-				return err
+				return 0, err
 			}
 
 			err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
 			if err != nil {
-				return err
+				return 0, err
 			}
 			duration := time.Since(startTime)
 			node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
@@ -876,11 +899,11 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 			if entries[len(entries)-1].Index > node.compactionMargin {
 				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
 				if err != nil {
-					return err
+					return 0, err
 				}
 			}
 
-			return nil
+			return entries[len(entries)-1].Index, nil
 		})
 	}
 

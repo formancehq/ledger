@@ -21,5 +21,5 @@ type Spool interface {
 		lastApplied uint64,
 		applyFn func(raftpb.Entry) error) error
 	Prune(lastApplied uint64) error
+	Close() error
 }
-

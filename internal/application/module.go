@@ -55,6 +55,9 @@ func Module() fx.Option {
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
 				})
 			},
+			func(transport *raft.DefaultTransport) raft.LogReaderProvider {
+				return raft.GRPCLogReaderProvider(transport)
+			},
 			func(
 				params struct {
 					fx.In
@@ -65,6 +68,7 @@ func Module() fx.Option {
 					Store         store.Store
 					WAL           *wal.WAL
 					Spool         *raft.DefaultSpool
+					LogReaderProvider raft.LogReaderProvider
 				},
 			) (*raft.Node, error) {
 				return raft.NewNode(
@@ -75,6 +79,7 @@ func Module() fx.Option {
 					params.MeterProvider.Meter("raft.node"),
 					params.Spool,
 					params.WAL,
+					params.LogReaderProvider,
 				)
 			},
 			func(cfg Config) raft.NodeConfig {

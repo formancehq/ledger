@@ -20,6 +20,13 @@ import (
 	"google.golang.org/protobuf/protoadapt"
 )
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source transport.go -destination transport_generated_test.go -typed -package raft . Transport
+type Transport interface {
+	Unreachable() <-chan uint64
+	Recv() <-chan raftpb.Message
+	Send(msg raftpb.Message)
+}
+
 // DefaultTransport handles network communication between Raft nodes using gRPC
 // It wraps GRPCClientPool and manages Raft-specific message routing and channels
 type DefaultTransport struct {

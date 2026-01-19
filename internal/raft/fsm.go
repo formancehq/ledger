@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -224,7 +223,7 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error) {
 
 	if fsm.snapshotIndex > fsm.storeLastAppliedIndex {
-		return nil, fmt.Errorf("last applied index is %d, expected %d, node out of sync", fsm.snapshotIndex, fsm.storeLastAppliedIndex)
+		return nil, fmt.Errorf("last snapshot index is %d, expecting lower than %d, node out of sync", fsm.snapshotIndex, fsm.storeLastAppliedIndex)
 	}
 
 	batch := fsm.store.NewBatch(entries[len(entries)-1].Index)
@@ -426,14 +425,14 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb
 	return nil
 }
 
-func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, leader uint64) error {
+func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logReader store.LogReader) (uint64, error) {
 
 	ledgers, err := fsm.store.ListLedgers(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	batch := fsm.store.NewBatch(fsm.storeLastAppliedIndex)
+	batch := fsm.store.NewBatch(fsm.snapshotIndex)
 	defer func() {
 		_ = batch.Cancel(ctx)
 	}()
@@ -447,7 +446,7 @@ deleteOldLedgers:
 		}
 
 		if err := batch.DeleteLedger(ctx, ledger.Id); err != nil {
-			return fmt.Errorf("deleting ledger from store: %w", err)
+			return 0, fmt.Errorf("deleting ledger from store: %w", err)
 		}
 	}
 
@@ -460,14 +459,14 @@ createNewLedgers:
 		}
 
 		if err := batch.RegisterLedger(ctx, fsm.state.Ledgers[inMemoryLedger.LedgerInfo.Id].LedgerInfo); err != nil {
-			return fmt.Errorf("registering ledger in store: %w", err)
+			return 0, fmt.Errorf("registering ledger in store: %w", err)
 		}
 	}
 
 	for ledgerID, ledgerState := range fsm.state.Ledgers {
 		lastLogID, err := fsm.store.GetLastLogID(ctx, ledgerID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if lastLogID < ledgerState.NextLogId-1 {
 			fsm.logger.WithFields(map[string]any{
@@ -475,14 +474,9 @@ createNewLedgers:
 				"lastLogID":    lastLogID,
 				"newNextLogId": ledgerState.NextLogId,
 			}).Infof("Syncing logs from leader")
-			client := service.NewLedgerGrpcClient(
-				ledgerpb.NewLedgerServiceClient(
-					fsm.transport.GetPeerConnection(leader),
-				),
-			)
-			logStream, err := client.GetAllLogs(ctx, ledgerID, lastLogID, ledgerState.NextLogId)
+			logStream, err := logReader.GetAllLogs(ctx, ledgerID, lastLogID, ledgerState.NextLogId - 1)
 			if err != nil {
-				return fmt.Errorf("streaming logs from peer %d: %w", leader, err)
+				return 0, fmt.Errorf("streaming logs from peer: %w", err)
 			}
 
 			count := 0
@@ -492,33 +486,32 @@ createNewLedgers:
 					if err == io.EOF {
 						break
 					}
-					return fmt.Errorf("reading log during catch-up: %w", err)
+					return 0, fmt.Errorf("reading log during catch-up: %w", err)
 				}
 				count++
 
 				if err := fsm.projectLog(ctx, batch, log); err != nil {
-					return fmt.Errorf("projecting log %d: %w", log.Id, err)
+					return 0, fmt.Errorf("projecting log %d: %w", log.Id, err)
 				}
 
 				if err := batch.AppendLogs(ctx, log); err != nil {
-					return fmt.Errorf("writing catch-up logs to runtime store: %w", err)
+					return 0, fmt.Errorf("writing catch-up logs to runtime store: %w", err)
 				}
 			}
 
 			fsm.logger.WithFields(map[string]any{
 				"logsWritten": count,
-				"leader":      leader,
 			}).Infof("Synced logs from leader")
 		}
 	}
 
 	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("committing batch: %w", err)
+		return 0, fmt.Errorf("committing batch: %w", err)
 	}
 
 	fsm.storeLastAppliedIndex = fsm.snapshotIndex
 
-	return nil
+	return fsm.snapshotIndex, nil
 }
 
 func (fsm *FSM) IsStoreUpToDate(ctx context.Context) (bool, error) {

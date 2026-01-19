@@ -625,6 +625,32 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 ## Testing Conventions
 
+### Avoid `time.Sleep` in Tests
+
+**CRITICAL**: Never use `time.Sleep` in tests. Always use `require.Eventually` from testify instead.
+
+**Why**:
+- `time.Sleep` causes flaky tests - timing can vary between machines and CI environments
+- `time.Sleep` wastes time - tests wait the full duration even when the condition is met earlier
+- `require.Eventually` polls until a condition is met or times out, making tests both faster and more reliable
+
+**Example**:
+```go
+// ❌ Bad: Using time.Sleep
+time.Sleep(500 * time.Millisecond)
+// check condition...
+
+// ✅ Good: Using require.Eventually
+require.Eventually(t, func() bool {
+    // Return true when condition is met
+    ledgers, err := store.ListLedgers(ctx)
+    if err != nil {
+        return false
+    }
+    return len(ledgers) > 0
+}, 5*time.Second, 100*time.Millisecond, "condition should be met")
+```
+
 ### Using the SDK in Tests
 
 **CRITICAL**: Always use the generated SDK client (`pkg/client`) in tests instead of making manual HTTP requests.
