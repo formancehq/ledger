@@ -40,7 +40,7 @@ config:
     compactionMargin: 15000
     proposeQueueCapacity: 512
     snapshotInterval: 30s
-    snapshotThreshold: 30000
+    snapshotThreshold: 100000
     tickInterval: 100ms
     transport:
       receptionQueues:

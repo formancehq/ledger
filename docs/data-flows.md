@@ -217,28 +217,36 @@ When a `MsgSnap` is received from the leader, the following sequence occurs:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    syncSnapshot() called                                 │
+│                    Snapshot Synchronization                              │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  1. Status change: Normal → Syncing                                     │
+│  1. Snapshot applied to WAL                                             │
+│     └── wal.ApplySnapshot(snapshot)                                     │
+│                                                                          │
+│  2. FSM state restored (fast, in-memory)                                │
+│     └── fsm.InstallSnapshot(snapshotData)                               │
+│                                                                          │
+│  3. Status change: Normal → Syncing                                     │
 │     └── status.Swap(statusSyncing)                                      │
 │                                                                          │
-│  2. If already syncing: interrupt previous sync                         │
+│  4. If already syncing: interrupt previous sync                         │
 │     └── taskExecutor.interrupt()                                        │
 │                                                                          │
-│  3. Create termination channel                                          │
+│  5. Create termination channel                                          │
 │     └── syncTerminated = make(chan struct{})                            │
 │                                                                          │
-│  4. Start background goroutine (taskExecutor.run)                       │
+│  6. Start background goroutine (taskExecutor.run)                       │
 │     ┌──────────────────────────────────────────────────────────────┐    │
 │     │  Background task:                                            │    │
-│     │  a. fsm.SyncSnapshot() - restore FSM + sync business logs    │    │
+│     │  a. fsm.SynchronizeWithLeader() - sync store from leader     │    │
+│     │     - Reconcile ledgers (delete/register)                    │    │
+│     │     - Stream missing logs via gRPC                           │    │
 │     │  b. spool.End() - get current watermark                      │    │
 │     │  c. spool.ReplayUntil() - apply spooled entries              │    │
 │     │  d. close(syncTerminated) - signal completion                │    │
 │     └──────────────────────────────────────────────────────────────┘    │
 │                                                                          │
-│  5. Return immediately (non-blocking)                                   │
+│  7. Return immediately (non-blocking)                                   │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -285,19 +293,22 @@ When the background sync completes:
 ```mermaid
 sequenceDiagram
     participant Node as Raft Node
+    participant WAL
     participant Spool
     participant FSM
     participant Store
     participant Leader as Leader (gRPC)
     
     Note over Node: MsgSnap received
-    Node->>Node: syncSnapshot(leader, snapshot)
+    Node->>WAL: ApplySnapshot(snapshot)
+    Node->>FSM: InstallSnapshot(data)
+    FSM->>FSM: Restore in-memory state
     Node->>Node: status = Syncing
     Node->>Node: Start background task
     
     par Background Sync
-        Node->>FSM: SyncSnapshot()
-        FSM->>FSM: Restore state from snapshot
+        Node->>FSM: SynchronizeWithLeader()
+        FSM->>Store: Reconcile ledgers
         loop For each ledger
             FSM->>Leader: StreamLogs gRPC
             Leader-->>FSM: Business logs

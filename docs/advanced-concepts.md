@@ -121,14 +121,15 @@ sequenceDiagram
     
     Note over Node: Node starts/recovers
     Node->>Leader: Request snapshot
-    Leader->>Node: Send snapshot
-    Node->>FSM: RestoreSnapshot()
+    Leader->>Node: Send snapshot (MsgSnap)
+    Node->>FSM: InstallSnapshot()
     Note over Node: status = statusSyncing
     Node->>Spool: AppendCommittedEntries()
-    Note over Node: Commands buffered
-    Node->>Leader: StreamLogs(from, to)
-    Leader->>Node: Stream logs
-    Node->>FSM: Apply logs
+    Note over Node: Commands buffered during sync
+    Node->>FSM: SynchronizeWithLeader()
+    FSM->>Leader: StreamLogs(ledger, from)
+    Leader->>FSM: Stream logs
+    FSM->>FSM: Apply logs to store
     Note over Node: syncTerminated closed
     Node->>Node: finalizeSynchronization()
     loop Replay spool

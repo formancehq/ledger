@@ -85,11 +85,12 @@ The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation us
 type Node struct {
     rawNode      *raft.RawNode
     logger       logging.Logger
-    fsm          *defaultFSM
-    wal          *WALStorage
-    transport    *GRPCTransport
+    fsm          *FSM
+    wal          WAL
+    transport    Transport
+    spool        Spool
     config       NodeConfig
-    runtimeStore store.Runtime
+    store        store.Store
 }
 ```
 
@@ -317,22 +318,39 @@ The leader tracks each follower's state:
 
 #### Code Reference
 
-In `node.go`, the follower receives and applies the snapshot:
+In `node.go`, the follower receives and applies the snapshot through a two-phase process:
 
 ```go
+// Phase 1: Install snapshot to FSM (in-memory state)
 if !raft.IsEmptySnap(rd.Snapshot) {
     node.logger.Infof("Applying snapshot sent by leader")
     
     // Write snapshot to WAL
     node.wal.ApplySnapshot(rd.Snapshot)
     
+    // Install snapshot state in FSM (fast, in-memory)
+    node.fsm.InstallSnapshot(rd.Snapshot.Data)
+    
     // Report success to Raft
     node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-    
-    // Sync business data from leader
-    node.syncSnapshot(ctx, leader, rd.Snapshot)
+}
+
+// Phase 2: Synchronize store with leader (async, can be slow)
+// This happens when the FSM detects the store is behind
+if !node.fsm.IsStoreUpToDate() {
+    node.fsm.SynchronizeWithLeader(ctx, leaderID, logReaderProvider)
 }
 ```
+
+#### Snapshot Synchronization Flow
+
+The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
+
+1. **Ledger reconciliation**: Compare FSM ledgers with store ledgers
+   - Delete ledgers that exist in store but not in FSM
+   - Register new ledgers that exist in FSM but not in store
+2. **Log synchronization**: For each ledger, stream missing logs from the leader
+3. **Store update**: Apply logs to bring balances and metadata up to date
 
 #### Why Two-Level Synchronization?
 

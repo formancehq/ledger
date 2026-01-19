@@ -268,7 +268,7 @@ func (s *spool) Reset() error
 
 ### Synchronization Manager
 
-The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/raft/node.go`).
+The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/raft/node.go` and `internal/raft/fsm.go`).
 
 **Responsibilities**:
 - Manages the "syncing" state flag (`statusNormal` / `statusSyncing`)
@@ -278,13 +278,20 @@ The Node manages the synchronization process between the Raft log and the FSM di
 
 **Synchronization Flow**:
 
-1. **Snapshot restoration starts**: `syncSnapshot()` is called
-2. **Syncing mode activated**: `status = statusSyncing`
-3. **FSM restored**: Snapshot data is applied to the FSM
-4. **Logs synced**: For each ledger, missing logs are streamed from the leader
-5. **Spool replay**: Commands from the spool are replayed via `finalizeSynchronization()`
-6. **Syncing mode deactivated**: `status = statusNormal` after replay completes
-7. **Spool pruned**: Old spool entries are cleaned up
+1. **Snapshot received**: FSM's `InstallSnapshot()` is called to restore in-memory state
+2. **Syncing mode activated**: `status = statusSyncing` - incoming entries are spooled
+3. **Store synchronization**: FSM's `SynchronizeWithLeader()` handles:
+   - **Ledger reconciliation**: Delete stale ledgers, register new ones
+   - **Log streaming**: For each ledger, missing logs are streamed from the leader via gRPC
+   - **Store update**: Logs are applied to bring balances and metadata up to date
+4. **Spool replay**: Commands from the spool are replayed via `finalizeSynchronization()`
+5. **Syncing mode deactivated**: `status = statusNormal` after replay completes
+6. **Spool pruned**: Old spool entries are cleaned up
+
+**Key Methods**:
+- `FSM.InstallSnapshot()`: Fast in-memory state restoration from snapshot data
+- `FSM.SynchronizeWithLeader()`: Brings store up to date with leader's data
+- `FSM.IsStoreUpToDate()`: Checks if store needs synchronization
 
 ## Store
 

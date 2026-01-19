@@ -125,6 +125,147 @@ The package `pkg/testserver` provides helpers:
 - `WithRaftElectionTick()`: Configure Raft parameters
 - `WithRaftTickInterval()`: Configure the tick interval
 
+## Unit Testing Infrastructure
+
+### Cluster Helper
+
+The `Cluster` struct in `internal/raft/node_test.go` provides a complete testing infrastructure for Raft node clusters:
+
+```go
+type Cluster struct {
+    nodes map[uint64]*ClusterNode
+}
+
+type ClusterNode struct {
+    ID        uint64
+    Node      *Node
+    Transport *ChannelTransport
+    
+    // Underlying implementations
+    Store storepkg.Store
+    WAL   WAL
+    Spool Spool
+    
+    // Interceptors for testing
+    StoreInterceptor *storepkg.StoreInterceptor
+    WALInterceptor   *WALInterceptor
+    SpoolInterceptor *SpoolInterceptor
+}
+```
+
+**Key methods**:
+- `NewCluster()`: Create a new test cluster
+- `AddNode()`: Add a node to the cluster
+- `Start()`: Start all nodes
+- `Stop()`: Stop all nodes gracefully
+- `DisconnectNode()`: Simulate network partition by disconnecting a node
+- `ReconnectNode()`: Restore network connectivity
+- `RestartNode()`: Simulate node crash and restart
+- `WaitForLeader()`: Wait until a leader is elected
+
+### ChannelTransport
+
+`ChannelTransport` (`internal/raft/transport_channel.go`) is an in-memory implementation of the `Transport` interface using Go channels:
+
+```go
+transport := NewChannelTransport(nodeID, DefaultChannelTransportConfig())
+
+// Connect two transports
+transport1.Connect(transport2)
+
+// Disconnect a peer
+transport1.Disconnect(peerID)
+
+// Check connection status
+if transport.IsConnected(peerID) {
+    // Peer is connected
+}
+```
+
+**Benefits**:
+- **No network overhead**: Messages are sent directly through channels
+- **Deterministic testing**: No network timing issues
+- **Easy fault injection**: Disconnect/reconnect nodes at will
+- **Fast tests**: No gRPC connection setup
+
+### Interceptors
+
+Interceptors allow injecting custom logic into Spool, WAL, and Store operations during tests. They are useful for simulating failures, blocking operations, or inspecting behavior.
+
+#### SpoolInterceptor
+
+```go
+interceptor := NewSpoolInterceptor(realSpool)
+
+// Intercept AppendCommittedEntries
+interceptor.SetAppendCommittedEntriesInterceptor(
+    func(ctx context.Context, delegate Spool, entries []raftpb.Entry) error {
+        // Custom logic before/after the real call
+        return delegate.AppendCommittedEntries(ctx, entries...)
+    },
+)
+
+// Clear all interceptors
+interceptor.ClearInterceptors()
+```
+
+#### WALInterceptor
+
+```go
+interceptor := NewWALInterceptor(realWAL)
+
+// Intercept CreateSnapshot to simulate failures
+interceptor.SetCreateSnapshotInterceptor(
+    func(delegate WAL, i uint64, r *raftpb.ConfState, data []byte) error {
+        return errors.New("simulated snapshot failure")
+    },
+)
+```
+
+#### StoreInterceptor
+
+```go
+interceptor := store.NewStoreInterceptor(realStore)
+
+// Intercept GetAllLogs to block synchronization
+var blockCh = make(chan struct{})
+interceptor.SetGetAllLogsInterceptor(
+    func(ctx context.Context, delegate store.Store, ledger uint32, startLogID uint64) (*store.LogCursor, error) {
+        <-blockCh // Block until unblocked
+        return delegate.GetAllLogs(ctx, ledger, startLogID)
+    },
+)
+// Later: close(blockCh) to unblock
+```
+
+### LogReaderProvider
+
+`LogReaderProvider` abstracts how a Raft node obtains a `LogReader` for a peer during synchronization:
+
+```go
+type LogReaderProvider interface {
+    GetForPeer(id uint64) (store.LogReader, error)
+}
+```
+
+**In tests**, use `ClusterLogReaderProvider` to access peer stores directly:
+
+```go
+type ClusterLogReaderProvider struct {
+    cluster *Cluster
+}
+
+func (p *ClusterLogReaderProvider) GetForPeer(id uint64) (store.LogReader, error) {
+    node := p.cluster.GetNodeByID(id)
+    if node == nil {
+        return nil, fmt.Errorf("peer %d not found", id)
+    }
+    return node.StoreInterceptor, nil // Use interceptor for test control
+}
+```
+
+**In production**, use `GRPCLogReaderProvider` to stream logs via gRPC.
+
 ## Best Practices
 
 ### Avoid `time.Sleep`

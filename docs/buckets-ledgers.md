@@ -68,6 +68,19 @@ type LedgerState struct {
 }
 ```
 
+### Numeric Ledger ID
+
+Each ledger is assigned a unique numeric ID (`uint32`) when created. This ID is used:
+
+- **Internally**: For storage keys, log entries, and all internal operations
+- **Externally**: The API continues to use ledger names for user convenience
+- **Conversion**: The HTTP layer converts ledger names to IDs automatically
+
+**Benefits of numeric IDs**:
+- **Compact storage**: 4 bytes vs variable-length strings in storage keys
+- **Fast lookups**: Integer comparison is faster than string comparison
+- **Immutable reference**: The ID never changes, even if names could be updated in the future
+
 ### Limits
 
 | Resource | Maximum | Notes |
