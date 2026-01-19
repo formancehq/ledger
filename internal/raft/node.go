@@ -23,6 +23,7 @@ const (
 	statusNormal = iota
 	statusSyncing
 	statusSnapshotting
+	statusOutOfSync
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
@@ -46,7 +47,7 @@ type Transport interface {
 type Node struct {
 	rawNode       *raft.RawNode
 	logger        logging.Logger
-	fsm           *defaultFSM
+	fsm           *FSM
 	wal           WAL
 	transport     Transport
 	config        NodeConfig
@@ -114,6 +115,7 @@ func NewNode(
 	if err != nil {
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
+	var initialConfState raftpb.ConfState
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
 		voters := make([]uint64, 0, len(cfg.Peers)+1)
@@ -128,15 +130,16 @@ func NewNode(
 			return nil, fmt.Errorf("creating initial snapshot data: %w", err)
 		}
 
-		if err := wal.CreateSnapshot(0, &raftpb.ConfState{
+		initialConfState = raftpb.ConfState{
 			Voters: voters,
-		}, data); err != nil {
+		}
+		if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
 			return nil, fmt.Errorf("creating initial snapshot: %w", err)
 		}
 	} else {
 		if snapshot.Metadata.Index > 0 {
 			logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
-			if err := fsm.RestoreSnapshot(snapshot); err != nil {
+			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
 				panic(err)
 			}
 
@@ -146,6 +149,10 @@ func NewNode(
 		}
 
 		logger.Infof("Finished restoring FSM from storage")
+		_, initialConfState, err = wal.InitialState()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	initialStatus := atomic.Int32{}
@@ -171,6 +178,7 @@ func NewNode(
 		compactionMargin:  cfg.CompactionMargin,
 		status:            &initialStatus,
 		taskExecutor:      newSingleTaskExecutor(logger),
+		confState:         &initialConfState,
 	}
 
 	node.defaultLedger = service.NewDefaultController(node, store, logger)
@@ -286,19 +294,23 @@ func (node *Node) Start(ctx context.Context) error {
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
-	_, initialConfState, err := node.wal.InitialState()
+	isStoreUpToDate, err := node.fsm.IsStoreUpToDate(ctx)
 	if err != nil {
-		panic(err)
-	}
-	node.confState = &initialConfState
-
-	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
-	if err != nil {
-		return err
+		return fmt.Errorf("checking if store is up to date: %w", err)
 	}
 
-	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
-		return err
+	if !isStoreUpToDate {
+		node.logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+		node.status.Store(statusOutOfSync)
+	} else {
+		storeLastAppliedIndex, err := node.store.GetLastAppliedIndex()
+		if err != nil {
+			return err
+		}
+
+		if err := node.replaySpool(ctx, storeLastAppliedIndex); err != nil {
+			return err
+		}
 	}
 
 	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
@@ -308,7 +320,8 @@ func (node *Node) Start(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			// Prevent election timeouts from happening while syncing the FSM
-			if node.status.Load() != statusSyncing {
+			status := node.status.Load()
+			if status != statusSyncing && status != statusOutOfSync {
 				node.rawNode.Tick()
 			}
 		case <-node.ctx.Done():
@@ -377,6 +390,11 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	if rd.SoftState != nil {
 		ss := rd.SoftState
+		if ss.Lead != 0 && node.status.Load() == statusOutOfSync {
+			if err := node.syncSnapshot(ctx, ss.Lead, rd.HardState.Commit); err != nil {
+				return fmt.Errorf("syncing snapshot: %w", err)
+			}
+		}
 		if node.lastSoftState != nil {
 			status := node.rawNode.Status()
 			logger := node.logger.WithFields(map[string]any{
@@ -414,10 +432,14 @@ func (node *Node) processReady(ctx context.Context) error {
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 
+		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
+			return fmt.Errorf("installing snapshot: %w", err)
+		}
+
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
 		// in case of rawNode recover
-		if err := node.syncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot); err != nil {
+		if err := node.syncSnapshot(context.Background(), node.lastSoftState.Lead, rd.Snapshot.Metadata.Index); err != nil {
 			return fmt.Errorf("restoring snapshot in storage: %w", err)
 		}
 	}
@@ -746,22 +768,17 @@ func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *l
 }
 
 // syncSnapshot syncs a snapshot from a leader
-func (node *Node) syncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
+func (node *Node) syncSnapshot(ctx context.Context, leader uint64, frozenAtIndex uint64) error {
 	node.logger.
 		WithFields(map[string]any{
 			"leader": leader,
-			"index":  snapshot.Metadata.Index,
-			"term":   snapshot.Metadata.Term,
 		}).
 		Infof("Syncing snapshot from leader")
 
-	oldStatus := node.status.Swap(statusSyncing)
-	if oldStatus != statusNormal {
-		node.logger.Infof("Interrupting previous task")
-	}
+	node.status.Store(statusSyncing)
 
-	node.runMaintenanceTask(ctx, snapshot.Metadata.Index, func(ctx context.Context) error {
-		return node.fsm.SyncSnapshot(ctx, leader, snapshot)
+	node.runMaintenanceTask(ctx, frozenAtIndex, func(ctx context.Context) error {
+		return node.fsm.SynchronizeWithLeader(ctx, leader)
 	})
 
 	return nil

@@ -122,40 +122,117 @@ func (c *MockFSMCreateSnapshotCall) DoAndReturn(f func(context.Context) ([]byte,
 	return c
 }
 
-// SyncSnapshot mocks base method.
-func (m *MockFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) error {
+// InstallSnapshot mocks base method.
+func (m *MockFSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SyncSnapshot", ctx, leader, snapshot)
+	ret := m.ctrl.Call(m, "InstallSnapshot", ctx, snapshot)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SyncSnapshot indicates an expected call of SyncSnapshot.
-func (mr *MockFSMMockRecorder) SyncSnapshot(ctx, leader, snapshot any) *MockFSMSyncSnapshotCall {
+// InstallSnapshot indicates an expected call of InstallSnapshot.
+func (mr *MockFSMMockRecorder) InstallSnapshot(ctx, snapshot any) *MockFSMInstallSnapshotCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncSnapshot", reflect.TypeOf((*MockFSM)(nil).SyncSnapshot), ctx, leader, snapshot)
-	return &MockFSMSyncSnapshotCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallSnapshot", reflect.TypeOf((*MockFSM)(nil).InstallSnapshot), ctx, snapshot)
+	return &MockFSMInstallSnapshotCall{Call: call}
 }
 
-// MockFSMSyncSnapshotCall wrap *gomock.Call
-type MockFSMSyncSnapshotCall struct {
+// MockFSMInstallSnapshotCall wrap *gomock.Call
+type MockFSMInstallSnapshotCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockFSMSyncSnapshotCall) Return(arg0 error) *MockFSMSyncSnapshotCall {
+func (c *MockFSMInstallSnapshotCall) Return(arg0 error) *MockFSMInstallSnapshotCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockFSMSyncSnapshotCall) Do(f func(context.Context, uint64, raftpb.Snapshot) error) *MockFSMSyncSnapshotCall {
+func (c *MockFSMInstallSnapshotCall) Do(f func(context.Context, raftpb.Snapshot) error) *MockFSMInstallSnapshotCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockFSMSyncSnapshotCall) DoAndReturn(f func(context.Context, uint64, raftpb.Snapshot) error) *MockFSMSyncSnapshotCall {
+func (c *MockFSMInstallSnapshotCall) DoAndReturn(f func(context.Context, raftpb.Snapshot) error) *MockFSMInstallSnapshotCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// IsStoreUpToDate mocks base method.
+func (m *MockFSM) IsStoreUpToDate(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsStoreUpToDate", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsStoreUpToDate indicates an expected call of IsStoreUpToDate.
+func (mr *MockFSMMockRecorder) IsStoreUpToDate(ctx any) *MockFSMIsStoreUpToDateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsStoreUpToDate", reflect.TypeOf((*MockFSM)(nil).IsStoreUpToDate), ctx)
+	return &MockFSMIsStoreUpToDateCall{Call: call}
+}
+
+// MockFSMIsStoreUpToDateCall wrap *gomock.Call
+type MockFSMIsStoreUpToDateCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockFSMIsStoreUpToDateCall) Return(arg0 bool, arg1 error) *MockFSMIsStoreUpToDateCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockFSMIsStoreUpToDateCall) Do(f func(context.Context) (bool, error)) *MockFSMIsStoreUpToDateCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockFSMIsStoreUpToDateCall) DoAndReturn(f func(context.Context) (bool, error)) *MockFSMIsStoreUpToDateCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SynchronizeWithLeader mocks base method.
+func (m *MockFSM) SynchronizeWithLeader(ctx context.Context, leader uint64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SynchronizeWithLeader", ctx, leader)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SynchronizeWithLeader indicates an expected call of SynchronizeWithLeader.
+func (mr *MockFSMMockRecorder) SynchronizeWithLeader(ctx, leader any) *MockFSMSynchronizeWithLeaderCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SynchronizeWithLeader", reflect.TypeOf((*MockFSM)(nil).SynchronizeWithLeader), ctx, leader)
+	return &MockFSMSynchronizeWithLeaderCall{Call: call}
+}
+
+// MockFSMSynchronizeWithLeaderCall wrap *gomock.Call
+type MockFSMSynchronizeWithLeaderCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockFSMSynchronizeWithLeaderCall) Return(arg0 error) *MockFSMSynchronizeWithLeaderCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockFSMSynchronizeWithLeaderCall) Do(f func(context.Context, uint64) error) *MockFSMSynchronizeWithLeaderCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockFSMSynchronizeWithLeaderCall) DoAndReturn(f func(context.Context, uint64) error) *MockFSMSynchronizeWithLeaderCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
