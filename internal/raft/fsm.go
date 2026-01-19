@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -42,7 +41,7 @@ func newFSM(logger logging.Logger, store store.Store, transport Transport) (*def
 	}
 	return &defaultFSM{
 		state: &ledgerpb.State{
-			Ledgers:      make(map[string]*ledgerpb.LedgerState),
+			Ledgers:      make(map[uint32]*ledgerpb.LedgerState),
 			NextLedgerId: 1,
 		},
 		logger:           logger,
@@ -65,7 +64,7 @@ func (fsm *defaultFSM) GetState() *ledgerpb.State {
 // Ledgers and logs are now managed by ledger Raft groups.
 
 // handleCreateLedger handles the create ledger command
-func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.LedgerInfo, error) {
+func (fsm *defaultFSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) (*ledgerpb.LedgerInfo, error) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
@@ -77,8 +76,10 @@ func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.Ledg
 		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
 	}
 
-	if _, exists := fsm.state.Ledgers[createCmd.Name]; exists {
-		return nil, fmt.Errorf("ledger already exists: %s", createCmd.Name)
+	for _, state := range fsm.state.Ledgers {
+		if state.LedgerInfo.Name == createCmd.Name {
+			return nil, fmt.Errorf("ledger already exists: %s", createCmd.Name)
+		}
 	}
 
 	// Assign a numeric ID and increment the counter
@@ -92,7 +93,7 @@ func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.Ledg
 		CreatedAt: cmd.Date,
 		Id:        ledgerID,
 	}
-	fsm.state.Ledgers[ledgerInfo.Name] = &ledgerpb.LedgerState{
+	fsm.state.Ledgers[ledgerID] = &ledgerpb.LedgerState{
 		LedgerInfo:        ledgerInfo,
 		NextLogId:         1,
 		NextTransactionId: 1,
@@ -101,6 +102,11 @@ func (fsm *defaultFSM) handleCreateLedger(cmd *ledgerpb.Command) (*ledgerpb.Ledg
 	fsm.logger.WithFields(map[string]any{
 		"ledger": ledgerInfo.Name,
 	}).Infof("Ledger created")
+
+	if err := batch.RegisterLedger(ctx, ledgerInfo); err != nil {
+		return nil, err
+	}
+
 	return ledgerInfo, nil
 }
 
@@ -115,27 +121,27 @@ func (fsm *defaultFSM) handleDeleteLedger(ctx context.Context, batch store.Batch
 		return fmt.Errorf("unmarshaling delete ledger command: %w", err)
 	}
 
-	return fsm.deleteLedger(ctx, batch, deleteCmd.Name)
+	return fsm.deleteLedger(ctx, batch, deleteCmd.Id)
 }
 
-func (fsm *defaultFSM) deleteLedger(ctx context.Context, batch store.Batch, name string) error {
+func (fsm *defaultFSM) deleteLedger(ctx context.Context, batch store.Batch, id uint32) error {
 	// Check if ledger exists
-	_, ok := fsm.state.Ledgers[name]
+	_, ok := fsm.state.Ledgers[id]
 	if !ok {
-		return ledgerpb.NewNotFoundError("ledger %s does not exist", name)
+		return ledgerpb.NewNotFoundError("ledger %d does not exist", id)
 	}
 
-	if err := batch.DeleteLedger(ctx, name); err != nil {
+	if err := batch.DeleteLedger(ctx, id); err != nil {
 		return fmt.Errorf("deleting ledger from runtime store: %w", err)
 	}
 
-	delete(fsm.state.Ledgers, name)
+	delete(fsm.state.Ledgers, id)
 
 	return nil
 }
 
 // processInsertLog handles the insert log command by building the log entry
-func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerpb.Command) (*ledgerpb.Log, error) {
+func (fsm *defaultFSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*ledgerpb.Log, error) {
 	var createCmd ledgerpb.CreateLogCommand
 	if err := UnmarshalCommandData(raftCommand.Data, &createCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
@@ -160,7 +166,7 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 						Metadata:   cmd.AppendTransaction.Metadata,
 						Timestamp:  timestamp,
 						Reference:  cmd.AppendTransaction.Reference,
-						Id:         fsm.state.Ledgers[createCmd.Ledger].GetNextTransactionID(),
+						Id:         fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID(),
 						InsertedAt: raftCommand.Date,
 						UpdatedAt:  raftCommand.Date,
 					},
@@ -196,7 +202,7 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 		}
 
 		// Assign transaction ID and timestamps
-		revertTx.Id = fsm.state.Ledgers[createCmd.Ledger].GetNextTransactionID()
+		revertTx.Id = fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID()
 		revertTx.InsertedAt = raftCommand.Date
 		revertTx.UpdatedAt = raftCommand.Date
 
@@ -216,8 +222,8 @@ func (fsm *defaultFSM) handleCreateLog(ctx context.Context, raftCommand *ledgerp
 		Data:        logPayload,
 		Date:        raftCommand.Date,
 		Idempotency: createCmd.Idempotency,
-		Id:          fsm.state.Ledgers[createCmd.Ledger].GetNextLogID(),
-		Ledger:      createCmd.Ledger,
+		Id:          fsm.state.Ledgers[createCmd.LedgerId].GetNextLogID(),
+		LedgerId:    createCmd.LedgerId,
 	}, nil
 }
 
@@ -253,7 +259,7 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 
 		switch cmd.Type {
 		case ledgerpb.CommandType_CreateLedger:
-			info, err := fsm.handleCreateLedger(cmd)
+			info, err := fsm.handleCreateLedger(ctx, batch, cmd)
 			if err != nil {
 				ret = append(ret, ApplyResult{
 					Error:     err,
@@ -271,7 +277,7 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 				CommandID: cmd.Id,
 			})
 		case ledgerpb.CommandType_CreateLog:
-			log, err := fsm.handleCreateLog(ctx, cmd)
+			log, err := fsm.createLog(ctx, cmd)
 			if err != nil {
 				ret = append(ret, ApplyResult{
 					Error:     err,
@@ -307,15 +313,29 @@ func (fsm *defaultFSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry
 	return ret, nil
 }
 
-// GetLedger returns the ledger node for a given name (including deleted ledgers)
-func (fsm *defaultFSM) GetLedger(name string) (*ledgerpb.LedgerInfo, error) {
+// GetLedgerByName returns the ledger node for a given name (including deleted ledgers)
+func (fsm *defaultFSM) GetLedgerByName(name string) (*ledgerpb.LedgerInfo, error) {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	ledger, ok := fsm.state.Ledgers[name]
-	if !ok {
-		return nil, ledgerpb.NewNotFoundError("ledger %s does not exist", name)
+	for _, state := range fsm.state.Ledgers {
+		if state.LedgerInfo.Name == name {
+			return proto.CloneOf(state.LedgerInfo), nil
+		}
 	}
+
+	return nil, ledgerpb.NewNotFoundError("ledger %s does not exist", name)
+}
+
+func (fsm *defaultFSM) GetLedgerInfo(id uint32) (*ledgerpb.LedgerInfo, error) {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+
+	ledger, ok := fsm.state.Ledgers[id]
+	if !ok {
+		return nil, ledgerpb.NewNotFoundError("ledger %d does not exist", id)
+	}
+
 	return proto.CloneOf(ledger.LedgerInfo), nil
 }
 
@@ -324,9 +344,12 @@ func (fsm *defaultFSM) GetAllLedgers() map[string]*ledgerpb.LedgerInfo {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	return collectionutils.ConvertMap(fsm.state.Ledgers, func(v *ledgerpb.LedgerState) *ledgerpb.LedgerInfo {
-		return proto.CloneOf(v.LedgerInfo)
-	})
+	ret := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers))
+	for _, state := range fsm.state.Ledgers {
+		ret[state.LedgerInfo.Name] = proto.CloneOf(state.LedgerInfo)
+	}
+
+	return ret
 }
 
 // CreateSnapshot creates a snapshot of the FSM state
@@ -373,24 +396,24 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 	}()
 
 	// todo: add soft delete
-	for ledgerName := range oldState.Ledgers {
-		_, ok := fsm.state.Ledgers[ledgerName]
+	for ledgerID := range oldState.Ledgers {
+		_, ok := fsm.state.Ledgers[ledgerID]
 		if !ok {
-			if err := fsm.deleteLedger(ctx, batch, ledgerName); err != nil {
-				return fmt.Errorf("deleting ledger %s from runtime store: %w", ledgerName, err)
+			if err := fsm.deleteLedger(ctx, batch, ledgerID); err != nil {
+				return fmt.Errorf("deleting ledger %d from runtime store: %w", ledgerID, err)
 			}
 		}
 	}
 
-	for ledgerName, ledgerState := range fsm.state.Ledgers {
-		lastLogID, err := fsm.store.GetLastLogID(ctx, ledgerName)
+	for ledgerID, ledgerState := range fsm.state.Ledgers {
+		lastLogID, err := fsm.store.GetLastLogID(ctx, ledgerID)
 		if err != nil {
 			return err
 		}
 
 		if lastLogID < ledgerState.NextLogId-1 {
 			fsm.logger.WithFields(map[string]any{
-				"ledger":       ledgerName,
+				"ledgerID":     ledgerID,
 				"lastLogID":    lastLogID,
 				"newNextLogId": ledgerState.NextLogId,
 			}).Infof("Syncing logs from leader")
@@ -399,7 +422,7 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 					fsm.transport.GetPeerConnection(leader),
 				),
 			)
-			logStream, err := client.GetAllLogs(ctx, ledgerName, lastLogID, ledgerState.NextLogId)
+			logStream, err := client.GetAllLogs(ctx, ledgerID, lastLogID, ledgerState.NextLogId)
 			if err != nil {
 				return fmt.Errorf("streaming logs from peer %d: %w", leader, err)
 			}
@@ -447,10 +470,10 @@ func (fsm *defaultFSM) SyncSnapshot(ctx context.Context, leader uint64, snapshot
 func (fsm *defaultFSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb.Log) error {
 	projectTransaction := func(ctx context.Context, batch store.Batch, tx *ledgerpb.Transaction) error {
 		for _, posting := range tx.Postings {
-			if err := batch.AppendBalanceDiff(ctx, log.Ledger, posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount.Value())); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount.Value())); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
-			if err := batch.AppendBalanceDiff(ctx, log.Ledger, posting.Destination, posting.Asset, posting.Amount.Value()); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Destination, posting.Asset, posting.Amount.Value()); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
 		}
@@ -463,12 +486,12 @@ func (fsm *defaultFSM) projectLog(ctx context.Context, batch store.Batch, log *l
 		if err := projectTransaction(ctx, batch, payload.CreatedTransaction.Transaction); err != nil {
 			return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
 		}
-		if err := batch.StoreTransactionID(ctx, log.Ledger, payload.CreatedTransaction.Transaction.Id, log.Id); err != nil {
+		if err := batch.StoreTransactionID(ctx, log.LedgerId, payload.CreatedTransaction.Transaction.Id, log.Id); err != nil {
 			return err
 		}
 		if payload.CreatedTransaction.AccountMetadata != nil {
 			for account, metadata := range payload.CreatedTransaction.AccountMetadata {
-				err := batch.SaveAccountMetadata(ctx, log.Ledger, account, metadata)
+				err := batch.SaveAccountMetadata(ctx, log.LedgerId, account, metadata)
 				if err != nil {
 					return err
 				}
@@ -479,18 +502,18 @@ func (fsm *defaultFSM) projectLog(ctx context.Context, batch store.Batch, log *l
 		if err := projectTransaction(ctx, batch, payload.RevertedTransaction.RevertTransaction); err != nil {
 			return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
 		}
-		if err := batch.StoreRevertedTransactionID(ctx, log.Ledger, payload.RevertedTransaction.RevertedTransactionId, log.Id); err != nil {
+		if err := batch.StoreRevertedTransactionID(ctx, log.LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Id); err != nil {
 			return err
 		}
 	case *ledgerpb.LogPayload_SavedMetadata:
 		if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
-			if err := batch.SaveAccountMetadata(ctx, log.Ledger, account.Addr, payload.SavedMetadata.Metadata); err != nil {
+			if err := batch.SaveAccountMetadata(ctx, log.LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
 				return err
 			}
 		}
 	case *ledgerpb.LogPayload_DeletedMetadata:
 		if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
-			if err := batch.DeleteAccountMetadata(ctx, log.Ledger, account.Addr, []string{
+			if err := batch.DeleteAccountMetadata(ctx, log.LedgerId, account.Addr, []string{
 				payload.DeletedMetadata.Key,
 			}); err != nil {
 				return err

@@ -13,12 +13,12 @@ import (
 type unitOfWork struct {
 	store.Store
 	KeySetLocker
-	ledger   string
+	ledgerID uint32
 	releases []func()
 }
 
 func (s *unitOfWork) LockKeys(ctx context.Context, keys ...string) (func(), error) {
-	release, err := s.KeySetLocker.LockKeys(ctx, prepend(s.ledger, keys...)...)
+	release, err := s.KeySetLocker.LockKeys(ctx, prepend(s.ledgerID, keys...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +28,7 @@ func (s *unitOfWork) LockKeys(ctx context.Context, keys ...string) (func(), erro
 }
 
 func (s *unitOfWork) TryLockKeys(ctx context.Context, keys ...string) (func(), error) {
-	release, err := s.KeySetLocker.TryLockKeys(ctx, prepend(s.ledger, keys...)...)
+	release, err := s.KeySetLocker.TryLockKeys(ctx, prepend(s.ledgerID, keys...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -45,12 +45,12 @@ func (s *unitOfWork) GetBalances(ctx context.Context, q numscript.BalanceQuery) 
 	}
 
 	lockKeys := makeBalanceLockKeys(balanceQuery)
-	_, err := s.LockKeys(ctx, prepend(s.ledger, lockKeys...)...)
+	_, err := s.LockKeys(ctx, prepend(s.ledgerID, lockKeys...)...)
 	if err != nil {
 		return nil, err
 	}
 
-	balances, err := s.Store.GetBalances(ctx, s.ledger, balanceQuery)
+	balances, err := s.Store.GetBalances(ctx, s.ledgerID, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (s *unitOfWork) GetAccountsMetadata(ctx context.Context, q numscript.Metada
 	}
 
 	// Get metadata from the runtime store
-	metadataMap, err := s.GetAccountMetadata(ctx, s.ledger, accounts)
+	metadataMap, err := s.GetAccountMetadata(ctx, s.ledgerID, accounts)
 	if err != nil {
 		return nil, err
 	}
@@ -104,15 +104,15 @@ func (s *unitOfWork) ReleaseLocks() {
 }
 
 func (s *unitOfWork) IsTransactionReverted(ctx context.Context, id uint64) (bool, error) {
-	return s.Store.IsTransactionReverted(ctx, s.ledger, id)
+	return s.Store.IsTransactionReverted(ctx, s.ledgerID, id)
 }
 
 func (s *unitOfWork) GetLogIDForTransactionID(ctx context.Context, id uint64) (uint64, error) {
-	return s.Store.GetLogIDForTransactionID(ctx, s.ledger, id)
+	return s.Store.GetLogIDForTransactionID(ctx, s.ledgerID, id)
 }
 
 func (s *unitOfWork) GetLogByID(ctx context.Context, id uint64) (*ledgerpb.Log, error) {
-	return s.Store.GetLogByID(ctx, s.ledger, id)
+	return s.Store.GetLogByID(ctx, s.ledgerID, id)
 }
 
 func makeBalanceLockKeys(balanceQuery map[string][]string) []string {
@@ -125,10 +125,10 @@ func makeBalanceLockKeys(balanceQuery map[string][]string) []string {
 	return lockKeys
 }
 
-func prepend(prefix string, keys ...string) []string {
+func prepend(prefix uint32, keys ...string) []string {
 	result := make([]string, len(keys))
 	for i, key := range keys {
-		result[i] = fmt.Sprintf("%s/%s", prefix, key)
+		result[i] = fmt.Sprintf("%d/%s", prefix, key)
 	}
 	return result
 }

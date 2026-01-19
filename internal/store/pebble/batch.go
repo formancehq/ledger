@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -36,6 +37,31 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 	}
 }
 
+// RegisterLedger registers a new ledger in the store.
+func (b *Batch) RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	// Marshal LedgerInfo to protobuf
+	infoBinary, err := proto.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("marshaling ledger info to protobuf: %w", err)
+	}
+
+	// Store with key: prefix + ledger ID (4 bytes big-endian)
+	writeByte(b.buf, keyPrefixLedgerInfo)
+	if err := binary.Write(b.buf, binary.BigEndian, info.Id); err != nil {
+		return fmt.Errorf("writing ledger ID: %w", err)
+	}
+
+	if err := setOnBatch(b.batch, b.buf, infoBinary); err != nil {
+		return fmt.Errorf("inserting ledger info: %w", err)
+	}
+
+	return nil
+}
+
 // AppendLogs appends logs to the batch.
 func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if b.committed {
@@ -49,7 +75,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 			return fmt.Errorf("marshaling log to protobuf: %w", err)
 		}
 
-		writeLedgerPrefix(b.buf, log.Ledger)
+		writeLedgerPrefix(b.buf, log.LedgerId)
 		writeByte(b.buf, keyPrefixLog)
 		writeUInt64(b.buf, log.Id)
 
@@ -59,7 +85,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 
 		// Also create an index by idempotency key if present
 		if log.Idempotency != nil && log.Idempotency.Key != "" {
-			writeLedgerPrefix(b.buf, log.Ledger)
+			writeLedgerPrefix(b.buf, log.LedgerId)
 			writeByte(b.buf, keyPrefixIdempotency)
 			writeString(b.buf, log.Idempotency.Key)
 			// Store the log ID as value for quick lookup
@@ -75,7 +101,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger, account, asset string, diff *big.Int) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -87,14 +113,14 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger, account, asset st
 	writeInt64(b.buf, time.Now().UnixNano())
 
 	if err := setOnBatch(b.batch, b.buf, marshalBigInt(diff)); err != nil {
-		return fmt.Errorf("storing balance diff for ledger %s account %s asset %s: %w", ledger, account, asset, err)
+		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", ledger, account, asset, err)
 	}
 
 	return nil
 }
 
 // SaveAccountMetadata saves metadata for an account.
-func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger, account string, metadata *ledgerpb.Metadata) error {
+func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -118,7 +144,7 @@ func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger, account string,
 }
 
 // DeleteAccountMetadata deletes metadata keys for an account.
-func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger, account string, keys []string) error {
+func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -138,7 +164,7 @@ func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger, account strin
 }
 
 // StoreTransactionID stores the log ID associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error {
+func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -157,7 +183,7 @@ func (b *Batch) StoreTransactionID(ctx context.Context, ledger string, transacti
 }
 
 // StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error {
+func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -175,21 +201,51 @@ func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger string, t
 	return nil
 }
 
-// DeleteLedger deletes all data for a ledger.
-func (b *Batch) DeleteLedger(ctx context.Context, name string) error {
+// DeleteLedger deletes all data for a ledger by its ID.
+func (b *Batch) DeleteLedger(ctx context.Context, id uint32) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
+	// First, get the ledger info to find the name
+	writeByte(b.buf, keyPrefixLedgerInfo)
+	if err := binary.Write(b.buf, binary.BigEndian, id); err != nil {
+		return fmt.Errorf("writing ledger ID: %w", err)
+	}
+	ledgerInfoKey := make([]byte, b.buf.Len())
+	copy(ledgerInfoKey, b.buf.Bytes())
+	b.buf.Reset()
+
+	value, closer, err := b.store.db.Get(ledgerInfoKey)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil // Ledger doesn't exist, nothing to delete
+		}
+		return fmt.Errorf("getting ledger info: %w", err)
+	}
+
+	info := &ledgerpb.LedgerInfo{}
+	if err := proto.Unmarshal(value, info); err != nil {
+		_ = closer.Close()
+		return fmt.Errorf("unmarshaling ledger info: %w", err)
+	}
+	_ = closer.Close()
+
+	// Delete all data for this ledger ID
 	startBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(startBuf, name)
+	writeLedgerPrefix(startBuf, info.Id)
 
 	endBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(endBuf, name)
+	writeLedgerPrefix(endBuf, info.Id)
 	writeByte(endBuf, 0xFF)
 
 	if err := b.batch.DeleteRange(startBuf.Bytes(), endBuf.Bytes(), pebble.NoSync); err != nil {
 		return fmt.Errorf("deleting ledger range: %w", err)
+	}
+
+	// Delete the ledger info entry
+	if err := b.batch.Delete(ledgerInfoKey, pebble.NoSync); err != nil {
+		return fmt.Errorf("deleting ledger info: %w", err)
 	}
 
 	return nil

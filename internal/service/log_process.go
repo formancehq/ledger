@@ -12,10 +12,10 @@ import (
 
 type logProcessor[INPUT proto.Message] struct {
 	operation    string
-	runtimeStore store.Store
+	store        store.Store
 	logFactory   LogFactory
 	keySetLocker KeySetLocker
-	logger logging.Logger
+	logger       logging.Logger
 	builder      func(ctx context.Context, store *unitOfWork, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
 }
 
@@ -30,17 +30,17 @@ func newLogProcessor[INPUT proto.Message](
 ) *logProcessor[INPUT] {
 	return &logProcessor[INPUT]{
 		operation:    operation,
-		runtimeStore: runtimeStore,
+		store:        runtimeStore,
 		keySetLocker: keySetLocker,
 		builder:      builder,
 		logFactory:   logFactory,
-		logger: logger,
+		logger:       logger,
 	}
 }
 
 func (lp *logProcessor[INPUT]) forgeLog(
 	ctx context.Context,
-	ledger string,
+	ledgerID uint32,
 	parameters Parameters[INPUT],
 ) (*ledgerpb.Log, bool, error) {
 
@@ -51,13 +51,13 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		}
 		defer release()
 
-		id, err := lp.runtimeStore.GetLogIDForIdempotencyKey(ctx, ledger, parameters.IdempotencyKey)
+		id, err := lp.store.GetLogIDForIdempotencyKey(ctx, ledgerID, parameters.IdempotencyKey)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return nil, false, err
 		}
 
 		if err == nil {
-			log, err := lp.runtimeStore.GetLogByID(ctx, ledger, id)
+			log, err := lp.store.GetLogByID(ctx, ledgerID, id)
 			if err != nil {
 				return nil, false, err
 			}
@@ -72,8 +72,8 @@ func (lp *logProcessor[INPUT]) forgeLog(
 
 	store := &unitOfWork{
 		KeySetLocker: lp.keySetLocker,
-		Store:        lp.runtimeStore,
-		ledger:       ledger,
+		Store:        lp.store,
+		ledgerID:     ledgerID,
 	}
 	defer store.ReleaseLocks()
 
@@ -90,7 +90,7 @@ func (lp *logProcessor[INPUT]) forgeLog(
 		}
 	}
 
-	log, err := lp.logFactory.CreateLog(ctx, ledger, idp, input)
+	log, err := lp.logFactory.CreateLog(ctx, ledgerID, idp, input)
 	if err != nil {
 		lp.logger.WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
 		return nil, false, err

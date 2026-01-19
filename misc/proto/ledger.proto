@@ -13,7 +13,7 @@ service LedgerService {
   // GetAllLedgersInfo returns all ledgers info in the cluster
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
   // GetLedgerInfo returns a ledger info by its name
-  rpc GetLedgerInfo(GetLedgerByNameRequest) returns (LedgerInfo);
+  rpc GetLedgerByName(GetLedgerByNameRequest) returns (LedgerInfo);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (Log);
   // RevertTransaction reverts a transaction
@@ -135,7 +135,7 @@ message Script {
 }
 
 message Parameters {
-  string ledger = 2;
+  uint32 ledger_id = 2;
   string idempotency_key = 3;
 }
 
@@ -206,7 +206,7 @@ message DeleteTransactionMetadataRequest {
 }
 
 message StreamLogsRequest {
-  string ledger = 1;
+  uint32 ledger_id = 1;
   uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
   uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
 }
@@ -220,7 +220,7 @@ message Log {
   Timestamp date = 2;
   Idempotency idempotency = 3;
   uint64 id = 4;
-  string ledger = 5;
+  uint32 ledger_id = 5;
 }
 
 message LogPayload {
@@ -350,7 +350,7 @@ message CommandInput {
 message CreateLogCommand {
   Idempotency idempotency = 1;
   CommandInput input = 2;
-  string ledger = 3;
+  uint32 ledger_id = 3;
 }
 
 message CreateLedgerCommand {
@@ -359,7 +359,7 @@ message CreateLedgerCommand {
 }
 
 message DeleteLedgerCommand {
-  string name = 1;
+  uint32 id = 1;
 }
 
 message DeleteLedgerResponse {}
@@ -377,7 +377,7 @@ message GetLedgerByNameRequest {
 }
 
 message State {
-  map<string, LedgerState> ledgers = 1;
+  map<uint32, LedgerState> ledgers = 1;
   uint32 next_ledger_id = 2;                // Next available ledger ID (max 65535)
 }
 

@@ -46,7 +46,13 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		},
 	}
 
-	_, err = s.backend.SaveTransactionMetadata(r.Context(), ledgerName, params)
+	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+		return
+	}
+
+	_, err = s.backend.SaveTransactionMetadata(r.Context(), ledgerInfo.Id, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

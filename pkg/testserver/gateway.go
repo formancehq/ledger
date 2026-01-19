@@ -335,7 +335,11 @@ func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *ledge
 }
 
 func (g *ledgerServiceGateway) GetLedgerInfo(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
-	return g.client.GetLedgerInfo(ctx, req)
+	return g.client.GetLedgerByName(ctx, req)
+}
+
+func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
+	return g.client.GetLedgerByName(ctx, req)
 }
 
 func (g *ledgerServiceGateway) StreamLogs(req *ledgerpb.StreamLogsRequest, stream ledgerpb.LedgerService_StreamLogsServer) error {

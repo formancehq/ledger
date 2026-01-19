@@ -12,18 +12,18 @@ import (
 //
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
 type LogReader interface {
-	GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
-	GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error)
+	GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
+	GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error)
 }
 
 // LogReaderFn is a functional type that implements LogReader
-type LogReaderFn func(ctx context.Context, ledger string, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
+type LogReaderFn func(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
 
-func (fn LogReaderFn) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
+func (fn LogReaderFn) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
 	return fn(ctx, ledger, from, to)
 }
 
-func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 	if id == 0 {
 		return nil, nil
 	}
@@ -41,20 +41,22 @@ func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger string, id uint64) 
 // All operations are buffered until Commit is called.
 // Cancel must be called if the batch is not committed to release resources.
 type Batch interface {
+	// RegisterLedger ledger register a new ledger in the store
+	RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error
+	// DeleteLedger deletes all data for a ledger
+	DeleteLedger(ctx context.Context, id uint32) error
 	// AppendLogs appends logs to the store
 	AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger, account, asset string, diff *big.Int) error
+	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error
 	// SaveAccountMetadata saves metadata for an account
-	SaveAccountMetadata(ctx context.Context, ledger, account string, metadata *ledgerpb.Metadata) error
+	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account
-	DeleteAccountMetadata(ctx context.Context, ledger, account string, keys []string) error
+	DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error
 	// StoreTransactionID stores the log ID associated to a transaction ID
-	StoreTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error
+	StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error
 	// StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted
-	StoreRevertedTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error
-	// DeleteLedger deletes all data for a ledger
-	DeleteLedger(ctx context.Context, name string) error
+	StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error
 	// Cancel cancels the batch and releases resources
 	Cancel(ctx context.Context) error
 	// Commit commits all buffered operations atomically
@@ -66,20 +68,22 @@ type Batch interface {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Store
 type Store interface {
 	LogReader
-	GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error)
-	GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error)
+	// ListLedgers lists all ledgers
+	ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error)
+	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error)
+	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
-	GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error)
+	GetLogIDForIdempotencyKey(ctx context.Context, ledgerID uint32, idempotencyKey string) (uint64, error)
 	// GetLogIDForTransactionID retrieves the log ID for a given transaction ID
-	GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error)
+	GetLogIDForTransactionID(ctx context.Context, ledgerID uint32, transactionID uint64) (uint64, error)
 	// IsTransactionReverted checks if a transaction has been reverted
-	IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error)
-	Close(ctx context.Context) error
+	IsTransactionReverted(ctx context.Context, ledgerID uint32, transactionID uint64) (bool, error)
 	// NewBatch creates a new batch for atomic operations.
 	// lastAppliedIndex is the raft index that will be stored when the batch is committed.
 	NewBatch(lastAppliedIndex uint64) Batch
 	CreateSnapshot(ctx context.Context) error
 	GetLastAppliedIndex() (uint64, error)
-	DeleteLedger(ctx context.Context, name string) error
-	GetLastLogID(ctx context.Context, name string) (uint64, error)
+	GetLastLogID(ctx context.Context, ledgerID uint32) (uint64, error)
+	GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
+	Close(ctx context.Context) error
 }

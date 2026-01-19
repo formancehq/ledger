@@ -45,6 +45,39 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 	}
 }
 
+// RegisterLedger registers a new ledger in the store.
+func (b *Batch) RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error {
+	if b.committed || b.tx == nil {
+		return fmt.Errorf("batch already committed or invalid")
+	}
+
+	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertLedger)
+	defer func() { _ = stmt.Close() }()
+
+	var metadataJSON sql.NullString
+	if len(info.Metadata) > 0 {
+		metadataBytes, err := json.Marshal(info.Metadata)
+		if err != nil {
+			return fmt.Errorf("marshaling ledger metadata: %w", err)
+		}
+		metadataJSON = sql.NullString{String: string(metadataBytes), Valid: true}
+	}
+
+	var createdAtStr sql.NullString
+	if info.CreatedAt != nil {
+		createdAtStr = sql.NullString{
+			String: info.CreatedAt.AsTime().Format(stdtime.RFC3339),
+			Valid:  true,
+		}
+	}
+
+	if _, err := stmt.ExecContext(ctx, info.Id, info.Name, metadataJSON, createdAtStr); err != nil {
+		return fmt.Errorf("inserting ledger: %w", err)
+	}
+
+	return nil
+}
+
 // AppendLogs appends logs to the batch.
 func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if b.committed || b.tx == nil {
@@ -81,7 +114,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 			id = sql.NullInt64{Int64: int64(log.Id), Valid: true}
 		}
 
-		_, err = stmt.ExecContext(ctx, log.Ledger, dataBinary,
+		_, err = stmt.ExecContext(ctx, log.LedgerId, dataBinary,
 			sql.NullString{String: dateStr, Valid: dateStr != ""},
 			idempotencyKey, idempotencyHash, id)
 		if err != nil {
@@ -98,7 +131,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger, account, asset string, diff *big.Int) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -114,7 +147,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger, account, asset st
 }
 
 // SaveAccountMetadata saves metadata for an account.
-func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger, account string, metadata *ledgerpb.Metadata) error {
+func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -140,7 +173,7 @@ func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger, account string,
 }
 
 // DeleteAccountMetadata deletes metadata keys for an account.
-func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger, account string, keys []string) error {
+func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -158,7 +191,7 @@ func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger, account strin
 }
 
 // StoreTransactionID stores the log ID associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error {
+func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -174,7 +207,7 @@ func (b *Batch) StoreTransactionID(ctx context.Context, ledger string, transacti
 }
 
 // StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger string, transactionID uint64, logID uint64) error {
+func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -189,13 +222,13 @@ func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger string, t
 	return nil
 }
 
-// DeleteLedger deletes all data for a ledger.
-func (b *Batch) DeleteLedger(ctx context.Context, name string) error {
+// DeleteLedger deletes all data for a ledger by its ID.
+func (b *Batch) DeleteLedger(ctx context.Context, id uint32) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
 
-	// Delete from all tables that have ledger data
+	// Delete from all tables that have ledger data (now keyed by ledger ID)
 	tables := []string{
 		"logs",
 		"balances",
@@ -205,10 +238,16 @@ func (b *Batch) DeleteLedger(ctx context.Context, name string) error {
 	}
 
 	for _, table := range tables {
-		_, err := b.tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE ledger = ?", table), name)
+		_, err := b.tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE ledger = ?", table), id)
 		if err != nil {
 			return fmt.Errorf("deleting from %s: %w", table, err)
 		}
+	}
+
+	// Delete the ledger entry itself
+	_, err := b.tx.ExecContext(ctx, `DELETE FROM ledgers WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("deleting ledger: %w", err)
 	}
 
 	return nil

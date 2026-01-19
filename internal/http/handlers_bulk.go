@@ -39,8 +39,14 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+		return
+	}
+
 	// Create bulker and run
-	err := s.bulkerFactory.CreateBulker(s.backend, ledgerName).Run(r.Context(), send, receive,
+	err = s.bulkerFactory.CreateBulker(s.backend, ledgerInfo.Id).Run(r.Context(), send, receive,
 		bulking.BulkingOptions{
 			ContinueOnFailure: queryParamBool(r, "continueOnFailure"),
 			Atomic:            queryParamBool(r, "atomic"),

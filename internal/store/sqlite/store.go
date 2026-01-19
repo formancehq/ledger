@@ -40,6 +40,8 @@ type Store struct {
 	stmtGetLogIDForTransactionID    *sql.Stmt
 	stmtInsertRevertedTransactionID *sql.Stmt
 	stmtIsTransactionReverted       *sql.Stmt
+	stmtInsertLedger                *sql.Stmt
+	stmtListLedgers                 *sql.Stmt
 }
 
 // NewStore creates a new Store instance
@@ -172,13 +174,39 @@ func (s *Store) prepareStatements(ctx context.Context) error {
 		return fmt.Errorf("preparing isTransactionReverted statement: %w", err)
 	}
 
+	s.stmtInsertLedger, err = s.db.PrepareContext(ctx, `
+		INSERT OR REPLACE INTO ledgers (id, name, metadata, created_at) VALUES (?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing insertLedger statement: %w", err)
+	}
+
+	s.stmtListLedgers, err = s.db.PrepareContext(ctx, `
+		SELECT id, name, metadata, created_at FROM ledgers ORDER BY id
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing listLedgers statement: %w", err)
+	}
+
 	return nil
 }
 
 func (s *Store) createTables(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS ledgers (
+			id INTEGER NOT NULL PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			metadata TEXT,
+			created_at TEXT
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating ledgers table: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
-			ledger TEXT NOT NULL, 
+			ledger INTEGER NOT NULL, 
 			id INTEGER NOT NULL, 
 			data BLOB NOT NULL,
 			date TEXT, 
@@ -195,7 +223,7 @@ func (s *Store) createTables(ctx context.Context) error {
 
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS balances (
-			ledger TEXT NOT NULL, account TEXT NOT NULL, asset TEXT NOT NULL,
+			ledger INTEGER NOT NULL, account TEXT NOT NULL, asset TEXT NOT NULL,
 			balance TEXT NOT NULL DEFAULT '0', PRIMARY KEY (ledger, account, asset)
 		) WITHOUT ROWID;
 	`)
@@ -205,7 +233,7 @@ func (s *Store) createTables(ctx context.Context) error {
 
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS account_metadata (
-			ledger TEXT NOT NULL, account_address TEXT NOT NULL, key TEXT NOT NULL,
+			ledger INTEGER NOT NULL, account_address TEXT NOT NULL, key TEXT NOT NULL,
 			value TEXT NOT NULL, PRIMARY KEY (ledger, account_address, key)
 		) WITHOUT ROWID;
 	`)
@@ -215,7 +243,7 @@ func (s *Store) createTables(ctx context.Context) error {
 
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS transaction_ids (
-			ledger TEXT NOT NULL, 
+			ledger INTEGER NOT NULL, 
 			transaction_id INTEGER NOT NULL, 
 			log_id INTEGER NOT NULL,
 			PRIMARY KEY (ledger, transaction_id)
@@ -228,7 +256,7 @@ func (s *Store) createTables(ctx context.Context) error {
 
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS reverted_transaction_ids (
-			ledger TEXT NOT NULL, 
+			ledger INTEGER NOT NULL, 
 			transaction_id INTEGER NOT NULL, 
 			PRIMARY KEY (ledger, transaction_id)
 		) WITHOUT ROWID;
@@ -266,7 +294,7 @@ func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 	}
 
 	var id sql.NullInt64
-	var ledger string
+	var ledger uint32
 	var dataBinary []byte
 	var dateStr sql.NullString
 	var idempotencyKey sql.NullString
@@ -277,7 +305,7 @@ func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 		return nil, fmt.Errorf("scanning log row: %w", err)
 	}
 
-	log := &ledgerpb.Log{Ledger: ledger}
+	log := &ledgerpb.Log{LedgerId: ledger}
 	if id.Valid {
 		log.Id = uint64(id.Int64)
 	}
@@ -311,7 +339,7 @@ func (c *logCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger.
-func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	query := `SELECT id, ledger, data, date, idempotency_key, idempotency_hash FROM logs WHERE ledger = ?`
 	args := []interface{}{ledger}
 	if from > 0 {
@@ -333,11 +361,11 @@ func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to u
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 	row := s.stmtGetLogByID.QueryRowContext(ctx, ledger, id)
 
 	var logID sql.NullInt64
-	var logLedger string
+	var logLedger uint32
 	var dataBinary []byte
 	var dateStr sql.NullString
 	var idempotencyKey sql.NullString
@@ -351,7 +379,7 @@ func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledg
 		return nil, fmt.Errorf("getting log by id: %w", err)
 	}
 
-	log := &ledgerpb.Log{Ledger: logLedger}
+	log := &ledgerpb.Log{LedgerId: logLedger}
 	if logID.Valid {
 		log.Id = uint64(logID.Int64)
 	}
@@ -391,6 +419,8 @@ func (s *Store) Close(ctx context.Context) error {
 		s.stmtGetLogIDForTransactionID,
 		s.stmtInsertRevertedTransactionID,
 		s.stmtIsTransactionReverted,
+		s.stmtInsertLedger,
+		s.stmtListLedgers,
 	} {
 		if stmt != nil {
 			if err := stmt.Close(); err != nil {
@@ -408,7 +438,7 @@ func (s *Store) Close(ctx context.Context) error {
 }
 
 // GetBalances retrieves balances from the balances table for a specific ledger
-func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
 	for account, assets := range balanceQuery {
@@ -460,7 +490,7 @@ func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map
 }
 
 // GetAccountMetadata retrieves account metadata for multiple accounts
-func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	for _, account := range accounts {
@@ -510,7 +540,7 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts 
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log
-func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
+func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger uint32, idempotencyKey string) (uint64, error) {
 
 	var logID uint64
 	err := s.stmtGetIdempotency.QueryRowContext(ctx, ledger, idempotencyKey).Scan(&logID)
@@ -524,7 +554,7 @@ func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, id
 }
 
 // GetLogIDForTransactionID retrieves the log ID for a given transaction ID
-func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
+func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
 
 	var logID uint64
 	err := s.stmtGetLogIDForTransactionID.QueryRowContext(ctx, ledger, transactionID).Scan(&logID)
@@ -538,7 +568,7 @@ func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, tra
 }
 
 // IsTransactionReverted checks if a transaction has been reverted
-func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
+func (s *Store) IsTransactionReverted(ctx context.Context, ledger uint32, transactionID uint64) (bool, error) {
 
 	var exists int
 	err := s.stmtIsTransactionReverted.QueryRowContext(ctx, ledger, transactionID).Scan(&exists)
@@ -569,39 +599,8 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	return lastAppliedIndex, nil
 }
 
-// DeleteLedger deletes all data for a specific ledger.
-func (s *Store) DeleteLedger(ctx context.Context, name string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Delete from all tables that have ledger data
-	tables := []string{
-		"logs",
-		"balances",
-		"account_metadata",
-		"transaction_ids",
-		"reverted_transaction_ids",
-	}
-
-	for _, table := range tables {
-		_, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE ledger = ?", table), name)
-		if err != nil {
-			return fmt.Errorf("deleting from %s: %w", table, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-
-	return nil
-}
-
 // GetLastLogID retrieves the ID of the last log for a specific ledger.
-func (s *Store) GetLastLogID(ctx context.Context, ledger string) (uint64, error) {
+func (s *Store) GetLastLogID(ctx context.Context, ledger uint32) (uint64, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id FROM logs WHERE ledger = ? ORDER BY id DESC LIMIT 1`, ledger)
 
 	var lastLogID uint64
@@ -612,4 +611,90 @@ func (s *Store) GetLastLogID(ctx context.Context, ledger string) (uint64, error)
 		return 0, fmt.Errorf("querying last log ID: %w", err)
 	}
 	return lastLogID, nil
+}
+
+// GetLedgerByName retrieves a ledger by its name.
+func (s *Store) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, name, metadata, created_at FROM ledgers WHERE name = ?`, name)
+
+	var id uint32
+	var ledgerName string
+	var metadataJSON sql.NullString
+	var createdAtStr sql.NullString
+
+	if err := row.Scan(&id, &ledgerName, &metadataJSON, &createdAtStr); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("querying ledger by name: %w", err)
+	}
+
+	info := &ledgerpb.LedgerInfo{
+		Id:   id,
+		Name: ledgerName,
+	}
+
+	if metadataJSON.Valid && metadataJSON.String != "" {
+		var meta map[string]string
+		if err := json.Unmarshal([]byte(metadataJSON.String), &meta); err != nil {
+			return nil, fmt.Errorf("unmarshaling ledger metadata: %w", err)
+		}
+		info.Metadata = meta
+	}
+
+	if createdAtStr.Valid {
+		createdAt, err := stdtime.Parse(stdtime.RFC3339, createdAtStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("parsing created_at: %w", err)
+		}
+		info.CreatedAt = ledgerpb.NewTimestamp(time.New(createdAt))
+	}
+
+	return info, nil
+}
+
+// ListLedgers returns all registered ledgers.
+func (s *Store) ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error) {
+	rows, err := s.stmtListLedgers.QueryContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("querying ledgers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ledgers []*ledgerpb.LedgerInfo
+	for rows.Next() {
+		var id uint32
+		var name string
+		var metadataJSON sql.NullString
+		var createdAtStr sql.NullString
+
+		if err := rows.Scan(&id, &name, &metadataJSON, &createdAtStr); err != nil {
+			return nil, fmt.Errorf("scanning ledger row: %w", err)
+		}
+
+		info := &ledgerpb.LedgerInfo{
+			Id:   id,
+			Name: name,
+		}
+
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			var metadata map[string]string
+			if err := json.Unmarshal([]byte(metadataJSON.String), &metadata); err != nil {
+				return nil, fmt.Errorf("unmarshaling ledger metadata: %w", err)
+			}
+			info.Metadata = metadata
+		}
+
+		if createdAtStr.Valid {
+			createdAt, err := stdtime.Parse(stdtime.RFC3339, createdAtStr.String)
+			if err != nil {
+				return nil, fmt.Errorf("parsing created_at: %w", err)
+			}
+			info.CreatedAt = ledgerpb.NewTimestamp(time.New(createdAt))
+		}
+
+		ledgers = append(ledgers, info)
+	}
+
+	return ledgers, nil
 }

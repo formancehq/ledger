@@ -52,6 +52,7 @@ var (
 	keyPrefixIdempotency      byte = 0x04
 	keyPrefixTransactionID    byte = 0x05
 	keyPrefixRevertedTxID     byte = 0x06
+	keyPrefixLedgerInfo       byte = 0x07
 )
 
 // NewStore creates a new Store instance
@@ -221,7 +222,7 @@ func (c *logCursor) Close() error {
 // Logs are returned in ascending order by id.
 // from: optional log id to start from (0 = from beginning).
 // to: optional log id to stop at (0 = until end, inclusive).
-func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	// Set up iterator bounds
 
 	buf := bytes.NewBuffer(nil)
@@ -264,12 +265,12 @@ func (s *Store) GetAllLogs(ctx context.Context, ledger string, from uint64, to u
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 	return s.GetLogWithID(ctx, ledger, id)
 }
 
 // GetLogWithID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogWithID(ctx context.Context, ledger string, id uint64) (*ledgerpb.Log, error) {
+func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -302,7 +303,7 @@ func (s *Store) GetLogWithID(ctx context.Context, ledger string, id uint64) (*le
 
 // GetBalances retrieves balances from Pebble for a specific ledger (implements store.Store)
 // Sums all balance diffs for each account/asset combination
-func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
 	result := make(ledgerpb.Balances)
 
 	buf := bytes.NewBuffer(nil)
@@ -364,7 +365,7 @@ func (s *Store) GetBalances(ctx context.Context, ledger string, balanceQuery map
 }
 
 // GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)
-func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	// Initialize with empty metadata for all requested accounts
@@ -391,7 +392,7 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts 
 			UpperBound: upperBound,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("creating iterator for ledger %s account %s: %w", ledger, account, err)
+			return nil, fmt.Errorf("creating iterator for ledger %d account %s: %w", ledger, account, err)
 		}
 
 		for iter.First(); iter.Valid(); iter.Next() {
@@ -401,7 +402,7 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts 
 			metadataKey := string(metadataKeyBytes)
 			valueBytes, err := iter.ValueAndErr()
 			if err != nil {
-				return nil, fmt.Errorf("reading metadata value for ledger %s account %s key %s: %w", ledger, account, metadataKey, err)
+				return nil, fmt.Errorf("reading metadata value for ledger %d account %s key %s: %w", ledger, account, metadataKey, err)
 			}
 
 			// Metadata values are stored as strings directly
@@ -415,7 +416,7 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger string, accounts 
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key for a specific ledger (implements store.Store)
-func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, idempotencyKey string) (uint64, error) {
+func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger uint32, idempotencyKey string) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -437,7 +438,7 @@ func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger string, id
 }
 
 // GetLogIDForTransactionID retrieves the log ID for a given transaction ID for a specific ledger (implements store.Store)
-func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, transactionID uint64) (uint64, error) {
+func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -465,7 +466,7 @@ func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger string, tra
 }
 
 // IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.Store)
-func (s *Store) IsTransactionReverted(ctx context.Context, ledger string, transactionID uint64) (bool, error) {
+func (s *Store) IsTransactionReverted(ctx context.Context, ledger uint32, transactionID uint64) (bool, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -556,25 +557,25 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	return binary.BigEndian.Uint64(get[:8]), nil
 }
 
-func (s *Store) DeleteLedger(_ context.Context, name string) error {
+func (s *Store) DeleteLedger(_ context.Context, id uint32) error {
 	startBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(startBuf, name)
+	writeLedgerPrefix(startBuf, id)
 
 	endBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(endBuf, name)
+	writeLedgerPrefix(endBuf, id)
 	writeByte(endBuf, 0xFF)
 
 	return s.db.DeleteRange(startBuf.Bytes(), endBuf.Bytes(), pebble.NoSync)
 }
 
-func (s *Store) GetLastLogID(ctx context.Context, name string) (uint64, error) {
+func (s *Store) GetLastLogID(ctx context.Context, id uint32) (uint64, error) {
 	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, name)
+	writeLedgerPrefix(buf, id)
 	writeByte(buf, keyPrefixLog)
 	lowerBound := buf.Bytes()
 
 	buf = bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, name)
+	writeLedgerPrefix(buf, id)
 	writeByte(buf, keyPrefixLog)
 	if _, err := buf.Write([]byte{
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -614,16 +615,68 @@ func (s *Store) GetLastLogID(ctx context.Context, name string) (uint64, error) {
 	return log.Id, nil
 }
 
+// ListLedgers returns all registered ledgers.
+func (s *Store) ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error) {
+	// Create bounds for ledger info prefix
+	lowerBound := []byte{keyPrefixLedgerInfo}
+	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for ledger info: %w", err)
+	}
+	defer func() {
+		_ = iter.Close()
+	}()
+
+	var ledgers []*ledgerpb.LedgerInfo
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading ledger info value: %w", err)
+		}
+
+		info := &ledgerpb.LedgerInfo{}
+		if err := proto.Unmarshal(value, info); err != nil {
+			return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
+		}
+		ledgers = append(ledgers, info)
+	}
+
+	return ledgers, nil
+}
+
+// GetLedgerByName retrieves a ledger by its name.
+func (s *Store) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	// Iterate over all ledgers to find by name
+	ledgers, err := s.ListLedgers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ledger := range ledgers {
+		if ledger.Name == name {
+			return ledger, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // Metrics returns Pebble database metrics (implements MetricsAware)
 func (s *Store) Metrics() any {
 	return s.db.Metrics()
 }
 
-func writeLedgerPrefix(buf *bytes.Buffer, ledger string) {
-	if _, err := buf.WriteString(ledger); err != nil {
-		panic(err)
-	}
-	if err := buf.WriteByte('/'); err != nil {
+func writeLedgerPrefix(buf *bytes.Buffer, ledgerID uint32) {
+	writeUInt32(buf, ledgerID)
+}
+
+func writeUInt32(buf *bytes.Buffer, value uint32) {
+	if err := binary.Write(buf, binary.BigEndian, value); err != nil {
 		panic(err)
 	}
 }

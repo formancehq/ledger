@@ -40,7 +40,7 @@ func (m *MockLogFactory) EXPECT() *MockLogFactoryMockRecorder {
 }
 
 // CreateLog mocks base method.
-func (m *MockLogFactory) CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+func (m *MockLogFactory) CreateLog(ctx context.Context, ledger uint32, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateLog", ctx, ledger, idempotency, payload)
 	ret0, _ := ret[0].(*ledgerpb.Log)

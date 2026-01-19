@@ -30,7 +30,7 @@ func (l *Log) WithIdempotency(key string, hash []byte) *Log {
 		l = &Log{}
 	}
 	l.Idempotency = &Idempotency{
-		Key: key,
+		Key:  key,
 		Hash: hash,
 	}
 
@@ -46,33 +46,13 @@ func (l *Log) WithID(id uint64) *Log {
 	return l
 }
 
-// WithLedger sets the ledger of the log
-func (l *Log) WithLedger(ledger string) *Log {
+// WithLedgerID sets the ledger of the log
+func (l *Log) WithLedgerID(ledgerID uint32) *Log {
 	if l == nil {
 		l = &Log{}
 	}
-	l.Ledger = ledger
+	l.LedgerId = ledgerID
 	return l
-}
-
-// ChainLog creates a new log chained to the previous one
-func ChainLog(l *Log, previous *Log) *Log {
-	if l == nil {
-		l = &Log{}
-	}
-	ret := &Log{
-		Data:        l.Data,
-		Date:        l.Date,
-		Idempotency: l.Idempotency,
-		Id:          l.Id,
-		Ledger:      l.Ledger,
-	}
-	if previous != nil && previous.Id != 0 {
-		ret.Id = previous.Id + 1
-	} else {
-		ret.Id = 1
-	}
-	return ret
 }
 
 // UnmarshalJSON implements json.Unmarshaler for Log

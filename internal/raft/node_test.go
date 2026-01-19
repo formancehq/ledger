@@ -110,7 +110,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 					}},
 				},
 			},
-		}, "default", nil)
+		}, 1, nil)
 	}
 
 	// Should not trigger any snapshotting at this point
@@ -162,7 +162,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	require.Eventually(t, node.IsLeader, 2*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		balances, err := node.store.GetBalances(logging.TestingContext(), "default", map[string][]string{
+		balances, err := node.store.GetBalances(logging.TestingContext(), 1, map[string][]string{
 			"world": {"USD"},
 		})
 		require.NoError(t, err)

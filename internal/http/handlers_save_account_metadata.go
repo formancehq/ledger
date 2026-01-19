@@ -41,7 +41,13 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		},
 	}
 
-	_, err := s.backend.SaveAccountMetadata(r.Context(), ledgerName, params)
+	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+		return
+	}
+
+	_, err = s.backend.SaveAccountMetadata(r.Context(), ledgerInfo.Id, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "address": address, "error": err}).Errorf("Failed to save account metadata")
 		handleError(w, r, err)

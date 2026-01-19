@@ -21,6 +21,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
+	var testLedgerID uint32 = 1
 
 	t.Run("SaveAccountMetadata", func(t *testing.T) {
 		t.Parallel()
@@ -34,7 +35,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 			"label":        "Test Account",
 		}
 
-		log, err := ledgerService.SaveAccountMetadata(ctx, "default", Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
 				Metadata: &ledgerpb.Metadata{Entries: md},
@@ -50,7 +51,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 		// Test empty address
 		md1 := metadata.Metadata{"key": "value"}
-		log, err := ledgerService.SaveAccountMetadata(ctx, "default", Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "",
 				Metadata: &ledgerpb.Metadata{Entries: md1},
@@ -61,7 +62,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.Contains(t, err.Error(), "account address is required")
 
 		// Test empty metadata
-		log, err = ledgerService.SaveAccountMetadata(ctx, "default", Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+		log, err = ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
 				Metadata: nil,
@@ -77,6 +78,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
+	var testLedgerID uint32 = 1
 
 	t.Run("SaveTransactionMetadata", func(t *testing.T) {
 		t.Parallel()
@@ -90,7 +92,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 			},
 		}
 
-		log, err := ledgerService.SaveTransactionMetadata(ctx, "default", Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+		log, err := ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 				TransactionId: 42,
 				Metadata:      &md,
@@ -107,7 +109,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		md := &ledgerpb.Metadata{
 			Entries: metadata.Metadata{"key": "value"},
 		}
-		log, err := ledgerService.SaveTransactionMetadata(ctx, "default", Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+		log, err := ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 				TransactionId: 0,
 				Metadata:      md,
@@ -117,7 +119,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "transaction id is required")
 
-		log, err = ledgerService.SaveTransactionMetadata(ctx, "default", Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+		log, err = ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 				TransactionId: 42,
 				Metadata:      nil,
@@ -133,6 +135,7 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
+	var testLedgerID uint32 = 1
 
 	t.Run("DeleteAccountMetadata", func(t *testing.T) {
 		t.Parallel()
@@ -140,7 +143,7 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		log, err := ledgerService.DeleteAccountMetadata(ctx, "default", Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+		log, err := ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 				Address: "test-account",
 				Key:     "key1",
@@ -154,7 +157,7 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.DeleteAccountMetadata(ctx, "default", Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+		log, err := ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 				Address: "",
 				Key:     "key1",
@@ -164,7 +167,7 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "account address is required")
 
-		log, err = ledgerService.DeleteAccountMetadata(ctx, "default", Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+		log, err = ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 				Address: "test-account",
 				Key:     "",
@@ -180,6 +183,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
+	var testLedgerID uint32 = 1
 
 	t.Run("DeleteTransactionMetadata", func(t *testing.T) {
 		t.Parallel()
@@ -187,7 +191,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		log, err := ledgerService.DeleteTransactionMetadata(ctx, "default", Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		log, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 				TransactionId: 42,
 				Key:           "key1",
@@ -204,12 +208,12 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		idempotencyKey := "delete-transaction-metadata-idempotency-key"
 
 		runtimeStore.EXPECT().
-			GetLogIDForIdempotencyKey(gomock.Any(), "default", idempotencyKey).
+			GetLogIDForIdempotencyKey(gomock.Any(), testLedgerID, idempotencyKey).
 			Return(uint64(0), store.ErrNotFound)
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		log1, err := ledgerService.DeleteTransactionMetadata(ctx, "default", Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		log1, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			IdempotencyKey: idempotencyKey,
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 				TransactionId: 42,
@@ -220,13 +224,13 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		require.NotNil(t, log1)
 
 		runtimeStore.EXPECT().
-			GetLogIDForIdempotencyKey(gomock.Any(), "default", idempotencyKey).
+			GetLogIDForIdempotencyKey(gomock.Any(), testLedgerID, idempotencyKey).
 			Return(log1.Id, nil)
 		runtimeStore.EXPECT().
-			GetLogByID(gomock.Any(), "default", log1.Id).
+			GetLogByID(gomock.Any(), testLedgerID, log1.Id).
 			Return(log1, nil)
 
-		log2, err := ledgerService.DeleteTransactionMetadata(ctx, "default", Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		log2, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			IdempotencyKey: idempotencyKey,
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 				TransactionId: 42,
@@ -242,7 +246,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.DeleteTransactionMetadata(ctx, "default", Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		log, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 				TransactionId: 0,
 				Key:           "key1",
@@ -252,7 +256,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "transaction id is required")
 
-		log, err = ledgerService.DeleteTransactionMetadata(ctx, "default", Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		log, err = ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 				TransactionId: 42,
 				Key:           "",
@@ -280,7 +284,7 @@ func expectCreateLogsWithSequentialIDs(logFactory *MockLogFactory, times int) {
 	var counter uint64
 	logFactory.EXPECT().
 		CreateLog(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, ledger string, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+		DoAndReturn(func(_ context.Context, ledger uint32, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 			counter++
 			return &ledgerpb.Log{
 				Id:          counter,
@@ -294,6 +298,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
+	var testLedgerID uint32 = 1
 
 	t.Run("RevertTransaction", func(t *testing.T) {
 		t.Parallel()
@@ -322,16 +327,16 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), "default", transactionID).
+			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetLogIDForTransactionID(gomock.Any(), "default", transactionID).
+			GetLogIDForTransactionID(gomock.Any(), testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogByID(gomock.Any(), "default", logID).
+			GetLogByID(gomock.Any(), testLedgerID, logID).
 			Return(originalLog, nil)
 		runtimeStore.EXPECT().
-			GetBalances(gomock.Any(), "default", gomock.Any()).
+			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
 			Return(ledgerpb.Balances{
 				"account-1": map[string]*big.Int{
 					"USD": big.NewInt(100),
@@ -340,7 +345,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId: transactionID,
 			},
@@ -356,10 +361,10 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		transactionID := uint64(42)
 
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), "default", transactionID).
+			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(true, nil)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId: transactionID,
 			},
@@ -376,13 +381,13 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		transactionID := uint64(999)
 
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), "default", transactionID).
+			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetLogIDForTransactionID(gomock.Any(), "default", transactionID).
+			GetLogIDForTransactionID(gomock.Any(), testLedgerID, transactionID).
 			Return(uint64(0), nil)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId: transactionID,
 			},
@@ -396,7 +401,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId: 0,
 			},
@@ -433,18 +438,18 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations - with force=true, balance check should be skipped
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), "default", transactionID).
+			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetLogIDForTransactionID(gomock.Any(), "default", transactionID).
+			GetLogIDForTransactionID(gomock.Any(), testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogByID(gomock.Any(), "default", logID).
+			GetLogByID(gomock.Any(), testLedgerID, logID).
 			Return(originalLog, nil)
 
 		expectCreateLogsWithSequentialIDs(logFactory, 1)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId: transactionID,
 				Force:         true,
@@ -483,16 +488,16 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), "default", transactionID).
+			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetLogIDForTransactionID(gomock.Any(), "default", transactionID).
+			GetLogIDForTransactionID(gomock.Any(), testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogByID(gomock.Any(), "default", logID).
+			GetLogByID(gomock.Any(), testLedgerID, logID).
 			Return(originalLog, nil)
 		runtimeStore.EXPECT().
-			GetBalances(gomock.Any(), "default", gomock.Any()).
+			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
 			Return(ledgerpb.Balances{
 				"account-1": map[string]*big.Int{
 					"USD": big.NewInt(100),
@@ -503,7 +508,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		revertLogID := uint64(1)
 		logFactory.EXPECT().
 			CreateLog(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, ledger string, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+			DoAndReturn(func(_ context.Context, ledger uint32, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 				return &ledgerpb.Log{
 					Id: revertLogID,
 					Data: &ledgerpb.LogPayload{
@@ -521,7 +526,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			}).
 			Times(1)
 
-		log, err := ledgerService.RevertTransaction(ctx, "default", Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
 				TransactionId:   transactionID,
 				AtEffectiveDate: true,

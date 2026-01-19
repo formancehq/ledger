@@ -69,7 +69,13 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		Input:          payload,
 	}
 
-	log, err := s.backend.RevertTransaction(r.Context(), ledgerName, params)
+	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+		return
+	}
+
+	log, err := s.backend.RevertTransaction(r.Context(), ledgerInfo.Id, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

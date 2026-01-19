@@ -21,7 +21,6 @@ func GenerateRandomID() uint64 {
 	return binary.BigEndian.Uint64(b[:])
 }
 
-
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
 func NewCreateLedgerCommand(cmd *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
@@ -40,9 +39,9 @@ func NewCreateLedgerCommand(cmd *ledgerpb.CreateLedgerCommand) *ledgerpb.Command
 }
 
 // NewDeleteLedgerCommand creates a new DeleteLedgerCommand
-func NewDeleteLedgerCommand(name string) (*ledgerpb.Command, error) {
+func NewDeleteLedgerCommand(id uint32) (*ledgerpb.Command, error) {
 	cmdProto := &ledgerpb.DeleteLedgerCommand{
-		Name: name,
+		Id: id,
 	}
 
 	data, err := proto.Marshal(cmdProto)
@@ -73,11 +72,11 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 }
 
 // NewCreateLogCommand creates a new command
-func NewCreateLogCommand(input *ledgerpb.CommandInput, ledger string, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
+func NewCreateLogCommand(input *ledgerpb.CommandInput, ledgerID uint32, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
 	cmdProto := &ledgerpb.CreateLogCommand{
 		Input:       input,
 		Idempotency: idempotency,
-		Ledger: ledger,
+		LedgerId:    ledgerID,
 	}
 
 	data, err := proto.Marshal(cmdProto)

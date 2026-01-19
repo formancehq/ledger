@@ -51,17 +51,6 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for Parameters
-func (x *Parameters) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Ledger         string `json:"ledger,omitempty"`
-		IdempotencyKey string `json:"idempotencyKey,omitempty"`
-	}{
-		Ledger:         x.Ledger,
-		IdempotencyKey: x.IdempotencyKey,
-	})
-}
-
 // MarshalJSON implements json.Marshaler for CreateTransactionRequestPayload
 func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
@@ -115,19 +104,6 @@ func (x *DeleteTransactionMetadataRequestPayload) MarshalJSON() ([]byte, error) 
 	}{
 		TransactionId: x.TransactionId,
 		Key:           x.Key,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for StreamLogsRequest
-func (x *StreamLogsRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Ledger string `json:"ledger,omitempty"`
-		FromId uint64 `json:"fromId,omitempty"`
-		ToId   uint64 `json:"toId,omitempty"`
-	}{
-		Ledger: x.Ledger,
-		FromId: x.FromId,
-		ToId:   x.ToId,
 	})
 }
 
@@ -222,31 +198,6 @@ func (x *RevertedTransactionMemento) MarshalJSON() ([]byte, error) {
 		RevertTransaction:     x.RevertTransaction,
 	})
 }
-
-// // MarshalJSON implements json.Marshaler for LedgerInfo
-// func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
-// 	return json.Marshal(&struct {
-// 		Name      string            `json:"name,omitempty"`
-// 		Metadata  map[string]string `json:"metadata,omitempty"`
-// 		CreatedAt *Timestamp        `json:"createdAt,omitempty"`
-// 	}{
-// 		Name:      x.Name,
-// 		Metadata:  x.Metadata,
-// 		CreatedAt: x.CreatedAt,
-// 	})
-// }
-
-// func (x *LedgerState) MarshalJSON() ([]byte, error) {
-// 	return json.Marshal(struct {
-// 		LedgerInfo        *LedgerInfo `json:"ledgerInfo,omitempty"`
-// 		NextLogId         uint64      `json:"nextLogId,omitempty"`
-// 		NextTransactionId uint64      `json:"nextTransactionId,omitempty"`
-// 	}{
-// 		LedgerInfo:        x.LedgerInfo,
-// 		NextLogId:         x.NextLogId,
-// 		NextTransactionId: x.NextTransactionId,
-// 	})
-// }
 
 // UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
 // Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
@@ -369,5 +320,20 @@ func (state *LedgerState) MarshalJSON() ([]byte, error) {
 		LedgerInfo:        state.LedgerInfo,
 		NextLogId:         state.NextLogId,
 		NextTransactionId: state.NextTransactionId,
+	})
+}
+
+func (state *State) MarshalJSON() ([]byte, error) {
+	ledgers := make(map[string]*LedgerState, len(state.Ledgers))
+	for _, ledger := range state.Ledgers {
+		ledgers[ledger.LedgerInfo.Name] = ledger
+	}
+	type Aux State
+	return json.Marshal(struct {
+		*Aux
+		Ledgers map[string]*LedgerState `json:"ledgers"`
+	}{
+		Aux:     (*Aux)(state),
+		Ledgers: ledgers,
 	})
 }

@@ -15,7 +15,13 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.backend.DeleteLedger(r.Context(), ledgerName)
+	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+		return
+	}
+
+	err = s.backend.DeleteLedger(r.Context(), ledgerInfo.Id)
 	if err != nil {
 		handleError(w, r, err)
 		return

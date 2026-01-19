@@ -672,8 +672,8 @@ func (node *Node) CreateLedger(ctx context.Context, cmd *ledgerpb.CreateLedgerCo
 	return ledgerInfo, nil
 }
 
-func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	return node.fsm.GetLedger(name)
+func (node *Node) GetLedgerInfo(ctx context.Context, id uint32) (*ledgerpb.LedgerInfo, error) {
+	return node.fsm.GetLedgerInfo(id)
 }
 
 // GetAllLedgersInfo returns all ledgers
@@ -682,15 +682,10 @@ func (node *Node) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.L
 }
 
 // DeleteLedger deletes a ledger via a FSM command
-func (node *Node) DeleteLedger(ctx context.Context, name string) error {
-
-	// todo: optimist check but there can be concurrent requests
-	if _, err := node.fsm.GetLedger(name); err != nil {
-		return fmt.Errorf("ledger '%s' not found: %w", name, err)
-	}
+func (node *Node) DeleteLedger(ctx context.Context, id uint32) error {
 
 	// Create the command
-	cmd, err := NewDeleteLedgerCommand(name)
+	cmd, err := NewDeleteLedgerCommand(id)
 	if err != nil {
 		return fmt.Errorf("creating delete ledger command: %w", err)
 	}
@@ -704,45 +699,45 @@ func (node *Node) DeleteLedger(ctx context.Context, name string) error {
 	return nil
 }
 
-func (node *Node) CreateTransaction(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.CreateTransaction(ctx, ledger, parameters)
+func (node *Node) CreateTransaction(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.CreateTransaction(ctx, ledgerID, parameters)
 }
 
-func (node *Node) RevertTransaction(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.RevertTransaction(ctx, ledger, parameters)
+func (node *Node) RevertTransaction(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.RevertTransaction(ctx, ledgerID, parameters)
 }
 
-func (node *Node) SaveTransactionMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveTransactionMetadata(ctx, ledger, parameters)
+func (node *Node) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.SaveTransactionMetadata(ctx, ledgerID, parameters)
 }
 
-func (node *Node) SaveAccountMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveAccountMetadata(ctx, ledger, parameters)
+func (node *Node) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.SaveAccountMetadata(ctx, ledgerID, parameters)
 }
 
-func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteTransactionMetadata(ctx, ledger, parameters)
+func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.DeleteTransactionMetadata(ctx, ledgerID, parameters)
 }
 
-func (node *Node) DeleteAccountMetadata(ctx context.Context, ledger string, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteAccountMetadata(ctx, ledger, parameters)
+func (node *Node) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	return node.defaultLedger.DeleteAccountMetadata(ctx, ledgerID, parameters)
 }
 
-func (node *Node) Import(ctx context.Context, ledger string, stream chan *ledgerpb.Log) error {
-	return node.defaultLedger.Import(ctx, ledger, stream)
+func (node *Node) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
+	return node.defaultLedger.Import(ctx, ledgerID, stream)
 }
 
-func (node *Node) Export(ctx context.Context, ledger string, w service.ExportWriter) error {
-	return node.defaultLedger.Export(ctx, ledger, w)
+func (node *Node) Export(ctx context.Context, ledgerID uint32, w service.ExportWriter) error {
+	return node.defaultLedger.Export(ctx, ledgerID, w)
 }
 
-func (node *Node) GetAllLogs(ctx context.Context, ledger string, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
-	return node.store.GetAllLogs(ctx, ledger, from, to)
+func (node *Node) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+	return node.store.GetAllLogs(ctx, ledgerID, from, to)
 }
 
-func (node *Node) CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 
-	log, err := node.Apply(ctx, NewCreateLogCommand(input, ledger, idempotency))
+	log, err := node.Apply(ctx, NewCreateLogCommand(input, ledgerID, idempotency))
 	if err != nil {
 		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
@@ -898,6 +893,10 @@ func (node *Node) Stop(ctx context.Context) error {
 	// todo: close channels
 
 	return nil
+}
+
+func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	return node.fsm.GetLedgerByName(name)
 }
 
 type proposal struct {

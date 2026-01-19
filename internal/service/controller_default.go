@@ -15,7 +15,7 @@ import (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package service . LogFactory
 type LogFactory interface {
-	CreateLog(ctx context.Context, ledger string, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
+	CreateLog(ctx context.Context, ledger uint32, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
 }
 
 // DefaultController is the default implementation of the Ledger interface
@@ -94,8 +94,8 @@ func NewDefaultController(
 }
 
 // CreateTransaction creates a new transaction
-func (l *DefaultController) CreateTransaction(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.createTransactionLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.createTransactionLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -265,8 +265,8 @@ func (l *DefaultController) executeNumscript(ctx context.Context, store *unitOfW
 }
 
 // RevertTransaction reverts a transaction by creating a reverse transaction
-func (l *DefaultController) RevertTransaction(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.revertTransactionLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.revertTransactionLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -391,8 +391,8 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 }
 
 // SaveTransactionMetadata saves metadata for a transaction
-func (l *DefaultController) SaveTransactionMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -424,8 +424,8 @@ func (l *DefaultController) saveTransactionMetadata(ctx context.Context, store *
 }
 
 // SaveAccountMetadata saves metadata for an account
-func (l *DefaultController) SaveAccountMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveAccountMetadataLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.saveAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -457,8 +457,8 @@ func (l *DefaultController) saveAccountMetadata(ctx context.Context, store *unit
 }
 
 // DeleteTransactionMetadata deletes a metadata key from a transaction
-func (l *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -489,8 +489,8 @@ func (l *DefaultController) deleteTransactionMetadata(ctx context.Context, store
 }
 
 // DeleteAccountMetadata deletes a metadata key from an account
-func (l *DefaultController) DeleteAccountMetadata(ctx context.Context, ledger string, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, ledger, parameters)
+func (l *DefaultController) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
@@ -521,12 +521,12 @@ func (l *DefaultController) deleteAccountMetadata(ctx context.Context, store *un
 }
 
 // Import is not implemented yet
-func (l *DefaultController) Import(ctx context.Context, ledger string, stream chan *ledgerpb.Log) error {
+func (l *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
 // Export is not implemented yet
-func (l *DefaultController) Export(ctx context.Context, ledger string, w ExportWriter) error {
+func (l *DefaultController) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
 	return fmt.Errorf("export is not implemented yet")
 }
 
