@@ -25,7 +25,7 @@ type FSM struct {
 	transport Transport
 
 	storeLastAppliedIndex uint64
-	raftLastAppliedIndex  uint64
+	snapshotIndex         uint64
 }
 
 func newFSM(logger logging.Logger, store store.Store, transport Transport) (*FSM, error) {
@@ -223,8 +223,8 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 
 func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error) {
 
-	if fsm.raftLastAppliedIndex > fsm.storeLastAppliedIndex {
-		return nil, fmt.Errorf("last applied index is %d, expected %d, node out of sync", fsm.raftLastAppliedIndex, fsm.storeLastAppliedIndex)
+	if fsm.snapshotIndex > fsm.storeLastAppliedIndex {
+		return nil, fmt.Errorf("last applied index is %d, expected %d, node out of sync", fsm.snapshotIndex, fsm.storeLastAppliedIndex)
 	}
 
 	batch := fsm.store.NewBatch(entries[len(entries)-1].Index)
@@ -246,7 +246,6 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 			return nil, fmt.Errorf("invalid index, got %d, expected %d", entry.Index, fsm.storeLastAppliedIndex+1)
 		}
 		fsm.storeLastAppliedIndex++
-		fsm.raftLastAppliedIndex++
 
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 { // Ignore conf changes
 			continue
@@ -364,7 +363,7 @@ func (fsm *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 }
 
 func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
-	fsm.raftLastAppliedIndex = snapshot.Metadata.Index
+	fsm.snapshotIndex = snapshot.Metadata.Index
 	return proto.Unmarshal(snapshot.Data, fsm.state)
 }
 
@@ -517,13 +516,13 @@ createNewLedgers:
 		return fmt.Errorf("committing batch: %w", err)
 	}
 
-	fsm.storeLastAppliedIndex = fsm.raftLastAppliedIndex
+	fsm.storeLastAppliedIndex = fsm.snapshotIndex
 
 	return nil
 }
 
 func (fsm *FSM) IsStoreUpToDate(ctx context.Context) (bool, error) {
-	return fsm.storeLastAppliedIndex >= fsm.raftLastAppliedIndex, nil
+	return fsm.storeLastAppliedIndex >= fsm.snapshotIndex, nil
 }
 
 type ApplyResult struct {
