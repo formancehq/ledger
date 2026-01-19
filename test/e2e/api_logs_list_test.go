@@ -219,13 +219,12 @@ var _ = Context("Ledger logs list API tests", func() {
 			// every run
 			Expect(response.V2LogsCursorResponse.Cursor.Data[0].ID).To(Equal(big.NewInt(3)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.V2LogTypeSetMetadata))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data).To(Equal(map[string]any{
-				"targetType": "ACCOUNT",
-				"metadata": map[string]any{
-					"clientType": "gold",
-				},
-				"targetId": "foo:baz",
+			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata).NotTo(BeNil())
+			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.TargetType).To(Equal(components.TargetTypeAccount))
+			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.Metadata).To(Equal(map[string]string{
+				"clientType": "gold",
 			}))
+			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.TargetID.Str).To(Equal(pointer.For("foo:baz")))
 
 			Expect(response.V2LogsCursorResponse.Cursor.Data[1].ID).To(Equal(big.NewInt(2)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Type).To(Equal(components.V2LogTypeNewTransaction))
