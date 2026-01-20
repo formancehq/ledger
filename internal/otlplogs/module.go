@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -17,11 +18,7 @@ import (
 )
 
 const (
-	logsProviderOptionKey = `group:"_logsProviderOption"`
-	logsRuntimeOptionKey  = `group:"_logsRuntimeOption"`
-
-	StdoutExporter = "stdout"
-	OTLPExporter   = "otlp"
+	OTLPExporter = "otlp"
 )
 
 type ModuleConfig struct {
@@ -109,6 +106,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 	} else {
 		textFormatter := new(logrus.TextFormatter)
 		textFormatter.FullTimestamp = true
+		textFormatter.TimestampFormat = time.RFC3339Nano
 		formatter = textFormatter
 	}
 

@@ -181,9 +181,8 @@ livenessProbe:
   failureThreshold: 3
 
 readinessProbe:
-  httpGet:
-    path: /health
-    port: http
+  grpc:
+    port: 8888
   initialDelaySeconds: 10
   periodSeconds: 5
   timeoutSeconds: 3

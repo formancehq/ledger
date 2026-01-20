@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // MessageInterceptor allows intercepting messages between nodes
@@ -200,8 +201,10 @@ type raftTransportGateway struct {
 func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[raft.SendMessageRequest, raft.SendMessageResponse]) error {
 	ctx := stream.Context()
 
+	md, _ := metadata.FromIncomingContext(ctx)
+
 	// Create client stream to backend
-	clientStream, err := g.client.StreamMessages(ctx)
+	clientStream, err := g.client.StreamMessages(metadata.NewOutgoingContext(ctx, md))
 	if err != nil {
 		return fmt.Errorf("failed to create client stream: %w", err)
 	}

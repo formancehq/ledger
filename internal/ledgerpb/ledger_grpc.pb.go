@@ -44,7 +44,7 @@ type LedgerServiceClient interface {
 	DeleteLedger(ctx context.Context, in *DeleteLedgerCommand, opts ...grpc.CallOption) (*DeleteLedgerResponse, error)
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error)
-	// GetLedgerByName returns a ledger info by its name
+	// GetLedgerInfo returns a ledger info by its name
 	GetLedgerByName(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*LedgerInfo, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*Log, error)
@@ -201,7 +201,7 @@ type LedgerServiceServer interface {
 	DeleteLedger(context.Context, *DeleteLedgerCommand) (*DeleteLedgerResponse, error)
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error)
-	// GetLedgerByName returns a ledger info by its name
+	// GetLedgerInfo returns a ledger info by its name
 	GetLedgerByName(context.Context, *GetLedgerByNameRequest) (*LedgerInfo, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(context.Context, *CreateTransactionRequest) (*Log, error)

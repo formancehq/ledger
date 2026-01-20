@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 
@@ -21,52 +20,6 @@ func (db *DB) Close() error {
 		return err
 	}
 	return db.DB.Close()
-}
-
-// Metrics contains SQLite database metrics
-type Metrics struct {
-	PageCount     int64 `json:"pageCount"`
-	PageSize      int64 `json:"pageSize"`
-	DatabaseSize  int64 `json:"databaseSize"`
-	FreePages     int64 `json:"freePages"`
-	SchemaVersion int64 `json:"schemaVersion"`
-}
-
-// getMetrics retrieves SQLite database metrics using PRAGMA statements
-func getMetrics(db *DB) *Metrics {
-	ctx := context.Background()
-	metrics := &Metrics{}
-
-	// Get page count
-	var pageCount int64
-	err := db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
-	if err == nil {
-		metrics.PageCount = pageCount
-	}
-
-	// Get page size
-	var pageSize int64
-	err = db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize)
-	if err == nil {
-		metrics.PageSize = pageSize
-		metrics.DatabaseSize = pageCount * pageSize
-	}
-
-	// Get free pages
-	var freePages int64
-	err = db.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freePages)
-	if err == nil {
-		metrics.FreePages = freePages
-	}
-
-	// Get schema version
-	var schemaVersion int64
-	err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&schemaVersion)
-	if err == nil {
-		metrics.SchemaVersion = schemaVersion
-	}
-
-	return metrics
 }
 
 // OpenModernDB opens a SQLite database using the modernc.org/sqlite driver

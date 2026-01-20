@@ -8,14 +8,18 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
-// LogReader handles log reading operations
-//
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
-type LogReader interface {
+type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs in the given ledger
 	// from: optional log ID to start from (0 = from beginning)
 	// to: optional log ID to stop at (0 = until end, inclusive)
 	GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
+}
+
+// LogReader handles log reading operations
+//
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
+type LogReader interface {
+	LogStreamer
 	GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error)
 }
 

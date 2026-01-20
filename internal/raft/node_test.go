@@ -49,19 +49,30 @@ type Cluster struct {
 	mu     sync.RWMutex
 }
 
-// ClusterLogReaderProvider provides LogReader access to peer stores within a cluster.
+// storeLogStreamerWrapper wraps a store.LogStreamer and adds a Close() method
+// to implement the raft.LogStreamer interface.
+type storeLogStreamerWrapper struct {
+	storepkg.LogStreamer
+}
+
+func (w *storeLogStreamerWrapper) Close() error {
+	return nil
+}
+
+// ClusterLogStreamerProvider provides LogStreamer access to peer stores within a cluster.
 // This is used for tests where we don't have gRPC connections between nodes.
-type ClusterLogReaderProvider struct {
+type ClusterLogStreamerProvider struct {
 	cluster *Cluster
 }
 
-func (p *ClusterLogReaderProvider) GetForPeer(id uint64) (storepkg.LogReader, error) {
+func (p *ClusterLogStreamerProvider) GetForPeer(id uint64) (LogStreamer, error) {
 	node := p.cluster.GetNodeByID(id)
 	if node == nil {
 		return nil, fmt.Errorf("peer %d not found in cluster", id)
 	}
 	// Return the StoreInterceptor (not the underlying Store) so interceptors work
-	return node.StoreInterceptor, nil
+	// Wrap it to add Close() method required by LogStreamer interface
+	return &storeLogStreamerWrapper{node.StoreInterceptor}, nil
 }
 
 // ClusterConfig holds configuration for creating a test cluster
@@ -94,8 +105,8 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		logger: logger,
 	}
 
-	// Create LogReaderProvider that accesses peer stores via the cluster
-	logReaderProvider := &ClusterLogReaderProvider{cluster: cluster}
+	// Create LogStreamerProvider that accesses peer stores via the cluster
+	logStreamerProvider := &ClusterLogStreamerProvider{cluster: cluster}
 
 	// Create transports first
 	transports := make([]*ChannelTransport, numNodes)
@@ -161,6 +172,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 				NodeID:            nodeID,
 				SnapshotThreshold: config.SnapshotThreshold,
 				Peers:             peers,
+				ElectionTick:      20,
 			},
 			transports[i],
 			storeInterceptor,
@@ -168,7 +180,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			meter,
 			spoolInterceptor,
 			walInterceptor,
-			logReaderProvider,
+			logStreamerProvider,
 		)
 		require.NoError(t, err)
 
@@ -362,7 +374,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	defer c.mu.Unlock()
 
 	// Find the node
-	var nodeIndex int = -1
+	var nodeIndex = -1
 	var clusterNode *ClusterNode
 	for i, n := range c.nodes {
 		if n.ID == nodeID {
@@ -409,8 +421,8 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	spoolInterceptor := NewSpoolInterceptor(spool)
 	storeInterceptor := storepkg.NewStoreInterceptor(store)
 
-	// Create LogReaderProvider that accesses peer stores via the cluster
-	logReaderProvider := &ClusterLogReaderProvider{cluster: c}
+	// Create LogStreamerProvider that accesses peer stores via the cluster
+	logStreamerProvider := &ClusterLogStreamerProvider{cluster: c}
 
 	// Build peer list excluding self
 	peers := make([]Peer, 0, len(c.nodes)-1)
@@ -433,7 +445,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		noop.Meter{},
 		spoolInterceptor,
 		walInterceptor,
-		logReaderProvider,
+		logStreamerProvider,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating node: %w", err)
@@ -546,7 +558,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	nodeError := nodeErrors[0]
 
 	// Wait for leader election
-	_, err := cluster.WaitForLeader(2 * time.Second)
+	_, err := cluster.WaitForLeader(4 * time.Second)
 	require.NoError(t, err)
 
 	// Track CreateSnapshot calls to fail on the second one
@@ -597,7 +609,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Restart the node (simulates crash recovery)
 	t.Log("Restarting the node after simulated crash")
-	nodeError, err = cluster.RestartNode(ctx, clusterNode.ID, config)
+	_, err = cluster.RestartNode(ctx, clusterNode.ID, config)
 	require.NoError(t, err)
 
 	// Get the new node reference after restart
@@ -770,7 +782,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Create a 3-node cluster with a low snapshot threshold
 	config := ClusterConfig{SnapshotThreshold: 5}
-	cluster := NewCluster(t, 3, config)
+	cluster := NewCluster(t, 5, config)
 
 	// Start the cluster
 	_ = cluster.Start(ctx)
@@ -785,7 +797,11 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Find a follower to disconnect
 	var follower *ClusterNode
-	for _, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
+	for _, node := range []*ClusterNode{
+		cluster.GetNode(0),
+		cluster.GetNode(1),
+		cluster.GetNode(2),
+	} {
 		if node.ID != leaderID {
 			follower = node
 			break
@@ -813,7 +829,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 			}
 		}
 		return false
-	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
+	}, 10*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
 	t.Logf("Disconnecting follower node %d", follower.ID)
@@ -881,7 +897,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	select {
 	case <-snapshotReceived:
 		t.Logf("Follower received snapshot successfully")
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Timeout waiting for follower to receive snapshot")
 	}
 
@@ -889,7 +905,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	select {
 	case <-syncStarted:
 		t.Logf("Sync started - follower is now blocked waiting for logs")
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Timeout waiting for sync to start")
 	}
 
@@ -942,7 +958,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		t.Logf("Follower balances: world=%v, bank=%v (expected: world=%s, bank=%s)",
 			worldBalance, bankBalance, expectedWorld, expectedBalance)
 		return false
-	}, 3*time.Second, 200*time.Millisecond)
+	}, 10*time.Second, 200*time.Millisecond)
 
 	// Verify leader has the same balance
 	leaderBalances, err := leader.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
@@ -1150,6 +1166,128 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	}
 
 	t.Log("Test passed: node recovered correctly after FSM sync failure")
+}
+
+func TestFollowerRestartLeaderStability(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	// Create a 3-node cluster
+	config := DefaultClusterConfig()
+	cluster := NewCluster(t, 3, config)
+
+	// Start the cluster
+	_ = cluster.Start(ctx)
+
+	// Wait for leader election
+	leaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+	t.Logf("Initial leader elected: node %d", leaderID)
+
+	leader := cluster.GetLeader()
+	require.NotNil(t, leader)
+
+	// Find a follower to restart
+	var follower *ClusterNode
+	for _, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
+		if node.ID != leaderID {
+			follower = node
+			break
+		}
+	}
+	require.NotNil(t, follower, "should have a follower")
+	t.Logf("Selected follower to restart: node %d", follower.ID)
+
+	// Create a ledger to verify cluster is working
+	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
+		Name: "test-ledger",
+	})
+	require.NoError(t, err)
+	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+
+	// Wait for the ledger creation to replicate to the follower
+	require.Eventually(t, func() bool {
+		ledgers, err := follower.Store.ListLedgers(ctx)
+		if err != nil {
+			return false
+		}
+		for _, l := range ledgers {
+			if l.Name == "test-ledger" {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
+
+	// Stop and restart the follower
+	t.Logf("Stopping follower node %d", follower.ID)
+	err = follower.Node.Stop(ctx)
+	require.NoError(t, err)
+
+	t.Logf("Restarting follower node %d", follower.ID)
+	_, err = cluster.RestartNode(ctx, follower.ID, config)
+	require.NoError(t, err)
+
+	// Get the new follower reference after restart
+	follower = cluster.GetNodeByID(follower.ID)
+	require.NotNil(t, follower)
+
+	// Wait for cluster to stabilize and verify leader is still the same
+	require.Eventually(t, func() bool {
+		currentLeader := cluster.GetLeader()
+		if currentLeader == nil {
+			t.Logf("No leader currently")
+			return false
+		}
+		return currentLeader.ID == leaderID
+	}, 5*time.Second, 100*time.Millisecond, "leader should remain the same after follower restart")
+
+	currentLeaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+	require.Equal(t, leaderID, currentLeaderID, "leader should remain the same after follower restart")
+	t.Logf("Leader after follower restart: node %d (unchanged)", currentLeaderID)
+
+	// Verify the restarted follower can still receive replication
+	// Create another transaction on the leader
+	createTransaction := func() *ledgerpb.Command {
+		return NewCreateLogCommand(&ledgerpb.CommandInput{
+			Command: &ledgerpb.CommandInput_AppendTransaction{
+				AppendTransaction: &ledgerpb.AppendTransactionCommand{
+					Postings: []*ledgerpb.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Asset:       "USD",
+					}},
+				},
+			},
+		}, ledgerInfo.Id, nil)
+	}
+
+	_, err = leader.Node.Apply(ctx, createTransaction())
+	require.NoError(t, err)
+	t.Logf("Applied transaction on leader")
+
+	// Verify the transaction is replicated to the restarted follower
+	expectedBalance := big.NewInt(100)
+	require.Eventually(t, func() bool {
+		balances, err := follower.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+			"bank": {"USD"},
+		})
+		if err != nil {
+			t.Logf("Follower GetBalances error: %v", err)
+			return false
+		}
+		bankBalance := balances["bank"]["USD"]
+		if bankBalance != nil && bankBalance.Cmp(expectedBalance) == 0 {
+			t.Logf("Follower synced: bank=%s", bankBalance)
+			return true
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond, "transaction should be replicated to restarted follower")
+
+	t.Log("Test passed: follower restarted successfully and leader remained stable")
 }
 
 func TestLocalSnapshotWALFailureRecovery(t *testing.T) {

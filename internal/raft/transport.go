@@ -2,9 +2,8 @@ package raft
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 )
@@ -46,6 +46,7 @@ type DefaultTransport struct {
 	globalMeter   metric.Meter
 	meterProvider metric.MeterProvider
 	config        TransportConfig
+	nodeID        uint64
 }
 
 type TransportConfig struct {
@@ -58,6 +59,7 @@ func NewTransport(
 	logger logging.Logger,
 	connectionPool *transport.ConnectionPool,
 	meterProvider metric.MeterProvider,
+	nodeID uint64,
 	config TransportConfig,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
@@ -95,6 +97,7 @@ func NewTransport(
 		meterProvider: meterProvider,
 		logger:        logger,
 		config:        config,
+		nodeID:        nodeID,
 	}
 }
 
@@ -107,13 +110,9 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 		}
 	}
 
-	if err := t.connectionPool.Close(); err != nil {
-		return err
-	}
-
 	t.unreachableCh.Close()
 
-	return nil
+	return t.connectionPool.Close()
 }
 
 // AddPeer adds a peer to the transport
@@ -169,11 +168,13 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		),
 		closeCh:                make(chan chan struct{}),
 		unreachableCh:          t.unreachableCh,
-		connection:             t.connectionPool.GetConnection(id),
+		connectionPool:         t.connectionPool,
 		logger:                 logger,
 		peerID:                 id,
+		nodeID:                 t.nodeID,
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
+		reconnected:            make(chan struct{}),
 	}
 	t.peers[id] = conn
 
@@ -228,6 +229,23 @@ func (t *DefaultTransport) GetPeerAddress(peerID uint64) string {
 // This maintains a persistent connection to avoid frequent reconnections
 // The server receives all messages and sends a single response at the end
 func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error {
+
+	nodeIDStr := metadata.ValueFromIncomingContext(stream.Context(), "nodeID")
+	if len(nodeIDStr) == 0 {
+		return fmt.Errorf("nodeID metadata not found in context")
+	}
+
+	peerID, err := strconv.ParseUint(nodeIDStr[0], 16, 64)
+	if err != nil {
+		return fmt.Errorf("failed to decode nodeID from metadata: %w", err)
+	}
+
+	t.logger.Infof("Peer %x connected!", peerID)
+	// This is a best effort to notify the send loop than the peer is now reachable
+	select {
+	case t.peers[peerID].reconnected <- struct{}{}:
+	default:
+	}
 
 	// Receive all messages from the stream
 	for {
@@ -306,20 +324,21 @@ type peerConnection struct {
 	sendCh                 Queue[raftpb.Message]
 	closeCh                chan chan struct{}
 	unreachableCh          Queue[uint64]
-	connection             *grpc.ClientConn
+	connectionPool         *transport.ConnectionPool
 	logger                 logging.Logger
 	peerID                 uint64
+	nodeID                 uint64
 	pendingResponseCounter metric.Float64UpDownCounter
 	pingLatency            metric.Int64Histogram
+	reconnected            chan struct{}
+	messageID              uint64
+	buf                    []byte
 }
 
 func (conn *peerConnection) loop() {
 	defer otlplogs.RecoverAndLogPanics(conn.logger)
 
-	messageID := uint64(0)
-	pingInterval := time.NewTicker(time.Second)
-	opts := proto.MarshalOptions{}
-	buf := make([]byte, 0, 1024*1024*10) // todo: make configurable
+	conn.buf = make([]byte, 0, 1024*1024*10) // todo: make configurable
 
 	for {
 		select {
@@ -329,9 +348,12 @@ func (conn *peerConnection) loop() {
 		default:
 		}
 
-		// Create client streaming connection
-		client := NewRaftTransportServiceClient(conn.connection)
-		stream, err := client.StreamMessages(context.Background())
+		conn.logger.Infof("Creating stream to peer %x...", conn.peerID)
+		grpcPeerConnection := conn.connectionPool.GetConnection(conn.peerID)
+		stopped, err := conn.handleConnection(grpcPeerConnection)
+		if stopped {
+			return
+		}
 		if err != nil {
 			conn.logger.
 				WithFields(map[string]any{
@@ -354,146 +376,168 @@ func (conn *peerConnection) loop() {
 					return
 				case <-conn.sendCh.Recv():
 					conn.unreachableCh.Push(conn.peerID)
+				case <-conn.reconnected:
+					// restart connection to prevent staled dns cached ip
+					conn.logger.Infof("Restarting connection to peer %x...", conn.peerID)
+					if err := conn.connectionPool.RestartConnection(conn.peerID); err != nil {
+						conn.logger.Errorf("Failed to restart connection to peer: %v", err)
+					}
+					break drainLoop
 				case <-time.After(time.Until(waitingDelayBeforeReconnect)):
 					break drainLoop
 				}
 			}
 			continue
 		}
-		conn.logger.Infof("Created stream to peer")
+	}
+}
 
-		type ping struct {
-			at    time.Time
-			seqId uint64
+func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
+
+	client := NewRaftTransportServiceClient(grpcPeerConnection)
+	stream, err := client.StreamMessages(
+		metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
+			"nodeID": fmt.Sprintf("%x", conn.nodeID),
+		})),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = stream.CloseSend() }()
+
+	conn.logger.Infof("Created stream to peer")
+	type ping struct {
+		at    time.Time
+		seqId uint64
+	}
+
+	pending := make(map[uint64]uint64)
+	defer func() {
+		for _, peerID := range pending {
+			conn.unreachableCh.Push(peerID)
 		}
-
-		pending := make(map[uint64]uint64)
-		lastPing := atomic.Value{}
-		mu := sync.Mutex{}
-		otlplogs.Go(func() {
-			for {
-				res, err := stream.Recv()
-				if err != nil {
-					return
-				}
-
-				switch msg := res.Message.(type) {
-				case *SendMessageResponse_Pong:
-					lastPing := lastPing.Load().(ping)
-					if msg.Pong.SeqId != lastPing.seqId {
-						conn.logger.
-							WithFields(map[string]any{
-								"expected-seq-id": lastPing.seqId,
-								"received-seq-id": msg.Pong.SeqId,
-							}).
-							Errorf("Received unexpected ping response from peer")
-						continue
-					}
-					conn.pingLatency.Record(context.Background(), time.Since(lastPing.at).Microseconds())
-
-				case *SendMessageResponse_Raft:
-					mu.Lock()
-					nodeID, ok := pending[msg.Raft.RequestId]
-					if ok {
-						delete(pending, msg.Raft.RequestId)
-						conn.pendingResponseCounter.Add(context.Background(), -1)
-					} else {
-						conn.logger.
-							WithFields(map[string]any{
-								"request-id": msg.Raft.RequestId,
-							}).
-							Errorf("Received unexpected response from peer")
-					}
-					mu.Unlock()
-					if !msg.Raft.Success && ok {
-						conn.logger.
-							Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
-						conn.unreachableCh.Push(nodeID)
-					}
-				default:
-					panic(fmt.Sprintf("received unexpected message type: %T", msg))
-				}
-			}
-		}, conn.logger)
-
-	l:
+	}()
+	lastPing := atomic.Value{}
+	mu := sync.Mutex{}
+	otlplogs.Go(func() {
 		for {
-			select {
-			case ch := <-conn.closeCh:
-				close(ch)
+			res, err := stream.Recv()
+			if err != nil {
 				return
-			case <-pingInterval.C:
-				p := ping{
-					at:    time.Now(),
-					seqId: messageID,
-				}
-				lastPing.Store(p)
-				err := stream.Send(&SendMessageRequest{
-					Message: &SendMessageRequest_Ping{
-						Ping: &PingMessage{
-							SeqId: p.seqId,
-						},
-					},
-				})
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						conn.logger.Errorf("Peer connection broken, reconnect")
-						_ = stream.CloseSend()
-						break l
-					}
-					conn.logger.Errorf("Failed to send ping to peer: %v", err)
-				}
-			case msg := <-conn.sendCh.Recv():
-				data, err := opts.MarshalAppend(buf, protoadapt.MessageV2Of(&msg))
-				if err != nil {
+			}
+
+			switch msg := res.Message.(type) {
+			case *SendMessageResponse_Pong:
+				lastPing := lastPing.Load().(ping)
+				if msg.Pong.SeqId != lastPing.seqId {
 					conn.logger.
 						WithFields(map[string]any{
-							"error": err,
+							"expected-seq-id": lastPing.seqId,
+							"received-seq-id": msg.Pong.SeqId,
 						}).
-						Errorf("Failed to marshal message")
+						Errorf("Received unexpected ping response from peer")
 					continue
 				}
+				conn.pingLatency.Record(context.Background(), time.Since(lastPing.at).Microseconds())
 
-				conn.logger.
-					WithFields(map[string]any{
-						"type": msg.Type.String(),
-					}).
-					Debugf("Sending message to peer via stream")
-
+			case *SendMessageResponse_Raft:
 				mu.Lock()
-				currentMessageID := messageID
-				messageID++
-				pending[currentMessageID] = msg.To
-				mu.Unlock()
-
-				conn.pendingResponseCounter.Add(context.Background(), 1)
-
-				if err := stream.Send(&SendMessageRequest{
-					Message: &SendMessageRequest_Raft{
-						Raft: &RaftRequestMessage{
-							Message: data,
-							Id:      currentMessageID,
-						},
-					},
-				}); err != nil {
+				nodeID, ok := pending[msg.Raft.RequestId]
+				if ok {
+					delete(pending, msg.Raft.RequestId)
+					conn.pendingResponseCounter.Add(context.Background(), -1)
+				} else {
 					conn.logger.
 						WithFields(map[string]any{
-							"error": err,
+							"request-id": msg.Raft.RequestId,
 						}).
-						Errorf("Failed to send message via stream")
-					mu.Lock()
-					delete(pending, currentMessageID)
-					mu.Unlock()
-					// Report peer as unreachable
-					if !conn.unreachableCh.Push(msg.To) {
-						conn.logger.Errorf("Unreachable channel full, dropping unreachable")
-					}
-					break l
+						Errorf("Received unexpected response from peer")
 				}
+				mu.Unlock()
+				if !msg.Raft.Success && ok {
+					conn.logger.
+						Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
+					conn.unreachableCh.Push(nodeID)
+				}
+			default:
+				panic(fmt.Sprintf("received unexpected message type: %T", msg))
 			}
 		}
+	}, conn.logger)
 
-		_ = stream.CloseSend()
+	pingInterval := time.NewTicker(time.Second)
+	opts := proto.MarshalOptions{}
+
+	for {
+		select {
+		case ch := <-conn.closeCh:
+			close(ch)
+			return true, nil
+		case <-pingInterval.C:
+			p := ping{
+				at:    time.Now(),
+				seqId: conn.messageID,
+			}
+			lastPing.Store(p)
+			err := stream.Send(&SendMessageRequest{
+				Message: &SendMessageRequest_Ping{
+					Ping: &PingMessage{
+						SeqId: p.seqId,
+					},
+				},
+			})
+			if err != nil {
+				conn.logger.Errorf("Failed to send ping to peer: %v", err)
+				return false, err
+			}
+		case msg := <-conn.sendCh.Recv():
+			data, err := opts.MarshalAppend(conn.buf, protoadapt.MessageV2Of(&msg))
+			if err != nil {
+				conn.logger.
+					WithFields(map[string]any{
+						"error": err,
+					}).
+					Errorf("Failed to marshal message")
+				continue
+			}
+
+			conn.logger.
+				WithFields(map[string]any{
+					"type": msg.Type.String(),
+				}).
+				Debugf("Sending message to peer via stream")
+
+			mu.Lock()
+			currentMessageID := conn.messageID
+			conn.messageID++
+			pending[currentMessageID] = msg.To
+			mu.Unlock()
+
+			conn.pendingResponseCounter.Add(context.Background(), 1)
+
+			if err := stream.Send(&SendMessageRequest{
+				Message: &SendMessageRequest_Raft{
+					Raft: &RaftRequestMessage{
+						Message: data,
+						Id:      currentMessageID,
+					},
+				},
+			}); err != nil {
+				conn.logger.
+					WithFields(map[string]any{
+						"error": err,
+					}).
+					Errorf("Failed to send message via stream")
+				mu.Lock()
+				delete(pending, currentMessageID)
+				mu.Unlock()
+				// Report peer as unreachable
+				if !conn.unreachableCh.Push(msg.To) {
+					conn.logger.Errorf("Unreachable channel full, dropping unreachable")
+				}
+				return false, err
+			}
+		}
 	}
 }
 

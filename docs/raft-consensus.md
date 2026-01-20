@@ -406,3 +406,4 @@ To deepen your understanding:
 1. [Ledgers](./buckets-ledgers.md) - How ledgers are managed
 2. [Storage and Persistence](./storage.md) - Raft storage implementation
 3. [Data Flows](./data-flows.md) - Detailed Raft operation flows
+4. [gRPC Connections](./grpc-connections.md) - Transport layer, reconnection strategies, and rolling deployment optimizations

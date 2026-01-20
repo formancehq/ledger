@@ -17,6 +17,45 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockLogStreamer is a mock of LogStreamer interface.
+type MockLogStreamer struct {
+	ctrl     *gomock.Controller
+	recorder *MockLogStreamerMockRecorder
+	isgomock struct{}
+}
+
+// MockLogStreamerMockRecorder is the mock recorder for MockLogStreamer.
+type MockLogStreamerMockRecorder struct {
+	mock *MockLogStreamer
+}
+
+// NewMockLogStreamer creates a new mock instance.
+func NewMockLogStreamer(ctrl *gomock.Controller) *MockLogStreamer {
+	mock := &MockLogStreamer{ctrl: ctrl}
+	mock.recorder = &MockLogStreamerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
+	return m.recorder
+}
+
+// GetAllLogs mocks base method.
+func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
+	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllLogs indicates an expected call of GetAllLogs.
+func (mr *MockLogStreamerMockRecorder) GetAllLogs(ctx, ledger, from, to any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogStreamer)(nil).GetAllLogs), ctx, ledger, from, to)
+}
+
 // MockLogReader is a mock of LogReader interface.
 type MockLogReader struct {
 	ctrl     *gomock.Controller

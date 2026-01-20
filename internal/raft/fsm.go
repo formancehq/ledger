@@ -233,7 +233,6 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 	cmd := &ledgerpb.Command{}
 
 	ret := make([]ApplyResult, 0, len(entries))
-	logs := make([]*ledgerpb.Log, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Index <= fsm.storeLastAppliedIndex {
 			ret = append(ret, ApplyResult{})
@@ -286,7 +285,6 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 				Result:    log,
 				CommandID: cmd.Id,
 			})
-			logs = append(logs, log)
 
 			if err := fsm.projectLog(ctx, batch, log); err != nil {
 				return nil, fmt.Errorf("projecting log %d: %w", log.Id, err)
@@ -425,7 +423,7 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb
 	return nil
 }
 
-func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logReader store.LogReader) (uint64, error) {
+func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStreamer) (uint64, error) {
 
 	ledgers, err := fsm.store.ListLedgers(ctx)
 	if err != nil {
@@ -474,7 +472,7 @@ createNewLedgers:
 				"lastLogID":    lastLogID,
 				"newNextLogId": ledgerState.NextLogId,
 			}).Infof("Syncing logs from leader")
-			logStream, err := logReader.GetAllLogs(ctx, ledgerID, lastLogID, ledgerState.NextLogId - 1)
+			logStream, err := logStreamer.GetAllLogs(ctx, ledgerID, lastLogID, ledgerState.NextLogId-1)
 			if err != nil {
 				return 0, fmt.Errorf("streaming logs from peer: %w", err)
 			}

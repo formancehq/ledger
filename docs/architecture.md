@@ -333,3 +333,4 @@ To deepen your understanding:
 2. [Ledgers](./buckets-ledgers.md) - Data organization
 3. [API and Interfaces](./api.md) - API documentation
 4. [Storage and Persistence](./storage.md) - Storage management
+5. [gRPC Connections](./grpc-connections.md) - Inter-node communication and reconnection strategies

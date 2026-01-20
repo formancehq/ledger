@@ -57,7 +57,7 @@ var _ = Describe("Ledger", func() {
 				Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 			})
 
-			server := testservice.New(cmdserver.NewRootCommand,
+			server := testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(debug),
 					testservice.OutputInstrumentation(GinkgoWriter),

@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: eb7ab2834873815b5d52d30f13e3cf17
+  docChecksum: 57d425bc70ad1408d3811f898701f871
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.12.13
-  configChecksum: 22efa55f930cda3d2876f80528078d6c
+  releaseVersion: 0.12.16
+  configChecksum: 7c81036823985deca925bea7a6f1debd
 features:
   go:
     additionalDependencies: 0.1.0
@@ -239,7 +239,7 @@ examples:
     speakeasy-default-get-cluster-state:
       responses:
         "200":
-          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"ledgers": {"key": {"ledgerInfo": {"name": "<value>", "createdAt": "2025-04-30T23:04:24.464Z"}, "nextLogId": 880008, "nextTransactionId": 682127, "lastAppliedLogId": 921575}}}}}
+          application/json: {"data": {"state": "Candidate", "localNode": 443395, "innerState": {"ledgers": {"key": {"ledgerInfo": {"name": "<value>", "createdAt": "2025-04-30T23:04:24.464Z"}, "nextLogId": 880008, "nextTransactionId": 682127}}}}}
         "405":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

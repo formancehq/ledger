@@ -82,6 +82,44 @@ func (c *MockSpoolAppendCommittedEntriesCall) DoAndReturn(f func(context.Context
 	return c
 }
 
+// Close mocks base method.
+func (m *MockSpool) Close() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockSpoolMockRecorder) Close() *MockSpoolCloseCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockSpool)(nil).Close))
+	return &MockSpoolCloseCall{Call: call}
+}
+
+// MockSpoolCloseCall wrap *gomock.Call
+type MockSpoolCloseCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSpoolCloseCall) Return(arg0 error) *MockSpoolCloseCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSpoolCloseCall) Do(f func() error) *MockSpoolCloseCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSpoolCloseCall) DoAndReturn(f func() error) *MockSpoolCloseCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // End mocks base method.
 func (m *MockSpool) End() (*Position, error) {
 	m.ctrl.T.Helper()

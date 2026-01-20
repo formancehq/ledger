@@ -508,7 +508,7 @@ func (s *Store) CreateSnapshot(ctx context.Context) error {
 		_ = f.Close()
 	}()
 
-	if _, err := f.WriteString(fmt.Sprintf("%d", s.currentCheckPoint+1)); err != nil {
+	if _, err := fmt.Fprintf(f, "%d", s.currentCheckPoint+1); err != nil {
 		return fmt.Errorf("writing checkpoint file: %w", err)
 	}
 

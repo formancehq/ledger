@@ -70,7 +70,7 @@ const (
 
 func NewDefaultSpool(cfg DefaultSpoolConfig) (*DefaultSpool, error) {
 	if cfg.Dir == "" {
-		return nil, fmt.Errorf("Dir required")
+		return nil, fmt.Errorf("dir required")
 	}
 	if cfg.SegmentMaxBytes <= 0 {
 		cfg.SegmentMaxBytes = 256 << 20

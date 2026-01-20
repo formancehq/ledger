@@ -24,13 +24,28 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	health "google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
 		fx.Provide(
-			raft.NewTransport,
+			func(
+				cfg Config,
+				logger logging.Logger,
+				connectionPool *transport.ConnectionPool,
+				meterProvider metric.MeterProvider,
+			) *raft.DefaultTransport {
+				return raft.NewTransport(
+					logger,
+					connectionPool,
+					meterProvider,
+					cfg.RaftConfig.NodeID,
+					cfg.TransportConfig,
+				)
+			},
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Store, error) {
 				switch cfg.StorageType {
 				case "pebble":
@@ -55,20 +70,20 @@ func Module() fx.Option {
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
 				})
 			},
-			func(transport *raft.DefaultTransport) raft.LogReaderProvider {
-				return raft.GRPCLogReaderProvider(transport)
+			func(transport *raft.DefaultTransport) raft.LogStreamerProvider {
+				return raft.GRPCLogStreamerProvider(transport)
 			},
 			func(
 				params struct {
 					fx.In
-					Config        raft.NodeConfig
-					Logger        logging.Logger
-					Transport     *raft.DefaultTransport
-					MeterProvider metric.MeterProvider
-					Store         store.Store
-					WAL           *wal.WAL
-					Spool         *raft.DefaultSpool
-					LogReaderProvider raft.LogReaderProvider
+					Config            raft.NodeConfig
+					Logger            logging.Logger
+					Transport         *raft.DefaultTransport
+					MeterProvider     metric.MeterProvider
+					Store             store.Store
+					WAL               *wal.WAL
+					Spool             *raft.DefaultSpool
+					LogReaderProvider raft.LogStreamerProvider
 				},
 			) (*raft.Node, error) {
 				return raft.NewNode(
@@ -139,7 +154,10 @@ func Module() fx.Option {
 				})
 			},
 			func(grpcServer *grpcserver.Server, transport *raft.DefaultTransport) error {
+				hs := health.NewServer()
+				healthpb.RegisterHealthServer(grpcServer.GetServer(), hs)
 				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
+				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
 			func(grpcServer *grpcserver.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) error {
@@ -156,12 +174,20 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting GRPC server")
+						listening := make(chan struct{})
 						otlplogs.Go(func() {
-							if err := grpcServer.Start(); err != nil {
+							if err := grpcServer.Start(listening); err != nil {
 								panic(err)
 							}
 						}, logger)
 
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-listening:
+						}
+
+						logger.Infof("GRPC server started successfully")
 						for _, peerEntry := range cfg.Peers {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
 							logger.Debugf("Adding peer to transport")

@@ -38,7 +38,7 @@ func (s *Server) GetServer() *grpc.Server {
 	return s.server
 }
 
-func (s *Server) Start() error {
+func (s *Server) Start(listening chan struct{}) error {
 	lis, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
@@ -48,6 +48,8 @@ func (s *Server) Start() error {
 	s.logger.
 		WithFields(map[string]any{"addr": lis.Addr().String()}).
 		Infof("Starting gRPC server")
+
+	close(listening)
 
 	if err := s.server.Serve(lis); err != nil {
 		return fmt.Errorf("gRPC server failed: %w", err)

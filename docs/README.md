@@ -61,6 +61,9 @@ Application metrics reference: Raft, transport, storage, and alerting recommenda
 ### 📝 [Spool](./spool.md)
 Technical documentation for the Spool component (committed entry buffer).
 
+### 🔗 [gRPC Connections](./grpc-connections.md)
+gRPC connection mechanics, reconnection strategies, and optimizations for rolling deployments.
+
 ## Key Concepts
 
 ### Ledgers

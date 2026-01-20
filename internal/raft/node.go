@@ -25,6 +25,10 @@ const (
 	statusOutOfSync
 )
 
+type LogStreamer interface {
+	store.LogStreamer
+}
+
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
 type WAL interface {
 	raft.Storage
@@ -35,43 +39,44 @@ type WAL interface {
 	Close() error
 }
 
-type LogReaderProvider interface {
-	GetForPeer(id uint64) (store.LogReader, error)
-}
-type LogReaderProviderFunc func(id uint64) (store.LogReader, error)
-
-func (f LogReaderProviderFunc) GetForPeer(id uint64) (store.LogReader, error) {
-	return f(id)
+type LogStreamerProvider interface {
+	GetForPeer(id uint64) (LogStreamer, error)
 }
 
-func GRPCLogReaderProvider(transport *DefaultTransport) LogReaderProviderFunc {
-	return func(id uint64) (store.LogReader, error) {
-		conn := transport.GetPeerConnection(id)
-		if conn == nil {
-			return nil, fmt.Errorf("no connection for peer %x", id)
-		}
-		return service.NewLedgerGrpcClient(
-			ledgerpb.NewLedgerServiceClient(conn),
-		), nil
+type grpcLogStreamerProvider struct {
+	transport *DefaultTransport
+}
+
+func (p *grpcLogStreamerProvider) GetForPeer(id uint64) (LogStreamer, error) {
+	conn := p.transport.GetPeerConnection(id)
+
+	return service.NewLedgerGrpcClient(
+		ledgerpb.NewLedgerServiceClient(conn),
+	), nil
+}
+
+func GRPCLogStreamerProvider(transport *DefaultTransport) *grpcLogStreamerProvider {
+	return &grpcLogStreamerProvider{
+		transport: transport,
 	}
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
-	rawNode           *raft.RawNode
-	logger            logging.Logger
-	fsm               *FSM
-	wal               WAL
-	transport         Transport
-	config            NodeConfig
-	stopped           chan struct{}
-	ctx               context.Context
-	cancel            func()
-	proposeCh         Queue[proposal]
-	confState         *raftpb.ConfState
-	futures           SyncMap[uint64, *future]
-	lastSoftState     *raft.SoftState
-	logReaderProvider LogReaderProvider
+	rawNode             *raft.RawNode
+	logger              logging.Logger
+	fsm                 *FSM
+	wal                 WAL
+	transport           Transport
+	config              NodeConfig
+	stopped             chan struct{}
+	ctx                 context.Context
+	cancel              func()
+	proposeCh           Queue[proposal]
+	confState           *raftpb.ConfState
+	futures             SyncMap[uint64, *future]
+	lastSoftState       *raft.SoftState
+	logStreamerProvider LogStreamerProvider
 
 	meter                          metric.Meter
 	applyEntriesHistogram          metric.Int64Histogram
@@ -101,7 +106,7 @@ func NewNode(
 	meter metric.Meter,
 	spool Spool,
 	wal WAL,
-	logReaderProvider LogReaderProvider,
+	logStreamerProvider LogStreamerProvider,
 ) (*Node, error) {
 
 	// Set defaults if not configured
@@ -185,15 +190,15 @@ func NewNode(
 			WithLogger[proposal](logger),
 			WithMeter[proposal](meter),
 		),
-		store:             store,
-		fsm:               fsm,
-		spool:             spool,
-		snapshotThreshold: cfg.SnapshotThreshold,
-		compactionMargin:  cfg.CompactionMargin,
-		status:            &initialStatus,
-		taskExecutor:      newSingleTaskExecutor(logger),
-		confState:         &initialConfState,
-		logReaderProvider: logReaderProvider,
+		store:               store,
+		fsm:                 fsm,
+		spool:               spool,
+		snapshotThreshold:   cfg.SnapshotThreshold,
+		compactionMargin:    cfg.CompactionMargin,
+		status:              &initialStatus,
+		taskExecutor:        newSingleTaskExecutor(logger),
+		confState:           &initialConfState,
+		logStreamerProvider: logStreamerProvider,
 	}
 
 	node.defaultLedger = service.NewDefaultController(node, store, logger)
@@ -344,7 +349,6 @@ func (node *Node) Start(ctx context.Context) error {
 			close(node.stopped)
 			return nil
 		case nodeID := <-node.transport.Unreachable():
-			node.logger.Errorf("Node %x is unreachable", nodeID)
 			node.rawNode.ReportUnreachable(nodeID)
 		case msg := <-node.transport.Recv():
 			if err := node.rawNode.Step(msg); err != nil {
@@ -792,11 +796,11 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 	node.status.Store(statusSyncing)
 
 	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		logReader, err := node.logReaderProvider.GetForPeer(leader)
+		logStreamer, err := node.logStreamerProvider.GetForPeer(leader)
 		if err != nil {
 			return 0, fmt.Errorf("getting log reader for leader %d: %w", leader, err)
 		}
-		return node.fsm.SynchronizeWithLeader(ctx, logReader)
+		return node.fsm.SynchronizeWithLeader(ctx, logStreamer)
 	})
 
 	return nil
