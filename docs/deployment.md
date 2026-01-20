@@ -18,13 +18,31 @@ This document describes the different deployment methods for Ledger v3 POC, from
 just run
 
 # or manually
-go run ./cmd/server \
+go run . run \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
   --wal-dir ./wal/node-1 \
   --data-dir ./data/node-1 \
   --http-port 9000
 ```
+
+### Command Structure
+
+The CLI uses a subcommand structure:
+
+```bash
+ledger-v3-poc run [flags]
+```
+
+Available flags for `run`:
+- `--node-id`: Numeric node ID for this instance (must be non-zero)
+- `--bind-addr`: Address to bind to for gRPC (default: `0.0.0.0:8888`)
+- `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
+- `--wal-dir`: WAL directory for Raft (default: `./wal`)
+- `--data-dir`: Data directory for application storage (default: `./data`)
+- `--peers`: Initial peer list (format: `<id>/<address>`, e.g., `1/node-1:8888,2/node-2:8888`)
+- `--http-port`: HTTP server port (default: `9000`)
+- `--storage-type`: Storage type (`sqlite-mattn`, `sqlite-modern`, `pebble`)
 
 ### Configuration
 
@@ -39,7 +57,7 @@ export BIND_ADDR=127.0.0.1:8888
 export DATA_DIR=./data/node-1
 export HTTP_PORT=9000
 
-go run ./cmd/server
+go run . run
 ```
 
 ## Kubernetes Deployment with Helm

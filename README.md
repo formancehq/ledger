@@ -96,7 +96,7 @@ After setup, `direnv` will automatically load the Nix development environment wh
 just run
 
 # Or manually with specific storage driver
-go run ./cmd/server \
+go run . run \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
   --data-dir ./data/node-1 \
@@ -110,13 +110,13 @@ Choose your storage backend based on your needs:
 
 ```bash
 # SQLite with CGO (best performance, requires C compiler)
-./ledger serve --storage-type sqlite-mattn
+./ledger-v3-poc run --storage-type sqlite-mattn
 
 # SQLite pure Go (no CGO, works with scratch Docker images)
-./ledger serve --storage-type sqlite-modern
+./ledger-v3-poc run --storage-type sqlite-modern
 
 # Pebble (high-throughput LSM-tree, no CGO)
-./ledger serve --storage-type pebble
+./ledger-v3-poc run --storage-type pebble
 ```
 
 ### Development Environment with Pulumi

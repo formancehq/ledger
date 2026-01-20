@@ -22,7 +22,7 @@ build-client:
 
 # Run the application locally (single node)
 run:
-    GOEXPERIMENT=jsonv2 go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
+    GOEXPERIMENT=jsonv2 go run . run --node-id 1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
 
 # Run the client application
 run-client:

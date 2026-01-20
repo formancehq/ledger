@@ -163,7 +163,7 @@ spec:
           OTEL_RESOURCE_ATTRIBUTES="service.node_id=$NODE_ID"
           
           # Execute the application
-          exec ./ledger-v3-poc \
+          exec ./ledger-v3-poc run \
             --node-id $NODE_ID \
             --advertise-addr "$ADVERTISE_ADDR" \
             {{- if .Values.config.storageType }}
