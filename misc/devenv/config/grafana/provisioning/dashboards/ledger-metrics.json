@@ -128,6 +128,7 @@
         }
       ],
       "title": "Transactions per Second",
+      "description": "Number of log entries (transactions) applied per second per node. This metric represents the actual throughput of the system - how many transactions are being committed to the ledger.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check Pebble write stalls)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#raft-consensus-metrics",
       "type": "timeseries"
     },
     {
@@ -135,7 +136,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "RTT latency ",
+      "description": "Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.\n\nHigh latency (>10ms) may cause:\n- Slower consensus\n- Leadership instability\n- Increased transaction latency\n\nCheck network configuration if latency is consistently high.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -325,6 +326,7 @@
         }
       ],
       "title": "HTTP requests count",
+      "description": "HTTP request rate per node, grouped by status code. Shows API traffic and error rates.\n\nMonitor for:\n- 2xx: Successful requests\n- 4xx: Client errors (bad requests, not found)\n- 5xx: Server errors (investigate immediately)\n\nSudden spikes in 5xx errors may indicate system issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#http-server-metrics",
       "type": "timeseries"
     },
     {
@@ -438,6 +440,7 @@
         }
       ],
       "title": "Memory utilization",
+      "description": "System memory utilization ratio (0-1) showing used vs free memory.\n\nHigh memory utilization (>0.9) may cause:\n- OOM kills by Kubernetes\n- Performance degradation due to swapping\n- Increased GC pressure\n\nConsider increasing memory limits or scaling horizontally.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#system-metrics",
       "type": "timeseries"
     },
     {
@@ -445,7 +448,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Time passed using the CPU(s)",
+      "description": "CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.\n\nValues close to 1.0 indicate CPU saturation. Consider:\n- Profiling to identify hot paths\n- Increasing CPU limits\n- Scaling horizontally\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -682,6 +685,7 @@
         }
       ],
       "title": "System network traffic",
+      "description": "Network I/O throughput showing bytes received and transmitted per second.\n\nHigh network traffic is expected during:\n- Log replication (leader to followers)\n- Snapshot transfers\n- Client request processing\n\nSudden drops may indicate network partitions.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
       "type": "timeseries"
     },
     {
@@ -784,6 +788,7 @@
         }
       ],
       "title": "System memory usage",
+      "description": "Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).\n\nProvides visibility into how memory is allocated at the OS level. Useful for capacity planning and troubleshooting memory pressure.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
       "type": "timeseries"
     },
     {
@@ -884,6 +889,7 @@
         }
       ],
       "title": "Go memory allocated",
+      "description": "Rate of memory allocation by the Go runtime (bytes per second). High allocation rates cause increased GC pressure.\n\nConsistently high allocation rates may indicate:\n- Inefficient code paths creating many short-lived objects\n- Need for object pooling\n- Memory leaks if trend is upward\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "type": "timeseries"
     },
     {
@@ -998,6 +1004,7 @@
         }
       ],
       "title": "Leadership status",
+      "description": "Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.\n\nLeader ID 0 means no leader is known (cluster is electing). Monitor for:\n- Frequent leader changes (leadership instability)\n- Split-brain scenarios (different nodes reporting different leaders)\n- Extended periods with no leader\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -1097,6 +1104,7 @@
         }
       ],
       "title": "Goroutine count",
+      "description": "Number of active goroutines in the Go runtime. A steadily increasing count may indicate goroutine leaks.\n\nNormal operation should show a stable count with occasional spikes during high load. Investigate if:\n- Count grows unbounded over time\n- Count is significantly higher than expected\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "type": "timeseries"
     },
     {
@@ -1199,6 +1207,7 @@
         }
       ],
       "title": "Go memory used",
+      "description": "Memory currently in use by the Go runtime, broken down by type (stack, heap).\n\nStack: Memory used by goroutine stacks\nHeap: Memory used by heap-allocated objects\n\nHigh heap usage may trigger more frequent GC cycles.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "type": "timeseries"
     },
     {
@@ -1300,6 +1309,7 @@
         }
       ],
       "title": "Go memory allocations",
+      "description": "Rate of memory allocations (objects per second) by the Go runtime.\n\nHigh allocation rates increase GC overhead. Combined with 'Go memory allocated', this helps identify whether you're allocating many small objects or fewer large objects.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "type": "timeseries"
     },
     {
@@ -1409,6 +1419,7 @@
         }
       ],
       "title": "Reception channel incoming messages",
+      "description": "Rate of Raft messages received from other nodes, grouped by message type.\n\nMessage types include:\n- MsgApp: Log replication (AppendEntries)\n- MsgAppResp: Response to AppendEntries\n- MsgHeartbeat/MsgHeartbeatResp: Leader heartbeats\n- MsgVote/MsgVoteResp: Leader election votes\n\nHigh rates indicate active replication. Zero rates may indicate network issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
       "type": "timeseries"
     },
     {
@@ -1510,6 +1521,7 @@
         }
       ],
       "title": "Go GC goal",
+      "description": "Target heap size for the next GC cycle, set by the Go runtime's pacer.\n\nThe GC goal grows as your application uses more memory. If it grows unbounded, you may have a memory leak. The GOGC environment variable controls how aggressively the GC runs.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "type": "timeseries"
     },
     {
@@ -1586,7 +1598,8 @@
           "refId": "A"
         }
       ],
-      "title": "Reception channel load ( (AppResp,Vote,VoteResp, PreVote, PreVote))",
+      "title": "Reception channel load (High Priority: AppResp, Vote, VoteResp, PreVote)",
+      "description": "Heatmap showing queue depth distribution for high-priority received messages (priority 1).\n\nHigh-priority messages include:\n- AppendEntries responses (AppResp)\n- Vote requests/responses (Vote, VoteResp)\n- Pre-vote requests (PreVote, PreVoteResp)\n\nConsistently high queue depth indicates the node cannot process messages fast enough. This may delay leader election or log replication acknowledgments.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
       "transformations": [
         {
           "disabled": true,
@@ -1788,7 +1801,8 @@
           "refId": "A"
         }
       ],
-      "title": "Reception channel load (App)",
+      "title": "Reception channel load (Lower Priority: App)",
+      "description": "Heatmap showing queue depth distribution for lower-priority received messages (priority 2).\n\nLower-priority messages include AppendEntries requests (App) which carry log entries for replication.\n\nHigh queue depth on followers is normal during heavy write load. On the leader, it should be minimal.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
       "transformations": [
         {
           "disabled": true,
@@ -1979,6 +1993,7 @@
         }
       ],
       "title": "Reception channel full count",
+      "description": "Total number of times the reception channel was full and messages were dropped.\n\nALERT: Any non-zero value requires investigation!\n\nDropped messages cause:\n- Delayed log replication\n- Slower consensus\n- Potential leader election timeouts\n\nIncrease queue capacity or investigate why processing is slow.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
       "type": "gauge"
     },
     {
@@ -2088,6 +2103,7 @@
         }
       ],
       "title": "Transport Unreachable Channel - Incoming Messages",
+      "description": "Rate of 'unreachable' notifications received. These indicate that a peer node could not be reached.\n\nHigh rates suggest:\n- Network connectivity issues\n- Peer node is down or overloaded\n- DNS resolution problems\n\nCorrelate with ping latency and leadership status.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
       "type": "timeseries"
     },
     {
@@ -2155,6 +2171,7 @@
         }
       ],
       "title": "Unreachable channel full count",
+      "description": "Total number of times the unreachable notification channel was full.\n\nNon-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
       "type": "gauge"
     },
     {
@@ -2279,6 +2296,7 @@
         }
       ],
       "title": "Pending responses",
+      "description": "Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.\n\nHigh values indicate:\n- Slow peer nodes\n- Network congestion\n- Processing bottlenecks on remote nodes\n\nPersistently high values for a specific peer may indicate that peer is struggling.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
       "type": "timeseries"
     },
     {
@@ -2379,6 +2397,7 @@
         }
       ],
       "title": "Snapshot creation",
+      "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
       "type": "timeseries"
     },
     {
@@ -2489,6 +2508,7 @@
         }
       ],
       "title": "Propose queue incoming messages",
+      "description": "Rate of proposals (transactions) entering and leaving the propose queue.\n\nIncoming: Transactions submitted by clients\nOutgoing: Transactions processed by Raft\n\nIf incoming >> outgoing, the queue is building up (backpressure). Check:\n- Leadership status (only leader processes proposals)\n- Apply entries latency\n- Storage write stalls\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
       "type": "timeseries"
     },
     {
@@ -2566,6 +2586,7 @@
         }
       ],
       "title": "Propose channel load",
+      "description": "Heatmap showing propose queue depth distribution over time.\n\nThe propose queue buffers transactions before they enter Raft consensus. Queue depth indicates backpressure:\n- Low values: System keeping up with load\n- High values: Transactions waiting to be processed\n\nPersistently high queue depth may require:\n- Increasing throughput capacity\n- Reducing client request rate\n- Investigating bottlenecks\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
       "transformations": [
         {
           "disabled": true,
@@ -2787,6 +2808,7 @@
         }
       ],
       "title": "Propose queue full count",
+      "description": "Total number of times the propose queue was full and proposals were dropped.\n\nCRITICAL ALERT: Any non-zero value means transactions are being rejected!\n\nClients will receive errors when this happens. Immediate action required:\n- Scale horizontally\n- Increase queue capacity\n- Reduce client load\n- Investigate processing bottlenecks\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
       "type": "timeseries"
     },
     {
@@ -2888,6 +2910,7 @@
         }
       ],
       "title": "Send channel incoming messages",
+      "description": "Rate of Raft messages being queued for sending to each peer, grouped by message type.\n\nShows outbound message flow to other cluster members:\n- MsgApp: Log replication to followers (leader only)\n- MsgHeartbeat: Heartbeats to maintain leadership\n- MsgVote: Vote requests during elections\n\nHigh rates on the leader indicate active replication.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
       "type": "timeseries"
     },
     {
@@ -2993,6 +3016,7 @@
         }
       ],
       "title": "Send channel full count",
+      "description": "Rate of times the per-peer send channel was full and messages were dropped.\n\nALERT: Non-zero rates indicate messages to peers are being dropped!\n\nThis causes:\n- Delayed replication to affected peer\n- Potential follower lag\n- Need for snapshot transfer if too far behind\n\nInvestigate network connectivity to the affected peer.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
       "type": "timeseries"
     },
     {
@@ -3069,7 +3093,8 @@
           "refId": "A"
         }
       ],
-      "title": "Send channel load (AppResp,Vote,VoteResp, PreVote, PreVote)",
+      "title": "Send channel load (High Priority: AppResp, Vote, VoteResp, PreVote)",
+      "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 1).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
       "transformations": [
         {
           "disabled": true,
@@ -3271,7 +3296,8 @@
           "refId": "A"
         }
       ],
-      "title": "Send channel load (App)",
+      "title": "Send channel load (Lower Priority: App)",
+      "description": "Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).\n\nLower-priority outbound messages are AppendEntries requests carrying log entries for replication.\n\nHigh queue depth indicates the leader is producing entries faster than they can be sent to followers. This may be due to:\n- Network bandwidth limitations\n- Slow followers\n- High write throughput\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
       "transformations": [
         {
           "disabled": true,
@@ -3505,6 +3531,7 @@
         }
       ],
       "title": "Process ready entry time passed",
+      "description": "Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -3601,6 +3628,7 @@
         }
       ],
       "title": "Applying entries time passed",
+      "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -3696,6 +3724,7 @@
         }
       ],
       "title": "Append entries time passed",
+      "description": "Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -3822,6 +3851,7 @@
         }
       ],
       "title": "Batch size distribution",
+      "description": "Distribution of batch sizes when applying entries (P75, P95, P99 percentiles).\n\nLarger batches are more efficient:\n- Batch size 1: Each entry applied individually (less efficient)\n- Batch size >1: Multiple entries applied together (better throughput)\n\nHigher percentiles indicate the system is effectively batching under load, which improves throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -3941,6 +3971,7 @@
         }
       ],
       "title": "Applying entries percentiles",
+      "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -4036,6 +4067,7 @@
         }
       ],
       "title": "Applying entries rate",
+      "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate × average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "type": "timeseries"
     },
     {
@@ -4218,6 +4250,7 @@
             }
           ],
           "title": "Log store SQL time passed",
+          "description": "Time spent on SQLite operations for the log store (WAL), broken down by operation type.\n\nOperation types:\n- BeginTX: Start transaction\n- Conn Exec: Execute statement on connection\n- Prepare: Prepare statement\n- Query: Execute query\n- Rows: Process result rows\n- Statement Exec: Execute prepared statement\n- CommitTX: Commit transaction\n\nHigh values indicate SQLite bottleneck. Consider using faster storage.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#sqlite-metrics",
           "type": "timeseries"
         }
       ],
@@ -4242,7 +4275,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Flush operations per second.",
+      "description": "Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).\n\nFlushes are triggered when:\n- Memtable reaches capacity\n- Manual flush requested\n- Write stall prevention\n\nHigh flush rates indicate heavy write activity. Monitor flush duration for performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4337,7 +4370,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Flush duration p50/p95/p99 in milliseconds if histogram buckets exist; otherwise unhide mean.",
+      "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4455,7 +4488,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Bytes flushed per second (histogram sum).",
+      "description": "Rate of bytes flushed from memtables to SSTables per second.\n\nThis indicates write amplification and disk write throughput. High values mean:\n- Heavy write workload\n- Good throughput\n- High disk I/O utilization\n\nCompare with flush duration to understand I/O efficiency.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4551,7 +4584,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Compactions per second.",
+      "description": "Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.\n\nCompaction purposes:\n- Merge overlapping keys\n- Reclaim deleted space\n- Optimize read performance\n- Level promotion\n\nHigh compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4646,7 +4679,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Compaction duration p50/p95/p99 in milliseconds if histogram buckets exist; otherwise unhide mean.",
+      "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4789,7 +4822,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Compaction errors rate.",
+      "description": "Rate of compaction errors per second.\n\nALERT: Any non-zero value requires immediate investigation!\n\nCompaction errors may indicate:\n- Disk corruption\n- Out of disk space\n- Hardware failure\n- File system issues\n\nCheck system logs and disk health immediately.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4884,7 +4917,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "1 means Pebble is stalling writes right now.",
+      "description": "Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).\n\nCRITICAL ALERT: Value of 1 means transactions are being delayed!\n\nWrite stalls occur when:\n- L0 has too many files\n- Memtable count too high\n- Compaction backlog too large\n\nImmediate actions:\n- Check disk I/O utilization\n- Consider faster storage (NVMe)\n- Review compaction settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4979,7 +5012,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Write stalls per second.",
+      "description": "Number of write stall events per second. Each stall temporarily blocks write operations.\n\nWrite stalls happen when Pebble's internal queues fill up:\n- memtable: Too many memtables waiting to flush\n- l0: Too many L0 SSTables\n- flush_slowdown: Flush falling behind\n\nFrequent stalls indicate storage cannot keep up with write rate. Consider:\n- Faster storage (NVMe SSD)\n- Reduced write rate\n- Tuning Pebble settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5074,7 +5107,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Write stall duration p50/p95/p99 (seconds buckets) if histogram exists; otherwise unhide mean. (write stall metric unchanged)",
+      "description": "Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.\n\nStall duration directly impacts:\n- Transaction latency (blocked during stall)\n- Throughput (no progress during stall)\n- Client timeouts (if stall exceeds timeout)\n\nLong stalls (>1s) are critical. High P99 values indicate occasional severe blocking.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
