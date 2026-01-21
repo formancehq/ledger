@@ -75,7 +75,7 @@ type Node struct {
 	proposeCh           Queue[proposal]
 	confState           *raftpb.ConfState
 	futures             SyncMap[uint64, *future]
-	lastSoftState       *raft.SoftState
+	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
 
 	meter                          metric.Meter
@@ -413,7 +413,9 @@ func (node *Node) processReady(ctx context.Context) error {
 				return fmt.Errorf("syncing snapshot: %w", err)
 			}
 		}
-		if node.lastSoftState != nil {
+
+		actualNodeLastSoftState := node.lastSoftState.Load()
+		if actualNodeLastSoftState != nil && *actualNodeLastSoftState != *ss {
 			status := node.rawNode.Status()
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
@@ -421,16 +423,17 @@ func (node *Node) processReady(ctx context.Context) error {
 			})
 
 			// leadership loss
-			if node.lastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
+			if actualNodeLastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
 				logger.Infof("Leadership lost")
 			}
 			// acquire leadership
-			if node.lastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
+			if actualNodeLastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
 				node.logger.Infof("Leadership gained")
 			}
 		}
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
-		node.lastSoftState = ss
+
+		node.lastSoftState.Store(ss)
 	}
 
 	now := time.Now()
@@ -457,7 +460,7 @@ func (node *Node) processReady(ctx context.Context) error {
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
 		// in case of rawNode recover
-		if err := node.syncSnapshot(ctx, node.lastSoftState.Lead); err != nil {
+		if err := node.syncSnapshot(ctx, node.lastSoftState.Load().Lead); err != nil {
 			return fmt.Errorf("restoring snapshot in storage: %w", err)
 		}
 	}
@@ -575,18 +578,19 @@ func (node *Node) NotifyApplied(commandID uint64, result any, err error) {
 }
 
 func (node *Node) IsLeader() bool {
-	if node.rawNode == nil {
+	lastSoftState := node.lastSoftState.Load()
+	if lastSoftState == nil {
 		return false
 	}
-	status := node.rawNode.Status()
-	return status.Lead == status.ID
+	return lastSoftState.RaftState == raft.StateLeader
 }
 
 func (node *Node) GetLeader() uint64 {
-	if node.rawNode == nil {
+	lastSoftState := node.lastSoftState.Load()
+	if lastSoftState == nil {
 		return 0
 	}
-	return node.rawNode.Status().Lead
+	return lastSoftState.Lead
 }
 
 // GetClusterState returns the current state of the Raft cluster
