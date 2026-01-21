@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -55,7 +54,7 @@ type Batch interface {
 	// AppendLogs appends logs to the store
 	AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error
+	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account

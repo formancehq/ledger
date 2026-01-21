@@ -349,8 +349,12 @@ func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map
 					return nil, fmt.Errorf("reading balance diff value: %w", err)
 				}
 
-				diff := unmarshalBigInt(valueBytes)
-				balance = balance.Add(balance, diff)
+				diff := &ledgerpb.BigInt{}
+				if err := proto.Unmarshal(valueBytes, diff); err != nil {
+					_ = iter.Close()
+					return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
+				}
+				balance = balance.Add(balance, diff.Value())
 			}
 
 			if err := iter.Close(); err != nil {
@@ -721,33 +725,6 @@ func deleteOnBatch(batch *pebble.Batch, buf *bytes.Buffer) error {
 	buf.Reset()
 
 	return nil
-}
-
-func marshalBigInt(x *big.Int) []byte {
-	if x == nil {
-		return []byte{0} // convention: nil => 0
-	}
-	sign := byte(0)
-	if x.Sign() < 0 {
-		sign = 1
-	}
-	mag := new(big.Int).Abs(x).Bytes()
-	out := make([]byte, 1+len(mag))
-	out[0] = sign
-	copy(out[1:], mag)
-	return out
-}
-
-func unmarshalBigInt(b []byte) *big.Int {
-	if len(b) == 0 {
-		return new(big.Int)
-	}
-	sign := b[0]
-	x := new(big.Int).SetBytes(b[1:])
-	if sign == 1 && x.Sign() != 0 {
-		x.Neg(x)
-	}
-	return x
 }
 
 func HardLink(srcDir, dstDir string) error {

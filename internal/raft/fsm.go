@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/big"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -367,10 +366,10 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb.Log) error {
 	projectTransaction := func(ctx context.Context, batch store.Batch, tx *ledgerpb.Transaction) error {
 		for _, posting := range tx.Postings {
-			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount.Value())); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Source, posting.Asset, posting.Amount.Neg()); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
-			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Destination, posting.Asset, posting.Amount.Value()); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Destination, posting.Asset, posting.Amount); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
 		}

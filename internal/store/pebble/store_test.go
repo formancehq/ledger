@@ -78,10 +78,10 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch(0)
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "world", "USD", big.NewInt(-100)))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", big.NewInt(100)))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "user", "USD", big.NewInt(50)))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", big.NewInt(-50)))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "world", "USD", ledgerpb.NewBigInt(big.NewInt(-100))))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", ledgerpb.NewBigInt(big.NewInt(100))))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "user", "USD", ledgerpb.NewBigInt(big.NewInt(50))))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", ledgerpb.NewBigInt(big.NewInt(-50))))
 		require.NoError(t, batch.Commit(ctx))
 
 		balances, err := s.GetBalances(ctx, testLedgerID, map[string][]string{

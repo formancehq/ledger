@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	stdtime "time"
 
 	"google.golang.org/protobuf/proto"
@@ -131,7 +130,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -139,7 +138,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertBalance)
 	defer func() { _ = stmt.Close() }()
 
-	if _, err := stmt.ExecContext(ctx, ledger, account, asset, diff.String()); err != nil {
+	if _, err := stmt.ExecContext(ctx, ledger, account, asset, diff.Value().String()); err != nil {
 		return fmt.Errorf("updating balance: %w", err)
 	}
 

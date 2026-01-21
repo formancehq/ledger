@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -101,7 +100,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *big.Int) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -112,7 +111,12 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 	writeString(b.buf, asset)
 	writeInt64(b.buf, time.Now().UnixNano())
 
-	if err := setOnBatch(b.batch, b.buf, marshalBigInt(diff)); err != nil {
+	bigIntData, err := proto.Marshal(diff)
+	if err != nil {
+		return fmt.Errorf("marshaling balance diff: %w", err)
+	}
+
+	if err := setOnBatch(b.batch, b.buf, bigIntData); err != nil {
 		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", ledger, account, asset, err)
 	}
 
