@@ -27,19 +27,28 @@ type Bulker struct {
 }
 
 func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
+
+	submit := func(fn func()) {
+		fn()
+	}
+	wait := func() {}
+	hasError := atomic.Bool{}
+
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
 		parallelism = b.parallelism
 	}
-
-	wp := pond.New(parallelism, parallelism)
-	hasError := atomic.Bool{}
+	if parallelism > 1 {
+		wp := pond.New(parallelism, parallelism)
+		submit = wp.Submit
+		wait = wp.StopAndWait
+	}
 
 	index := 0
 	for element := range bulk {
 		// Copy to prevent data race
 		itemIndex := index
-		wp.Submit(func() {
+		submit(func() {
 			ctx, span := b.tracer.Start(ctx, "Bulk:ProcessElement",
 				trace.WithNewRoot(),
 				trace.WithLinks(trace.LinkFromContext(ctx)),
@@ -85,7 +94,7 @@ func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 		index++
 	}
 
-	wp.StopAndWait()
+	wait()
 
 	defer close(result)
 

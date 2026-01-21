@@ -24,7 +24,7 @@ import (
 type Transport interface {
 	Unreachable() <-chan uint64
 	Recv() <-chan raftpb.Message
-	Send(msg raftpb.Message)
+	Send(msg []raftpb.Message)
 }
 
 // DefaultTransport handles network communication between Raft nodes using gRPC
@@ -47,6 +47,9 @@ type DefaultTransport struct {
 	meterProvider metric.MeterProvider
 	config        TransportConfig
 	nodeID        uint64
+
+	pendingSendQueue Queue[[]raftpb.Message]
+	stopCh           chan chan struct{}
 }
 
 type TransportConfig struct {
@@ -98,12 +101,32 @@ func NewTransport(
 		logger:        logger,
 		config:        config,
 		nodeID:        nodeID,
+		stopCh:        make(chan chan struct{}),
+		pendingSendQueue: NewQueueObserver[[]raftpb.Message](
+			"raft.send.pending_messages",
+			NewSimpleQueue[[]raftpb.Message](100),
+			WithMeter[[]raftpb.Message](meter),
+			WithLogger[[]raftpb.Message](logger),
+		), // todo: make configurable
 	}
 }
 
 // Stop stops the transport
 func (t *DefaultTransport) Stop(ctx context.Context) error {
+
 	t.logger.Infof("Stopping raft transport")
+
+	stopCh := make(chan struct{})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case t.stopCh <- stopCh:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-stopCh:
+		}
+	}
 	for _, peerConnection := range t.peers {
 		if err := peerConnection.stop(ctx); err != nil {
 			return err
@@ -111,6 +134,7 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 	}
 
 	t.unreachableCh.Close()
+	t.pendingSendQueue.Close()
 
 	return t.connectionPool.Close()
 }
@@ -182,25 +206,40 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 }
 
 // Send sends a message to a peer
-func (t *DefaultTransport) Send(msg raftpb.Message) {
-	peer, exists := t.peers[msg.To]
+func (t *DefaultTransport) Send(msgs []raftpb.Message) {
+	if !t.pendingSendQueue.Push(msgs) {
+		t.logger.Errorf("Failed to send messages, channel full")
+	}
+}
 
-	if exists {
-		if !peer.sendCh.Push(msg) {
-			t.logger.
-				WithFields(map[string]any{
-					"peer": fmt.Sprintf("%x", msg.To),
-					"type": msg.Type.String(),
-				}).
-				Errorf("Send channel full, dropping message")
+func (t *DefaultTransport) Start(_ context.Context) {
+	for {
+		select {
+		case ch := <-t.stopCh:
+			close(ch)
+			return
+		case msgs := <-t.pendingSendQueue.Recv():
+			for _, msg := range msgs {
+				peer, exists := t.peers[msg.To]
+				if exists {
+					if !peer.sendCh.Push(msg) {
+						t.logger.
+							WithFields(map[string]any{
+								"peer": fmt.Sprintf("%x", msg.To),
+								"type": msg.Type.String(),
+							}).
+							Errorf("Send channel full, dropping message")
+					}
+				} else {
+					t.logger.
+						WithFields(map[string]any{
+							"peer": fmt.Sprintf("%x", msg.To),
+							"type": msg.Type.String(),
+						}).
+						Errorf("No send channel for peer, dropping message")
+				}
+			}
 		}
-	} else {
-		t.logger.
-			WithFields(map[string]any{
-				"peer": fmt.Sprintf("%x", msg.To),
-				"type": msg.Type.String(),
-			}).
-			Errorf("No send channel for peer, dropping message")
 	}
 }
 
@@ -419,7 +458,10 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	}()
 	lastPing := atomic.Value{}
 	mu := sync.Mutex{}
+	receiveChStopped := make(chan struct{})
+
 	otlplogs.Go(func() {
+		defer close(receiveChStopped)
 		for {
 			res, err := stream.Recv()
 			if err != nil {
@@ -471,6 +513,9 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	for {
 		select {
 		case ch := <-conn.closeCh:
+			_ = stream.CloseSend()
+			// todo: add a context guard
+			<-receiveChStopped
 			close(ch)
 			return true, nil
 		case <-pingInterval.C:

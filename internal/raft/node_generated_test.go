@@ -41,44 +41,6 @@ func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
 	return m.recorder
 }
 
-// Close mocks base method.
-func (m *MockLogStreamer) Close() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Close")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Close indicates an expected call of Close.
-func (mr *MockLogStreamerMockRecorder) Close() *MockLogStreamerCloseCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockLogStreamer)(nil).Close))
-	return &MockLogStreamerCloseCall{Call: call}
-}
-
-// MockLogStreamerCloseCall wrap *gomock.Call
-type MockLogStreamerCloseCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockLogStreamerCloseCall) Return(arg0 error) *MockLogStreamerCloseCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockLogStreamerCloseCall) Do(f func() error) *MockLogStreamerCloseCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLogStreamerCloseCall) DoAndReturn(f func() error) *MockLogStreamerCloseCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetAllLogs mocks base method.
 func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	m.ctrl.T.Helper()

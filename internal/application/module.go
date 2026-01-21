@@ -62,9 +62,9 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
 				}
 			},
-		func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
-			return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"), meterProvider.Meter("wal"))
-		},
+			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
+				return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"), meterProvider.Meter("wal"))
+			},
 			func(cfg Config) (*raft.DefaultSpool, error) {
 				return raft.NewDefaultSpool(raft.DefaultSpoolConfig{
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
@@ -143,7 +143,12 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
-			func(lc fx.Lifecycle, runtime store.Store, wal *wal.WAL) {
+			func(
+				lc fx.Lifecycle,
+				runtime store.Store,
+				wal *wal.WAL,
+				logger logging.Logger,
+			) {
 				lc.Append(fx.Hook{
 					OnStop: func(ctx context.Context) error {
 						return wal.Close()
@@ -151,6 +156,24 @@ func Module() fx.Option {
 				})
 				lc.Append(fx.Hook{
 					OnStop: runtime.Close,
+				})
+			},
+			func(
+				lc fx.Lifecycle,
+				t *raft.DefaultTransport,
+				logger logging.Logger,
+			) {
+				lc.Append(fx.Hook{
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping raft transport")
+						return t.Stop(ctx)
+					},
+					OnStart: func(ctx context.Context) error {
+						otlplogs.Go(func() {
+							t.Start(context.WithoutCancel(ctx))
+						}, logger)
+						return nil
+					},
 				})
 			},
 			func(grpcServer *grpcserver.Server, transport *raft.DefaultTransport) error {
@@ -199,14 +222,6 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping GRPC server")
 						return grpcServer.Stop()
-					},
-				})
-			},
-			func(lc fx.Lifecycle, raftTransport *raft.DefaultTransport, logger logging.Logger) {
-				lc.Append(fx.Hook{
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping raft transport")
-						return raftTransport.Stop(ctx)
 					},
 				})
 			},

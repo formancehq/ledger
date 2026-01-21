@@ -333,8 +333,7 @@ func (node *Node) Start(ctx context.Context) error {
 		}
 	}
 
-	//processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
-	processingTick := time.NewTicker(2 * time.Millisecond) // todo: make configurable
+	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
 	defer processingTick.Stop()
 
 	for {
@@ -465,9 +464,7 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	// Send messages via transport
 	node.logger.Debugf("Sending messages via transport")
-	for _, msg := range rd.Messages {
-		node.transport.Send(msg)
-	}
+	node.transport.Send(rd.Messages)
 
 	// Apply committed entries
 	for _, entry := range rd.CommittedEntries {

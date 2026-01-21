@@ -82,10 +82,16 @@ func (t *ChannelTransport) Disconnect(peerID uint64) {
 	}
 }
 
-// Send sends a message to the target peer.
-// If the peer is not connected or the channel is full, the message is dropped
+// Send sends messages to the target peers.
+// If a peer is not connected or the channel is full, the message is dropped
 // and the peer is reported as unreachable.
-func (t *ChannelTransport) Send(msg raftpb.Message) {
+func (t *ChannelTransport) Send(msgs []raftpb.Message) {
+	for _, msg := range msgs {
+		t.sendOne(msg)
+	}
+}
+
+func (t *ChannelTransport) sendOne(msg raftpb.Message) {
 	t.mu.RLock()
 	peer, exists := t.peers[msg.To]
 	closed := t.closed

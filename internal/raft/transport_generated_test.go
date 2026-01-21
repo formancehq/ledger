@@ -77,7 +77,7 @@ func (c *MockTransportRecvCall) DoAndReturn(f func() <-chan raftpb.Message) *Moc
 }
 
 // Send mocks base method.
-func (m *MockTransport) Send(msg raftpb.Message) {
+func (m *MockTransport) Send(msg []raftpb.Message) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Send", msg)
 }
@@ -101,13 +101,13 @@ func (c *MockTransportSendCall) Return() *MockTransportSendCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockTransportSendCall) Do(f func(raftpb.Message)) *MockTransportSendCall {
+func (c *MockTransportSendCall) Do(f func([]raftpb.Message)) *MockTransportSendCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportSendCall) DoAndReturn(f func(raftpb.Message)) *MockTransportSendCall {
+func (c *MockTransportSendCall) DoAndReturn(f func([]raftpb.Message)) *MockTransportSendCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
