@@ -16,7 +16,7 @@ All components are deployed in a single namespace for easier management and serv
 
 | Environment | Stack Name | Kubernetes Context | Namespace | Description |
 |-------------|------------|-------------------|-----------|-------------|
-| **devenv-ledger-exp** | `devenv-ledger-exp` | `ledger-exp-devenv-operator.tailedcc0.ts.net` | `ledger-exp` | Local development environment (Tailscale) |
+| **devenv-ledger-exp** | `devenv-ledger-exp` | `ledger-exp-devenv-operator.tailedcc0.ts.net` | `ledger-exp` | Development environment on Waays (Tailscale) |
 | **staging** | `staging` | `staging-eu-west-1-hosting` | `ledger-exp` | Staging environment on AWS (formance.cloud) |
 
 ### Staging Environment

@@ -269,11 +269,12 @@ livenessProbe:
 
 #### Readiness Probe
 
+The readiness probe uses gRPC health check to verify the node is ready to serve traffic:
+
 ```yaml
 readinessProbe:
-  httpGet:
-    path: /health
-    port: http
+  grpc:
+    port: 8888
   initialDelaySeconds: 10
   periodSeconds: 5
   timeoutSeconds: 3

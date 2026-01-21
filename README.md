@@ -123,14 +123,19 @@ Choose your storage backend based on your needs:
 
 Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, OpenTelemetry Collector, and k6-operator).
 
-**Note:** The Pulumi stack `gfyrag` deploys to the **ledger-exp** development environment cluster.
+**Available Stacks** (managed under the `formance` organization on Pulumi Cloud):
+
+| Stack | Description |
+|-------|-------------|
+| `devenv-ledger-exp` | Development environment on Waays (Tailscale) |
+| `staging` | Staging environment on AWS (formance.cloud) |
 
 **Prerequisites:**
 - [Pulumi CLI](https://www.pulumi.com/docs/get-started/install/) installed
-- Access to the ledger-exp Kubernetes cluster with `kubectl` configured
+- Access to the target Kubernetes cluster with `kubectl` configured
 - Go 1.21 or higher
 
-**Quick Start (stack: `gfyrag`):**
+**Quick Start:**
 
 ```bash
 # Navigate to the Pulumi application directory
@@ -142,10 +147,10 @@ go mod download
 # Login to Pulumi (if not already done)
 pulumi login
 
-# Initialize or select the gfyrag stack
-pulumi stack init gfyrag
+# Select an existing stack
+pulumi stack select formance/ledger-exp-devenv/devenv-ledger-exp
 # or
-pulumi stack select gfyrag
+pulumi stack select formance/ledger-exp-devenv/staging
 
 # Preview the deployment
 pulumi preview
@@ -156,9 +161,11 @@ pulumi up
 
 **Configuration:**
 
-The deployment configuration is stored in `Pulumi.gfyrag.yaml`. You can customize:
-- Namespace (default: `monitoring`)
-- Helm values for each service (VictoriaMetrics, Grafana, Loki, Tempo, OTLP, Ledger, k6-operator)
+The deployment configuration is stored in `Pulumi.<stack>.yaml` (e.g., `Pulumi.staging.yaml`). You can customize:
+- Kubernetes context and namespace
+- Docker registry settings
+- Optional components (k6-operator, benchmark-operator)
+- Helm values for each service (VictoriaMetrics, Grafana, Loki, Tempo, OTLP, Ledger)
 - Grafana dashboards and datasources
 
 **Accessing Services:**
@@ -166,7 +173,7 @@ The deployment configuration is stored in `Pulumi.gfyrag.yaml`. You can customiz
 After deployment, services are available on the **ledger-exp** cluster:
 
 **Public URLs (via Ingress):**
-- **Grafana**: https://grafana.ledger-exp.v2.formance.dev
+- **Grafana**: https://grafana-ledger-exp.v2.formance.dev
 - **Ledger API**: https://ledger-exp.v2.formance.dev
 
 **Internal Services (via kubectl port-forward):**
@@ -182,24 +189,9 @@ After deployment, services are available on the **ledger-exp** cluster:
 pulumi destroy
 ```
 
-**Creating a new Pulumi stack:**
+**Creating a new environment:**
 
-```bash
-# Create a new stack
-pulumi stack init <stack-name>
-
-# Copy the default config and adjust values
-cp Pulumi.gfyrag.yaml Pulumi.<stack-name>.yaml
-
-# Edit Pulumi.<stack-name>.yaml and update registry/values as needed
-
-# Select the new stack and deploy
-pulumi stack select <stack-name>
-pulumi preview
-pulumi up
-```
-
-For detailed documentation, see the [Pulumi Development Environment README](misc/devenv/README.md).
+See the [Pulumi Development Environment README](misc/devenv/README.md) for detailed instructions on creating a new environment.
 
 For other deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
 
