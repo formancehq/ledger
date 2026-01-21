@@ -192,8 +192,42 @@ tolerations: []
 # Affinity rules
 affinity: {}
 
+# Pod anti-affinity (enabled by default for high availability)
+podAntiAffinity:
+  enabled: true           # Enable pod anti-affinity
+  type: "soft"            # "soft" or "hard"
+  weight: 100             # Weight for soft anti-affinity (1-100)
+  topologyKey: "kubernetes.io/hostname"  # Spread across nodes
+
 # Pod annotations
 podAnnotations: {}
+```
+
+##### Pod Anti-Affinity
+
+By default, the chart configures **soft pod anti-affinity** to prefer scheduling pods on different Kubernetes nodes. This improves high availability by reducing the risk of multiple replicas failing simultaneously if a node goes down.
+
+**Configuration options**:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `podAntiAffinity.enabled` | Enable pod anti-affinity | `true` |
+| `podAntiAffinity.type` | `"soft"` (preferred) or `"hard"` (required) | `"soft"` |
+| `podAntiAffinity.weight` | Weight for soft anti-affinity (1-100) | `100` |
+| `podAntiAffinity.topologyKey` | Topology key for spreading pods | `"kubernetes.io/hostname"` |
+
+**Types**:
+- **soft** (`preferredDuringSchedulingIgnoredDuringExecution`): Kubernetes will try to schedule pods on different nodes, but will still schedule on the same node if necessary (e.g., not enough nodes available)
+- **hard** (`requiredDuringSchedulingIgnoredDuringExecution`): Kubernetes will refuse to schedule a pod if it would be placed on a node with another pod from the same StatefulSet
+
+**Recommendations**:
+- Use `soft` (default) for development or clusters with limited nodes
+- Use `hard` for production clusters where each pod MUST run on a different node
+
+**Disable anti-affinity** (not recommended):
+```yaml
+podAntiAffinity:
+  enabled: false
 ```
 
 #### Pod Disruption Budget

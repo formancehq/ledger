@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
@@ -69,10 +70,19 @@ func (b *DefaultBackend) CreateLedger(ctx context.Context, req *ledgerpb.CreateL
 }
 
 func (b *DefaultBackend) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	ledgerInfo, err := b.Node.GetLedgerByName(ctx, name)
+	if err != nil && !errors.Is(err, &ledgerpb.NotFoundError{}) {
+		return nil, err
+	}
+	if err == nil {
+		return ledgerInfo, nil
+	}
+
 	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
+
 	return clusterLeader.GetLedgerByName(ctx, name)
 }
 

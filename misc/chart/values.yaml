@@ -215,6 +215,19 @@ tolerations: []
 # Affinity rules
 affinity: {}
 
+# Pod anti-affinity configuration
+# Used to spread pods across different nodes for high availability
+podAntiAffinity:
+  # Enable pod anti-affinity to prefer scheduling pods on different nodes
+  enabled: true
+  # Type: "soft" (preferredDuringSchedulingIgnoredDuringExecution) or "hard" (requiredDuringSchedulingIgnoredDuringExecution)
+  # "soft" allows scheduling on same node if necessary, "hard" requires different nodes
+  type: "soft"
+  # Weight for soft anti-affinity (1-100, higher = stronger preference)
+  weight: 100
+  # Topology key for anti-affinity (kubernetes.io/hostname = spread across nodes)
+  topologyKey: "kubernetes.io/hostname"
+
 # Pod disruption budget
 podDisruptionBudget:
   enabled: false

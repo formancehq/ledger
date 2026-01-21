@@ -6,11 +6,11 @@ metadata:
   namespace: ""
 runner:
   env:
-    ledgerUrl: "http://ledger-exp.ledger.svc.cluster.local:9000"
+    ledgerUrl: "http://ledger-exp.ledger-exp.svc.cluster.local:9000"
     ledgerName: "ledger0"
     stages: ""
   otlp:
-    endpoint: "otel-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+    endpoint: "otel-opentelemetry-collector.ledger-exp.svc.cluster.local:4317"
 archiveData: ""
 
 ledgerJob:

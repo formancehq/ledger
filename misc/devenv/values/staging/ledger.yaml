@@ -44,15 +44,15 @@ config:
     heartbeatTick: 1
     maxInflightMsgs: 1024
     maxSizePerMsg: 2097152
-    compactionMargin: 15000
-    proposeQueueCapacity: 512
+    compactionMargin: 50000
+    proposeQueueCapacity: 1024
     snapshotInterval: 30s
-    snapshotThreshold: 100000
+    snapshotThreshold: 150000
     tickInterval: 100ms
     transport:
       receptionQueues:
         - 10
-        - 2048
+        - 4096
         - 2048
       sendQueues:
         - 10
