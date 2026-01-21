@@ -3,17 +3,17 @@ config:
 #    debug:
 #      verbosity: detailed
     otlp/tempo:
-      endpoint: tempo.monitoring.svc.cluster.local:4317
+      endpoint: tempo:4317
       tls:
         insecure: true
     otlphttp/logs:
-      endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp
+      endpoint: http://loki:3100/otlp
       tls:
         insecure: true
     otlphttp/victoriametrics:
       compression: gzip
       encoding: proto
-      metrics_endpoint: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428/opentelemetry/v1/metrics
+      metrics_endpoint: http://vm-victoria-metrics-single-server:8428/opentelemetry/v1/metrics
       tls:
         insecure: true
   processors:

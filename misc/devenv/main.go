@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
+	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -18,36 +19,33 @@ import (
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 
-		// Create namespace
-		monitoringNamespace, err := v1.NewNamespace(ctx, "monitoring", &v1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String("monitoring"),
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create namespace: %w", err)
+		cfg := config.New(ctx, "")
+		kubeContext := cfg.Require("k8s-context")
+
+		// Get namespace from config, default to stack name
+		namespaceName := cfg.Get("namespace")
+		if namespaceName == "" {
+			namespaceName = ctx.Stack()
 		}
 
-		benchNamespace, err := v1.NewNamespace(ctx, "bench", &v1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String("bench"),
-			},
+		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s", &kubernetes.ProviderArgs{
+			Context: pulumi.StringPtr(kubeContext),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create namespace: %w", err)
+			return err
 		}
 
-		ledgerNamespace, err := v1.NewNamespace(ctx, "ledger", &v1.NamespaceArgs{
+		// Create a single namespace for all components
+		namespace, err := v1.NewNamespace(ctx, "namespace", &v1.NamespaceArgs{
 			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String("ledger"),
+				Name: pulumi.String(namespaceName),
 			},
-		})
+		}, pulumi.Provider(k8sProvider))
 		if err != nil {
 			return fmt.Errorf("failed to create namespace: %w", err)
 		}
 
 		// Helper function to read config objects from Pulumi config or YAML files
-		cfg := config.New(ctx, "")
 		getConfigObject := func(key string) (map[string]interface{}, error) {
 			// First, try to get the config object
 			var configObj map[string]interface{}
@@ -76,23 +74,14 @@ func main() {
 			// If no "file" key, return the config object as-is (backward compatibility)
 			return configObj, nil
 		}
-		getBoolValue := func(values map[string]interface{}, key string, fallback bool) bool {
-			raw, ok := values[key]
-			if !ok {
-				return fallback
+		getConfigBool := func(key string, fallback bool) bool {
+			value := cfg.GetBool(key)
+			if value {
+				return true
 			}
-			if value, ok := raw.(bool); ok {
-				return value
-			}
-			return fallback
-		}
-		getStringValue := func(values map[string]interface{}, key, fallback string) string {
-			raw, ok := values[key]
-			if !ok {
-				return fallback
-			}
-			if value, ok := raw.(string); ok && value != "" {
-				return value
+			// Check if the key exists but is explicitly set to false
+			if cfg.Get(key) == "false" {
+				return false
 			}
 			return fallback
 		}
@@ -102,6 +91,10 @@ func main() {
 		registry := cfg.Get("registry")
 		if registry == "" {
 			registry = "ghcr.io"
+		}
+		pullRegistry := cfg.Get("pull-registry")
+		if pullRegistry == "" {
+			pullRegistry = registry
 		}
 		imageTag := cfg.Get("imageTag")
 		if imageTag == "" {
@@ -140,8 +133,8 @@ func main() {
 			Registries: dockerbuild.RegistryArray{
 				dockerbuild.RegistryArgs{
 					Address:  pulumi.String(registry),
-					Username: config.RequireSecret(ctx, "formance-dev-registry-username"),
-					Password: config.RequireSecret(ctx, "formance-dev-registry-password"),
+					Username: config.GetSecret(ctx, "formance-dev-registry-username"),
+					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
 			Tags: pulumi.StringArray{
@@ -183,8 +176,8 @@ func main() {
 			Registries: dockerbuild.RegistryArray{
 				dockerbuild.RegistryArgs{
 					Address:  pulumi.String(registry),
-					Username: config.RequireSecret(ctx, "formance-dev-registry-username"),
-					Password: config.RequireSecret(ctx, "formance-dev-registry-password"),
+					Username: config.GetSecret(ctx, "formance-dev-registry-username"),
+					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
 			Tags: pulumi.StringArray{
@@ -282,10 +275,13 @@ func main() {
 			Name:           pulumi.String("vm"),
 			Chart:          pulumi.String("victoria-metrics-single"),
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://victoriametrics.github.io/helm-charts/")},
-			Namespace:      monitoringNamespace.Metadata.Name(),
+			Namespace:      namespace.Metadata.Name(),
 			Values:         pulumi.ToMap(victoriaMetricsValues),
 			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy VictoriaMetrics: %w", err)
 		}
@@ -299,10 +295,13 @@ func main() {
 			Name:           pulumi.String("tempo"),
 			Chart:          pulumi.String("tempo"),
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:      monitoringNamespace.Metadata.Name(),
+			Namespace:      namespace.Metadata.Name(),
 			Values:         pulumi.ToMap(tempoValues),
 			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Tempo: %w", err)
 		}
@@ -316,10 +315,13 @@ func main() {
 			Name:           pulumi.String("loki"),
 			Chart:          pulumi.String("loki"),
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:      monitoringNamespace.Metadata.Name(),
+			Namespace:      namespace.Metadata.Name(),
 			Values:         pulumi.ToMap(lokiValues),
 			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Loki: %w", err)
 		}
@@ -333,10 +335,13 @@ func main() {
 			Name:           pulumi.String("otel"),
 			Chart:          pulumi.String("opentelemetry-collector"),
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://open-telemetry.github.io/opentelemetry-helm-charts")},
-			Namespace:      monitoringNamespace.Metadata.Name(),
+			Namespace:      namespace.Metadata.Name(),
 			Values:         pulumi.ToMap(otlpValues),
 			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy OpenTelemetry Collector: %w", err)
 		}
@@ -356,13 +361,16 @@ func main() {
 			grafanaDashboard, err := v1.NewConfigMap(ctx, fmt.Sprintf("grafana-dashboard-%s", dashboard.name), &v1.ConfigMapArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Name:      pulumi.String(fmt.Sprintf("grafana-dashboard-%s", dashboard.name)),
-					Namespace: monitoringNamespace.Metadata.Name(),
+					Namespace: namespace.Metadata.Name(),
 					Labels: pulumi.StringMap{
 						"grafana_dashboard": pulumi.String("1"),
 					},
 				},
 				Data: dashboardData,
-			}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+			},
+				pulumi.DependsOn([]pulumi.Resource{namespace}),
+				pulumi.Provider(k8sProvider),
+			)
 			if err != nil {
 				return fmt.Errorf("failed to create Grafana dashboard ConfigMap %s: %w", dashboard.name, err)
 			}
@@ -378,12 +386,15 @@ func main() {
 		grafanaDashboardProvisioning, err := v1.NewConfigMap(ctx, "grafana-dashboard-provisioning", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("grafana-dashboard-provisioning"),
-				Namespace: monitoringNamespace.Metadata.Name(),
+				Namespace: namespace.Metadata.Name(),
 			},
 			Data: pulumi.StringMap{
 				"dashboard.yml": pulumi.String(dashboardYml),
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create Grafana dashboard provisioning ConfigMap: %w", err)
 		}
@@ -397,12 +408,15 @@ func main() {
 		grafanaDatasourceProvisioning, err := v1.NewConfigMap(ctx, "grafana-datasource-provisioning", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("grafana-datasource-provisioning"),
-				Namespace: monitoringNamespace.Metadata.Name(),
+				Namespace: namespace.Metadata.Name(),
 			},
 			Data: pulumi.StringMap{
 				"victoriametrics.yml": pulumi.String(datasourceYml),
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create Grafana datasource provisioning ConfigMap: %w", err)
 		}
@@ -416,17 +430,20 @@ func main() {
 			Name:           pulumi.String("grafana"),
 			Chart:          pulumi.String("grafana"),
 			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:      monitoringNamespace.Metadata.Name(),
+			Namespace:      namespace.Metadata.Name(),
 			Values:         pulumi.ToMap(grafanaValues),
 			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn(append([]pulumi.Resource{
-			monitoringNamespace,
-			victoriaMetrics,
-			tempo,
-			loki,
-			grafanaDashboardProvisioning,
-			grafanaDatasourceProvisioning,
-		}, grafanaDashboards...)))
+		},
+			pulumi.DependsOn(append([]pulumi.Resource{
+				namespace,
+				victoriaMetrics,
+				tempo,
+				loki,
+				grafanaDashboardProvisioning,
+				grafanaDatasourceProvisioning,
+			}, grafanaDashboards...)),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
@@ -437,7 +454,7 @@ func main() {
 			return fmt.Errorf("failed to read Ledger values: %w", err)
 		}
 		ledgerValues["image"] = map[string]any{
-			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", registry),
+			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
 			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
 		}
 		// Get the chart path (relative to the devenv directory where Pulumi.yaml is)
@@ -446,43 +463,52 @@ func main() {
 		ledger, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
 			Name:             pulumi.String("ledger-exp"),
 			Chart:            pulumi.String(chartPath),
-			Namespace:        ledgerNamespace.Metadata.Name(),
+			Namespace:        namespace.Metadata.Name(),
 			Values:           pulumi.ToMap(ledgerValues),
 			DependencyUpdate: pulumi.Bool(true),
 			ForceUpdate:      pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{
-			otlp,
-			dockerImage,
-		}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{
+				namespace,
+				otlp,
+				dockerImage,
+			}),
+			pulumi.Provider(k8sProvider),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Ledger: %w", err)
 		}
 
-		// Deploy k6-operator
-		k6OperatorValues, err := getConfigObject("k6operator")
-		if err != nil {
-			// k6-operator can work with default values, so we use empty map if not configured
-			k6OperatorValues = make(map[string]interface{})
-		}
-		k6Operator, err := helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
-			Name:           pulumi.String("k6-operator"),
-			Chart:          pulumi.String("k6-operator"),
-			RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
-			Namespace:      benchNamespace.Metadata.Name(),
-			Values:         pulumi.ToMap(k6OperatorValues),
-			ForceUpdate:    pulumi.Bool(true),
-		}, pulumi.DependsOn([]pulumi.Resource{monitoringNamespace}))
-		if err != nil {
-			return fmt.Errorf("failed to deploy k6-operator: %w", err)
+		// Deploy k6-operator (optional, enabled by default)
+		if getConfigBool("k6operator-enabled", true) {
+			k6OperatorValues, err := getConfigObject("k6operator")
+			if err != nil {
+				// k6-operator can work with default values, so we use empty map if not configured
+				k6OperatorValues = make(map[string]interface{})
+			}
+			k6Operator, err := helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
+				Name:           pulumi.String("k6-operator"),
+				Chart:          pulumi.String("k6-operator"),
+				RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+				Namespace:      namespace.Metadata.Name(),
+				Values:         pulumi.ToMap(k6OperatorValues),
+				ForceUpdate:    pulumi.Bool(true),
+			},
+				pulumi.DependsOn([]pulumi.Resource{namespace}),
+				pulumi.Provider(k8sProvider),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deploy k6-operator: %w", err)
+			}
+			ctx.Export("k6OperatorRelease", k6Operator.Name)
 		}
 
-		// Deploy benchmark operator
-		benchmarkOperatorValues, err := getConfigObject("benchmarkOperator")
-		if err != nil {
-			benchmarkOperatorValues = make(map[string]interface{})
-		}
-		if getBoolValue(benchmarkOperatorValues, "enabled", false) {
-			namespaceName := getStringValue(benchmarkOperatorValues, "namespace", "bench")
+		// Deploy benchmark operator (optional, disabled by default)
+		if getConfigBool("benchmarkOperator-enabled", false) {
+			benchmarkOperatorValues, err := getConfigObject("benchmarkOperator")
+			if err != nil {
+				benchmarkOperatorValues = make(map[string]interface{})
+			}
 			var imageConfiguration map[string]any
 			if benchmarkOperatorValues["image"] == nil {
 				imageConfiguration = map[string]any{}
@@ -491,30 +517,30 @@ func main() {
 				imageConfiguration = benchmarkOperatorValues["image"].(map[string]any)
 			}
 
-			imageConfiguration["repository"] = pulumi.Sprintf("%s/formancehq/benchmark-operator", registry)
+			imageConfiguration["repository"] = pulumi.Sprintf("%s/formancehq/benchmark-operator", pullRegistry)
 			imageConfiguration["tag"] = pulumi.Sprintf("%s@%s", imageTag, benchmarkOperatorImage.Digest)
 
 			benchmarkChartPath := filepath.Join("..", "benchmark-operator", "chart")
-			benchmarkDeps := []pulumi.Resource{benchmarkOperatorImage}
-			if namespaceName == "bench" {
-				benchmarkDeps = append(benchmarkDeps, benchNamespace)
-			}
 
-			_, err := helm.NewRelease(ctx, "benchmark-operator", &helm.ReleaseArgs{
+			benchmarkOperator, err := helm.NewRelease(ctx, "benchmark-operator", &helm.ReleaseArgs{
 				Name:             pulumi.String("benchmark-operator"),
 				Chart:            pulumi.String(benchmarkChartPath),
-				Namespace:        pulumi.String(namespaceName),
+				Namespace:        namespace.Metadata.Name(),
 				Values:           pulumi.ToMap(benchmarkOperatorValues),
 				DependencyUpdate: pulumi.Bool(true),
 				ForceUpdate:      pulumi.Bool(true),
-			}, pulumi.DependsOn(benchmarkDeps))
+			},
+				pulumi.DependsOn([]pulumi.Resource{namespace, benchmarkOperatorImage}),
+				pulumi.Provider(k8sProvider),
+			)
 			if err != nil {
 				return fmt.Errorf("failed to deploy benchmark operator: %w", err)
 			}
+			ctx.Export("benchmarkOperatorRelease", benchmarkOperator.Name)
 		}
 
 		// Export outputs
-		ctx.Export("monitoringNamespace", monitoringNamespace.Metadata.Name())
+		ctx.Export("namespace", namespace.Metadata.Name())
 		ctx.Export("dockerImage", dockerImage.Tags.Index(pulumi.Int(0)))
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)
@@ -522,7 +548,6 @@ func main() {
 		ctx.Export("otlpRelease", otlp.Name)
 		ctx.Export("grafanaRelease", grafana.Name)
 		ctx.Export("ledgerRelease", ledger.Name)
-		ctx.Export("k6OperatorRelease", k6Operator.Name)
 		ctx.Export("benchmarkOperatorImage", benchmarkOperatorImage.Tags.Index(pulumi.Int(0)))
 
 		return nil

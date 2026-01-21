@@ -1,0 +1,83 @@
+config:
+  bindAddr: 0.0.0.0:8888
+  dataDir: /data/data
+  walDir: /data/wal
+  debug: false
+  httpPort: 9000
+  storageType: pebble
+  monitoring:
+    logs:
+      enabled: true
+      endpoint: otel-opentelemetry-collector
+      exporter: otlp
+      insecure: "true"
+      mode: grpc
+      port: "4317"
+    metrics:
+      batch: "true"
+      enabled: true
+      endpoint: otel-opentelemetry-collector
+      exporter: otlp
+      exporterPushInterval: 5s
+      insecure: "true"
+      mode: grpc
+      port: "4317"
+      runtimeMinimumReadMemStatsInterval: 5s
+    serviceName: ledger-v3-poc
+    traces:
+      batch: "true"
+      enabled: true
+      endpoint: otel-opentelemetry-collector
+      exporter: otlp
+      insecure: "true"
+      mode: grpc
+      port: "4317"
+  raft:
+    electionTick: 10
+    heartbeatTick: 1
+    maxInflightMsgs: 512
+    maxSizePerMsg: 2097152
+    compactionMargin: 15000
+    proposeQueueCapacity: 512
+    snapshotInterval: 30s
+    snapshotThreshold: 100000
+    tickInterval: 100ms
+    transport:
+      receptionQueues:
+        - 10
+        - 2048
+        - 2048
+      sendQueues:
+        - 10
+        - 1024
+        - 1024
+headlessService:
+  enabled: true
+imagePullSecrets:
+  - name: zot
+ingress:
+  enabled: true
+  hosts:
+    - host: ledger-exp.v2.formance.dev
+      paths:
+        - path: /
+          pathType: Prefix
+  perPod:
+    enabled: true
+persistence:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+replicaCount: 3
+resources:
+  limits:
+    cpu: 4000m
+    memory: 2048Mi
+  requests:
+    cpu: 4000m
+    memory: 2048Mi
+service:
+  grpcPort: 8888
+  httpPort: 9000
+  type: ClusterIP
+#nodeSelector:
+#  kubernetes.io/hostname: fake-wkbm406c

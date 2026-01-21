@@ -8,7 +8,7 @@ config:
   monitoring:
     logs:
       enabled: true
-      endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+      endpoint: otel-opentelemetry-collector
       exporter: otlp
       insecure: "true"
       mode: grpc
@@ -16,7 +16,7 @@ config:
     metrics:
       batch: "true"
       enabled: true
-      endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+      endpoint: otel-opentelemetry-collector
       exporter: otlp
       exporterPushInterval: 5s
       insecure: "true"
@@ -27,7 +27,7 @@ config:
     traces:
       batch: "true"
       enabled: true
-      endpoint: otel-opentelemetry-collector.monitoring.svc.cluster.local
+      endpoint: otel-opentelemetry-collector
       exporter: otlp
       insecure: "true"
       mode: grpc
@@ -53,12 +53,10 @@ config:
         - 1024
 headlessService:
   enabled: true
-imagePullSecrets:
-  - name: zot
 ingress:
   enabled: true
   hosts:
-    - host: ledger-exp.v2.formance.dev
+    - host: ledger-exp.staging.formance.cloud
       paths:
         - path: /
           pathType: Prefix

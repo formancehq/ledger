@@ -1,0 +1,31 @@
+config:
+  ledger-exp-devenv:k8s-context: staging-eu-west-1-hosting
+  ledger-exp-devenv:namespace: ledger-exp
+  ledger-exp-devenv:registry: ghcr.io
+  ledger-exp-devenv:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
+  
+  ledger-exp-devenv:formance-dev-registry-username:
+    secure: AAABAPtYYUMURLfL3vRFlFule48wHMwy1eGUbMny2L/JenpPAAU=
+  ledger-exp-devenv:formance-dev-registry-password:
+    secure: AAABAPgFQlfdNj78IYmkeXxoa938k+0KSzSe/npVwYJlbAUSkCXXghFnYXdXr4LqnpvFaB+LzgNkZwzuIeoMN0pMc7X4lNkf
+
+  # Optional components (set to false to disable)
+  ledger-exp-devenv:k6operator-enabled: true
+  ledger-exp-devenv:benchmarkOperator-enabled: true
+
+  ledger-exp-devenv:grafana:
+    file: values/staging/grafana.yaml
+  ledger-exp-devenv:benchmarkOperator:
+    file: values/staging/benchmark-operator.yaml
+  ledger-exp-devenv:k6operator:
+    file: values/staging/k6operator.yaml
+  ledger-exp-devenv:ledger:
+    file: values/staging/ledger.yaml
+  ledger-exp-devenv:loki:
+    file: values/staging/loki.yaml
+  ledger-exp-devenv:otlp:
+    file: values/staging/otlp.yaml
+  ledger-exp-devenv:tempo:
+    file: values/staging/tempo.yaml
+  ledger-exp-devenv:victoriametrics:
+    file: values/staging/victoriametrics.yaml

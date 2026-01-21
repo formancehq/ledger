@@ -8,23 +8,23 @@ datasources:
         isDefault: true
         name: VictoriaMetrics
         type: prometheus
-        url: http://vm-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
+        url: http://vm-victoria-metrics-single-server:8428
       - access: proxy
         editable: true
         name: Tempo
         type: tempo
-        url: http://tempo.monitoring.svc.cluster.local:3200
+        url: http://tempo:3200
       - access: proxy
         editable: true
         name: Loki
         type: loki
-        url: http://loki.monitoring.svc.cluster.local:3100
+        url: http://loki:3100
       - access: proxy
         editable: true
         isDefault: false
         jsonData:
           allowedHosts:
-            - http://ledger-v3-poc.default.svc.cluster.local:9000
+            - http://ledger-exp:9000
         name: HTTP Infinity
         type: yesoreyeram-infinity-datasource
         uid: http-infinity
@@ -36,12 +36,12 @@ datasources:
         name: HTTP JSON API
         type: marcusolsson-json-datasource
         uid: http-json-api
-        url: http://ledger-v3-poc.default.svc.cluster.local:9000
+        url: http://ledger-exp:9000
 deploymentStrategy:
   type: Recreate
 grafana.ini:
   server:
-    root_url: https://grafana.ledger-exp.v2.formance.dev
+    root_url: https://grafana-ledger-exp.staging.formance.cloud
     serve_from_sub_path: false
   snapshots:
     external_enabled: false
@@ -54,12 +54,12 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-busy-buffers-size: 4m
   enabled: true
   hosts:
-    - grafana.ledger-exp.v2.formance.dev
+    - grafana-ledger-exp.staging.formance.cloud
   path: /
   pathType: Prefix
   tls:
     - hosts:
-        - grafana.ledger-exp.v2.formance.dev
+        - grafana-ledger-exp.staging.formance.cloud
       secretName: grafana-tls
 persistence:
   accessModes:
@@ -87,6 +87,5 @@ sidecar:
     enabled: true
     label: grafana_dashboard
     labelValue: "1"
-    searchNamespace: monitoring
   datasources:
     enabled: true

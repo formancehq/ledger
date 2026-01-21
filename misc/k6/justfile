@@ -28,7 +28,7 @@ k6-create-archive SCRIPT:
 
 # Install k6 TestRun from Helm chart (creates ConfigMap and TestRun)
 # Usage: just k6-run any_unbounded_to_any --parallelism 10 --stages "30s:512,10m:512,30s:0"
-k6-run SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="bench" LEDGER_URL="http://ledger-exp.ledger.svc.cluster.local:9000":
+k6-run SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="ledger-exp" LEDGER_URL="http://ledger-exp.ledger-exp.svc.cluster.local:9000":
     #!/usr/bin/env bash
     set -e
     SCRIPT_NAME="{{SCRIPT}}"
