@@ -21,6 +21,10 @@ func (h logsResourceHandler) filters() []filter {
 	}
 }
 
+func (h logsResourceHandler) skipFilter(query repositoryHandlerBuildContext[any]) bool {
+	return false
+}
+
 func (h logsResourceHandler) buildDataset(store *Store, _ repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return store.newScopedSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("logs")).

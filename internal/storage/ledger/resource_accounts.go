@@ -48,6 +48,10 @@ func (h accountsResourceHandler) filters() []filter {
 	}
 }
 
+func (h accountsResourceHandler) skipFilter(query repositoryHandlerBuildContext[any]) bool {
+	return false
+}
+
 func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.newScopedSelect()
 

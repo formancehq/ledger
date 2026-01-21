@@ -92,6 +92,8 @@ type repositoryHandler[Opts any] interface {
 	resolveFilter(store *Store, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	project(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
 	expand(store *Store, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
+	// some queries peform filtering while building the dataset, so we can skip the filter
+	skipFilter(query repositoryHandlerBuildContext[Opts]) bool
 }
 
 type resourceRepository[ResourceType, OptionsType any] struct {
@@ -159,10 +161,11 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 		return nil, err
 	}
 
-	dataset, err := r.resourceHandler.buildDataset(r.store, repositoryHandlerBuildContext[OptionsType]{
+	buildContext := repositoryHandlerBuildContext[OptionsType]{
 		ResourceQuery: q,
 		filters:       filters,
-	})
+	}
+	dataset, err := r.resourceHandler.buildDataset(r.store, buildContext)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +173,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 	dataset = r.store.db.NewSelect().
 		ModelTableExpr("(?) dataset", dataset)
 
-	if q.Builder != nil {
+	if q.Builder != nil && !r.resourceHandler.skipFilter(buildContext) {
 		// Convert filters to where clause
 		where, args, err := q.Builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			return r.resourceHandler.resolveFilter(r.store, q, operator, key, value)

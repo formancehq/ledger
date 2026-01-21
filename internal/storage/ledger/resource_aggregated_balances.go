@@ -47,6 +47,11 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 	}
 }
 
+func (h aggregatedBalancesResourceRepositoryHandler) skipFilter(query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) bool {
+	needAddressSegments := query.useFilter("address", isPartialAddress)
+	return query.UsePIT() && needAddressSegments && !query.useFilter("metadata")
+}
+
 func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {

@@ -55,6 +55,12 @@ func (h volumesResourceHandler) filters() []filter {
 	}
 }
 
+func (h volumesResourceHandler) skipFilter(query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) bool {
+	usesPITOrOOT := query.UsePIT() || query.UseOOT()
+	needAddressSegments := query.useFilter("address", isPartialAddress)
+	return usesPITOrOOT && needAddressSegments && !query.useFilter("balance(\\[.*])?") && !query.useFilter("metadata")
+}
+
 func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
