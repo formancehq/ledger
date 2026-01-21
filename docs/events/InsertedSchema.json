@@ -112,6 +112,81 @@
         "schema"
       ]
     },
+    "QueryTemplate": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "resource": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/QueryTemplateParams"
+        },
+        "vars": {
+          "additionalProperties": {
+            "$ref": "#/$defs/VarSpec"
+          },
+          "type": "object"
+        },
+        "body": true
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resource",
+        "mode",
+        "params",
+        "vars",
+        "body"
+      ]
+    },
+    "QueryTemplateParams": {
+      "properties": {
+        "PIT": {
+          "$ref": "#/$defs/Time"
+        },
+        "OOT": {
+          "$ref": "#/$defs/Time"
+        },
+        "Expand": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "Opts": true,
+        "SortColumn": {
+          "type": "string"
+        },
+        "SortOrder": {
+          "type": "integer"
+        },
+        "PageSize": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "PIT",
+        "OOT",
+        "Expand",
+        "Opts",
+        "SortColumn",
+        "SortOrder",
+        "PageSize"
+      ]
+    },
+    "QueryTemplates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/QueryTemplate"
+      },
+      "type": "object"
+    },
     "Schema": {
       "properties": {
         "chart": {
@@ -119,6 +194,9 @@
         },
         "transactions": {
           "$ref": "#/$defs/TransactionTemplates"
+        },
+        "queries": {
+          "$ref": "#/$defs/QueryTemplates"
         },
         "version": {
           "type": "string"
@@ -132,6 +210,7 @@
       "required": [
         "chart",
         "transactions",
+        "queries",
         "version",
         "createdAt"
       ]
@@ -165,6 +244,21 @@
         "$ref": "#/$defs/TransactionTemplate"
       },
       "type": "object"
+    },
+    "VarSpec": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "default": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "default"
+      ]
     }
   }
 }

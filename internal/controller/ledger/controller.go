@@ -86,6 +86,9 @@ type Controller interface {
 	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	// ListSchemas List all schemas for the ledger
 	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
+
+	// Run a query template on the ledger
+	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*bunpaginate.Cursor[any], error)
 }
 
 type RunScript = vm.RunScript

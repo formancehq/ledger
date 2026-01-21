@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -36,3 +37,23 @@ var _ PaginatedQuery[any] = (*InitialPaginatedQuery[any])(nil)
 var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)
 
 var _ PaginatedQuery[any] = (*ColumnPaginatedQuery[any])(nil)
+
+func UnmarshalInitialPaginatedQueryOpts[TO any](from InitialPaginatedQuery[json.RawMessage]) (*InitialPaginatedQuery[TO], error) {
+	var opts TO
+	if err := json.Unmarshal(from.Options.Opts, &opts); err != nil {
+		return nil, err
+	} else {
+		return &InitialPaginatedQuery[TO]{
+			PageSize: from.PageSize,
+			Column:   from.Column,
+			Order:    from.Order,
+			Options: ResourceQuery[TO]{
+				PIT:     from.Options.PIT,
+				OOT:     from.Options.OOT,
+				Builder: from.Options.Builder,
+				Expand:  from.Options.Expand,
+				Opts:    opts,
+			},
+		}, nil
+	}
+}

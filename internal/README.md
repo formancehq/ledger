@@ -13,6 +13,7 @@ import "github.com/formancehq/ledger/internal"
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
 - [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
 - [func MarkReverts\(m metadata.Metadata, txID uint64\) metadata.Metadata](<#MarkReverts>)
+- [func ResolveFilterTemplate\(body json.RawMessage, vars map\[string\]string\) \(query.Builder, error\)](<#ResolveFilterTemplate>)
 - [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
@@ -133,11 +134,19 @@ import "github.com/formancehq/ledger/internal"
 - [type Postings](<#Postings>)
   - [func \(p Postings\) Reverse\(\) Postings](<#Postings.Reverse>)
   - [func \(p Postings\) Validate\(\) \(int, error\)](<#Postings.Validate>)
+- [type QueryMode](<#QueryMode>)
+- [type QueryTemplate](<#QueryTemplate>)
+- [type QueryTemplateParams](<#QueryTemplateParams>)
+  - [func \(q \*QueryTemplateParams\) Overwrite\(other QueryTemplateParams\)](<#QueryTemplateParams.Overwrite>)
+  - [func \(q \*QueryTemplateParams\) UnmarshalJSON\(data \[\]byte\) error](<#QueryTemplateParams.UnmarshalJSON>)
+- [type QueryTemplates](<#QueryTemplates>)
+- [type ResourceKind](<#ResourceKind>)
 - [type RevertedTransaction](<#RevertedTransaction>)
   - [func \(r RevertedTransaction\) GetMemento\(\) any](<#RevertedTransaction.GetMemento>)
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
   - [func \(r RevertedTransaction\) Type\(\) LogType](<#RevertedTransaction.Type>)
   - [func \(r RevertedTransaction\) ValidateWithSchema\(schema Schema\) error](<#RevertedTransaction.ValidateWithSchema>)
+- [type RunQueryTemplateParams](<#RunQueryTemplateParams>)
 - [type RuntimeType](<#RuntimeType>)
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(p SavedMetadata\) NeedsSchema\(\) bool](<#SavedMetadata.NeedsSchema>)
@@ -175,6 +184,8 @@ import "github.com/formancehq/ledger/internal"
 - [type TransactionTemplates](<#TransactionTemplates>)
   - [func \(t TransactionTemplates\) Validate\(\) error](<#TransactionTemplates.Validate>)
 - [type Transactions](<#Transactions>)
+- [type VarSpec](<#VarSpec>)
+  - [func \(p \*VarSpec\) UnmarshalJSON\(b \[\]byte\) error](<#VarSpec.UnmarshalJSON>)
 - [type Volumes](<#Volumes>)
   - [func NewEmptyVolumes\(\) Volumes](<#NewEmptyVolumes>)
   - [func NewVolumesInt64\(input, output int64\) Volumes](<#NewVolumesInt64>)
@@ -297,6 +308,15 @@ func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata
 ```
 
 
+
+<a name="ResolveFilterTemplate"></a>
+## func [ResolveFilterTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L140>)
+
+```go
+func ResolveFilterTemplate(body json.RawMessage, vars map[string]string) (query.Builder, error)
+```
+
+Resolve filter template using the provided vars
 
 <a name="RevertMetadata"></a>
 ## func [RevertMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L35>)
@@ -1513,6 +1533,103 @@ func (p Postings) Validate() (int, error)
 
 
 
+<a name="QueryMode"></a>
+## type [QueryMode](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L26>)
+
+
+
+```go
+type QueryMode string
+```
+
+<a name="Sync"></a>
+
+```go
+const (
+    Sync QueryMode = "sync"
+)
+```
+
+<a name="QueryTemplate"></a>
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L130-L137>)
+
+
+
+```go
+type QueryTemplate struct {
+    Name     string              `json:"name,omitempty"`
+    Resource ResourceKind        `json:"resource"`
+    Mode     QueryMode           `json:"mode"`
+    Params   QueryTemplateParams `json:"params"`
+    Vars     map[string]VarSpec  `json:"vars"`
+    Body     json.RawMessage     `json:"body"`
+}
+```
+
+<a name="QueryTemplateParams"></a>
+## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L59-L67>)
+
+
+
+```go
+type QueryTemplateParams struct {
+    PIT        *time.Time
+    OOT        *time.Time
+    Expand     []string
+    Opts       json.RawMessage
+    SortColumn string
+    SortOrder  *bunpaginate.Order
+    PageSize   uint
+}
+```
+
+<a name="QueryTemplateParams.Overwrite"></a>
+### func \(\*QueryTemplateParams\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L106>)
+
+```go
+func (q *QueryTemplateParams) Overwrite(other QueryTemplateParams)
+```
+
+
+
+<a name="QueryTemplateParams.UnmarshalJSON"></a>
+### func \(\*QueryTemplateParams\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L69>)
+
+```go
+func (q *QueryTemplateParams) UnmarshalJSON(data []byte) error
+```
+
+
+
+<a name="QueryTemplates"></a>
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L32>)
+
+
+
+```go
+type QueryTemplates map[string]QueryTemplate
+```
+
+<a name="ResourceKind"></a>
+## type [ResourceKind](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L17>)
+
+
+
+```go
+type ResourceKind string
+```
+
+<a name="ResourceKindTransactions"></a>
+
+```go
+const (
+    ResourceKindTransactions ResourceKind = "transactions"
+    ResourceKindAccounts     ResourceKind = "accounts"
+    ResourceKindLogs         ResourceKind = "logs"
+    ResourceKindVolumes      ResourceKind = "volumes"
+)
+```
+
 <a name="RevertedTransaction"></a>
 ## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L370-L373>)
 
@@ -1560,6 +1677,18 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 ```
 
 
+
+<a name="RunQueryTemplateParams"></a>
+## type [RunQueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L54-L57>)
+
+
+
+```go
+type RunQueryTemplateParams struct {
+    QueryTemplateParams
+    Cursor string `json:"cursor"`
+}
+```
 
 <a name="RuntimeType"></a>
 ## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L8>)
@@ -1629,7 +1758,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L16-L22>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L17-L23>)
 
 
 
@@ -1644,7 +1773,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L24>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L25>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1653,7 +1782,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L14>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L15>)
 
 
 
@@ -1661,6 +1790,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 type SchemaData struct {
     Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
     Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
+    Queries      QueryTemplates       `json:"queries" bun:"queries"`
 }
 ```
 
@@ -1941,6 +2071,27 @@ type Transactions struct {
     Transactions []TransactionData `json:"transactions"`
 }
 ```
+
+<a name="VarSpec"></a>
+## type [VarSpec](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L34-L37>)
+
+
+
+```go
+type VarSpec struct {
+    Type    string  `json:"type,omitempty"`
+    Default *string `json:"default"`
+}
+```
+
+<a name="VarSpec.UnmarshalJSON"></a>
+### func \(\*VarSpec\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L39>)
+
+```go
+func (p *VarSpec) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="Volumes"></a>
 ## type [Volumes](<https://github.com/formancehq/ledger/blob/main/internal/volumes.go#L13-L16>)

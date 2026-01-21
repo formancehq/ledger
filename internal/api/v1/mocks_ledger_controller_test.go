@@ -1066,6 +1066,45 @@ func (c *LedgerControllerRollbackCall) DoAndReturn(f func(context.Context) error
 	return c
 }
 
+// RunQuery mocks base method.
+func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*bunpaginate.Cursor[any], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[any])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunQuery indicates an expected call of RunQuery.
+func (mr *LedgerControllerMockRecorder) RunQuery(ctx, schemaVersion, queryId, runQuery, defaultPageSize any) *LedgerControllerRunQueryCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunQuery", reflect.TypeOf((*LedgerController)(nil).RunQuery), ctx, schemaVersion, queryId, runQuery, defaultPageSize)
+	return &LedgerControllerRunQueryCall{Call: call}
+}
+
+// LedgerControllerRunQueryCall wrap *gomock.Call
+type LedgerControllerRunQueryCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *LedgerControllerRunQueryCall) Return(arg0 *bunpaginate.Cursor[any], arg1 error) *LedgerControllerRunQueryCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *LedgerControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, uint64) (*bunpaginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *LedgerControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, uint64) (*bunpaginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // SaveAccountMetadata mocks base method.
 func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()

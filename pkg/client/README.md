@@ -155,6 +155,7 @@ func main() {
 * [ListLogs](docs/sdks/v2/README.md#listlogs) - List the logs from a ledger
 * [ImportLogs](docs/sdks/v2/README.md#importlogs)
 * [ExportLogs](docs/sdks/v2/README.md#exportlogs) - Export logs
+* [RunQuery](docs/sdks/v2/README.md#runquery) - Run a query template
 * [ListExporters](docs/sdks/v2/README.md#listexporters) - List exporters
 * [CreateExporter](docs/sdks/v2/README.md#createexporter) - Create exporter
 * [GetExporterState](docs/sdks/v2/README.md#getexporterstate) - Get exporter state

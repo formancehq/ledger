@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 21347a677b23d73593e490cbb2a55502
+  docChecksum: f988b95ec94f11f007ceed8e1a85c471
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -120,6 +120,8 @@ generatedFiles:
   - /models/components/v2pipeline.go
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
+  - /models/components/v2querytemplate.go
+  - /models/components/v2querytemplatevar.go
   - /models/components/v2reverttransactionrequest.go
   - /models/components/v2schema.go
   - /models/components/v2schemadata.go
@@ -197,6 +199,7 @@ generatedFiles:
   - /models/operations/v2resetpipeline.go
   - /models/operations/v2restorebucket.go
   - /models/operations/v2reverttransaction.go
+  - /models/operations/v2runquery.go
   - /models/operations/v2startpipeline.go
   - /models/operations/v2stoppipeline.go
   - /models/operations/v2updateexporter.go
@@ -231,9 +234,15 @@ generatedFiles:
   - docs/models/components/mapping.md
   - docs/models/components/mappingresponse.md
   - docs/models/components/migrationinfo.md
+  - docs/models/components/opts.md
+  - docs/models/components/params.md
   - docs/models/components/posting.md
   - docs/models/components/posttransaction.md
   - docs/models/components/posttransactionscript.md
+  - docs/models/components/querytemplateaccountparams.md
+  - docs/models/components/querytemplatelogparams.md
+  - docs/models/components/querytemplatetransactionparams.md
+  - docs/models/components/querytemplatevolumeparams.md
   - docs/models/components/runtime.md
   - docs/models/components/script.md
   - docs/models/components/scriptresponse.md
@@ -319,6 +328,9 @@ generatedFiles:
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
+  - docs/models/components/v2queryresource.md
+  - docs/models/components/v2querytemplate.md
+  - docs/models/components/v2querytemplatevar.md
   - docs/models/components/v2reverttransactionrequest.md
   - docs/models/components/v2schema.md
   - docs/models/components/v2schemadata.md
@@ -458,6 +470,10 @@ generatedFiles:
   - docs/models/operations/v2restorebucketresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
+  - docs/models/operations/v2runqueryqueryparamorder.md
+  - docs/models/operations/v2runqueryrequest.md
+  - docs/models/operations/v2runqueryrequestbody.md
+  - docs/models/operations/v2runqueryresponse.md
   - docs/models/operations/v2startpipelinerequest.md
   - docs/models/operations/v2startpipelineresponse.md
   - docs/models/operations/v2stoppipelinerequest.md
@@ -1243,7 +1259,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -1255,7 +1271,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "transactions": {"key": {"script": "<value>"}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:
@@ -1270,6 +1286,24 @@ examples:
       responses:
         "200":
           application/json: {"cursor": {"data": [], "hasMore": true, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "pageSize": 47856}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2RunQuery:
+    speakeasy-default-v2-run-query:
+      parameters:
+        path:
+          ledger: "ledger001"
+          id: "CUSTOMER_DEPOSIT"
+        query:
+          pageSize: 100
+          cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          sort: "id:desc"
+          schemaVersion: "v1.0.0"
+      requestBody:
+        application/json: {}
+      responses:
+        "200":
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2

@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -20,6 +21,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
@@ -602,6 +604,101 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)
+}
+
+func TestRunQuery(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+
+	store := NewMockStore(ctrl)
+	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
+
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
+
+	schemaVersion := "v1.0"
+	schema := ledger.Schema{
+		SchemaData: ledger.SchemaData{
+			Chart:        ledger.ChartOfAccounts{},
+			Transactions: ledger.TransactionTemplates{},
+			Queries: ledger.QueryTemplates{
+				"FOO": {
+					Name:     "Foo template",
+					Resource: "accounts",
+					Mode:     "sync",
+					Vars: map[string]ledger.VarSpec{
+						"aaa": {
+							Type:    "string",
+							Default: nil,
+						},
+					},
+					Body: json.RawMessage(`{
+						"$match": {
+							"address": "<aaa>"
+						}
+					}`),
+				},
+			},
+		},
+		Version: schemaVersion,
+	}
+
+	store.EXPECT().
+		BeginTX(gomock.Any(), nil).
+		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		InsertSchema(gomock.Any(), &schema).
+		Return(nil)
+
+	store.EXPECT().
+		Commit(gomock.Any()).
+		Return(nil)
+
+	store.EXPECT().
+		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
+			return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
+		})).
+		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
+			log.ID = pointer.For(uint64(0))
+			return log
+		})
+
+	_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
+		Input: InsertSchema{
+			Version: schema.Version,
+			Data:    schema.SchemaData,
+		},
+	})
+	require.NoError(t, err)
+
+	store.EXPECT().
+		FindSchema(gomock.Any(), "v1.0").
+		Return(&schema, nil)
+
+	store.EXPECT().Accounts().Return(accounts)
+
+	expectedQuery, err := query.ParseJSON(`{"$match": {"address": "bbb"}}`)
+	require.NoError(t, err)
+	cursor := &bunpaginate.Cursor[ledger.Account]{}
+	accounts.EXPECT().Paginate(gomock.Any(), storagecommon.InitialPaginatedQuery[any]{
+		Options: storagecommon.ResourceQuery[any]{
+			Builder: expectedQuery,
+		},
+	}).Return(cursor, nil)
+
+	ret, err := l.RunQuery(context.Background(), schema.Version, "FOO", common.RunQuery{
+		Vars: map[string]string{
+			"aaa": "bbb",
+		},
+	}, bunpaginate.QueryDefaultPageSize)
+	require.NoError(t, err)
+	require.Equal(t, &bunpaginate.Cursor[any]{
+		Data: []any{},
+	}, ret)
+
 }
 
 func TestGetMigrationsInfo(t *testing.T) {

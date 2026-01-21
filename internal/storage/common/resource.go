@@ -121,7 +121,6 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	ret := make(map[string][]any)
 	properties := r.resourceHandler.Schema().Fields
 	if err := builder.Walk(func(operator string, key string, value any) (err error) {
-
 		for name, property := range properties {
 			key := key
 			if property.Type.IsIndexable() {
