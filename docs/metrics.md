@@ -65,6 +65,16 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 | `raft.append_entries` | Histogram | µs | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
 | `raft.process_entry` | Histogram | µs | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
 
+### WAL Metrics
+
+The Write-Ahead Log (WAL) metrics track the performance of the WAL append operations.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `wal.append.cache.duration` | Histogram | µs | Time spent updating the in-memory cache during WAL append. This is purely in-memory and should be very fast. |
+| `wal.append.save.duration` | Histogram | µs | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
+| `wal.append.batch_size` | Histogram | 1 | Number of entries appended at once. Higher values indicate efficient batching under load. |
+
 ### Snapshot Metrics
 
 | Metric | Type | Unit | Description |
@@ -307,6 +317,9 @@ The dashboard is organized into the following sections:
 - Batch Size Distribution
 - Applying Entries Percentiles
 - Applying Entries Rate
+- WAL Cache Update Time
+- WAL Save Time
+- WAL Append Batch Size
 
 **SQLite Section** (collapsed by default):
 - Log Store SQL Time Passed
@@ -375,6 +388,150 @@ Displays k6 load test metrics in real-time.
    histogram_quantile(0.99, rate(raft_transport_ping_latency_bucket[5m])) > 10000
    ```
    Duration: 5m
+
+## Continuous Profiling with Pyroscope
+
+Ledger v3 POC supports continuous profiling with [Grafana Pyroscope](https://grafana.com/docs/pyroscope/latest/), enabling deep performance analysis and bottleneck identification.
+
+### Overview
+
+Pyroscope collects profiling data (CPU, memory, goroutines, etc.) continuously, allowing you to:
+- Identify performance bottlenecks in production
+- Analyze CPU and memory usage patterns
+- Debug contention issues (mutex, blocking)
+- Correlate profiles with traces and metrics
+
+### Configuration
+
+Enable Pyroscope profiling via environment variables or command-line flags:
+
+```bash
+# Enable Pyroscope profiling
+export PYROSCOPE_ENABLED=true
+export PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
+export PYROSCOPE_APPLICATION_NAME=ledger-v3-poc
+
+# Optional: Authentication for Grafana Cloud
+export PYROSCOPE_AUTH_TOKEN=your-grafana-cloud-token
+export PYROSCOPE_TENANT_ID=your-tenant-id
+
+# Optional: Basic auth
+export PYROSCOPE_BASIC_AUTH_USER=user
+export PYROSCOPE_BASIC_AUTH_PASSWORD=password
+
+# Optional: Additional tags (can be specified multiple times)
+export PYROSCOPE_TAGS=env=production,region=us-east-1
+
+# Optional: Profile types (default: cpu,alloc_objects,alloc_space,inuse_objects,inuse_space)
+export PYROSCOPE_PROFILE_TYPES=cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration
+
+# Optional: Upload rate (default: 15s)
+export PYROSCOPE_UPLOAD_RATE=15s
+
+# Optional: Mutex and block profiling rates (default: 5)
+export PYROSCOPE_MUTEX_PROFILE_FRACTION=5
+export PYROSCOPE_BLOCK_PROFILE_RATE=5
+
+# Optional: Disable GC runs between heap profiles
+export PYROSCOPE_DISABLE_GC_RUNS=false
+```
+
+### Command-Line Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--pyroscope-enabled` | Enable Pyroscope profiling | `false` |
+| `--pyroscope-server-address` | Pyroscope server address | `http://localhost:4040` |
+| `--pyroscope-application-name` | Application name in Pyroscope | Service name |
+| `--pyroscope-auth-token` | Auth token for Grafana Cloud | - |
+| `--pyroscope-tenant-id` | Tenant ID for multi-tenant Pyroscope | - |
+| `--pyroscope-basic-auth-user` | Basic auth username | - |
+| `--pyroscope-basic-auth-password` | Basic auth password | - |
+| `--pyroscope-upload-rate` | Profile upload interval | `15s` |
+| `--pyroscope-tags` | Additional tags (key=value, repeatable) | - |
+| `--pyroscope-profile-types` | Profile types to enable (repeatable) | See below |
+| `--pyroscope-mutex-profile-fraction` | Mutex profile fraction | `5` |
+| `--pyroscope-block-profile-rate` | Block profile rate | `5` |
+| `--pyroscope-disable-gc-runs` | Disable GC runs between heap profiles | `false` |
+
+### Profile Types
+
+Available profile types:
+- `cpu` - CPU usage
+- `alloc_objects` - Number of allocated objects
+- `alloc_space` - Total allocated memory
+- `inuse_objects` - Objects currently in use
+- `inuse_space` - Memory currently in use
+- `goroutines` - Goroutine stacks
+- `mutex_count` - Mutex contention count
+- `mutex_duration` - Mutex contention duration
+- `block_count` - Blocking operations count
+- `block_duration` - Blocking operations duration
+
+### Kubernetes Deployment
+
+Add Pyroscope configuration to your Helm values:
+
+```yaml
+config:
+  pyroscope:
+    enabled: true
+    serverAddress: "http://pyroscope.monitoring.svc.cluster.local:4040"
+    applicationName: "ledger-v3-poc"
+    tags: "env=production"
+    profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+```
+
+For Grafana Cloud:
+
+```yaml
+config:
+  pyroscope:
+    enabled: true
+    serverAddress: "https://profiles-prod-001.grafana.net"
+    authToken: "${GRAFANA_CLOUD_PYROSCOPE_TOKEN}"
+    tenantId: "your-tenant-id"
+    applicationName: "ledger-v3-poc"
+```
+
+### Automatic Tags
+
+The following tags are automatically added to all profiles:
+- `node_id` - The Raft node ID
+
+### Best Practices
+
+1. **Start with default profile types**: CPU and memory profiles provide the most value with minimal overhead.
+
+2. **Enable mutex/block profiling selectively**: These profiles add overhead and should only be enabled when debugging contention issues.
+
+3. **Use appropriate upload rate**: 15 seconds is a good default. Shorter intervals provide more granularity but increase overhead.
+
+4. **Tag your profiles**: Use tags to differentiate between environments, regions, or versions.
+
+5. **Monitor overhead**: Continuous profiling adds ~1-2% CPU overhead. Monitor your application's resource usage after enabling.
+
+### Integration with Grafana
+
+When using Grafana Cloud or self-hosted Grafana with Pyroscope:
+
+1. Add Pyroscope as a data source in Grafana
+2. Use the Profiles panel to view flame graphs
+3. Correlate profiles with traces using the same service name
+4. Use the "Profiles Drilldown" plugin for advanced analysis
+
+### Troubleshooting
+
+**Profiles not appearing in Pyroscope:**
+- Verify `PYROSCOPE_ENABLED=true`
+- Check network connectivity to Pyroscope server
+- Verify authentication credentials if using Grafana Cloud
+- Check application logs for Pyroscope-related errors
+
+**High overhead:**
+- Reduce the number of profile types
+- Increase upload rate
+- Disable mutex and block profiling
 
 ## Next Steps
 

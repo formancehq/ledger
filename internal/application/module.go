@@ -62,9 +62,9 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
 				}
 			},
-			func(cfg Config, logger logging.Logger) (*wal.WAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"))
-			},
+		func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
+			return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"), meterProvider.Meter("wal"))
+		},
 			func(cfg Config) (*raft.DefaultSpool, error) {
 				return raft.NewDefaultSpool(raft.DefaultSpoolConfig{
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),

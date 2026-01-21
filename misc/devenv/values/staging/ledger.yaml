@@ -32,10 +32,17 @@ config:
       insecure: "true"
       mode: grpc
       port: "4317"
+    pyroscope:
+      enabled: true
+      serverAddress: "http://pyroscope:4040"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+      uploadRate: "15s"
+      mutexProfileFraction: 5
+      blockProfileRate: 5
   raft:
     electionTick: 10
     heartbeatTick: 1
-    maxInflightMsgs: 512
+    maxInflightMsgs: 1024
     maxSizePerMsg: 2097152
     compactionMargin: 15000
     proposeQueueCapacity: 512

@@ -140,7 +140,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		spoolDir := t.TempDir()
 
 		// Create WAL
-		w, err := wal.New(walDir, logger)
+		w, err := wal.New(walDir, logger, meter)
 		require.NoError(t, err)
 
 		// Create spool
@@ -399,7 +399,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	}
 
 	// Recreate resources from the same directories
-	w, err := wal.New(clusterNode.walDir, c.logger)
+	w, err := wal.New(clusterNode.walDir, c.logger, noop.Meter{})
 	if err != nil {
 		return nil, fmt.Errorf("recreating WAL: %w", err)
 	}

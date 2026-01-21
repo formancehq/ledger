@@ -37,6 +37,13 @@ datasources:
         type: marcusolsson-json-datasource
         uid: http-json-api
         url: http://ledger-exp:9000
+      - access: proxy
+        editable: true
+        isDefault: false
+        name: Pyroscope
+        type: grafana-pyroscope-datasource
+        uid: pyroscope
+        url: http://pyroscope:4040
 deploymentStrategy:
   type: Recreate
 grafana.ini:
@@ -73,6 +80,7 @@ plugins:
   - marcusolsson-json-datasource
   - yesoreyeram-infinity-datasource
   - pgillich-tree-panel
+  - grafana-pyroscope-app
 resources:
   limits:
     cpu: 300m

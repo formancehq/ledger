@@ -328,6 +328,55 @@ config:
     
     # Additional resource attributes
     attributes: ""
+    
+    # Pyroscope continuous profiling
+    pyroscope:
+      enabled: false
+      serverAddress: "http://pyroscope:4040"
+      applicationName: ""  # Defaults to serviceName
+      authToken: ""        # For Grafana Cloud
+      tenantId: ""         # For multi-tenant Pyroscope
+      uploadRate: "15s"
+      tags: ""             # Format: key=value,key2=value2
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+      mutexProfileFraction: 5
+      blockProfileRate: 5
+      disableGCRuns: false
+```
+
+#### Pyroscope Continuous Profiling
+
+The chart supports [Grafana Pyroscope](https://grafana.com/docs/pyroscope/latest/) for continuous profiling:
+
+```yaml
+config:
+  monitoring:
+    pyroscope:
+      enabled: true
+      serverAddress: "http://pyroscope:4040"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+```
+
+Available profile types:
+- `cpu` - CPU usage
+- `alloc_objects` - Number of allocated objects
+- `alloc_space` - Total allocated memory
+- `inuse_objects` - Objects currently in use
+- `inuse_space` - Memory currently in use
+- `goroutines` - Goroutine stacks
+- `mutex_count` / `mutex_duration` - Mutex contention
+- `block_count` / `block_duration` - Blocking operations
+
+For Grafana Cloud:
+
+```yaml
+config:
+  monitoring:
+    pyroscope:
+      enabled: true
+      serverAddress: "https://profiles-prod-001.grafana.net"
+      authToken: "${GRAFANA_CLOUD_PYROSCOPE_TOKEN}"
+      tenantId: "your-tenant-id"
 ```
 
 **Note**: Monitoring configuration can also be set globally. Global values take precedence if `config.monitoring` values are not set.
@@ -584,6 +633,7 @@ The project includes a Pulumi-based development environment in `misc/devenv/` th
 | **Grafana** | Dashboards and visualization | `monitoring` |
 | **Loki** | Log aggregation | `monitoring` |
 | **Tempo** | Distributed tracing backend | `monitoring` |
+| **Pyroscope** | Continuous profiling (CPU, memory, goroutines) | `monitoring` |
 | **OpenTelemetry Collector** | Metrics, traces, and logs collection | `monitoring` |
 | **k6-operator** | Kubernetes operator for running k6 load tests | `bench` |
 | **Benchmark Operator** | Automated test reporting and Grafana snapshots | `bench` |
@@ -631,6 +681,9 @@ kubectl port-forward -n ledger svc/ledger-exp 9000:9000
 
 # OpenTelemetry Collector (OTLP gRPC)
 kubectl port-forward -n monitoring svc/otel-opentelemetry-collector 4317:4317
+
+# Pyroscope (continuous profiling)
+kubectl port-forward -n monitoring svc/pyroscope 4040:4040
 ```
 
 ### k6 Operator
@@ -689,6 +742,7 @@ grafana:
 | `values/loki.yaml` | Loki configuration |
 | `values/tempo.yaml` | Tempo configuration |
 | `values/otlp.yaml` | OpenTelemetry Collector configuration |
+| `values/pyroscope.yaml` | Pyroscope continuous profiling configuration |
 | `values/k6operator.yaml` | k6 operator configuration |
 | `values/benchmark-operator.yaml` | Benchmark operator configuration |
 | `config/grafana/provisioning/dashboards/` | Grafana dashboard JSON files |

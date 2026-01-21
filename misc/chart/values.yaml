@@ -105,6 +105,21 @@ config:
       #format: "json"
     # Additional resource attributes
     attributes: ""
+    # Pyroscope continuous profiling configuration
+    pyroscope:
+      enabled: false
+      serverAddress: "http://pyroscope:4040"
+      applicationName: ""  # Defaults to monitoring.serviceName if not set
+      authToken: ""
+      tenantId: ""
+      basicAuthUser: ""
+      basicAuthPassword: ""
+      uploadRate: "15s"
+      tags: ""  # Format: key=value,key2=value2
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+      mutexProfileFraction: 5
+      blockProfileRate: 5
+      disableGCRuns: false
 
 # Service configuration
 service:

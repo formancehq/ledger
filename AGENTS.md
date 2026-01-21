@@ -553,6 +553,46 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 The `otlp.FXModuleFromFlags()` and `otlptraces.FXModuleFromFlags()` functions automatically read configuration from command flags and create the appropriate fx modules. The flags are automatically bound to environment variables (e.g., `OTEL_SERVICE_NAME`, `OTEL_TRACES_EXPORTER_OTLP_ENDPOINT`, etc.).
 
+#### Pyroscope Continuous Profiling
+
+Pyroscope is configured via CLI flags defined in `cmd/server/pyroscope.go`:
+
+```go
+// In cmd/server/server.go
+func NewRunCommand() *cobra.Command {
+    runCmd := &cobra.Command{...}
+    
+    // Add Pyroscope profiling flags
+    addPyroscopeFlags(runCmd.Flags())
+    
+    return runCmd
+}
+
+func runServer(cmd *cobra.Command, args []string) error {
+    // Configure Pyroscope profiling
+    pyroscopeCfg := pyroscopeConfigFromFlags(cmd)
+    
+    opts := []fx.Option{
+        // Add Pyroscope profiling module
+        pyroscope.Module(pyroscopeCfg),
+        // ... other options
+    }
+    
+    return service.NewWithLogger(logger, opts...).Run(cmd)
+}
+```
+
+The Pyroscope module (`internal/pyroscope/`) provides:
+- `Config` struct with all Pyroscope configuration options
+- `Module(cfg Config) fx.Option` to integrate with fx lifecycle
+- Automatic profiler start/stop with application lifecycle
+
+Key environment variables:
+- `PYROSCOPE_ENABLED`: Enable/disable profiling
+- `PYROSCOPE_SERVER_ADDRESS`: Pyroscope server URL
+- `PYROSCOPE_APPLICATION_NAME`: Application name in Pyroscope
+- `PYROSCOPE_PROFILE_TYPES`: Comma-separated profile types (cpu, alloc_objects, etc.)
+
 #### HTTP Server
 
 The HTTP server is configured using `github.com/formancehq/go-libs/v3/httpserver`:

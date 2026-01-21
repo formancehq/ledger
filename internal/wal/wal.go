@@ -1,18 +1,21 @@
 package wal
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/server/v3/wal"
 	"go.etcd.io/etcd/server/v3/wal/walpb"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -40,13 +43,19 @@ type WAL struct {
 	entries []raftpb.Entry
 
 	logger     logging.Logger
+	meter      metric.Meter
 	dataDir    string
 	stateFile  string
 	etcdWalDir string
+
+	// Metrics
+	appendCacheHistogram     metric.Int64Histogram
+	appendSaveHistogram      metric.Int64Histogram
+	appendBatchSizeHistogram metric.Int64Histogram
 }
 
 // New creates a new WAL instance
-func New(dataDir string, logger logging.Logger) (*WAL, error) {
+func New(dataDir string, logger logging.Logger, meter metric.Meter) (*WAL, error) {
 
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -57,9 +66,39 @@ func New(dataDir string, logger logging.Logger) (*WAL, error) {
 	s := &WAL{
 		entries:    make([]raftpb.Entry, 0),
 		logger:     logger,
+		meter:      meter,
 		dataDir:    dataDir,
 		stateFile:  filepath.Join(dataDir, stateFile),
 		etcdWalDir: filepath.Join(dataDir, etcdWalDir),
+	}
+
+	// Create metrics
+	var err error
+	s.appendCacheHistogram, err = meter.Int64Histogram(
+		"wal.append.cache.duration",
+		metric.WithDescription("Time spent updating in-memory cache"),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating append cache histogram: %w", err)
+	}
+
+	s.appendSaveHistogram, err = meter.Int64Histogram(
+		"wal.append.save.duration",
+		metric.WithDescription("Time spent saving entries to WAL"),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating append save histogram: %w", err)
+	}
+
+	s.appendBatchSizeHistogram, err = meter.Int64Histogram(
+		"wal.append.batch_size",
+		metric.WithDescription("Number of entries appended at once"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating append batch size histogram: %w", err)
 	}
 
 	zapLogger, err := zap.NewDevelopment()
@@ -331,6 +370,8 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 	})
 	logger.Debugf("Appending entries")
 
+	// Update in-memory cache
+	cacheStart := time.Now()
 	if len(entries) > 0 {
 		if len(s.entries) > 0 {
 			offset := s.entries[0].Index
@@ -355,6 +396,7 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 	if !raft.IsEmptyHardState(hardState) {
 		s.hardState = hardState
 	}
+	s.appendCacheHistogram.Record(context.Background(), time.Since(cacheStart).Microseconds())
 
 	s.logger.
 		WithFields(map[string]any{
@@ -364,7 +406,13 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 		}).
 		Debug("Saving WAL entries to disk")
 
-	return s.wal.Save(s.hardState, entries)
+	// Save to WAL
+	saveStart := time.Now()
+	err := s.wal.Save(s.hardState, entries)
+	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Microseconds())
+	s.appendBatchSizeHistogram.Record(context.Background(), int64(len(entries)))
+
+	return err
 }
 
 // CreateSnapshot creates a snapshot at the given index

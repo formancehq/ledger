@@ -15,6 +15,7 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 - **Idempotency**: Built-in idempotency key support for safe retries
 - **Bulk Operations**: Process multiple transactions in a single request
 - **OpenTelemetry**: Comprehensive observability with traces, metrics, and logs
+- **Continuous Profiling**: Pyroscope integration for CPU, memory, and goroutine profiling
 - **Pure Go Options**: Pebble and sqlite-modern drivers require no CGO (sqlite-mattn requires CGO)
 
 ## Documentation Structure
@@ -56,7 +57,7 @@ Diagrams and explanations of data flows for main operations (ledger creation, tr
 Testing strategy, unit tests, integration, and end-to-end tests.
 
 ### 📊 [Metrics](./metrics.md)
-Application metrics reference: Raft, transport, storage, and alerting recommendations.
+Application metrics reference: Raft, transport, storage, Pyroscope continuous profiling, and alerting recommendations.
 
 ### 📝 [Spool](./spool.md)
 Technical documentation for the Spool component (committed entry buffer).
@@ -92,6 +93,7 @@ This architecture simplifies operations while maintaining strong consistency gua
 | **Pebble** | LSM-tree storage option (CockroachDB's engine, pure Go) |
 | **fx (Uber)** | Dependency injection and lifecycle management |
 | **OpenTelemetry** | Observability: traces, metrics, and logs |
+| **Pyroscope** | Continuous profiling: CPU, memory, goroutines |
 | **Speakeasy** | SDK generation from OpenAPI specification |
 
 ## Storage Architecture

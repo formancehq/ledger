@@ -115,7 +115,7 @@ spec:
         - name: STORAGE_TYPE
           value: {{ .Values.config.storageType | quote }}
         {{- end }}
-          # OpenTelemetry metrics configuration
+        # OpenTelemetry metrics configuration
         - name: OTEL_METRICS_KEEP_IN_MEMORY
           value: {{ .Values.config.monitoring.metrics.keepInMemory | default true | toString | quote }}
         - name: OTEL_METRICS_EXPORTER_PUSH_INTERVAL
@@ -127,12 +127,66 @@ spec:
         - name: OTEL_LOGS_EXPORTER
           value: {{ .Values.config.monitoring.logs.exporter | default "" | quote }}
         - name: OTEL_LOGS_EXPORTER_OTLP_ENDPOINT
-          value: {{ .Values.config.monitoring.logs.endpoint }}:{{ .Values.config.monitoring.logs.port }}
+          value: "{{ .Values.config.monitoring.logs.endpoint }}:{{ .Values.config.monitoring.logs.port }}"
         - name: OTEL_LOGS_EXPORTER_OTLP_INSECURE
           value: {{ .Values.config.monitoring.logs.insecure | default false | toString | quote }}
         - name: OTEL_LOGS_EXPORTER_OTLP_MODE
           value: {{ .Values.config.monitoring.logs.mode | default "" | quote }}
         {{- include "core.monitoring" . | nindent 8 }}
+        # Pyroscope continuous profiling configuration
+        {{- if .Values.config.monitoring.pyroscope.enabled }}
+        - name: PYROSCOPE_ENABLED
+          value: "true"
+        - name: PYROSCOPE_SERVER_ADDRESS
+          value: {{ .Values.config.monitoring.pyroscope.serverAddress | quote }}
+        {{- if .Values.config.monitoring.pyroscope.applicationName }}
+        - name: PYROSCOPE_APPLICATION_NAME
+          value: {{ .Values.config.monitoring.pyroscope.applicationName | quote }}
+        {{- else if .Values.config.monitoring.serviceName }}
+        - name: PYROSCOPE_APPLICATION_NAME
+          value: {{ .Values.config.monitoring.serviceName | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.authToken }}
+        - name: PYROSCOPE_AUTH_TOKEN
+          value: {{ .Values.config.monitoring.pyroscope.authToken | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.tenantId }}
+        - name: PYROSCOPE_TENANT_ID
+          value: {{ .Values.config.monitoring.pyroscope.tenantId | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.basicAuthUser }}
+        - name: PYROSCOPE_BASIC_AUTH_USER
+          value: {{ .Values.config.monitoring.pyroscope.basicAuthUser | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.basicAuthPassword }}
+        - name: PYROSCOPE_BASIC_AUTH_PASSWORD
+          value: {{ .Values.config.monitoring.pyroscope.basicAuthPassword | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.uploadRate }}
+        - name: PYROSCOPE_UPLOAD_RATE
+          value: {{ .Values.config.monitoring.pyroscope.uploadRate | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.tags }}
+        - name: PYROSCOPE_TAGS
+          value: {{ .Values.config.monitoring.pyroscope.tags | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.profileTypes }}
+        - name: PYROSCOPE_PROFILE_TYPES
+          value: {{ .Values.config.monitoring.pyroscope.profileTypes | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.mutexProfileFraction }}
+        - name: PYROSCOPE_MUTEX_PROFILE_FRACTION
+          value: {{ .Values.config.monitoring.pyroscope.mutexProfileFraction | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.blockProfileRate }}
+        - name: PYROSCOPE_BLOCK_PROFILE_RATE
+          value: {{ .Values.config.monitoring.pyroscope.blockProfileRate | quote }}
+        {{- end }}
+        {{- if .Values.config.monitoring.pyroscope.disableGCRuns }}
+        - name: PYROSCOPE_DISABLE_GC_RUNS
+          value: {{ .Values.config.monitoring.pyroscope.disableGCRuns | toString | quote }}
+        {{- end }}
+        {{- end }}
         command:
         - /bin/sh
         - -c

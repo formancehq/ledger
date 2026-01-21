@@ -333,7 +333,8 @@ func (node *Node) Start(ctx context.Context) error {
 		}
 	}
 
-	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
+	//processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
+	processingTick := time.NewTicker(2 * time.Millisecond) // todo: make configurable
 	defer processingTick.Stop()
 
 	for {

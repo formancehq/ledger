@@ -1,0 +1,28 @@
+# Pyroscope Helm chart values
+# https://github.com/grafana/pyroscope/tree/main/operations/pyroscope/helm/pyroscope
+
+pyroscope:
+  # Enable Pyroscope component
+  enabled: true
+  extraArgs:
+    log.level: info
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Disable other components we don't need
+agent:
+  enabled: false
+
+minio:
+  enabled: false
+
+# Use single binary mode for simplicity
+deploymentMode: monolithic

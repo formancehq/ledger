@@ -13,6 +13,7 @@ require (
 	github.com/formancehq/ledger-v3-poc/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/formancehq/numscript v0.0.20
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/grafana/pyroscope-go v1.2.7
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.32
@@ -117,6 +118,7 @@ require (
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect

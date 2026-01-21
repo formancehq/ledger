@@ -7,6 +7,7 @@ This Pulumi application deploys the observability stack and the Ledger v3 POC ap
 - **Loki**: Log aggregation
 - **OpenTelemetry Collector**: Metrics, traces, and logs collection
 - **Tempo**: Distributed tracing backend
+- **Pyroscope**: Continuous profiling for performance analysis
 - **Ledger v3 POC**: The main ledger application with Raft consensus cluster
 - **k6-operator**: Kubernetes operator for running k6 performance tests
 
@@ -108,6 +109,7 @@ config:
   # === OPTIONAL: Enable/disable components ===
   ledger-exp-devenv:k6operator-enabled: true              # k6 load testing operator
   ledger-exp-devenv:benchmarkOperator-enabled: false      # Benchmark reporting operator
+  ledger-exp-devenv:pyroscope-enabled: true               # Continuous profiling with Pyroscope
 
   # === VALUES FILES: Point to your new values directory ===
   ledger-exp-devenv:grafana:
@@ -213,6 +215,7 @@ The application reads configuration from `Pulumi.<stack>.yaml`:
 | `formance-dev-registry-password` | No | Registry password (secret, for private registries) |
 | `k6operator-enabled` | No | Enable k6-operator (defaults to `true`) |
 | `benchmarkOperator-enabled` | No | Enable benchmark-operator (defaults to `false`) |
+| `pyroscope-enabled` | No | Enable Pyroscope continuous profiling (defaults to `true`) |
 
 ### Helm Values
 
@@ -301,6 +304,45 @@ Then run:
 2. `pulumi up` to apply changes
 
 The operator is also available as a Helm chart at `misc/benchmark-operator/chart`.
+
+### Pyroscope
+
+Pyroscope continuous profiling is **enabled by default**. To disable it:
+
+```yaml
+# Pulumi.<stack>.yaml
+config:
+  ledger-exp-devenv:pyroscope-enabled: false
+```
+
+Or via CLI:
+
+```bash
+pulumi config set pyroscope-enabled false
+```
+
+Configure Pyroscope values in the values file (`values/<stack>/pyroscope.yaml`):
+
+```yaml
+pyroscope:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+```
+
+The ledger application will automatically send profiles to Pyroscope when `config.monitoring.pyroscope.enabled` is set to `true` in the ledger values file (`values/<stack>/ledger.yaml`):
+
+```yaml
+config:
+  monitoring:
+    pyroscope:
+      enabled: true
+      serverAddress: "http://pyroscope:4040"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+```
+
+Pyroscope is available as a data source in Grafana under the name "Pyroscope".
 
 ## Destroying the Stack
 

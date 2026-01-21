@@ -11,6 +11,7 @@ config:
   # Optional components (set to false to disable)
   ledger-exp-devenv:k6operator-enabled: true
   ledger-exp-devenv:benchmarkOperator-enabled: true
+  ledger-exp-devenv:pyroscope-enabled: true
 
   ledger-exp-devenv:grafana:
     file: values/devenv-ledger-exp/grafana.yaml
@@ -28,3 +29,5 @@ config:
     file: values/devenv-ledger-exp/tempo.yaml
   ledger-exp-devenv:victoriametrics:
     file: values/devenv-ledger-exp/victoriametrics.yaml
+  ledger-exp-devenv:pyroscope:
+    file: values/devenv-ledger-exp/pyroscope.yaml

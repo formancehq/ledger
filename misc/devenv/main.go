@@ -326,6 +326,30 @@ func main() {
 			return fmt.Errorf("failed to deploy Loki: %w", err)
 		}
 
+		// Deploy Pyroscope (optional, enabled by default)
+		var pyroscope *helm.Release
+		if getConfigBool("pyroscope-enabled", true) {
+			pyroscopeValues, err := getConfigObject("pyroscope")
+			if err != nil {
+				// Pyroscope can work with default values
+				pyroscopeValues = make(map[string]interface{})
+			}
+			pyroscope, err = helm.NewRelease(ctx, "pyroscope", &helm.ReleaseArgs{
+				Name:           pulumi.String("pyroscope"),
+				Chart:          pulumi.String("pyroscope"),
+				RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
+				Namespace:      namespace.Metadata.Name(),
+				Values:         pulumi.ToMap(pyroscopeValues),
+				ForceUpdate:    pulumi.Bool(true),
+			},
+				pulumi.DependsOn([]pulumi.Resource{namespace}),
+				pulumi.Provider(k8sProvider),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deploy Pyroscope: %w", err)
+			}
+		}
+
 		// Deploy OpenTelemetry Collector
 		otlpValues, err := getConfigObject("otlp")
 		if err != nil {
@@ -400,10 +424,14 @@ func main() {
 		}
 
 		// Create Grafana datasource provisioning ConfigMap
-		// This ConfigMap configures the VictoriaMetrics datasource in Grafana
-		datasourceYml, err := readTextFile("grafana/provisioning/datasources/victoriametrics.yml")
+		// This ConfigMap configures the datasources in Grafana (VictoriaMetrics, Pyroscope)
+		datasourceVictoriaMetricsYml, err := readTextFile("grafana/provisioning/datasources/victoriametrics.yml")
 		if err != nil {
-			return fmt.Errorf("failed to read datasource.yml: %w", err)
+			return fmt.Errorf("failed to read victoriametrics.yml: %w", err)
+		}
+		datasourcePyroscopeYml, err := readTextFile("grafana/provisioning/datasources/pyroscope.yml")
+		if err != nil {
+			return fmt.Errorf("failed to read pyroscope.yml: %w", err)
 		}
 		grafanaDatasourceProvisioning, err := v1.NewConfigMap(ctx, "grafana-datasource-provisioning", &v1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
@@ -411,7 +439,8 @@ func main() {
 				Namespace: namespace.Metadata.Name(),
 			},
 			Data: pulumi.StringMap{
-				"victoriametrics.yml": pulumi.String(datasourceYml),
+				"victoriametrics.yml": pulumi.String(datasourceVictoriaMetricsYml),
+				"pyroscope.yml":       pulumi.String(datasourcePyroscopeYml),
 			},
 		},
 			pulumi.DependsOn([]pulumi.Resource{namespace}),
@@ -426,6 +455,17 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("failed to read Grafana values: %w", err)
 		}
+		grafanaDeps := append([]pulumi.Resource{
+			namespace,
+			victoriaMetrics,
+			tempo,
+			loki,
+			grafanaDashboardProvisioning,
+			grafanaDatasourceProvisioning,
+		}, grafanaDashboards...)
+		if pyroscope != nil {
+			grafanaDeps = append(grafanaDeps, pyroscope)
+		}
 		grafana, err := helm.NewRelease(ctx, "grafana", &helm.ReleaseArgs{
 			Name:           pulumi.String("grafana"),
 			Chart:          pulumi.String("grafana"),
@@ -434,14 +474,7 @@ func main() {
 			Values:         pulumi.ToMap(grafanaValues),
 			ForceUpdate:    pulumi.Bool(true),
 		},
-			pulumi.DependsOn(append([]pulumi.Resource{
-				namespace,
-				victoriaMetrics,
-				tempo,
-				loki,
-				grafanaDashboardProvisioning,
-				grafanaDatasourceProvisioning,
-			}, grafanaDashboards...)),
+			pulumi.DependsOn(grafanaDeps),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
@@ -549,6 +582,9 @@ func main() {
 		ctx.Export("grafanaRelease", grafana.Name)
 		ctx.Export("ledgerRelease", ledger.Name)
 		ctx.Export("benchmarkOperatorImage", benchmarkOperatorImage.Tags.Index(pulumi.Int(0)))
+		if pyroscope != nil {
+			ctx.Export("pyroscopeRelease", pyroscope.Name)
+		}
 
 		return nil
 	})

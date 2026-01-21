@@ -13,6 +13,7 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 | **Idempotency** | Built-in idempotency key support for safe retries |
 | **Bulk Operations** | Process multiple transactions in a single request |
 | **OpenTelemetry** | Comprehensive observability with traces, metrics, and logs |
+| **Continuous Profiling** | Pyroscope integration for CPU, memory, and goroutine profiling |
 | **Pure Go Options** | Pebble and sqlite-modern drivers require no CGO |
 
 ## Architecture Overview
@@ -121,7 +122,7 @@ Choose your storage backend based on your needs:
 
 ### Development Environment with Pulumi
 
-Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, OpenTelemetry Collector, and k6-operator).
+Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, Pyroscope, OpenTelemetry Collector, and k6-operator).
 
 **Available Stacks** (managed under the `formance` organization on Pulumi Cloud):
 
