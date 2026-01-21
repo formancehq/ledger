@@ -366,10 +366,10 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb.Log) error {
 	projectTransaction := func(ctx context.Context, batch store.Batch, tx *ledgerpb.Transaction) error {
 		for _, posting := range tx.Postings {
-			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Source, posting.Asset, posting.Amount.Neg()); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), log.Id); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
-			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Destination, posting.Asset, posting.Amount); err != nil {
+			if err := batch.AppendBalanceDiff(ctx, log.LedgerId, posting.Destination, posting.Asset, posting.Amount, log.Id); err != nil {
 				return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 			}
 		}

@@ -130,7 +130,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}

@@ -54,7 +54,7 @@ type Batch interface {
 	// AppendLogs appends logs to the store
 	AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error
+	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account

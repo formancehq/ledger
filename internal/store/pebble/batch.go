@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/cockroachdb/pebble"
 	"google.golang.org/protobuf/proto"
@@ -100,7 +99,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -109,7 +108,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 	writeByte(b.buf, keyPrefixBalanceDiff)
 	writeString(b.buf, account)
 	writeString(b.buf, asset)
-	writeInt64(b.buf, time.Now().UnixNano())
+	writeUInt64(b.buf, logID)
 
 	bigIntData, err := proto.Marshal(diff)
 	if err != nil {

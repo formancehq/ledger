@@ -16,7 +16,7 @@ type BatchInterceptor struct {
 	OnRegisterLedger             func(ctx context.Context, delegate Batch, info *ledgerpb.LedgerInfo) error
 	OnDeleteLedger               func(ctx context.Context, delegate Batch, id uint32) error
 	OnAppendLogs                 func(ctx context.Context, delegate Batch, logs []*ledgerpb.Log) error
-	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error
+	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error
 	OnSaveAccountMetadata        func(ctx context.Context, delegate Batch, ledger uint32, account string, metadata *ledgerpb.Metadata) error
 	OnDeleteAccountMetadata      func(ctx context.Context, delegate Batch, ledger uint32, account string, keys []string) error
 	OnStoreTransactionID         func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, logID uint64) error
@@ -66,14 +66,14 @@ func (b *BatchInterceptor) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log
 	return b.delegate.AppendLogs(ctx, logs...)
 }
 
-func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
+func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
 	b.mu.RLock()
 	interceptor := b.OnAppendBalanceDiff
 	b.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, b.delegate, ledger, account, asset, diff)
+		return interceptor(ctx, b.delegate, ledger, account, asset, diff, logID)
 	}
-	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff)
+	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff, logID)
 }
 
 func (b *BatchInterceptor) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, md *ledgerpb.Metadata) error {

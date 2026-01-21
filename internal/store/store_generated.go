@@ -129,17 +129,17 @@ func (m *MockBatch) EXPECT() *MockBatchMockRecorder {
 }
 
 // AppendBalanceDiff mocks base method.
-func (m *MockBatch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt) error {
+func (m *MockBatch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendBalanceDiff", ctx, ledger, account, asset, diff)
+	ret := m.ctrl.Call(m, "AppendBalanceDiff", ctx, ledger, account, asset, diff, logID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AppendBalanceDiff indicates an expected call of AppendBalanceDiff.
-func (mr *MockBatchMockRecorder) AppendBalanceDiff(ctx, ledger, account, asset, diff any) *gomock.Call {
+func (mr *MockBatchMockRecorder) AppendBalanceDiff(ctx, ledger, account, asset, diff, logID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBalanceDiff", reflect.TypeOf((*MockBatch)(nil).AppendBalanceDiff), ctx, ledger, account, asset, diff)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBalanceDiff", reflect.TypeOf((*MockBatch)(nil).AppendBalanceDiff), ctx, ledger, account, asset, diff, logID)
 }
 
 // AppendLogs mocks base method.
