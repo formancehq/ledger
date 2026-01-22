@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -35,7 +34,6 @@ type QueueObserver[T any] struct {
 	logger          logging.Logger
 	histogram       metric.Int64Histogram
 	fullCounter     metric.Float64Counter
-	attributesFn    func(t T) []attribute.KeyValue
 	meter           metric.Meter
 	name            string
 	out             chan T
@@ -44,21 +42,13 @@ type QueueObserver[T any] struct {
 
 func (m *QueueObserver[T]) Push(msg T) bool {
 	if m.queue.Push(msg) {
-		m.histogram.Record(
-			context.Background(),
-			int64(m.inflightCounter.Add(1)),
-			metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)),
-		)
+		m.histogram.Record(context.Background(), int64(m.inflightCounter.Add(1)))
 		return true
 	} else {
 		m.logger.WithFields(map[string]any{
 			"channel": m.name,
 		}).Errorf("Channel full")
-		m.fullCounter.Add(
-			context.Background(),
-			1,
-			metric.WithAttributeSet(attribute.NewSet(m.attributesFn(msg)...)),
-		)
+		m.fullCounter.Add(context.Background(), 1)
 		return false
 	}
 }
@@ -119,12 +109,6 @@ func NewQueueObserver[T any](
 
 type QueueObserverOption[T any] func(ch *QueueObserver[T])
 
-func WithAttributesFn[T any](fn func(t T) []attribute.KeyValue) QueueObserverOption[T] {
-	return func(ch *QueueObserver[T]) {
-		ch.attributesFn = fn
-	}
-}
-
 func WithMeter[T any](meter metric.Meter) QueueObserverOption[T] {
 	return func(ch *QueueObserver[T]) {
 		ch.meter = meter
@@ -139,9 +123,6 @@ func WithLogger[T any](logger logging.Logger) QueueObserverOption[T] {
 
 func defaultQueueObserverOptions[T any]() []QueueObserverOption[T] {
 	return []QueueObserverOption[T]{
-		WithAttributesFn(func(t T) []attribute.KeyValue {
-			return nil
-		}),
 		WithMeter[T](noop.Meter{}),
 		WithLogger[T](logging.NewDefaultLogger(os.Stdout, false, false, false)),
 	}

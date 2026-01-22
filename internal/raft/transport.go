@@ -78,7 +78,6 @@ func NewTransport(
 			NewSimpleQueue[raftpb.Message](capacity),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
-			WithAttributesFn(AddTypeAsAttribute),
 		)
 	}
 
@@ -176,11 +175,6 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 			NewSimpleQueue[raftpb.Message](capacity),
 			WithLogger[raftpb.Message](logger),
 			WithMeter[raftpb.Message](meter),
-			WithAttributesFn(func(msg raftpb.Message) []attribute.KeyValue {
-				ret := AddTypeAsAttribute(msg)
-				ret = append(ret, attribute.Int("peer", int(id)))
-				return ret
-			}),
 		)
 	}
 

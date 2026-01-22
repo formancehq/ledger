@@ -141,7 +141,7 @@ paths:
             type: string
           description: Name of the ledger to delete
       responses:
-        '204':
+        '2XX':
           description: Ledger deleted successfully
         '404':
           description: Ledger not found

@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 9,
+  "id": 14,
   "links": [],
   "panels": [
     {
@@ -1401,7 +1401,7 @@
           "editorMode": "code",
           "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: {{type}}",
+          "legendFormat": "Node {{service.node_id}}: p{{scope.attributes.priority}}",
           "range": true,
           "refId": "A"
         },
@@ -1414,7 +1414,7 @@
           "expr": "rate(raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
           "hide": true,
           "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: Outgoing {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Outgoing p{{scope.attributes.priority}}",
           "range": true,
           "refId": "B"
         }
@@ -1988,7 +1988,7 @@
           "editorMode": "code",
           "expr": "raft.transport.recv.full{service.node_id=~\"$node\", scope.name=\"raft.transport\"}",
           "interval": "1s",
-          "legendFormat": "{{type}}",
+          "legendFormat": "p{{scope.attributes.priority}}",
           "range": true,
           "refId": "A"
         }
@@ -2905,7 +2905,7 @@
           "hide": false,
           "instant": false,
           "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}} : {{type}}",
+          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}}",
           "range": true,
           "refId": "A"
         }
@@ -3011,7 +3011,7 @@
           "format": "time_series",
           "instant": false,
           "interval": "",
-          "legendFormat": "Node {{service.node_id}} : Peer {{peer}}: {{type}}",
+          "legendFormat": "Node {{service.node_id}} : Peer {{peer}}: p{{scope.attributes.priority}}",
           "range": true,
           "refId": "A"
         }
