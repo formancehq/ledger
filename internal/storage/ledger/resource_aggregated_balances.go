@@ -102,19 +102,6 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 				ret = ret.ColumnExpr("first_value(moves.post_commit_effective_volumes) over (partition by (moves.accounts_address, moves.asset) order by moves.effective_date desc, moves.seq desc) as volumes")
 			}
 
-			if query.useFilter("metadata") {
-				subQuery := store.newScopedSelect().
-					DistinctOn("accounts_address").
-					ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
-					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-					Where("accounts_metadata.accounts_address = moves.accounts_address").
-					Where("date <= ?", query.PIT)
-
-				ret = ret.
-					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-					Column("metadata")
-			}
-
 			return ret, nil
 		} else {
 			ret := store.newScopedSelect().

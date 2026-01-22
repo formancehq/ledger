@@ -140,18 +140,6 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			if query.UseOOT() {
 				selectVolumes = selectVolumes.Where("moves."+dateFilterColumn+" >= ?", query.OOT)
 			}
-
-			if query.useFilter("metadata") {
-				subQuery := store.newScopedSelect().
-					DistinctOn("accounts_address").
-					ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
-					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-					Where("accounts_metadata.accounts_address = moves.accounts_address")
-
-				selectVolumes = selectVolumes.
-					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-					ColumnExpr("(array_agg(accounts_metadata.metadata))[1] as metadata")
-			}
 		} else {
 			selectVolumes = store.newScopedSelect().
 				Column("asset").
@@ -190,6 +178,10 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 					ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 					Where("accounts_metadata.accounts_address = moves.accounts_address")
+
+				if query.UsePIT() {
+					subQuery = subQuery.Where("date <= ?", query.PIT)
+				}
 
 				selectVolumes = selectVolumes.
 					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
