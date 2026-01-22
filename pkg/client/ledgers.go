@@ -979,7 +979,6 @@ func (s *Ledgers) DeleteLedger(ctx context.Context, request operations.DeleteLed
 	}
 
 	switch {
-	case httpRes.StatusCode == 204:
 	case httpRes.StatusCode == 404:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -1045,6 +1044,7 @@ func (s *Ledgers) DeleteLedger(ctx context.Context, request operations.DeleteLed
 			}
 			return nil, sdkerrors.NewSDKError(fmt.Sprintf("unknown content-type received: %s", httpRes.Header.Get("Content-Type")), httpRes.StatusCode, string(rawBody), httpRes)
 		}
+	case httpRes.StatusCode >= 200 && httpRes.StatusCode < 300:
 	case httpRes.StatusCode >= 400 && httpRes.StatusCode < 500:
 		rawBody, err := utils.ConsumeRawBody(httpRes)
 		if err != nil {
