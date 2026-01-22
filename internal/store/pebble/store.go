@@ -62,10 +62,11 @@ func NewStore(
 	meter metric.Meter,
 ) (*Store, error) {
 
+	// todo: make configurable
 	opts := &pebble.Options{
 		EventListener: NewMetricsListener(meter),
 		// 1) Absorber plus d'écritures avant flush => moins de SST, moins de compactions.
-		MemTableSize:                256 << 20, // 256MB (à ajuster selon RAM)
+		MemTableSize:                512 << 20, // 256MB (à ajuster selon RAM)
 		MemTableStopWritesThreshold: 4,         // défaut souvent 2; 4 réduit les write stalls
 
 		// 2) Contrôler la pression L0 (source #1 de compactions/churn en write-heavy).
