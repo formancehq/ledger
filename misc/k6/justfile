@@ -27,8 +27,8 @@ k6-create-archive SCRIPT:
     echo "✓ Archive ${ARCHIVE_NAME} created successfully"
 
 # Install k6 TestRun from Helm chart (creates ConfigMap and TestRun)
-# Usage: just k6-run any_unbounded_to_any --parallelism 10 --stages "30s:512,10m:512,30s:0"
-k6-run SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="ledger-exp" LEDGER_URL="http://ledger-exp.ledger-exp.svc.cluster.local:9000":
+# Usage: just k6-run any_unbounded_to_any.js values.yaml
+k6-run SCRIPT VALUES_FILE:
     #!/usr/bin/env bash
     set -e
     SCRIPT_NAME="{{SCRIPT}}"
@@ -36,12 +36,22 @@ k6-run SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="ledger-exp" LEDGER_URL="http:
     ARCHIVE_NAME="${SCRIPT_BASE}.tar"
     ARCHIVE_PATH="./archives/${ARCHIVE_NAME}"
     RELEASE_NAME="k6-run-${SCRIPT_BASE//_/-}"
+    VALUES_FILE="{{VALUES_FILE}}"
     
     # Check if script exists
     if [ ! -f "scripts/${SCRIPT_NAME}" ]; then
         echo "Error: Script scripts/${SCRIPT_NAME} not found"
         exit 1
     fi
+    
+    # Check if values file exists
+    if [ ! -f "${VALUES_FILE}" ]; then
+        echo "Error: Values file ${VALUES_FILE} not found"
+        exit 1
+    fi
+    
+    # Extract namespace from values file (default to ledger-exp)
+    NAMESPACE=$(yq -r '.metadata.namespace // "ledger-exp"' "${VALUES_FILE}")
     
     # Check if archive exists, create it if not
     if [ ! -f "${ARCHIVE_PATH}" ]; then
@@ -52,27 +62,15 @@ k6-run SCRIPT PARALLELISM="1" STAGES="" NAMESPACE="ledger-exp" LEDGER_URL="http:
     # Encode archive to base64
     ARCHIVE_BASE64=$(base64 -i "${ARCHIVE_PATH}" | tr -d '\n')
     
-    # Build helm install command with values
-    HELM_ARGS=(
-        "upgrade" "--install"
-        "${RELEASE_NAME}"
-        "run-chart"
-        "--namespace" "{{NAMESPACE}}"
-        "--create-namespace"
-        "--set" "script=${SCRIPT_BASE}"
-        "--set" "spec.parallelism={{PARALLELISM}}"
-        "--set" "metadata.namespace={{NAMESPACE}}"
-        "--set" "runner.env.ledgerUrl={{LEDGER_URL}}"
-        "--set" "archiveData=${ARCHIVE_BASE64}"
-    )
-    
-    # Add optional stages if provided
-    if [ -n "{{STAGES}}" ]; then
-        HELM_ARGS+=("--set-string" "runner.env.stages={{STAGES}}")
-    fi
-    
     # Install TestRun from Helm chart (creates ConfigMap and TestRun, optionally Job)
-    echo "Installing k6 TestRun for ${SCRIPT_NAME}..."
-    helm "${HELM_ARGS[@]}"
+    echo "Installing k6 TestRun for ${SCRIPT_NAME} with values from ${VALUES_FILE}..."
+    helm upgrade --install \
+        "${RELEASE_NAME}" \
+        run-chart \
+        --namespace "${NAMESPACE}" \
+        --create-namespace \
+        --values "${VALUES_FILE}" \
+        --set "script=${SCRIPT_BASE}" \
+        --set "archiveData=${ARCHIVE_BASE64}"
     
-    echo "✓ TestRun installed: ${RELEASE_NAME} in namespace {{NAMESPACE}}"
+    echo "✓ TestRun installed: ${RELEASE_NAME} in namespace ${NAMESPACE}"

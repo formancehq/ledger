@@ -55,36 +55,3 @@ export default function () {
     errorRate.add(0);
   }
 }
-
-export function handleSummary(data) {
-  const indent = '  ';
-  
-  let summary = '\n';
-  summary += `${indent}Test: world_to_any\n`;
-  summary += `${indent}Duration: ${(data.state.testRunDurationMs / 1000).toFixed(2)}s\n`;
-  summary += `${indent}VUs: ${data.state.vus}\n`;
-  summary += `${indent}Iterations: ${data.metrics.iterations?.values?.count || 0}\n`;
-  
-  if (data.metrics.errors) {
-    summary += `${indent}Errors: ${(data.metrics.errors.values.rate * 100).toFixed(2)}%\n`;
-  }
-  
-  if (data.metrics.transaction_latency) {
-    const p95 = data.metrics.transaction_latency.values['p(95)'];
-    summary += `${indent}Transaction Latency (p95): ${p95 ? p95.toFixed(2) : 'N/A'}ms\n`;
-  }
-  
-  if (data.metrics.http_req_duration) {
-    const p95 = data.metrics.http_req_duration.values['p(95)'];
-    summary += `${indent}HTTP Request Duration (p95): ${p95 ? p95.toFixed(2) : 'N/A'}ms\n`;
-  }
-  
-  if (data.metrics.http_reqs) {
-    summary += `${indent}Requests/sec: ${data.metrics.http_reqs.values.rate.toFixed(2)}\n`;
-  }
-  
-  return {
-    'stdout': summary,
-    'summary.json': JSON.stringify(data),
-  };
-}

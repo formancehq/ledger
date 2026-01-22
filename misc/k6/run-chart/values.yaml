@@ -11,6 +11,20 @@ runner:
     stages: ""
   otlp:
     endpoint: "otel-opentelemetry-collector.ledger-exp.svc.cluster.local:4317"
+  # nodeSelector applied to k6 runner pods
+  # Example:
+  #   nodeSelector:
+  #     kubernetes.io/os: linux
+  #     nodepool: k6-runners
+  nodeSelector: {}
+  # tolerations applied to k6 runner pods
+  # Example:
+  #   tolerations:
+  #     - effect: NoSchedule
+  #       key: dedicated
+  #       operator: Equal
+  #       value: k6-runners
+  tolerations: []
 archiveData: ""
 
 ledgerJob:

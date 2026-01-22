@@ -257,43 +257,45 @@ jobs:
 
 ## Installing k6 TestRuns
 
-TestRuns are installed directly to Kubernetes from a Helm chart (`misc/k6-run`) using the `k6-install-testrun` command in the justfile.
+TestRuns are installed directly to Kubernetes from a Helm chart (`misc/k6/run-chart`) using the `k6-run` command in the justfile.
 
 ### Basic Usage
 
-Install a TestRun for a test script:
+Install a TestRun for a test script using a values file:
 
 ```bash
-just k6-run world_to_bank.js --parallelism 1 --stages "10s:10,10m:10,10s:0"
+just k6-run world_to_bank.js my-values.yaml
 ```
 
-This will install the TestRun directly to Kubernetes using Helm.
+This will install the TestRun directly to Kubernetes using Helm with the configuration from the values file.
 
-### Using k6 Stages
+### Values File
 
-Configure the test using k6 stages:
+Create a values file with your test configuration:
 
-```bash
-just k6-run any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
+```yaml
+# my-values.yaml
+spec:
+  parallelism: 10
+metadata:
+  namespace: ledger-exp
+runner:
+  env:
+    ledgerUrl: "http://ledger-exp.ledger-exp.svc.cluster.local:9000"
+    ledgerName: "ledger0"
+    stages: "30s:512,10m:512,30s:0"
+  nodeSelector:
+    nodepool: k6-runners
 ```
-
-### Custom Parameters
-
-All parameters are optional with defaults:
-
-- `--parallelism`: Number of parallel test runners (default: `1`)
-- `--stages`: k6 stages format (e.g., `"30s:512,10m:512,30s:0"`)
-- `--namespace`: Kubernetes namespace (default: `bench`)
-- `--ledger-url`: Ledger service URL (default: `http://ledger-exp.ledger.svc.cluster.local:9000`)
 
 ### Examples
 
 ```bash
-# Test with k6 stages
-just k6-run any_unbounded_to_any.js --parallelism 10 --stages "30s:512,10m:512,30s:0"
+# Run with default values
+just k6-run world_to_bank.js values.yaml
 
-# Custom namespace and ledger URL
-just k6-run world_to_any.js --namespace my-namespace --ledger-url http://localhost:9000
+# Run with a custom values file
+just k6-run any_unbounded_to_any.js my-custom-values.yaml
 ```
 
 ### Helm Chart Structure
@@ -314,6 +316,14 @@ helm install k6-run-world-to-bank misc/k6-run \
   --set script=world_to_bank \
   --set spec.parallelism=1 \
   --set runner.env.stages="10s:10,10m:10,10s:0"
+
+# With node selector to schedule runners on specific nodes
+helm install k6-run-world-to-bank misc/k6-run \
+  --namespace bench \
+  --create-namespace \
+  --set script=world_to_bank \
+  --set spec.parallelism=10 \
+  --set runner.nodeSelector.nodepool=k6-runners
 ```
 
 ## Troubleshooting

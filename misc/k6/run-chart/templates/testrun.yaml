@@ -45,3 +45,11 @@ spec:
     - name: K6_OTEL_EXPORTER_OTLP_PROTOCOL
       value: http/protobuf
     {{ end }}
+    {{- if .Values.runner.nodeSelector }}
+    nodeSelector:
+      {{- toYaml .Values.runner.nodeSelector | nindent 6 }}
+    {{- end }}
+    {{- if .Values.runner.tolerations }}
+    tolerations:
+      {{- toYaml .Values.runner.tolerations | nindent 6 }}
+    {{- end }}
