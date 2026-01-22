@@ -262,6 +262,30 @@ DELETE /{ledgerName}
 
 **Response**: `204 No Content`
 
+#### Sanity Check
+
+Verifies the integrity of local storage for a specific ledger. This endpoint does **not** forward to the leader, allowing node-specific diagnostics.
+
+```http
+GET /{ledgerName}/sanity-check
+```
+
+**Response**:
+```json
+{
+  "data": {
+    "status": "ok"
+  }
+}
+```
+
+**Status values**:
+- `ok`: Storage is consistent and valid
+- `error`: Storage has inconsistencies or errors
+- `not_implemented`: Logic is not yet implemented
+
+See [Storage Sanity Check](./sanity-check.md) for detailed documentation.
+
 ### Transactions
 
 #### Create a Transaction

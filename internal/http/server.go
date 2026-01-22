@@ -31,11 +31,7 @@ func NewServer(logger logging.Logger, backend Backend) *Server {
 type Backend interface {
 	service.Controller
 	GetClusterState(context context.Context) (*ledgerpb.ClusterState, error)
-	CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error)
-	GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
-	DeleteLedger(ctx context.Context, id uint32) error
 	IsHealthy() bool
-	GetAllLedgers(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error)
 }
 
 type DefaultBackend struct {
@@ -98,8 +94,12 @@ func (b *DefaultBackend) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-func (b *DefaultBackend) GetAllLedgers(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
-	return b.GetAllLedgersInfo(ctx)
+func (b *DefaultBackend) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
+	clusterLeader, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
 func (b *DefaultBackend) CreateTransaction(ctx context.Context, ledger uint32, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {

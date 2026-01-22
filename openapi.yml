@@ -445,6 +445,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/sanity-check:
+    get:
+      summary: Run sanity check on local storage
+      description: |
+        Verifies the validity of the local node storage for a specific ledger.
+        This endpoint checks only the local storage without forwarding requests to the leader,
+        making it useful for diagnosing node-specific storage issues.
+      operationId: sanityCheck
+      tags:
+        - Ledgers
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger to check
+      responses:
+        '200':
+          description: Sanity check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SanityCheckResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -1163,6 +1200,27 @@ components:
         isPaused:
           type: boolean
           description: Whether this node is paused
+
+    SanityCheckResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/SanityCheckResult'
+
+    SanityCheckResult:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Status of the sanity check (ok, error, not_implemented)
+          enum:
+            - ok
+            - error
+            - not_implemented
 
     ErrorResponse:
       type: object

@@ -84,5 +84,12 @@ service:
   grpcPort: 8888
   httpPort: 9000
   type: ClusterIP
-#nodeSelector:
-#  kubernetes.io/hostname: fake-wkbm406c
+
+# Run nodes on dedicated nodes
+nodeSelector:
+  formance.com/dedicated: ledger
+tolerations:
+  - effect: NoSchedule
+    key: formance.com/dedicated
+    operator: Equal
+    value: ledger

@@ -99,6 +99,7 @@ func main() {
 * [GetLedger](docs/sdks/ledgers/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
 * [DeleteLedger](docs/sdks/ledgers/README.md#deleteledger) - Delete a ledger
+* [SanityCheck](docs/sdks/ledgers/README.md#sanitycheck) - Run sanity check on local storage
 
 ### [Transactions](docs/sdks/transactions/README.md)
 

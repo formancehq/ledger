@@ -65,6 +65,9 @@ Technical documentation for the Spool component (committed entry buffer).
 ### 🔗 [gRPC Connections](./grpc-connections.md)
 gRPC connection mechanics, reconnection strategies, and optimizations for rolling deployments.
 
+### 🔍 [Storage Sanity Check](./sanity-check.md)
+Local storage verification, integrity checks, and troubleshooting node-specific storage issues.
+
 ## Key Concepts
 
 ### Ledgers

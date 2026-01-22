@@ -9,6 +9,7 @@
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a new ledger
 * [DeleteLedger](#deleteledger) - Delete a ledger
+* [SanityCheck](#sanitycheck) - Run sanity check on local storage
 
 ## ListAllLedgers
 
@@ -222,4 +223,60 @@ func main() {
 | sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.ErrorResponse | 503                     | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
+
+## SanityCheck
+
+Verifies the validity of the local node storage for a specific ledger.
+This endpoint checks only the local storage without forwarding requests to the leader,
+making it useful for diagnosing node-specific storage issues.
+
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New()
+
+    res, err := s.Ledgers.SanityCheck(ctx, operations.SanityCheckRequest{
+        LedgerName: "<value>",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.SanityCheckResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                      | Type                                                                           | Required                                                                       | Description                                                                    |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `ctx`                                                                          | [context.Context](https://pkg.go.dev/context#Context)                          | :heavy_check_mark:                                                             | The context to use for the request.                                            |
+| `request`                                                                      | [operations.SanityCheckRequest](../../models/operations/sanitycheckrequest.md) | :heavy_check_mark:                                                             | The request object to use for the request.                                     |
+| `opts`                                                                         | [][operations.Option](../../models/operations/option.md)                       | :heavy_minus_sign:                                                             | The options for this request.                                                  |
+
+### Response
+
+**[*operations.SanityCheckResponse](../../models/operations/sanitycheckresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 404                     | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
