@@ -16,10 +16,20 @@ message RaftRequestMessage {
   bytes message = 2;
 }
 
+// RaftRequestBatch contains multiple Raft messages to send in a single request
+message RaftRequestBatch {
+  repeated RaftRequestMessage messages = 1;
+}
+
 message RaftResponseMessage {
   uint64 request_id = 1;
   bool success = 2;
   string error = 3;
+}
+
+// RaftResponseBatch contains multiple Raft responses
+message RaftResponseBatch {
+  repeated RaftResponseMessage messages = 1;
 }
 
 message PingMessage {
@@ -30,10 +40,10 @@ message PongResponse {
   uint64 seq_id = 1;
 }
 
-// SendMessageRequest contains a Raft message to send
+// SendMessageRequest contains Raft messages to send
 message SendMessageRequest {
   oneof message {
-    RaftRequestMessage raft = 1;
+    RaftRequestBatch raft = 1;
     PingMessage ping = 2;
   }
 }
@@ -41,7 +51,7 @@ message SendMessageRequest {
 // SendMessageResponse is the response to SendMessage
 message SendMessageResponse {
   oneof message {
-    RaftResponseMessage raft = 1;
+    RaftResponseBatch raft = 1;
     PongResponse pong = 2;
   }
 }

@@ -12,7 +12,7 @@ import (
 // ConnectionPool manages raw gRPC connections for peers
 // This pool can be reused for different services that need gRPC connections
 type ConnectionPool struct {
-	mu sync.Mutex
+	mu          sync.Mutex
 	peers       map[uint64]string // peer ID -> address
 	connections map[uint64]*grpc.ClientConn
 }
@@ -51,6 +51,14 @@ func (p *ConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
 			},
 			MinConnectTimeout: 0,
 		}),
+		grpc.WithInitialWindowSize(16*1024*1024),     // 16MB stream window
+		grpc.WithInitialConnWindowSize(64*1024*1024), // 64MB conn window
+		grpc.WithReadBufferSize(1*1024*1024),
+		grpc.WithWriteBufferSize(1*1024*1024),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64*1024*1024),
+			grpc.MaxCallSendMsgSize(64*1024*1024),
+		),
 		// todo: make configurable
 		//grpc.WithDefaultCallOptions(
 		//	grpc.UseCompressor(gzip.Name),

@@ -23,6 +23,12 @@ func NewServer(port int, logger logging.Logger) *Server {
 		//		return !strings.Contains(info.FullMethodName, "RaftTransportService")
 		//	}),
 		//)),
+		grpc.InitialWindowSize(16 * 1024 * 1024),
+		grpc.InitialConnWindowSize(64 * 1024 * 1024),
+		grpc.ReadBufferSize(1 * 1024 * 1024),
+		grpc.WriteBufferSize(1 * 1024 * 1024),
+		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
+		grpc.MaxSendMsgSize(64 * 1024 * 1024),
 	}
 
 	return &Server{

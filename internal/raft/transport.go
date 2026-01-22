@@ -33,8 +33,13 @@ type DefaultTransport struct {
 	UnimplementedRaftTransportServiceServer
 	connectionPool *transport.ConnectionPool
 
-	// Channel for Incoming messages
-	recvCh Queue[raftpb.Message]
+	// 3 priority queues for incoming message batches (high to low priority)
+	highPriorityRecvCh   Queue[[]raftpb.Message] // Heartbeats
+	mediumPriorityRecvCh Queue[[]raftpb.Message] // Votes, responses
+	lowPriorityRecvCh    Queue[[]raftpb.Message] // Data messages
+
+	// Merged output queue for Recv()
+	recvOut Queue[raftpb.Message]
 
 	// Channels for outgoing messages per peer
 	peers map[uint64]peerConnection
@@ -67,26 +72,30 @@ func NewTransport(
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
-	createQueue := func(capacity, priority int) Queue[raftpb.Message] {
-
-		meter := meterProvider.Meter("raft.transport", metric.WithInstrumentationAttributes(
+	createRecvQueue := func(priority int, name string) Queue[[]raftpb.Message] {
+		m := meterProvider.Meter("raft.transport", metric.WithInstrumentationAttributes(
 			attribute.Int("priority", priority),
+			attribute.String("priority_name", name),
 		))
 
-		return NewQueueObserver[raftpb.Message](
+		return NewQueueObserver[[]raftpb.Message](
 			"raft.transport.recv",
-			NewSimpleQueue[raftpb.Message](capacity),
-			WithLogger[raftpb.Message](logger),
-			WithMeter[raftpb.Message](meter),
+			NewSimpleQueue[[]raftpb.Message](100), // todo: make configurable per priority
+			WithLogger[[]raftpb.Message](logger),
+			WithMeter[[]raftpb.Message](m),
 		)
 	}
 
-	return &DefaultTransport{
-		connectionPool: connectionPool,
-		recvCh: NewPriorityQueue[raftpb.Message](
-			RaftMessagePriority,
-			logger,
-			CreateQueues[raftpb.Message](config.Reception, createQueue)...,
+	t := &DefaultTransport{
+		connectionPool:       connectionPool,
+		highPriorityRecvCh:   createRecvQueue(0, "high"),
+		mediumPriorityRecvCh: createRecvQueue(1, "medium"),
+		lowPriorityRecvCh:    createRecvQueue(2, "low"),
+		recvOut: NewQueueObserver[raftpb.Message](
+			"raft.transport.recv.merged",
+			NewSimpleQueue[raftpb.Message](100),
+			WithMeter[raftpb.Message](meter),
+			WithLogger[raftpb.Message](logger),
 		),
 		peers: make(map[uint64]peerConnection),
 		unreachableCh: NewQueueObserver[uint64](
@@ -107,6 +116,26 @@ func NewTransport(
 			WithMeter[[]raftpb.Message](meter),
 			WithLogger[[]raftpb.Message](logger),
 		), // todo: make configurable
+	}
+
+	// Start goroutine to merge priority queues into single output channel
+	go t.mergeRecvQueues()
+
+	return t
+}
+
+// pushToRecvQueue pushes a batch of messages to the appropriate priority recv queue
+func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) bool {
+	if len(msgs) == 0 {
+		return true
+	}
+	switch priority {
+	case 0: // high
+		return t.highPriorityRecvCh.Push(msgs)
+	case 1: // medium
+		return t.mediumPriorityRecvCh.Push(msgs)
+	default: // low
+		return t.lowPriorityRecvCh.Push(msgs)
 	}
 }
 
@@ -132,6 +161,9 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 		}
 	}
 
+	t.highPriorityRecvCh.Close()
+	t.mediumPriorityRecvCh.Close()
+	t.lowPriorityRecvCh.Close()
 	t.unreachableCh.Close()
 	t.pendingSendQueue.Close()
 
@@ -162,28 +194,27 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
-	createQueue := func(capacity, priority int) Queue[raftpb.Message] {
-		meter := t.meterProvider.Meter("raft.transport",
+	createQueue := func(priority int, name string) Queue[[]raftpb.Message] {
+		m := t.meterProvider.Meter("raft.transport",
 			metric.WithInstrumentationAttributes(
 				attribute.Int("peer", int(id)),
 				attribute.Int("priority", priority),
+				attribute.String("priority_name", name),
 			),
 		)
 
-		return NewQueueObserver[raftpb.Message](
+		return NewQueueObserver[[]raftpb.Message](
 			"raft.transport.peer.sending",
-			NewSimpleQueue[raftpb.Message](capacity),
-			WithLogger[raftpb.Message](logger),
-			WithMeter[raftpb.Message](meter),
+			NewSimpleQueue[[]raftpb.Message](100), // todo: make configurable per priority
+			WithLogger[[]raftpb.Message](logger),
+			WithMeter[[]raftpb.Message](m),
 		)
 	}
 
 	conn := peerConnection{
-		sendCh: NewPriorityQueue[raftpb.Message](
-			RaftMessagePriority,
-			logger,
-			CreateQueues[raftpb.Message](t.config.Send, createQueue)...,
-		),
+		highPriorityCh:         createQueue(0, "high"),
+		mediumPriorityCh:       createQueue(1, "medium"),
+		lowPriorityCh:          createQueue(2, "low"),
 		closeCh:                make(chan chan struct{}),
 		unreachableCh:          t.unreachableCh,
 		connectionPool:         t.connectionPool,
@@ -206,6 +237,18 @@ func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 	}
 }
 
+// messagePriority returns the priority level for a raft message type
+func messagePriority(msgType raftpb.MessageType) int {
+	switch msgType {
+	case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+		return 0 // high
+	case raftpb.MsgAppResp, raftpb.MsgVote, raftpb.MsgVoteResp, raftpb.MsgPreVote, raftpb.MsgPreVoteResp:
+		return 1 // medium
+	default:
+		return 2 // low
+	}
+}
+
 func (t *DefaultTransport) Start(_ context.Context) {
 	for {
 		select {
@@ -213,33 +256,107 @@ func (t *DefaultTransport) Start(_ context.Context) {
 			close(ch)
 			return
 		case msgs := <-t.pendingSendQueue.Recv():
+			// Group messages by peer and priority
+			// Key: peerID, Value: map of priority -> messages
+			msgsByPeerAndPriority := make(map[uint64]map[int][]raftpb.Message)
+
 			for _, msg := range msgs {
-				peer, exists := t.peers[msg.To]
-				if exists {
-					if !peer.sendCh.Push(msg) {
-						t.logger.
-							WithFields(map[string]any{
-								"peer": fmt.Sprintf("%x", msg.To),
-								"type": msg.Type.String(),
-							}).
-							Errorf("Send channel full, dropping message")
-					}
-				} else {
+				if _, exists := msgsByPeerAndPriority[msg.To]; !exists {
+					msgsByPeerAndPriority[msg.To] = make(map[int][]raftpb.Message)
+				}
+				priority := messagePriority(msg.Type)
+				msgsByPeerAndPriority[msg.To][priority] = append(msgsByPeerAndPriority[msg.To][priority], msg)
+			}
+
+			// Push batches to each peer's priority queues
+			for peerID, priorityMsgs := range msgsByPeerAndPriority {
+				peer, exists := t.peers[peerID]
+				if !exists {
 					t.logger.
 						WithFields(map[string]any{
-							"peer": fmt.Sprintf("%x", msg.To),
-							"type": msg.Type.String(),
+							"peer": fmt.Sprintf("%x", peerID),
 						}).
-						Errorf("No send channel for peer, dropping message")
+						Errorf("No send channel for peer, dropping messages")
+					continue
+				}
+
+				for priority, batch := range priorityMsgs {
+					if !peer.pushMessages(priority, batch) {
+						t.logger.
+							WithFields(map[string]any{
+								"peer":     fmt.Sprintf("%x", peerID),
+								"priority": priority,
+								"count":    len(batch),
+							}).
+							Errorf("Send channel full, dropping messages")
+					}
 				}
 			}
 		}
 	}
 }
 
-// Recv returns the channel for receiving messages
+// mergeRecvQueues merges the 3 priority queues into a single output queue
+// with priority ordering: high > medium > low
+func (t *DefaultTransport) mergeRecvQueues() {
+	sendBatch := func(msgs []raftpb.Message) {
+		for _, msg := range msgs {
+			t.recvOut.Push(msg)
+		}
+	}
+
+	for {
+		// Try high priority first, then medium, then low
+		select {
+		case msgs, ok := <-t.highPriorityRecvCh.Recv():
+			if !ok {
+				t.recvOut.Close()
+				return
+			}
+			sendBatch(msgs)
+		default:
+			select {
+			case msgs, ok := <-t.highPriorityRecvCh.Recv():
+				if !ok {
+					t.recvOut.Close()
+					return
+				}
+				sendBatch(msgs)
+			case msgs, ok := <-t.mediumPriorityRecvCh.Recv():
+				if !ok {
+					t.recvOut.Close()
+					return
+				}
+				sendBatch(msgs)
+			default:
+				select {
+				case msgs, ok := <-t.highPriorityRecvCh.Recv():
+					if !ok {
+						t.recvOut.Close()
+						return
+					}
+					sendBatch(msgs)
+				case msgs, ok := <-t.mediumPriorityRecvCh.Recv():
+					if !ok {
+						t.recvOut.Close()
+						return
+					}
+					sendBatch(msgs)
+				case msgs, ok := <-t.lowPriorityRecvCh.Recv():
+					if !ok {
+						t.recvOut.Close()
+						return
+					}
+					sendBatch(msgs)
+				}
+			}
+		}
+	}
+}
+
+// Recv returns the channel for receiving messages (merged from priority queues)
 func (t *DefaultTransport) Recv() <-chan raftpb.Message {
-	return t.recvCh.Recv()
+	return t.recvOut.Recv()
 }
 
 // Unreachable returns the channel for reporting unreachable peers
@@ -273,7 +390,13 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMe
 		return fmt.Errorf("failed to decode nodeID from metadata: %w", err)
 	}
 
-	t.logger.Infof("Peer %x connected!", peerID)
+	priorityStr := metadata.ValueFromIncomingContext(stream.Context(), "priority")
+	if len(priorityStr) == 0 {
+		return fmt.Errorf("priority metadata not found in context")
+	}
+	priority := priorityStr[0]
+
+	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
 	// This is a best effort to notify the send loop than the peer is now reachable
 	select {
 	case t.peers[peerID].reconnected <- struct{}{}:
@@ -299,41 +422,54 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMe
 				return err
 			}
 		case *SendMessageRequest_Raft:
-			var msg raftpb.Message
-			if err := msg.Unmarshal(m.Raft.Message); err != nil {
-				if err := stream.Send(&SendMessageResponse{
-					Message: &SendMessageResponse_Raft{
-						Raft: &RaftResponseMessage{
-							Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
-							RequestId: m.Raft.Id,
-						},
-					},
-				}); err != nil {
-					return err
+			responses := make([]*RaftResponseMessage, 0, len(m.Raft.Messages))
+
+			// Group messages by priority
+			highPriorityMsgs := make([]raftpb.Message, 0)
+			mediumPriorityMsgs := make([]raftpb.Message, 0)
+			lowPriorityMsgs := make([]raftpb.Message, 0)
+
+			for _, raftMsg := range m.Raft.Messages {
+				var msg raftpb.Message
+				if err := msg.Unmarshal(raftMsg.Message); err != nil {
+					responses = append(responses, &RaftResponseMessage{
+						Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
+						RequestId: raftMsg.Id,
+					})
+					continue
 				}
-				continue
+
+				// Group by priority
+				switch msg.Type {
+				case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+					highPriorityMsgs = append(highPriorityMsgs, msg)
+				case raftpb.MsgAppResp, raftpb.MsgVote, raftpb.MsgVoteResp, raftpb.MsgPreVote, raftpb.MsgPreVoteResp:
+					mediumPriorityMsgs = append(mediumPriorityMsgs, msg)
+				default:
+					lowPriorityMsgs = append(lowPriorityMsgs, msg)
+				}
+
+				responses = append(responses, &RaftResponseMessage{
+					Success:   true,
+					RequestId: raftMsg.Id,
+				})
 			}
 
-			// Send message to recvCh for processing
-			if !t.recvCh.Push(msg) {
-				if err := stream.Send(&SendMessageResponse{
-					Message: &SendMessageResponse_Raft{
-						Raft: &RaftResponseMessage{
-							Error:     "recv channel full, dropping message",
-							RequestId: m.Raft.Id,
-						},
-					},
-				}); err != nil {
-					return err
-				}
-				continue
+			// Push batches to priority queues
+			if !t.pushToRecvQueue(0, highPriorityMsgs) {
+				t.logger.Errorf("High priority recv queue full, some messages may be dropped")
+			}
+			if !t.pushToRecvQueue(1, mediumPriorityMsgs) {
+				t.logger.Errorf("Medium priority recv queue full, some messages may be dropped")
+			}
+			if !t.pushToRecvQueue(2, lowPriorityMsgs) {
+				t.logger.Errorf("Low priority recv queue full, some messages may be dropped")
 			}
 
 			if err := stream.Send(&SendMessageResponse{
 				Message: &SendMessageResponse_Raft{
-					Raft: &RaftResponseMessage{
-						Success:   true,
-						RequestId: m.Raft.Id,
+					Raft: &RaftResponseBatch{
+						Messages: responses,
 					},
 				},
 			}); err != nil {
@@ -354,7 +490,11 @@ func (t *DefaultTransport) RegisterRaftService(server *grpc.Server) {
 }
 
 type peerConnection struct {
-	sendCh                 Queue[raftpb.Message]
+	// 3 priority queues for sending batches of messages (high to low priority)
+	highPriorityCh   Queue[[]raftpb.Message] // Heartbeats
+	mediumPriorityCh Queue[[]raftpb.Message] // Votes, responses
+	lowPriorityCh    Queue[[]raftpb.Message] // Data messages (MsgApp with entries)
+
 	closeCh                chan chan struct{}
 	unreachableCh          Queue[uint64]
 	connectionPool         *transport.ConnectionPool
@@ -366,6 +506,28 @@ type peerConnection struct {
 	reconnected            chan struct{}
 	messageID              uint64
 	buf                    []byte
+}
+
+// pushMessages pushes a batch of messages to the specified priority queue
+func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bool {
+	if len(msgs) == 0 {
+		return true
+	}
+	switch priority {
+	case 0:
+		return conn.highPriorityCh.Push(msgs)
+	case 1:
+		return conn.mediumPriorityCh.Push(msgs)
+	default:
+		return conn.lowPriorityCh.Push(msgs)
+	}
+}
+
+// closeQueues closes all priority queues
+func (conn *peerConnection) closeQueues() {
+	conn.highPriorityCh.Close()
+	conn.mediumPriorityCh.Close()
+	conn.lowPriorityCh.Close()
 }
 
 func (conn *peerConnection) loop() {
@@ -407,7 +569,11 @@ func (conn *peerConnection) loop() {
 				case ch := <-conn.closeCh:
 					close(ch)
 					return
-				case <-conn.sendCh.Recv():
+				case <-conn.highPriorityCh.Recv():
+					conn.unreachableCh.Push(conn.peerID)
+				case <-conn.mediumPriorityCh.Recv():
+					conn.unreachableCh.Push(conn.peerID)
+				case <-conn.lowPriorityCh.Recv():
 					conn.unreachableCh.Push(conn.peerID)
 				case <-conn.reconnected:
 					// restart connection to prevent staled dns cached ip
@@ -425,112 +591,140 @@ func (conn *peerConnection) loop() {
 	}
 }
 
+// priorityStream represents a stream dedicated to a specific priority level
+type priorityStream struct {
+	stream       grpc.BidiStreamingClient[SendMessageRequest, SendMessageResponse]
+	priorityName string
+}
+
 func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
-
 	client := NewRaftTransportServiceClient(grpcPeerConnection)
-	stream, err := client.StreamMessages(
-		metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
-			"nodeID": fmt.Sprintf("%x", conn.nodeID),
-		})),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = stream.CloseSend() }()
 
-	conn.logger.Infof("Created stream to peer")
+	// Create a stream for each priority level
+	createStream := func(priorityName string) (grpc.BidiStreamingClient[SendMessageRequest, SendMessageResponse], error) {
+		return client.StreamMessages(
+			metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
+				"nodeID":   fmt.Sprintf("%x", conn.nodeID),
+				"priority": priorityName,
+			})),
+		)
+	}
+
+	highStream, err := createStream("high")
+	if err != nil {
+		return false, fmt.Errorf("failed to create high priority stream: %w", err)
+	}
+	defer func() { _ = highStream.CloseSend() }()
+
+	mediumStream, err := createStream("medium")
+	if err != nil {
+		return false, fmt.Errorf("failed to create medium priority stream: %w", err)
+	}
+	defer func() { _ = mediumStream.CloseSend() }()
+
+	lowStream, err := createStream("low")
+	if err != nil {
+		return false, fmt.Errorf("failed to create low priority stream: %w", err)
+	}
+	defer func() { _ = lowStream.CloseSend() }()
+
+	conn.logger.Infof("Created 3 priority streams to peer")
+
 	type ping struct {
 		at    time.Time
 		seqId uint64
 	}
 
 	pending := make(map[uint64]uint64)
-	defer func() {
-		for _, peerID := range pending {
-			conn.unreachableCh.Push(peerID)
-		}
-	}()
 	lastPing := atomic.Value{}
 	mu := sync.Mutex{}
-	receiveChStopped := make(chan struct{})
 
-	otlplogs.Go(func() {
-		defer close(receiveChStopped)
-		for {
-			res, err := stream.Recv()
-			if err != nil {
-				return
+	// Create a channel to signal when all receive goroutines have stopped
+	var receiveWg sync.WaitGroup
+
+	// Start a receive goroutine for each stream
+	streams := []priorityStream{
+		{stream: highStream, priorityName: "high"},
+		{stream: mediumStream, priorityName: "medium"},
+		{stream: lowStream, priorityName: "low"},
+	}
+
+	streamErrors := make(chan error, 3)
+
+	for _, ps := range streams {
+		receiveWg.Add(1)
+		go func(ps priorityStream) {
+			defer receiveWg.Done()
+			for {
+				res, err := ps.stream.Recv()
+				if err != nil {
+					streamErrors <- err
+					return
+				}
+
+				switch msg := res.Message.(type) {
+				case *SendMessageResponse_Pong:
+					// Only high priority stream handles pings
+					lastPingVal := lastPing.Load()
+					if lastPingVal == nil {
+						continue
+					}
+					lp := lastPingVal.(ping)
+					if msg.Pong.SeqId != lp.seqId {
+						conn.logger.
+							WithFields(map[string]any{
+								"expected-seq-id": lp.seqId,
+								"received-seq-id": msg.Pong.SeqId,
+							}).
+							Errorf("Received unexpected ping response from peer")
+						continue
+					}
+					conn.pingLatency.Record(context.Background(), time.Since(lp.at).Microseconds())
+
+				case *SendMessageResponse_Raft:
+					mu.Lock()
+					for _, raftResp := range msg.Raft.Messages {
+						nodeID, ok := pending[raftResp.RequestId]
+						if ok {
+							delete(pending, raftResp.RequestId)
+							conn.pendingResponseCounter.Add(context.Background(), -1)
+						} else {
+							conn.logger.
+								WithFields(map[string]any{
+									"request-id": raftResp.RequestId,
+									"priority":   ps.priorityName,
+								}).
+								Errorf("Received unexpected response from peer")
+						}
+						if !raftResp.Success && ok {
+							conn.logger.
+								Errorf("Failed to send message on %s stream, peer respond with error: %s", ps.priorityName, raftResp.Error)
+							conn.unreachableCh.Push(nodeID)
+						}
+					}
+					mu.Unlock()
+				default:
+					panic(fmt.Sprintf("received unexpected message type: %T", msg))
+				}
 			}
-
-			switch msg := res.Message.(type) {
-			case *SendMessageResponse_Pong:
-				lastPing := lastPing.Load().(ping)
-				if msg.Pong.SeqId != lastPing.seqId {
-					conn.logger.
-						WithFields(map[string]any{
-							"expected-seq-id": lastPing.seqId,
-							"received-seq-id": msg.Pong.SeqId,
-						}).
-						Errorf("Received unexpected ping response from peer")
-					continue
-				}
-				conn.pingLatency.Record(context.Background(), time.Since(lastPing.at).Microseconds())
-
-			case *SendMessageResponse_Raft:
-				mu.Lock()
-				nodeID, ok := pending[msg.Raft.RequestId]
-				if ok {
-					delete(pending, msg.Raft.RequestId)
-					conn.pendingResponseCounter.Add(context.Background(), -1)
-				} else {
-					conn.logger.
-						WithFields(map[string]any{
-							"request-id": msg.Raft.RequestId,
-						}).
-						Errorf("Received unexpected response from peer")
-				}
-				mu.Unlock()
-				if !msg.Raft.Success && ok {
-					conn.logger.
-						Errorf("Failed to send message, peer respond with error: %s", msg.Raft.Error)
-					conn.unreachableCh.Push(nodeID)
-				}
-			default:
-				panic(fmt.Sprintf("received unexpected message type: %T", msg))
-			}
-		}
-	}, conn.logger)
+		}(ps)
+	}
 
 	pingInterval := time.NewTicker(time.Second)
 	opts := proto.MarshalOptions{}
 
-	for {
-		select {
-		case ch := <-conn.closeCh:
-			_ = stream.CloseSend()
-			// todo: add a context guard
-			<-receiveChStopped
-			close(ch)
-			return true, nil
-		case <-pingInterval.C:
-			p := ping{
-				at:    time.Now(),
-				seqId: conn.messageID,
-			}
-			lastPing.Store(p)
-			err := stream.Send(&SendMessageRequest{
-				Message: &SendMessageRequest_Ping{
-					Ping: &PingMessage{
-						SeqId: p.seqId,
-					},
-				},
-			})
-			if err != nil {
-				conn.logger.Errorf("Failed to send ping to peer: %v", err)
-				return false, err
-			}
-		case msg := <-conn.sendCh.Recv():
-			data, err := opts.MarshalAppend(conn.buf, protoadapt.MessageV2Of(&msg))
+	// sendMessages handles sending a batch of raft messages on the specified stream
+	sendMessages := func(stream grpc.BidiStreamingClient[SendMessageRequest, SendMessageResponse], msgs []raftpb.Message) error {
+		if len(msgs) == 0 {
+			return nil
+		}
+
+		raftMessages := make([]*RaftRequestMessage, 0, len(msgs))
+		messageIDs := make([]uint64, 0, len(msgs))
+
+		mu.Lock()
+		for _, msg := range msgs {
+			data, err := opts.MarshalAppend(conn.buf[:0], protoadapt.MessageV2Of(&msg))
 			if err != nil {
 				conn.logger.
 					WithFields(map[string]any{
@@ -540,39 +734,152 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 				continue
 			}
 
-			conn.logger.
-				WithFields(map[string]any{
-					"type": msg.Type.String(),
-				}).
-				Debugf("Sending message to peer via stream")
+			// Copy data since we reuse the buffer
+			dataCopy := make([]byte, len(data))
+			copy(dataCopy, data)
 
-			mu.Lock()
 			currentMessageID := conn.messageID
 			conn.messageID++
 			pending[currentMessageID] = msg.To
+			messageIDs = append(messageIDs, currentMessageID)
+
+			raftMessages = append(raftMessages, &RaftRequestMessage{
+				Message: dataCopy,
+				Id:      currentMessageID,
+			})
+		}
+		mu.Unlock()
+
+		if len(raftMessages) == 0 {
+			return nil
+		}
+
+		conn.logger.
+			WithFields(map[string]any{
+				"count": len(raftMessages),
+			}).
+			Debugf("Sending batch of messages to peer via stream")
+
+		conn.pendingResponseCounter.Add(context.Background(), float64(len(raftMessages)))
+
+		if err := stream.Send(&SendMessageRequest{
+			Message: &SendMessageRequest_Raft{
+				Raft: &RaftRequestBatch{
+					Messages: raftMessages,
+				},
+			},
+		}); err != nil {
+			conn.logger.
+				WithFields(map[string]any{
+					"error": err,
+					"count": len(raftMessages),
+				}).
+				Errorf("Failed to send batch via stream")
+			mu.Lock()
+			for _, msgID := range messageIDs {
+				delete(pending, msgID)
+			}
 			mu.Unlock()
+			conn.pendingResponseCounter.Add(context.Background(), -float64(len(raftMessages)))
+			// Report peer as unreachable
+			if !conn.unreachableCh.Push(conn.peerID) {
+				conn.logger.Errorf("Unreachable channel full, dropping unreachable")
+			}
+			return err
+		}
+		return nil
+	}
 
-			conn.pendingResponseCounter.Add(context.Background(), 1)
+	for {
+		// First, try non-blocking receives in priority order (high -> medium -> low)
+		select {
+		case msgs := <-conn.highPriorityCh.Recv():
+			if err := sendMessages(highStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				return false, err
+			}
+			continue
+		default:
+		}
+		select {
+		case msgs := <-conn.mediumPriorityCh.Recv():
+			if err := sendMessages(mediumStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				return false, err
+			}
+			continue
+		default:
+		}
+		select {
+		case msgs := <-conn.lowPriorityCh.Recv():
+			if err := sendMessages(lowStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				return false, err
+			}
+			continue
+		default:
+		}
 
-			if err := stream.Send(&SendMessageRequest{
-				Message: &SendMessageRequest_Raft{
-					Raft: &RaftRequestMessage{
-						Message: data,
-						Id:      currentMessageID,
+		// No messages available, do a blocking select on all channels
+		select {
+		case ch := <-conn.closeCh:
+			_ = highStream.CloseSend()
+			_ = mediumStream.CloseSend()
+			_ = lowStream.CloseSend()
+			receiveWg.Wait()
+			close(ch)
+			return true, nil
+		case err := <-streamErrors:
+			for _, peerID := range pending {
+				conn.unreachableCh.Push(peerID)
+			}
+			conn.logger.Errorf("Stream error: %v", err)
+			return false, err
+		case <-pingInterval.C:
+			p := ping{
+				at:    time.Now(),
+				seqId: conn.messageID,
+			}
+			lastPing.Store(p)
+			// Send ping on high priority stream
+			err := highStream.Send(&SendMessageRequest{
+				Message: &SendMessageRequest_Ping{
+					Ping: &PingMessage{
+						SeqId: p.seqId,
 					},
 				},
-			}); err != nil {
-				conn.logger.
-					WithFields(map[string]any{
-						"error": err,
-					}).
-					Errorf("Failed to send message via stream")
-				mu.Lock()
-				delete(pending, currentMessageID)
-				mu.Unlock()
-				// Report peer as unreachable
-				if !conn.unreachableCh.Push(msg.To) {
-					conn.logger.Errorf("Unreachable channel full, dropping unreachable")
+			})
+			if err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				conn.logger.Errorf("Failed to send ping to peer: %v", err)
+				return false, err
+			}
+		case msgs := <-conn.highPriorityCh.Recv():
+			if err := sendMessages(highStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				return false, err
+			}
+		case msgs := <-conn.mediumPriorityCh.Recv():
+			if err := sendMessages(mediumStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
+				}
+				return false, err
+			}
+		case msgs := <-conn.lowPriorityCh.Recv():
+			if err := sendMessages(lowStream, msgs); err != nil {
+				for _, peerID := range pending {
+					conn.unreachableCh.Push(peerID)
 				}
 				return false, err
 			}
@@ -587,7 +894,7 @@ func (conn *peerConnection) stop(ctx context.Context) error {
 	case conn.closeCh <- ch:
 		select {
 		case <-ch:
-			conn.sendCh.Close()
+			conn.closeQueues()
 			close(conn.closeCh)
 			return nil
 		case <-ctx.Done():

@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 14,
+  "id": 18,
   "links": [],
   "panels": [
     {
@@ -1317,116 +1317,6 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Rate of Raft messages received from other nodes, grouped by message type.\n\nMessage types include:\n- MsgApp: Log replication (AppendEntries)\n- MsgAppResp: Response to AppendEntries\n- MsgHeartbeat/MsgHeartbeatResp: Leader heartbeats\n- MsgVote/MsgVoteResp: Leader election votes\n\nHigh rates indicate active replication. Zero rates may indicate network issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 16,
-        "x": 0,
-        "y": 35
-      },
-      "id": 11,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: p{{scope.attributes.priority}}",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "rate(raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
-          "hide": true,
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: Outgoing p{{scope.attributes.priority}}",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Reception channel incoming messages",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
       "description": "Target heap size for the next GC cycle, set by the Go runtime's pacer.\n\nThe GC goal grows as your application uses more memory. If it grows unbounded, you may have a memory leak. The GOGC environment variable controls how aggressively the GC runs.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
       "fieldConfig": {
         "defaults": {
@@ -1486,9 +1376,9 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 8,
-        "x": 16,
+        "h": 5,
+        "w": 24,
+        "x": 0,
         "y": 35
       },
       "id": 44,
@@ -1525,6 +1415,129 @@
       "type": "timeseries"
     },
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 201,
+      "panels": [],
+      "title": "Transport & Queues",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of Raft messages received from other nodes, grouped by message type.\n\nMessage types include:\n- MsgApp: Log replication (AppendEntries)\n- MsgAppResp: Response to AppendEntries\n- MsgHeartbeat/MsgHeartbeatResp: Leader heartbeats\n- MsgVote/MsgVoteResp: Leader election votes\n\nHigh rates indicate active replication. Zero rates may indicate network issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: p{{scope.attributes.priority}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "rate(raft.transport.recv.outgoing{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
+          "hide": true,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Outgoing p{{scope.attributes.priority}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Reception channel incoming messages",
+      "type": "timeseries"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "VictoriaMetrics"
@@ -1547,9 +1560,9 @@
       },
       "gridPos": {
         "h": 10,
-        "w": 9,
+        "w": 8,
         "x": 0,
-        "y": 41
+        "y": 47
       },
       "id": 71,
       "options": {
@@ -1599,7 +1612,7 @@
           "refId": "A"
         }
       ],
-      "title": "Reception channel load (High Priority: AppResp, Vote, VoteResp, PreVote)",
+      "title": "Reception channel load (High Priority: Heartbeats)",
       "transformations": [
         {
           "disabled": true,
@@ -1732,6 +1745,84 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
+      "description": "Heatmap showing queue depth distribution for medium-priority received messages (priority 1).\n\nMedium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 47
+      },
+      "id": 103,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Reception channel load (Medium Priority: Votes/Responses)",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "description": "Heatmap showing queue depth distribution for lower-priority received messages (priority 2).\n\nLower-priority messages include AppendEntries requests (App) which carry log entries for replication.\n\nHigh queue depth on followers is normal during heavy write load. On the leader, it should be minimal.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
       "fieldConfig": {
         "defaults": {
@@ -1750,9 +1841,9 @@
       },
       "gridPos": {
         "h": 10,
-        "w": 7,
-        "x": 9,
-        "y": 41
+        "w": 8,
+        "x": 16,
+        "y": 47
       },
       "id": 72,
       "options": {
@@ -1802,7 +1893,7 @@
           "refId": "A"
         }
       ],
-      "title": "Reception channel load (Lower Priority: App)",
+      "title": "Reception channel load (Low Priority: Data)",
       "transformations": [
         {
           "disabled": true,
@@ -1957,10 +2048,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 8,
-        "x": 16,
-        "y": 41
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 57
       },
       "id": 22,
       "options": {
@@ -1986,15 +2077,291 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "raft.transport.recv.full{service.node_id=~\"$node\", scope.name=\"raft.transport\"}",
+          "expr": "sum(increase(raft.transport.recv.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
           "interval": "1s",
-          "legendFormat": "p{{scope.attributes.priority}}",
+          "legendFormat": "{{scope.attributes.priority_name}}",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "Reception channel full count",
       "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Throughput of the merged reception queue. This is the rate at which messages are being dequeued from the priority queues and sent to the Raft node.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#merged-reception-queue",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 61
+      },
+      "id": 104,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.transport.recv.merged.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Merged Reception Queue Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Heatmap showing queue depth distribution for the merged reception queue.\n\nThis queue combines all priority queues into a single output for the Raft node.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#merged-reception-queue",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 61
+      },
+      "id": 105,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.recv.merged.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Merged Reception Queue Load",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of times the merged reception queue was full. Alert if non-zero.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#merged-reception-queue",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 61
+      },
+      "id": 106,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(raft.transport.recv.merged.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Merged Reception Queue Full Count",
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -2056,10 +2423,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 16,
+        "h": 10,
+        "w": 8,
         "x": 0,
-        "y": 51
+        "y": 71
       },
       "id": 13,
       "options": {
@@ -2111,6 +2478,84 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
+      "description": "Heatmap showing queue depth distribution for the unreachable notification queue.\n\nHigh values indicate many peers are becoming unreachable.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 71
+      },
+      "id": 110,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.unreachable.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Unreachable Channel Load",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "description": "Total number of times the unreachable notification channel was full.\n\nNon-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
       "fieldConfig": {
         "defaults": {
@@ -2133,10 +2578,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 10,
         "w": 8,
         "x": 16,
-        "y": 51
+        "y": 71
       },
       "id": 25,
       "options": {
@@ -2163,7 +2608,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "raft.transport.unreachable.full{service.node_id=~\"$node\", scope.name=\"raft.transport\"}",
+          "expr": "sum(increase(raft.transport.unreachable.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "instant": true,
           "interval": "1s",
           "legendFormat": "{{scope.name}}",
@@ -2179,7 +2624,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.\n\nHigh values indicate:\n- Slow peer nodes\n- Network congestion\n- Processing bottlenecks on remote nodes\n\nPersistently high values for a specific peer may indicate that peer is struggling.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
+      "description": "Throughput of the pending send queue. This is the rate at which message batches are being queued for dispatch to peers.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2194,7 +2639,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 0,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -2208,7 +2653,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -2226,48 +2671,20 @@
               {
                 "color": "green",
                 "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
-          }
+          },
+          "unit": "ops"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Node 2 / Peer : 3"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": true,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
+        "h": 10,
+        "w": 8,
         "x": 0,
-        "y": 56
+        "y": 81
       },
-      "id": 46,
+      "id": 107,
       "options": {
         "legend": {
           "calcs": [],
@@ -2289,14 +2706,14 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
+          "expr": "sum(rate(raft.send.pending_messages.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Pending responses",
+      "title": "Pending Send Queue Throughput",
       "type": "timeseries"
     },
     {
@@ -2304,11 +2721,293 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
+      "description": "Heatmap showing queue depth distribution for the pending send queue.\n\nHigh values indicate messages are being queued faster than they can be dispatched.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 81
+      },
+      "id": 108,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.send.pending_messages.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Pending Send Queue Load",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of times the pending send queue was full. Alert if non-zero.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 81
+      },
+      "id": 109,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(raft.send.pending_messages.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Pending Send Queue Full Count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of Raft messages being queued for sending to each peer, grouped by message type.\n\nShows outbound message flow to other cluster members:\n- MsgApp: Log replication to followers (leader only)\n- MsgHeartbeat: Heartbeats to maintain leadership\n- MsgVote: Vote requests during elections\n\nHigh rates on the leader indicate active replication.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 91
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(rate(raft.transport.peer.sending.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
+          "format": "time_series",
+          "hide": false,
+          "instant": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Send channel incoming messages",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of times the per-peer send channel was full and messages were dropped.\n\nALERT: Non-zero rates indicate messages to peers are being dropped!\n\nThis causes:\n- Delayed replication to affected peer\n- Potential follower lag\n- Need for snapshot transfer if too far behind\n\nInvestigate network connectivity to the affected peer.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -2344,6 +3043,7 @@
               "mode": "off"
             }
           },
+          "fieldMinMax": false,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2358,17 +3058,17 @@
               }
             ]
           },
-          "unit": "ms"
+          "unit": "ops"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 91
       },
-      "id": 47,
+      "id": 24,
       "options": {
         "legend": {
           "calcs": [],
@@ -2390,15 +3090,502 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "exemplar": false,
+          "expr": "sum(increase(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
+          "format": "time_series",
           "instant": false,
-          "legendFormat": "Node {{service.node_id}}",
+          "interval": "",
+          "legendFormat": "Node {{service.node_id}} : Peer {{peer}}: p{{scope.attributes.priority}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Snapshot creation",
+      "title": "Send channel full count",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 1).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 97
+      },
+      "id": 70,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Send channel load (High Priority: Heartbeats)",
+      "transformations": [
+        {
+          "disabled": true,
+          "id": "reduce",
+          "options": {
+            "includeTimeField": false,
+            "labelsToFields": false,
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "auto",
+            "keepTime": false,
+            "replace": true,
+            "source": "le"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "Field"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "disabled": true,
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "le"
+              }
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false,
+            "window": {
+              "field": "le",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "fixed": ""
+              },
+              "right": {
+                "fixed": ""
+              }
+            },
+            "cumulative": {
+              "field": "Value",
+              "reducer": "sum"
+            },
+            "mode": "binary",
+            "reduce": {
+              "include": [],
+              "reducer": "delta"
+            },
+            "window": {
+              "field": "Value",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        }
+      ],
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Heatmap showing queue depth distribution for medium-priority outgoing messages (priority 1).\n\nMedium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 97
+      },
+      "id": 111,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Send channel load (Medium Priority: Votes/Responses)",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).\n\nLower-priority outbound messages are AppendEntries requests carrying log entries for replication.\n\nHigh queue depth indicates the leader is producing entries faster than they can be sent to followers. This may be due to:\n- Network bandwidth limitations\n- Slow followers\n- High write throughput\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 97
+      },
+      "id": 69,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "RdYlBu",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+          "format": "heatmap",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Send channel load (Low Priority: Data)",
+      "transformations": [
+        {
+          "disabled": true,
+          "id": "reduce",
+          "options": {
+            "includeTimeField": false,
+            "labelsToFields": false,
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "auto",
+            "keepTime": false,
+            "replace": true,
+            "source": "le"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "Field"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "disabled": true,
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "le"
+              }
+            ]
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last *"
+                }
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false,
+            "window": {
+              "field": "le",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "fixed": ""
+              },
+              "right": {
+                "fixed": ""
+              }
+            },
+            "cumulative": {
+              "field": "Value",
+              "reducer": "sum"
+            },
+            "mode": "binary",
+            "reduce": {
+              "include": [],
+              "reducer": "delta"
+            },
+            "window": {
+              "field": "Value",
+              "reducer": "mean",
+              "windowAlignment": "trailing",
+              "windowSize": 0.1,
+              "windowSizeMode": "percentage"
+            }
+          }
+        },
+        {
+          "disabled": true,
+          "id": "calculateField",
+          "options": {}
+        }
+      ],
+      "type": "heatmap"
     },
     {
       "datasource": {
@@ -2460,10 +3647,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
+        "h": 8,
         "w": 8,
         "x": 0,
-        "y": 63
+        "y": 107
       },
       "id": 2,
       "options": {
@@ -2533,10 +3720,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 9,
+        "h": 8,
+        "w": 8,
         "x": 8,
-        "y": 63
+        "y": 107
       },
       "id": 68,
       "options": {
@@ -2774,10 +3961,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 7,
-        "x": 17,
-        "y": 63
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 107
       },
       "id": 7,
       "options": {
@@ -2801,7 +3988,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "raft.node.propose.full{service.node_id=~\"$node\"}",
+          "expr": "sum(increase(raft.node.propose.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -2816,114 +4003,11 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Rate of Raft messages being queued for sending to each peer, grouped by message type.\n\nShows outbound message flow to other cluster members:\n- MsgApp: Log replication to followers (leader only)\n- MsgHeartbeat: Heartbeats to maintain leadership\n- MsgVote: Vote requests during elections\n\nHigh rates on the leader indicate active replication.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "description": "Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.\n\nHigh values indicate:\n- Slow peer nodes\n- Network congestion\n- Processing bottlenecks on remote nodes\n\nPersistently high values for a specific peer may indicate that peer is struggling.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "fieldMinMax": false,
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 69
-      },
-      "id": 15,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(rate(raft.transport.peer.sending.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
-          "format": "time_series",
-          "hide": false,
-          "instant": false,
-          "interval": "1s",
-          "legendFormat": "Node {{service.node_id}}: Peer {{scope.attributes.peer}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Send channel incoming messages",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "Rate of times the per-peer send channel was full and messages were dropped.\n\nALERT: Non-zero rates indicate messages to peers are being dropped!\n\nThis causes:\n- Delayed replication to affected peer\n- Potential follower lag\n- Need for snapshot transfer if too far behind\n\nInvestigate network connectivity to the affected peer.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "red",
-            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -2959,7 +4043,6 @@
               "mode": "off"
             }
           },
-          "fieldMinMax": false,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -2973,18 +4056,42 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "ops"
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2 / Peer : 3"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
         "w": 12,
-        "x": 12,
-        "y": 69
+        "x": 0,
+        "y": 115
       },
-      "id": 24,
+      "id": 46,
       "options": {
         "legend": {
           "calcs": [],
@@ -3006,17 +4113,14 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "exemplar": false,
-          "expr": "rate(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval])",
-          "format": "time_series",
+          "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
           "instant": false,
-          "interval": "",
-          "legendFormat": "Node {{service.node_id}} : Peer {{peer}}: p{{scope.attributes.priority}}",
+          "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Send channel full count",
+      "title": "Pending responses",
       "type": "timeseries"
     },
     {
@@ -3024,406 +4128,101 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 1).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
+      "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
-          }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 76
-      },
-      "id": 70,
-      "options": {
-        "calculate": false,
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "RdYlBu",
-          "steps": 128
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-9
-        },
-        "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
-          "format": "heatmap",
-          "instant": false,
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Send channel load (High Priority: AppResp, Vote, VoteResp, PreVote)",
-      "transformations": [
-        {
-          "disabled": true,
-          "id": "reduce",
-          "options": {
-            "includeTimeField": false,
-            "labelsToFields": false,
-            "mode": "seriesToRows",
-            "reducers": [
-              "lastNotNull"
-            ]
-          }
-        },
-        {
-          "disabled": true,
-          "id": "extractFields",
-          "options": {
-            "delimiter": ",",
-            "format": "auto",
-            "keepTime": false,
-            "replace": true,
-            "source": "le"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "convertFieldType",
-          "options": {
-            "conversions": [
-              {
-                "destinationType": "number",
-                "targetField": "Field"
-              }
-            ],
-            "fields": {}
-          }
-        },
-        {
-          "disabled": true,
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "desc": true,
-                "field": "le"
-              }
-            ]
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {
-            "alias": "",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Last *"
-                }
-              },
-              "operator": "-",
-              "right": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Last *"
-                }
-              }
-            },
-            "mode": "binary",
-            "reduce": {
-              "reducer": "sum"
-            },
-            "replaceFields": false,
-            "window": {
-              "field": "le",
-              "reducer": "mean",
-              "windowAlignment": "trailing",
-              "windowSize": 0.1,
-              "windowSizeMode": "percentage"
-            }
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {}
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {
-            "binary": {
-              "left": {
-                "fixed": ""
-              },
-              "right": {
-                "fixed": ""
-              }
-            },
-            "cumulative": {
-              "field": "Value",
-              "reducer": "sum"
-            },
-            "mode": "binary",
-            "reduce": {
-              "include": [],
-              "reducer": "delta"
-            },
-            "window": {
-              "field": "Value",
-              "reducer": "mean",
-              "windowAlignment": "trailing",
-              "windowSize": 0.1,
-              "windowSizeMode": "percentage"
-            }
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {}
-        }
-      ],
-      "type": "heatmap"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).\n\nLower-priority outbound messages are AppendEntries requests carrying log entries for replication.\n\nHigh queue depth indicates the leader is producing entries faster than they can be sent to followers. This may be due to:\n- Network bandwidth limitations\n- Slow followers\n- High write throughput\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 12,
-        "y": 76
+        "y": 115
       },
-      "id": 69,
+      "id": 47,
       "options": {
-        "calculate": false,
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "RdYlBu",
-          "steps": 128
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-9
-        },
         "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
         }
       },
       "pluginVersion": "12.3.1",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
           "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
-          "format": "heatmap",
+          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Send channel load (Lower Priority: App)",
-      "transformations": [
-        {
-          "disabled": true,
-          "id": "reduce",
-          "options": {
-            "includeTimeField": false,
-            "labelsToFields": false,
-            "mode": "seriesToRows",
-            "reducers": [
-              "lastNotNull"
-            ]
-          }
-        },
-        {
-          "disabled": true,
-          "id": "extractFields",
-          "options": {
-            "delimiter": ",",
-            "format": "auto",
-            "keepTime": false,
-            "replace": true,
-            "source": "le"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "convertFieldType",
-          "options": {
-            "conversions": [
-              {
-                "destinationType": "number",
-                "targetField": "Field"
-              }
-            ],
-            "fields": {}
-          }
-        },
-        {
-          "disabled": true,
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "desc": true,
-                "field": "le"
-              }
-            ]
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {
-            "alias": "",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Last *"
-                }
-              },
-              "operator": "-",
-              "right": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Last *"
-                }
-              }
-            },
-            "mode": "binary",
-            "reduce": {
-              "reducer": "sum"
-            },
-            "replaceFields": false,
-            "window": {
-              "field": "le",
-              "reducer": "mean",
-              "windowAlignment": "trailing",
-              "windowSize": 0.1,
-              "windowSizeMode": "percentage"
-            }
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {}
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {
-            "binary": {
-              "left": {
-                "fixed": ""
-              },
-              "right": {
-                "fixed": ""
-              }
-            },
-            "cumulative": {
-              "field": "Value",
-              "reducer": "sum"
-            },
-            "mode": "binary",
-            "reduce": {
-              "include": [],
-              "reducer": "delta"
-            },
-            "window": {
-              "field": "Value",
-              "reducer": "mean",
-              "windowAlignment": "trailing",
-              "windowSize": 0.1,
-              "windowSizeMode": "percentage"
-            }
-          }
-        },
-        {
-          "disabled": true,
-          "id": "calculateField",
-          "options": {}
-        }
-      ],
-      "type": "heatmap"
+      "title": "Snapshot creation",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -3431,7 +4230,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 122
       },
       "id": 74,
       "panels": [],
@@ -3505,7 +4304,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 85
+        "y": 123
       },
       "id": 75,
       "options": {
@@ -3597,7 +4396,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 85
+        "y": 123
       },
       "id": 20,
       "options": {
@@ -3698,7 +4497,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 93
+        "y": 131
       },
       "id": 77,
       "options": {
@@ -3787,13 +4586,40 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 2: P99",
+                  "Node 2: P75",
+                  "Node 2: P95"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 93
+        "y": 131
       },
       "id": 21,
       "options": {
@@ -3921,7 +4747,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 101
+        "y": 139
       },
       "id": 55,
       "options": {
@@ -4041,7 +4867,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 101
+        "y": 139
       },
       "id": 59,
       "options": {
@@ -4137,7 +4963,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 109
+        "y": 147
       },
       "id": 100,
       "options": {
@@ -4233,7 +5059,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 109
+        "y": 147
       },
       "id": 101,
       "options": {
@@ -4327,9 +5153,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 117
+        "y": 155
       },
       "id": 102,
       "options": {
@@ -4377,6 +5203,18 @@
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(wal.append.batch_size_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
         }
       ],
       "title": "WAL append batch size",
@@ -4388,7 +5226,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 125
+        "y": 163
       },
       "id": 5,
       "panels": [],
@@ -4461,7 +5299,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 126
+        "y": 164
       },
       "id": 6,
       "options": {
@@ -4557,7 +5395,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 126
+        "y": 164
       },
       "id": 63,
       "options": {
@@ -4675,7 +5513,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 126
+        "y": 164
       },
       "id": 8,
       "options": {
@@ -4770,7 +5608,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 132
+        "y": 170
       },
       "id": 10,
       "options": {
@@ -4891,7 +5729,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 132
+        "y": 170
       },
       "id": 64,
       "options": {
@@ -5008,7 +5846,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 132
+        "y": 170
       },
       "id": 12,
       "options": {
@@ -5103,7 +5941,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 138
+        "y": 176
       },
       "id": 61,
       "options": {
@@ -5198,7 +6036,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 138
+        "y": 176
       },
       "id": 62,
       "options": {
@@ -5294,7 +6132,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 138
+        "y": 176
       },
       "id": 4,
       "options": {
@@ -5351,7 +6189,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 182
       },
       "id": 73,
       "panels": [

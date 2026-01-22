@@ -231,7 +231,7 @@ func NewNode(
 		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
 		metric.WithUnit("1"),
 		metric.WithExplicitBucketBoundaries(
-			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000,
+			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
 		),
 	)
 	if err != nil {

@@ -11,17 +11,45 @@ graph TB
     subgraph "Node A"
         Transport[Transport Layer]
         ConnPool[Connection Pool]
-        PeerConn[Peer Connections]
+        PeerConn[Peer Connection]
+        
+        subgraph "Priority Streams"
+            HighStream[High Priority Stream<br/>Heartbeats]
+            MedStream[Medium Priority Stream<br/>Votes/Responses]
+            LowStream[Low Priority Stream<br/>Data]
+        end
     end
     
     subgraph "Node B"
         GRPCServer[gRPC Server]
         RaftService[RaftTransportService]
+        
+        subgraph "Recv Queues"
+            HighQ[High Queue]
+            MedQ[Medium Queue]
+            LowQ[Low Queue]
+        end
+        Merger[Priority Merger]
     end
     
     Transport --> ConnPool
     ConnPool --> PeerConn
-    PeerConn -.Bidirectional Stream.-> RaftService
+    PeerConn --> HighStream
+    PeerConn --> MedStream
+    PeerConn --> LowStream
+    
+    HighStream -.-> RaftService
+    MedStream -.-> RaftService
+    LowStream -.-> RaftService
+    
+    RaftService --> HighQ
+    RaftService --> MedQ
+    RaftService --> LowQ
+    
+    HighQ --> Merger
+    MedQ --> Merger
+    LowQ --> Merger
+    
     RaftService --> GRPCServer
 ```
 
@@ -46,8 +74,220 @@ type ConnectionPool struct {
 The transport layer wraps the connection pool and manages Raft-specific message routing:
 
 - **Priority Queues**: Messages are prioritized (heartbeats, votes, and append entries have different priorities)
-- **Per-Peer Connections**: Each peer has a dedicated bidirectional stream
+- **Per-Peer Connections**: Each peer has 3 dedicated bidirectional streams (one per priority)
 - **Unreachable Detection**: Reports unreachable peers to the Raft node
+- **Message Batching**: Messages are sent in batches for improved throughput
+
+## Message Priority System
+
+### Overview
+
+The transport layer implements a **3-level priority system** to ensure critical Raft messages (like heartbeats) are processed quickly, even under high load. This prevents election timeouts and maintains cluster stability.
+
+```mermaid
+graph TB
+    subgraph "Outgoing Messages"
+        Send[Send Messages]
+        Classify[Classify by Priority]
+        HighQ[High Priority Queue<br/>Heartbeats]
+        MedQ[Medium Priority Queue<br/>Votes, Responses]
+        LowQ[Low Priority Queue<br/>Data/AppendEntries]
+    end
+    
+    subgraph "gRPC Streams"
+        HighS[High Priority Stream]
+        MedS[Medium Priority Stream]
+        LowS[Low Priority Stream]
+    end
+    
+    subgraph "Peer Node"
+        Recv[Receive & Classify]
+        HighR[High Priority Recv Queue]
+        MedR[Medium Priority Recv Queue]
+        LowR[Low Priority Recv Queue]
+        Merge[Priority Merger]
+        Out[Recv Channel]
+    end
+    
+    Send --> Classify
+    Classify --> HighQ
+    Classify --> MedQ
+    Classify --> LowQ
+    
+    HighQ --> HighS
+    MedQ --> MedS
+    LowQ --> LowS
+    
+    HighS --> Recv
+    MedS --> Recv
+    LowS --> Recv
+    
+    Recv --> HighR
+    Recv --> MedR
+    Recv --> LowR
+    
+    HighR --> Merge
+    MedR --> Merge
+    LowR --> Merge
+    Merge --> Out
+```
+
+### Priority Classification
+
+Messages are classified based on their Raft message type:
+
+| Priority | Level | Message Types | Purpose |
+|----------|-------|---------------|---------|
+| **High** | 0 | `MsgHeartbeat`, `MsgHeartbeatResp` | Leader liveness, prevent elections |
+| **Medium** | 1 | `MsgVote`, `MsgVoteResp`, `MsgPreVote`, `MsgPreVoteResp`, `MsgAppResp` | Elections, replication acknowledgments |
+| **Low** | 2 | All others (`MsgApp`, `MsgSnap`, etc.) | Data replication |
+
+### gRPC Implementation
+
+#### Three Streams Per Peer
+
+Each peer connection maintains **3 separate gRPC bidirectional streams**, one for each priority level:
+
+```go
+// In handleConnection()
+highStream, _ := client.StreamMessages(highCtx)   // priority=high in metadata
+mediumStream, _ := client.StreamMessages(medCtx)  // priority=medium in metadata  
+lowStream, _ := client.StreamMessages(lowCtx)     // priority=low in metadata
+```
+
+The priority is transmitted via gRPC metadata:
+
+```go
+ctx := metadata.AppendToOutgoingContext(ctx, 
+    "nodeID", strconv.FormatUint(nodeID, 10),
+    "priority", "high",  // or "medium", "low"
+)
+```
+
+#### Why Separate Streams?
+
+Using separate streams per priority prevents **head-of-line blocking**:
+
+- Without separation: A large `MsgApp` (data message) could block heartbeats
+- With separation: Heartbeats flow independently on their dedicated stream
+- Result: Leader liveness is preserved even under high replication load
+
+#### Message Batching
+
+Messages are sent in batches using the `RaftRequestBatch` protobuf message:
+
+```protobuf
+message RaftRequestBatch {
+  repeated RaftRequestMessage messages = 1;
+}
+```
+
+This reduces network overhead by combining multiple messages into a single gRPC call.
+
+### Internal Queue Structure
+
+#### Sending Side (Per Peer)
+
+Each peer connection has 3 queues for outgoing message batches:
+
+```go
+type peerConnection struct {
+    highPriorityCh   Queue[[]raftpb.Message]  // Heartbeats
+    mediumPriorityCh Queue[[]raftpb.Message]  // Votes, responses
+    lowPriorityCh    Queue[[]raftpb.Message]  // Data messages
+}
+```
+
+#### Receiving Side (Transport)
+
+The transport has 3 queues for incoming message batches, plus a merged output queue:
+
+```go
+type DefaultTransport struct {
+    // Incoming batches by priority
+    highPriorityRecvCh   Queue[[]raftpb.Message]
+    mediumPriorityRecvCh Queue[[]raftpb.Message]
+    lowPriorityRecvCh    Queue[[]raftpb.Message]
+    
+    // Merged output for Recv()
+    recvOut Queue[raftpb.Message]
+}
+```
+
+### Priority Merger
+
+The `mergeRecvQueues()` goroutine merges the 3 priority queues into a single output channel, respecting priority order:
+
+```go
+func (t *DefaultTransport) mergeRecvQueues() {
+    for {
+        // Try high priority first
+        select {
+        case msgs := <-t.highPriorityRecvCh.Recv():
+            sendBatch(msgs)
+        default:
+            // Then try high or medium
+            select {
+            case msgs := <-t.highPriorityRecvCh.Recv():
+                sendBatch(msgs)
+            case msgs := <-t.mediumPriorityRecvCh.Recv():
+                sendBatch(msgs)
+            default:
+                // Finally, try any priority (blocking)
+                select {
+                case msgs := <-t.highPriorityRecvCh.Recv():
+                    sendBatch(msgs)
+                case msgs := <-t.mediumPriorityRecvCh.Recv():
+                    sendBatch(msgs)
+                case msgs := <-t.lowPriorityRecvCh.Recv():
+                    sendBatch(msgs)
+                }
+            }
+        }
+    }
+}
+```
+
+**Algorithm**: 
+1. Non-blocking check for high priority messages
+2. If none, non-blocking check for high or medium
+3. If none, blocking wait for any priority
+
+This ensures high-priority messages are always processed first when available.
+
+### Server-Side Message Classification
+
+When the server receives a batch of messages, it groups them by priority before enqueueing:
+
+```go
+// In StreamMessages()
+for _, raftMsg := range m.Raft.Messages {
+    msg := unmarshal(raftMsg)
+    
+    switch msg.Type {
+    case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+        highPriorityMsgs = append(highPriorityMsgs, msg)
+    case raftpb.MsgAppResp, raftpb.MsgVote, ...:
+        mediumPriorityMsgs = append(mediumPriorityMsgs, msg)
+    default:
+        lowPriorityMsgs = append(lowPriorityMsgs, msg)
+    }
+}
+
+t.pushToRecvQueue(0, highPriorityMsgs)   // high
+t.pushToRecvQueue(1, mediumPriorityMsgs) // medium
+t.pushToRecvQueue(2, lowPriorityMsgs)    // low
+```
+
+### Benefits of Priority System
+
+| Benefit | Description |
+|---------|-------------|
+| **Cluster Stability** | Heartbeats are never delayed by large data transfers |
+| **Fast Elections** | Vote messages have priority over data replication |
+| **Improved Throughput** | Batching reduces per-message overhead |
+| **Head-of-Line Prevention** | Separate streams prevent blocking |
+| **Backpressure Handling** | Per-priority queues allow independent flow control |
 
 ## Reconnection Strategy
 
@@ -87,29 +327,47 @@ Benefits:
 
 ### Why Bidirectional Streaming?
 
-Instead of unary RPC calls for each message, the transport uses bidirectional streaming (`StreamMessages`):
+Instead of unary RPC calls for each message, the transport uses bidirectional streaming (`StreamMessages`). Each peer connection maintains **3 parallel streams** (one per priority level):
 
 ```mermaid
 sequenceDiagram
     participant Node1 as Node 1
     participant Node2 as Node 2
     
-    Node1->>Node2: Open Stream (with nodeID metadata)
-    Note over Node1,Node2: Stream remains open
+    Note over Node1,Node2: Open 3 priority streams
+    Node1->>Node2: Open High Stream (priority=high)
+    Node1->>Node2: Open Medium Stream (priority=medium)
+    Node1->>Node2: Open Low Stream (priority=low)
     
-    loop Message Exchange
-        Node1->>Node2: RaftMessage or Ping
-        Node2->>Node1: Raft Response or Pong
+    Note over Node1,Node2: Streams remain open
+    
+    par High Priority (Heartbeats)
+        loop Heartbeat Exchange
+            Node1->>Node2: Heartbeat batch
+            Node2->>Node1: Response batch
+        end
+    and Medium Priority (Votes)
+        loop Vote Exchange
+            Node1->>Node2: Vote batch
+            Node2->>Node1: Response batch
+        end
+    and Low Priority (Data)
+        loop Data Replication
+            Node1->>Node2: AppendEntries batch
+            Node2->>Node1: Response batch
+        end
     end
     
     Note over Node1: Connection lost
-    Node1->>Node2: Automatic Reconnect
+    Node1->>Node2: Automatic Reconnect (all 3 streams)
 ```
 
 Benefits:
 - **Reduced latency**: No connection setup overhead per message
-- **Persistent connection**: Maintains an open channel for immediate message delivery
-- **Bi-directional acknowledgment**: Each Raft message gets an explicit response
+- **Persistent connection**: Maintains open channels for immediate message delivery
+- **Bi-directional acknowledgment**: Each Raft message batch gets an explicit response
+- **Priority isolation**: Heartbeats never blocked by large data transfers
+- **Message batching**: Multiple messages combined in single gRPC call
 
 ### Connection State Machine
 
@@ -252,13 +510,19 @@ This helps detect connection issues where messages are sent but responses are no
 
 The transport exposes several metrics for monitoring:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `raft.transport.recv.queued` | Gauge | Messages queued for reception |
-| `raft.transport.peer.sending.queued` | Gauge | Messages queued for sending to peer |
-| `raft.transport.ping.latency` | Histogram | Ping round-trip time in microseconds |
-| `raft.transport.sending.pending_response` | UpDownCounter | Messages awaiting response |
-| `raft.transport.unreachable.queued` | Gauge | Unreachable reports in queue |
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `raft.transport.recv.queued` | Gauge | `priority`, `priority_name` | Message batches queued for reception per priority |
+| `raft.transport.recv.merged.queued` | Gauge | - | Individual messages queued in merged output |
+| `raft.transport.peer.sending.queued` | Gauge | `peer`, `priority`, `priority_name` | Message batches queued for sending per peer/priority |
+| `raft.transport.ping.latency` | Histogram | `peer` | Ping round-trip time in microseconds |
+| `raft.transport.sending.pending_response` | UpDownCounter | `peer` | Messages awaiting response |
+| `raft.transport.unreachable.queued` | Gauge | - | Unreachable reports in queue |
+
+**Priority Labels**:
+- `priority=0, priority_name=high`: Heartbeat messages
+- `priority=1, priority_name=medium`: Vote and response messages
+- `priority=2, priority_name=low`: Data/append messages
 
 ### Logging
 

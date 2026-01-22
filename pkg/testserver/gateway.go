@@ -227,32 +227,71 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 				}
 				return
 			}
+
+			// Handle ping messages (pass through)
+			if req.GetPing() != nil {
+				if err := clientStream.Send(req); err != nil {
+					errCh <- fmt.Errorf("failed to send ping to backend: %w", err)
+					return
+				}
+				continue
+			}
+
+			// Handle raft batch messages
 			if req.GetRaft() == nil {
 				continue
 			}
 
-			raftMsg := &raftpb.Message{}
-			if err := raftMsg.Unmarshal(req.GetRaft().Message); err != nil {
-				g.logger.WithFields(map[string]any{
-					"error": err,
-				}).Errorf("Failed to unmarshal Raft message for interception")
-				// Continue forwarding even if unmarshal fails
-			} else {
-				// Check interceptor
-				interceptor := g.gateway.GetInterceptor()
-				if interceptor != nil {
-					if !interceptor.InterceptRequest(raftMsg) {
-						g.logger.WithFields(map[string]any{
-							"from_node": raftMsg.From,
-							"to_node":   raftMsg.To,
-							"msg_type":  raftMsg.Type.String(),
-						}).Debugf("Message blocked by interceptor")
-						continue // Skip this message
-					}
+			// Filter messages through interceptor
+			interceptor := g.gateway.GetInterceptor()
+			if interceptor == nil {
+				// No interceptor, forward as-is
+				if err := clientStream.Send(req); err != nil {
+					errCh <- fmt.Errorf("failed to send to backend: %w", err)
+					return
 				}
+				continue
 			}
 
-			if err := clientStream.Send(req); err != nil {
+			// Apply interceptor to each message in the batch
+			filteredMessages := make([]*raft.RaftRequestMessage, 0, len(req.GetRaft().Messages))
+			for _, raftReqMsg := range req.GetRaft().Messages {
+				raftMsg := &raftpb.Message{}
+				if err := raftMsg.Unmarshal(raftReqMsg.Message); err != nil {
+					g.logger.WithFields(map[string]any{
+						"error": err,
+					}).Errorf("Failed to unmarshal Raft message for interception")
+					// Include message even if unmarshal fails
+					filteredMessages = append(filteredMessages, raftReqMsg)
+					continue
+				}
+
+				// Check interceptor
+				if !interceptor.InterceptRequest(raftMsg) {
+					g.logger.WithFields(map[string]any{
+						"from_node": raftMsg.From,
+						"to_node":   raftMsg.To,
+						"msg_type":  raftMsg.Type.String(),
+					}).Debugf("Message blocked by interceptor")
+					continue // Skip this message
+				}
+				filteredMessages = append(filteredMessages, raftReqMsg)
+			}
+
+			// If all messages were filtered out, skip sending
+			if len(filteredMessages) == 0 {
+				continue
+			}
+
+			// Send filtered batch
+			filteredReq := &raft.SendMessageRequest{
+				Message: &raft.SendMessageRequest_Raft{
+					Raft: &raft.RaftRequestBatch{
+						Messages: filteredMessages,
+					},
+				},
+			}
+			if err := clientStream.Send(filteredReq); err != nil {
 				errCh <- fmt.Errorf("failed to send to backend: %w", err)
 				return
 			}

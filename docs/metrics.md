@@ -104,18 +104,45 @@ Transport metrics track inter-node gRPC communication for Raft consensus.
 **Attributes**:
 - `peer`: Peer node ID
 
-### Reception Channel Metrics
+### Pending Send Queue Metrics
 
-Messages received from other nodes are queued in reception channels by priority.
+Outgoing messages are first queued in a global pending send queue before being distributed to per-peer queues.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.recv.load` | Histogram | 1 | Current load of the reception queue. Measures queue depth over time. |
+| `raft.send.pending_messages.load` | Histogram | 1 | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
+| `raft.send.pending_messages.full` | Counter | 1 | Number of times the pending send queue was full. **Alert if non-zero**. |
+
+### Reception Channel Metrics
+
+Messages received from other nodes are queued in 3 priority reception channels before being merged into a single output queue.
+
+#### Per-Priority Reception Queues
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `raft.transport.recv.load` | Histogram | 1 | Current load of the reception queue per priority. Measures queue depth over time. |
 | `raft.transport.recv.full` | Counter | 1 | Number of times the reception queue was full. **Alert if non-zero**. |
 
 **Attributes**:
-- `priority`: Queue priority level (1 = high priority: AppResp, Vote, VoteResp, PreVote; 2 = lower priority: App)
-- `type`: Raft message type
+- `priority`: Queue priority level (0 = high, 1 = medium, 2 = low)
+- `priority_name`: Human-readable priority name (`high`, `medium`, `low`)
+
+**Priority Classification**:
+| Priority | Name | Message Types |
+|----------|------|---------------|
+| 0 | high | `MsgHeartbeat`, `MsgHeartbeatResp` |
+| 1 | medium | `MsgVote`, `MsgVoteResp`, `MsgPreVote`, `MsgPreVoteResp`, `MsgAppResp` |
+| 2 | low | All others (`MsgApp`, `MsgSnap`, etc.) |
+
+#### Merged Reception Queue
+
+The 3 priority queues are merged into a single output queue for consumption by the Raft node.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `raft.transport.recv.merged.load` | Histogram | 1 | Current load of the merged reception queue. |
+| `raft.transport.recv.merged.full` | Counter | 1 | Number of times the merged queue was full. **Alert if non-zero**. |
 
 ### Unreachable Channel Metrics
 
@@ -128,7 +155,7 @@ Tracks notifications when a peer becomes unreachable.
 
 ### Per-Peer Sending Metrics
 
-Each peer connection has its own sending queue metrics.
+Each peer connection has 3 priority queues for sending messages (one per priority level).
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
@@ -137,8 +164,8 @@ Each peer connection has its own sending queue metrics.
 
 **Attributes**:
 - `peer`: Peer node ID
-- `priority`: Queue priority level (1 = high priority, 2 = lower priority)
-- `type`: Raft message type (e.g., `MsgApp`, `MsgHeartbeat`, `MsgVote`)
+- `priority`: Queue priority level (0 = high, 1 = medium, 2 = low)
+- `priority_name`: Human-readable priority name (`high`, `medium`, `low`)
 
 ## Pebble Storage Metrics
 
@@ -296,19 +323,27 @@ The dashboard is organized into the following sections:
 - Go GC Goal
 
 **Transport & Queues Section**:
-- Reception Channel Incoming Messages
-- Reception Channel Load (by priority)
-- Reception Channel Full Count
-- Transport Unreachable Channel
-- Unreachable Channel Full Count
+- Reception Queue Throughput (by priority)
+- Reception Queue Load Heatmap (by priority)
+- Reception Queue Full Counter
+- Merged Reception Queue Throughput
+- Merged Reception Queue Load Heatmap
+- Merged Reception Queue Full Counter
+- Pending Send Queue Throughput
+- Pending Send Queue Load Heatmap
+- Pending Send Queue Full Counter
+- Per-Peer Send Queue Throughput (by priority)
+- Per-Peer Send Queue Load Heatmap (by priority)
+- Per-Peer Send Queue Full Counter
+- Unreachable Channel Throughput
+- Unreachable Channel Load Heatmap
+- Unreachable Channel Full Counter
+- Propose Queue Throughput
+- Propose Queue Load Heatmap
+- Propose Queue Full Counter
+- Ping Latency
 - Pending Responses
 - Snapshot Creation
-- Propose Queue Incoming Messages
-- Propose Channel Load
-- Propose Queue Full Count
-- Send Channel Incoming Messages
-- Send Channel Full Count
-- Send Channel Load (by priority)
 
 **Ready Loop Section**:
 - Process Ready Entry Time Passed
