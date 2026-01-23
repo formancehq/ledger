@@ -4925,68 +4925,68 @@ components:
       properties:
         type: string
         default: string
+    V2QueryResource:
+      type: string
+      enum: [transactions, accounts, logs, volumes]
+    V2QueryParams:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+        cursor:
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to 15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        expand:
+          type: string
+          items:
+            type: string
+        pit:
+          type: string
+          format: date-time
+        sort:
+          $ref: "#/components/parameters/sort"
+      oneOf:
+        - x-speakeasy-name-override: QueryTemplateAccountParams
+          properties:
+            resource:
+              const: accounts
+        - x-speakeasy-name-override: QueryTemplateTransactionParams
+          properties:
+            resource:
+              const: transactions
+        - x-speakeasy-name-override: QueryTemplateLogParams
+          properties:
+            resource:
+              const: logs
+        - x-speakeasy-name-override: QueryTemplateVolumeParams
+          properties:
+            resource:
+              const: volumes
+            useInsertionDate: boolean
+            groupLvl: integer
     V2QueryTemplate:
       type: object
       properties:
         name: string
         resource:
-          x-speakeasy-name-override: V2QueryResource
-          type: string
-          enum: [transactions, accounts, logs, volumes]
+          $ref: "#/components/schemas/V2QueryResource"
         params:
-          type: object
-          properties:
-            pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              description: |
-                The maximum number of results to return per page.
-              example: 100
-            cursor:
-              description: >
-                Parameter used in pagination requests. Maximum page size is set to 15.
-
-                Set to the value of next for the next page of results.
-
-                Set to the value of previous for the previous page of results.
-
-                No other parameters can be set when this parameter is set.
-
-              type: string
-              example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-            expand:
-              type: string
-              items:
-                type: string
-            pit:
-              type: string
-              format: date-time
-            sort:
-              $ref: "#/components/parameters/sort"
-          oneOf:
-            - x-speakeasy-name-override: QueryTemplateAccountParams
-              properties:
-                resource:
-                  const: accounts
-            - x-speakeasy-name-override: QueryTemplateTransactionParams
-              properties:
-                resource:
-                  const: transactions
-            - x-speakeasy-name-override: QueryTemplateLogParams
-              properties:
-                resource:
-                  const: logs
-            - x-speakeasy-name-override: QueryTemplateVolumeParams
-              properties:
-                resource:
-                  const: volumes
-                opts:
-                  type: object
-                  properties:
-                    useInsertionDate: boolean
-                    groupLvl: integer
+          $ref: "#/components/schemas/V2QueryParams"
         vars:
           type: object
           additionalProperties:

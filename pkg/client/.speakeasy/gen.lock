@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: f988b95ec94f11f007ceed8e1a85c471
+  docChecksum: 940edcfd72a7dff3f74e0998112c66aa
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -120,6 +120,8 @@ generatedFiles:
   - /models/components/v2pipeline.go
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
+  - /models/components/v2queryparams.go
+  - /models/components/v2queryresource.go
   - /models/components/v2querytemplate.go
   - /models/components/v2querytemplatevar.go
   - /models/components/v2reverttransactionrequest.go
@@ -234,8 +236,6 @@ generatedFiles:
   - docs/models/components/mapping.md
   - docs/models/components/mappingresponse.md
   - docs/models/components/migrationinfo.md
-  - docs/models/components/opts.md
-  - docs/models/components/params.md
   - docs/models/components/posting.md
   - docs/models/components/posttransaction.md
   - docs/models/components/posttransactionscript.md
@@ -328,6 +328,7 @@ generatedFiles:
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
+  - docs/models/components/v2queryparams.md
   - docs/models/components/v2queryresource.md
   - docs/models/components/v2querytemplate.md
   - docs/models/components/v2querytemplatevar.md

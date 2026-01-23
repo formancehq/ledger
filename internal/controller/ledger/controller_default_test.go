@@ -22,7 +22,6 @@ import (
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestCreateTransactionWithoutSchema(t *testing.T) {
@@ -538,14 +537,14 @@ func TestGetAggregatedBalances(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions](ctrl)
+	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions](ctrl)
 
 	store.EXPECT().AggregatedBalances().Return(aggregatedBalances)
-	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{}).
+	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{}).
 		Return(&ledger.AggregatedVolumes{}, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
+	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{})
 	require.NoError(t, err)
 	require.Equal(t, ledger.BalancesByAssets{}, ret)
 }
@@ -588,17 +587,17 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions](ctrl)
+	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions](ctrl)
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
-	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
@@ -627,7 +626,6 @@ func TestRunQuery(t *testing.T) {
 				"FOO": {
 					Name:     "Foo template",
 					Resource: "accounts",
-					Mode:     "sync",
 					Vars: map[string]ledger.VarSpec{
 						"aaa": {
 							Type:    "string",
@@ -684,6 +682,9 @@ func TestRunQuery(t *testing.T) {
 	require.NoError(t, err)
 	cursor := &bunpaginate.Cursor[ledger.Account]{}
 	accounts.EXPECT().Paginate(gomock.Any(), storagecommon.InitialPaginatedQuery[any]{
+		PageSize: bunpaginate.QueryDefaultPageSize,
+		Column:   "address",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		Options: storagecommon.ResourceQuery[any]{
 			Builder: expectedQuery,
 		},

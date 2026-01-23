@@ -32,6 +32,9 @@ func NewSchema(version string, data SchemaData) (Schema, error) {
 	if err := data.Transactions.Validate(); err != nil {
 		return Schema{}, NewErrInvalidSchema(err)
 	}
+	if err := data.Queries.Validate(); err != nil {
+		return Schema{}, NewErrInvalidSchema(err)
+	}
 	return Schema{
 		Version:    version,
 		SchemaData: data,

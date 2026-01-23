@@ -7,6 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 )
@@ -28,7 +29,7 @@ func (h volumesResourceHandler) Schema() common.EntitySchema {
 	}
 }
 
-func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -128,7 +129,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ common.ResourceQuery[GetVolumesOptions],
+	_ common.ResourceQuery[ledger.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -177,7 +178,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query common.ResourceQuery[GetVolumesOptions],
+	query common.ResourceQuery[ledger.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -200,8 +201,8 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ common.ResourceQuery[GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ common.ResourceQuery[ledger.GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ common.RepositoryHandler[GetVolumesOptions] = volumesResourceHandler{}
+var _ common.RepositoryHandler[ledger.GetVolumesOptions] = volumesResourceHandler{}

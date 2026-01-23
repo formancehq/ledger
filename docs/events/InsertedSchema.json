@@ -120,12 +120,7 @@
         "resource": {
           "type": "string"
         },
-        "mode": {
-          "type": "string"
-        },
-        "params": {
-          "$ref": "#/$defs/QueryTemplateParams"
-        },
+        "params": true,
         "vars": {
           "additionalProperties": {
             "$ref": "#/$defs/VarSpec"
@@ -138,47 +133,9 @@
       "type": "object",
       "required": [
         "resource",
-        "mode",
         "params",
         "vars",
         "body"
-      ]
-    },
-    "QueryTemplateParams": {
-      "properties": {
-        "PIT": {
-          "$ref": "#/$defs/Time"
-        },
-        "OOT": {
-          "$ref": "#/$defs/Time"
-        },
-        "Expand": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "Opts": true,
-        "SortColumn": {
-          "type": "string"
-        },
-        "SortOrder": {
-          "type": "integer"
-        },
-        "PageSize": {
-          "type": "integer"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "PIT",
-        "OOT",
-        "Expand",
-        "Opts",
-        "SortColumn",
-        "SortOrder",
-        "PageSize"
       ]
     },
     "QueryTemplates": {

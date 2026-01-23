@@ -17,7 +17,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/ledger"
+	ledgerstorage "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestAccountsCount(t *testing.T) {
@@ -89,7 +89,7 @@ func TestAccountsCount(t *testing.T) {
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         ledger.ErrMissingFeature{},
+			returnErr:         ledgerstorage.ErrMissingFeature{},
 			expectQuery:       storagecommon.ResourceQuery[any]{},
 		},
 		{

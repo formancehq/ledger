@@ -16,7 +16,6 @@ import (
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
-	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -400,7 +399,7 @@ func (c *MockControllerGetAccountCall) DoAndReturn(f func(context.Context, commo
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *MockController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *MockController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
 	ret0, _ := ret[0].(ledger.BalancesByAssets)
@@ -427,13 +426,13 @@ func (c *MockControllerGetAggregatedBalancesCall) Return(arg0 ledger.BalancesByA
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetAggregatedBalancesCall) Do(f func(context.Context, common.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *MockControllerGetAggregatedBalancesCall {
+func (c *MockControllerGetAggregatedBalancesCall) Do(f func(context.Context, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *MockControllerGetAggregatedBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetAggregatedBalancesCall) DoAndReturn(f func(context.Context, common.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *MockControllerGetAggregatedBalancesCall {
+func (c *MockControllerGetAggregatedBalancesCall) DoAndReturn(f func(context.Context, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *MockControllerGetAggregatedBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -595,7 +594,7 @@ func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, c
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *MockController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *MockController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
@@ -622,13 +621,13 @@ func (c *MockControllerGetVolumesWithBalancesCall) Return(arg0 *bunpaginate.Curs
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
+func (c *MockControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
+func (c *MockControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

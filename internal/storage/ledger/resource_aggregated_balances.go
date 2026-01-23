@@ -5,6 +5,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 )
@@ -22,7 +23,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchem
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
@@ -101,7 +102,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		switch operator {
@@ -130,12 +131,12 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.Reso
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) Project(
-	_ common.ResourceQuery[GetAggregatedVolumesOptions],
+	_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := h.store.db.NewSelect().
@@ -149,4 +150,4 @@ func (h aggregatedBalancesResourceRepositoryHandler) Project(
 		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
-var _ common.RepositoryHandler[GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}
+var _ common.RepositoryHandler[ledger.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}

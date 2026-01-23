@@ -38,9 +38,13 @@ var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)
 
 var _ PaginatedQuery[any] = (*ColumnPaginatedQuery[any])(nil)
 
-func UnmarshalInitialPaginatedQueryOpts[TO any](from InitialPaginatedQuery[json.RawMessage]) (*InitialPaginatedQuery[TO], error) {
+func UnmarshalInitialPaginatedQueryOpts[TO any](from InitialPaginatedQuery[map[string]any]) (*InitialPaginatedQuery[TO], error) {
 	var opts TO
-	if err := json.Unmarshal(from.Options.Opts, &opts); err != nil {
+	marshalled, err := json.Marshal(from.Options.Opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(marshalled, &opts); err != nil {
 		return nil, err
 	} else {
 		return &InitialPaginatedQuery[TO]{

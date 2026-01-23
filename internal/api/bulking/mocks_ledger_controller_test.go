@@ -17,7 +17,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
-	ledger1 "github.com/formancehq/ledger/internal/storage/ledger"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -401,7 +400,7 @@ func (c *LedgerControllerGetAccountCall) DoAndReturn(f func(context.Context, com
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger1.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
 	ret0, _ := ret[0].(ledger.BalancesByAssets)
@@ -428,13 +427,13 @@ func (c *LedgerControllerGetAggregatedBalancesCall) Return(arg0 ledger.BalancesB
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerGetAggregatedBalancesCall) Do(f func(context.Context, common.ResourceQuery[ledger1.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *LedgerControllerGetAggregatedBalancesCall {
+func (c *LedgerControllerGetAggregatedBalancesCall) Do(f func(context.Context, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *LedgerControllerGetAggregatedBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerGetAggregatedBalancesCall) DoAndReturn(f func(context.Context, common.ResourceQuery[ledger1.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *LedgerControllerGetAggregatedBalancesCall {
+func (c *LedgerControllerGetAggregatedBalancesCall) DoAndReturn(f func(context.Context, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)) *LedgerControllerGetAggregatedBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -596,7 +595,7 @@ func (c *LedgerControllerGetTransactionCall) DoAndReturn(f func(context.Context,
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger1.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
@@ -623,13 +622,13 @@ func (c *LedgerControllerGetVolumesWithBalancesCall) Return(arg0 *bunpaginate.Cu
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger1.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
+func (c *LedgerControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger1.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
+func (c *LedgerControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

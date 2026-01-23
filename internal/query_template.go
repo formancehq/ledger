@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/iancoleman/strcase"
-
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 )
@@ -23,13 +20,16 @@ const (
 	ResourceKindVolumes      ResourceKind = "volumes"
 )
 
-type QueryMode string
-
-const (
-	Sync QueryMode = "sync"
-)
-
 type QueryTemplates map[string]QueryTemplate
+
+func (t QueryTemplates) Validate() error {
+	for _, t := range t {
+		if err := t.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type VarSpec struct {
 	Type    string  `json:"type,omitempty"`
@@ -52,88 +52,65 @@ func (p *VarSpec) UnmarshalJSON(b []byte) error {
 }
 
 type RunQueryTemplateParams struct {
-	QueryTemplateParams
+	json.RawMessage
 	Cursor string `json:"cursor"`
 }
 
-type QueryTemplateParams struct {
+type QueryTemplateParams[Opts any] struct {
 	PIT        *time.Time
 	OOT        *time.Time
 	Expand     []string
-	Opts       json.RawMessage
+	Opts       Opts
 	SortColumn string
 	SortOrder  *bunpaginate.Order
 	PageSize   uint
 }
 
-func (q *QueryTemplateParams) UnmarshalJSON(data []byte) error {
-	type X struct {
-		PIT      *time.Time      `json:"endTime"`
-		OOT      *time.Time      `json:"startTime"`
-		Expand   []string        `json:"expand,omitempty"`
-		Opts     json.RawMessage `json:"opts"`
-		Sort     string          `json:"sort"`
-		PageSize uint            `json:"pageSize"`
-	}
-	var x X
-	err := json.Unmarshal(data, &x)
-	if err != nil {
-		return err
-	}
-	q.PIT = x.PIT
-	q.OOT = x.OOT
-	q.Expand = x.Expand
-	q.Opts = x.Opts
-	q.PageSize = x.PageSize
-
-	if x.Sort != "" {
-		parts := strings.SplitN(x.Sort, ":", 2)
-		q.SortColumn = strcase.ToSnake(parts[0])
-		if len(parts) > 1 {
-			switch {
-			case strings.ToLower(parts[1]) == "desc":
-				q.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderDesc))
-			case strings.ToLower(parts[1]) == "asc":
-				q.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderAsc))
-			default:
-				return fmt.Errorf("invalid order: %s", parts[1])
+func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryTemplateParams[Opts], error) {
+	for _, other := range others {
+		if len(other) != 0 {
+			err := json.Unmarshal(other, &q)
+			if err != nil {
+				return nil, err
+			}
+			err = json.Unmarshal(other, &q.Opts)
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
-	return nil
-}
-
-func (q *QueryTemplateParams) Overwrite(other QueryTemplateParams) {
-	if other.PIT != nil {
-		q.PIT = other.PIT
-	}
-	if other.OOT != nil {
-		q.OOT = other.OOT
-	}
-	if len(other.Expand) > 0 {
-		q.Expand = other.Expand
-	}
-	if other.Opts != nil {
-		q.Opts = other.Opts
-	}
-	if other.SortColumn != "" {
-		q.SortColumn = other.SortColumn
-	}
-	if other.SortOrder != nil {
-		q.SortOrder = other.SortOrder
-	}
-	if other.PageSize != 0 {
-		q.PageSize = other.PageSize
-	}
+	return &q, nil
 }
 
 type QueryTemplate struct {
-	Name     string              `json:"name,omitempty"`
-	Resource ResourceKind        `json:"resource"`
-	Mode     QueryMode           `json:"mode"`
-	Params   QueryTemplateParams `json:"params"`
-	Vars     map[string]VarSpec  `json:"vars"`
-	Body     json.RawMessage     `json:"body"`
+	Name     string             `json:"name,omitempty"`
+	Resource ResourceKind       `json:"resource"`
+	Params   json.RawMessage    `json:"params"`
+	Vars     map[string]VarSpec `json:"vars"`
+	Body     json.RawMessage    `json:"body"`
+}
+
+// Validate a query template
+func (q QueryTemplate) Validate() error {
+	if len(q.Params) == 0 {
+		return nil
+	}
+	switch q.Resource {
+	case ResourceKindAccounts:
+		return nil
+	case ResourceKindLogs:
+		return nil
+	case ResourceKindTransactions:
+		return nil
+	case ResourceKindVolumes:
+		var x GetVolumesOptions
+		if err := json.Unmarshal(q.Params, &x); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown resource kind: %v", q.Resource)
+	}
+	return nil
 }
 
 // Resolve filter template using the provided vars

@@ -89,8 +89,8 @@ var _ = Context("Ledger query API tests", func() {
 						},
 						Queries: map[string]components.V2QueryTemplate{
 							"CUSTOMERS": {
-								Name:            "Balance of customers with matching category and hat",
-								V2QueryResource: components.V2QueryResourceAccounts.ToPointer(),
+								Name:     "Balance of customers with matching category and hat",
+								Resource: components.V2QueryResourceAccounts.ToPointer(),
 								Vars: map[string]components.V2QueryTemplateVar{
 									"category": {
 										Type:    "string",

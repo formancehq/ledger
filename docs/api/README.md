@@ -6665,6 +6665,92 @@ Transaction templates
 |type|any|false|none|none|
 |default|any|false|none|none|
 
+<h2 id="tocS_V2QueryResource">V2QueryResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2queryresource"></a>
+<a id="schema_V2QueryResource"></a>
+<a id="tocSv2queryresource"></a>
+<a id="tocsv2queryresource"></a>
+
+```json
+"transactions"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|transactions|
+|*anonymous*|accounts|
+|*anonymous*|logs|
+|*anonymous*|volumes|
+
+<h2 id="tocS_V2QueryParams">V2QueryParams</h2>
+<!-- backwards compatibility -->
+<a id="schemav2queryparams"></a>
+<a id="schema_V2QueryParams"></a>
+<a id="tocSv2queryparams"></a>
+<a id="tocsv2queryparams"></a>
+
+```json
+{
+  "pageSize": 100,
+  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+  "expand": "string",
+  "pit": "2019-08-24T14:15:22Z",
+  "sort": {},
+  "resource": "accounts"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|expand|string|false|none|none|
+|pit|string(date-time)|false|none|none|
+|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending). <br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|any|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|any|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|any|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|any|false|none|none|
+|» useInsertionDate|any|false|none|none|
+|» groupLvl|any|false|none|none|
+
 <h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
 <!-- backwards compatibility -->
 <a id="schemav2querytemplate"></a>
@@ -6704,61 +6790,11 @@ Transaction templates
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|any|false|none|none|
-|resource|string|false|none|none|
-|params|object|false|none|none|
-|» pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|» cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|string|false|none|none|
-|» pit|string(date-time)|false|none|none|
-|» sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending). <br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
-|»» resource|any|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
-|»» resource|any|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
-|»» resource|any|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
-|»» resource|any|false|none|none|
-|»» opts|object|false|none|none|
-|»»» useInsertionDate|any|false|none|none|
-|»»» groupLvl|any|false|none|none|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|resource|[V2QueryResource](#schemav2queryresource)|false|none|none|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|none|
 |vars|object|false|none|none|
 |» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
 |body|object|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|transactions|
-|resource|accounts|
-|resource|logs|
-|resource|volumes|
 
 <h2 id="tocS_V2QueryTemplates">V2QueryTemplates</h2>
 <!-- backwards compatibility -->

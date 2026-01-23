@@ -13,7 +13,6 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
@@ -305,7 +304,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.Resource
 	)
 }
 
-func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAggregatedBalances",
@@ -365,7 +364,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
