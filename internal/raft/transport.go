@@ -93,7 +93,7 @@ func NewTransport(
 		lowPriorityRecvCh:    createRecvQueue(2, "low"),
 		recvOut: NewQueueObserver[raftpb.Message](
 			"raft.transport.recv.merged",
-			NewSimpleQueue[raftpb.Message](100),
+			NewSimpleQueue[raftpb.Message](4096),
 			WithMeter[raftpb.Message](meter),
 			WithLogger[raftpb.Message](logger),
 		),

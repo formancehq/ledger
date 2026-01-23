@@ -78,15 +78,16 @@ type Node struct {
 	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
 
-	meter                          metric.Meter
-	applyEntriesHistogram          metric.Int64Histogram
-	applyEntriesBatchSizeCounter   metric.Int64Counter
-	applyEntriesBatchSizeHistogram metric.Int64Histogram
-	processEntryHistogram          metric.Int64Histogram
-	appendEntriesHistogram         metric.Int64Histogram
-	leadMonitorHistogram           metric.Int64Gauge
-	defaultLedger                  *service.DefaultController
-	store                          store.Store
+	meter                             metric.Meter
+	applyEntriesHistogram             metric.Int64Histogram
+	applyEntriesBatchSizeCounter      metric.Int64Counter
+	applyEntriesBatchSizeHistogram    metric.Int64Histogram
+	processEntryHistogram             metric.Int64Histogram
+	appendEntriesHistogram            metric.Int64Histogram
+	leadMonitorHistogram              metric.Int64Gauge
+	committedEntriesPerReadyHistogram metric.Int64Histogram
+	defaultLedger                     *service.DefaultController
+	store                             store.Store
 
 	spool                   Spool
 	createSnapshotHistogram metric.Float64Histogram
@@ -241,6 +242,9 @@ func NewNode(
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
 		metric.WithDescription("Time spending appending entries to wal"),
 		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+		),
 	)
 	if err != nil {
 		panic(err)
@@ -249,6 +253,17 @@ func NewNode(
 	node.processEntryHistogram, err = meter.Int64Histogram("raft.process_entry",
 		metric.WithDescription("Time spent processing ready from raft"),
 		metric.WithUnit("us"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.committedEntriesPerReadyHistogram, err = meter.Int64Histogram("raft.ready.committed_entries",
+		metric.WithDescription("Number of committed entries per Ready"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
+		),
 	)
 	if err != nil {
 		panic(err)
@@ -363,7 +378,7 @@ func (node *Node) Start(ctx context.Context) error {
 		case err := <-node.taskExecutor.error():
 			return fmt.Errorf("task executor error: %w", err)
 		case <-processingTick.C:
-			if node.rawNode.HasReady() {
+			for node.rawNode.HasReady() {
 				now := time.Now()
 				err := node.processReady(node.ctx)
 				if err != nil {
@@ -405,6 +420,8 @@ func (node *Node) processReady(ctx context.Context) error {
 
 	node.logger.Debugf("Processing ready")
 	rd := node.rawNode.Ready()
+
+	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
 
 	if rd.SoftState != nil {
 		ss := rd.SoftState
