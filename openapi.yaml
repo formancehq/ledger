@@ -2931,6 +2931,8 @@ paths:
             schema:
               type: object
               properties:
+                cursor: string
+                params: "#/components/schemas/V2QueryParams"
                 vars:
                   type: object
                   additionalProperties:
@@ -2941,12 +2943,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/V2AccountsCursorResponse"
-                # oneOf:
-                #   - $ref: "#/components/schemas/V2TransactionsCursorResponse"
-                #   - $ref: "#/components/schemas/V2AccountsCursorResponse"
-                #   - $ref: "#/components/schemas/V2LogsCursorResponse"
-                #   - $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/V2TransactionsCursorResponse"
+                  - $ref: "#/components/schemas/V2AccountsCursorResponse"
+                  - $ref: "#/components/schemas/V2LogsCursorResponse"
+                  - $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
         default:
           description: Error
           content:

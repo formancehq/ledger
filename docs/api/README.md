@@ -2593,6 +2593,8 @@ Run a query template on a ledger
 
 ```json
 {
+  "cursor": null,
+  "params": null,
   "vars": {
     "property1": "string",
     "property2": "string"
@@ -2615,6 +2617,8 @@ Run a query template on a ledger
 |reverse|query|boolean|false|none|
 |sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
+|» cursor|body|any|false|none|
+|» params|body|any|false|none|
 |» vars|body|object|false|none|
 |»» **additionalProperties**|body|string|false|none|
 
@@ -2649,37 +2653,89 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
-        "address": "users:001",
+        "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "postings": [
+          {
+            "amount": 100,
+            "asset": "COIN",
+            "destination": "users:002",
+            "source": "users:001"
+          }
+        ],
+        "reference": "ref:001",
         "metadata": {
           "admin": "true"
         },
-        "insertionDate": "2023-01-01T00:00:00Z",
-        "updatedAt": "2023-01-01T00:00:00Z",
-        "firstUsage": "2023-01-01T00:00:00Z",
-        "volumes": {
-          "USD": {
-            "input": 100,
-            "output": 10,
-            "balance": 90
+        "id": 0,
+        "reverted": true,
+        "revertedAt": "2019-08-24T14:15:22Z",
+        "preCommitVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
           },
-          "EUR": {
-            "input": 100,
-            "output": 10,
-            "balance": 90
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
           }
         },
-        "effectiveVolumes": {
-          "USD": {
-            "input": 100,
-            "output": 10,
-            "balance": 90
+        "postCommitVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
           },
-          "EUR": {
-            "input": 100,
-            "output": 10,
-            "balance": 90
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
           }
-        }
+        },
+        "preCommitEffectiveVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "postCommitEffectiveVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "template": "string"
       }
     ]
   }
@@ -2690,8 +2746,30 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2AccountsCursorResponse](#schemav2accountscursorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="run-a-query-template-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|NEW_TRANSACTION|
+|type|SET_METADATA|
+|type|REVERTED_TRANSACTION|
+|type|DELETE_METADATA|
+|type|INSERTED_SCHEMA|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+|runtime|experimental-interpreter|
+|runtime|machine|
+|resource|transactions|
+|resource|accounts|
+|resource|logs|
+|resource|volumes|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:

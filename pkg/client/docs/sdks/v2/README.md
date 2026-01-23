@@ -1905,7 +1905,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2AccountsCursorResponse != nil {
+    if res.OneOf != nil {
         // handle response
     }
 }

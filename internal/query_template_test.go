@@ -54,5 +54,5 @@ func TestQueryResolution(t *testing.T) {
 	resolved, err := ResolveFilterTemplate(json.RawMessage(src), params)
 	require.NoError(t, err)
 
-	require.Equal(t, resolved, expected)
+	require.Equal(t, expected, resolved)
 }

@@ -4,6 +4,7 @@ package operations
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -35,7 +36,23 @@ func (e *V2RunQueryQueryParamOrder) UnmarshalJSON(data []byte) error {
 }
 
 type V2RunQueryRequestBody struct {
-	Vars map[string]string `json:"vars,omitempty"`
+	Cursor any               `json:"cursor,omitempty"`
+	Params any               `json:"params,omitempty"`
+	Vars   map[string]string `json:"vars,omitempty"`
+}
+
+func (o *V2RunQueryRequestBody) GetCursor() any {
+	if o == nil {
+		return nil
+	}
+	return o.Cursor
+}
+
+func (o *V2RunQueryRequestBody) GetParams() any {
+	if o == nil {
+		return nil
+	}
+	return o.Params
 }
 
 func (o *V2RunQueryRequestBody) GetVars() map[string]string {
@@ -163,10 +180,118 @@ func (o *V2RunQueryRequest) GetRequestBody() V2RunQueryRequestBody {
 	return o.RequestBody
 }
 
+type V2RunQueryResponseBodyType string
+
+const (
+	V2RunQueryResponseBodyTypeV2TransactionsCursorResponse       V2RunQueryResponseBodyType = "V2TransactionsCursorResponse"
+	V2RunQueryResponseBodyTypeV2AccountsCursorResponse           V2RunQueryResponseBodyType = "V2AccountsCursorResponse"
+	V2RunQueryResponseBodyTypeV2LogsCursorResponse               V2RunQueryResponseBodyType = "V2LogsCursorResponse"
+	V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse V2RunQueryResponseBodyType = "V2VolumesWithBalanceCursorResponse"
+)
+
+// V2RunQueryResponseBody - OK
+type V2RunQueryResponseBody struct {
+	V2TransactionsCursorResponse       *components.V2TransactionsCursorResponse       `queryParam:"inline"`
+	V2AccountsCursorResponse           *components.V2AccountsCursorResponse           `queryParam:"inline"`
+	V2LogsCursorResponse               *components.V2LogsCursorResponse               `queryParam:"inline"`
+	V2VolumesWithBalanceCursorResponse *components.V2VolumesWithBalanceCursorResponse `queryParam:"inline"`
+
+	Type V2RunQueryResponseBodyType
+}
+
+func CreateV2RunQueryResponseBodyV2TransactionsCursorResponse(v2TransactionsCursorResponse components.V2TransactionsCursorResponse) V2RunQueryResponseBody {
+	typ := V2RunQueryResponseBodyTypeV2TransactionsCursorResponse
+
+	return V2RunQueryResponseBody{
+		V2TransactionsCursorResponse: &v2TransactionsCursorResponse,
+		Type:                         typ,
+	}
+}
+
+func CreateV2RunQueryResponseBodyV2AccountsCursorResponse(v2AccountsCursorResponse components.V2AccountsCursorResponse) V2RunQueryResponseBody {
+	typ := V2RunQueryResponseBodyTypeV2AccountsCursorResponse
+
+	return V2RunQueryResponseBody{
+		V2AccountsCursorResponse: &v2AccountsCursorResponse,
+		Type:                     typ,
+	}
+}
+
+func CreateV2RunQueryResponseBodyV2LogsCursorResponse(v2LogsCursorResponse components.V2LogsCursorResponse) V2RunQueryResponseBody {
+	typ := V2RunQueryResponseBodyTypeV2LogsCursorResponse
+
+	return V2RunQueryResponseBody{
+		V2LogsCursorResponse: &v2LogsCursorResponse,
+		Type:                 typ,
+	}
+}
+
+func CreateV2RunQueryResponseBodyV2VolumesWithBalanceCursorResponse(v2VolumesWithBalanceCursorResponse components.V2VolumesWithBalanceCursorResponse) V2RunQueryResponseBody {
+	typ := V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse
+
+	return V2RunQueryResponseBody{
+		V2VolumesWithBalanceCursorResponse: &v2VolumesWithBalanceCursorResponse,
+		Type:                               typ,
+	}
+}
+
+func (u *V2RunQueryResponseBody) UnmarshalJSON(data []byte) error {
+
+	var v2TransactionsCursorResponse components.V2TransactionsCursorResponse = components.V2TransactionsCursorResponse{}
+	if err := utils.UnmarshalJSON(data, &v2TransactionsCursorResponse, "", true, true); err == nil {
+		u.V2TransactionsCursorResponse = &v2TransactionsCursorResponse
+		u.Type = V2RunQueryResponseBodyTypeV2TransactionsCursorResponse
+		return nil
+	}
+
+	var v2AccountsCursorResponse components.V2AccountsCursorResponse = components.V2AccountsCursorResponse{}
+	if err := utils.UnmarshalJSON(data, &v2AccountsCursorResponse, "", true, true); err == nil {
+		u.V2AccountsCursorResponse = &v2AccountsCursorResponse
+		u.Type = V2RunQueryResponseBodyTypeV2AccountsCursorResponse
+		return nil
+	}
+
+	var v2LogsCursorResponse components.V2LogsCursorResponse = components.V2LogsCursorResponse{}
+	if err := utils.UnmarshalJSON(data, &v2LogsCursorResponse, "", true, true); err == nil {
+		u.V2LogsCursorResponse = &v2LogsCursorResponse
+		u.Type = V2RunQueryResponseBodyTypeV2LogsCursorResponse
+		return nil
+	}
+
+	var v2VolumesWithBalanceCursorResponse components.V2VolumesWithBalanceCursorResponse = components.V2VolumesWithBalanceCursorResponse{}
+	if err := utils.UnmarshalJSON(data, &v2VolumesWithBalanceCursorResponse, "", true, true); err == nil {
+		u.V2VolumesWithBalanceCursorResponse = &v2VolumesWithBalanceCursorResponse
+		u.Type = V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for V2RunQueryResponseBody", string(data))
+}
+
+func (u V2RunQueryResponseBody) MarshalJSON() ([]byte, error) {
+	if u.V2TransactionsCursorResponse != nil {
+		return utils.MarshalJSON(u.V2TransactionsCursorResponse, "", true)
+	}
+
+	if u.V2AccountsCursorResponse != nil {
+		return utils.MarshalJSON(u.V2AccountsCursorResponse, "", true)
+	}
+
+	if u.V2LogsCursorResponse != nil {
+		return utils.MarshalJSON(u.V2LogsCursorResponse, "", true)
+	}
+
+	if u.V2VolumesWithBalanceCursorResponse != nil {
+		return utils.MarshalJSON(u.V2VolumesWithBalanceCursorResponse, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type V2RunQueryResponseBody: all fields are null")
+}
+
 type V2RunQueryResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
-	V2AccountsCursorResponse *components.V2AccountsCursorResponse
+	OneOf *V2RunQueryResponseBody
 }
 
 func (o *V2RunQueryResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -176,9 +301,9 @@ func (o *V2RunQueryResponse) GetHTTPMeta() components.HTTPMetadata {
 	return o.HTTPMeta
 }
 
-func (o *V2RunQueryResponse) GetV2AccountsCursorResponse() *components.V2AccountsCursorResponse {
+func (o *V2RunQueryResponse) GetOneOf() *V2RunQueryResponseBody {
 	if o == nil {
 		return nil
 	}
-	return o.V2AccountsCursorResponse
+	return o.OneOf
 }

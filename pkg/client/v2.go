@@ -6042,12 +6042,12 @@ func (s *V2) RunQuery(ctx context.Context, request operations.V2RunQueryRequest,
 				return nil, err
 			}
 
-			var out components.V2AccountsCursorResponse
+			var out operations.V2RunQueryResponseBody
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2AccountsCursorResponse = &out
+			res.OneOf = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {

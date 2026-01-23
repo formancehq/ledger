@@ -146,6 +146,7 @@ func resolveFilterTemplate(m any, vars map[string]string) any {
 		for key, value := range v {
 			v[key] = resolveFilterTemplate(value, vars)
 		}
+	case json.Number:
 	default:
 		panic(fmt.Sprintf("unexpected filter shape: %v", v))
 	}

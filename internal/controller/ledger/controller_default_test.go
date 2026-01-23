@@ -21,7 +21,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 func TestCreateTransactionWithoutSchema(t *testing.T) {
@@ -681,11 +680,11 @@ func TestRunQuery(t *testing.T) {
 	expectedQuery, err := query.ParseJSON(`{"$match": {"address": "bbb"}}`)
 	require.NoError(t, err)
 	cursor := &bunpaginate.Cursor[ledger.Account]{}
-	accounts.EXPECT().Paginate(gomock.Any(), storagecommon.InitialPaginatedQuery[any]{
+	accounts.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Column:   "address",
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-		Options: storagecommon.ResourceQuery[any]{
+		Options: common.ResourceQuery[any]{
 			Builder: expectedQuery,
 		},
 	}).Return(cursor, nil)

@@ -46,6 +46,7 @@ type ControllerWithTraces struct {
 	insertSchemaHistogram              metric.Int64Histogram
 	getSchemaHistogram                 metric.Int64Histogram
 	listSchemasHistogram               metric.Int64Histogram
+	runQueryHistogram                  metric.Int64Histogram
 }
 
 func (c *ControllerWithTraces) Info() ledger.Ledger {
@@ -160,6 +161,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.listSchemasHistogram, err = meter.Int64Histogram("controller.list_schemas", metric.WithUnit("ms"))
+	if err != nil {
+		panic(err)
+	}
+	ret.runQueryHistogram, err = meter.Int64Histogram("controller.run_query", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
@@ -590,9 +595,9 @@ func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion strin
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
-		"ListSchemas",
+		"RunQuery",
 		c.tracer,
-		c.listSchemasHistogram,
+		c.runQueryHistogram,
 		func(ctx context.Context) (any, error) {
 			cursor, err = c.underlying.RunQuery(ctx, schemaVersion, id, query, defaultPageSize)
 			return nil, err
