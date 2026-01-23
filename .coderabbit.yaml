@@ -134,6 +134,13 @@ reviews:
     - '!**/*.min.js.css'
     - '!**/*.tfstate'
     - '!**/*.tfstate.backup'
+    - '!openapi.yaml'
+    - '!pkg/client/**'
+    - '!docs/api/**'
+    - '!docs/events/**'
+    - '!**/*_generated*.go'
+    - '!**/*.pb.go'
+    - '!internal/README.md'
   path_instructions: []
   abort_on_close: true
   disable_cache: false
