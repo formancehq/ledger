@@ -1,10 +1,11 @@
 package bulking
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"slices"
+
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 type JsonBulkHandler struct {

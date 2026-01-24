@@ -2,11 +2,11 @@ package ledgerpb
 
 import (
 	"database/sql/driver"
-	"encoding/json/v2"
 	"fmt"
 	"math/big"
 	"strings"
 
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/invopop/jsonschema"
 )
 

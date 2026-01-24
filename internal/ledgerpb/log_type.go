@@ -2,7 +2,8 @@ package ledgerpb
 
 import (
 	"database/sql/driver"
-	"encoding/json/v2"
+
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 type LogType int16

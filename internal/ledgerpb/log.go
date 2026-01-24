@@ -1,11 +1,9 @@
 package ledgerpb
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
-
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 // NewLog creates a new Log from a LogPayload
@@ -58,12 +56,12 @@ func (l *Log) WithLedgerID(ledgerID uint32) *Log {
 // UnmarshalJSON implements json.Unmarshaler for Log
 func (l *Log) UnmarshalJSON(data []byte) error {
 	type auxLog struct {
-		Type            LogType        `json:"type"`
-		Data            jsontext.Value `json:"data"`
-		Date            *time.Time     `json:"date"`
-		IdempotencyKey  string         `json:"idempotencyKey"`
-		IdempotencyHash []byte         `json:"idempotencyHash"`
-		ID              *uint64        `json:"id"`
+		Type            LogType       `json:"type"`
+		Data            json.RawValue `json:"data"`
+		Date            *time.Time    `json:"date"`
+		IdempotencyKey  string        `json:"idempotencyKey"`
+		IdempotencyHash []byte        `json:"idempotencyHash"`
+		ID              *uint64       `json:"id"`
 	}
 	rawLog := auxLog{}
 	if err := json.Unmarshal(data, &rawLog); err != nil {
@@ -83,11 +81,7 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 
 	// Parse LogPayload from JSON using the type from rawLog
 	if len(rawLog.Data) > 0 {
-		dataBytes, err := json.Marshal(rawLog.Data)
-		if err != nil {
-			return err
-		}
-		payload, err := HydrateLog(rawLog.Type, dataBytes)
+		payload, err := HydrateLog(rawLog.Type, rawLog.Data)
 		if err != nil {
 			return err
 		}

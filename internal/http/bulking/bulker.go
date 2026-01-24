@@ -2,7 +2,6 @@ package bulking
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )

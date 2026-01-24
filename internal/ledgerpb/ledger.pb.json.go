@@ -1,13 +1,12 @@
 package ledgerpb
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
@@ -203,9 +202,9 @@ func (x *RevertedTransactionMemento) MarshalJSON() ([]byte, error) {
 // Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
 func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
-		TargetType string         `json:"targetType"`
-		TargetID   jsontext.Value `json:"targetId"`
-		Key        string         `json:"key"`
+		TargetType string        `json:"targetType"`
+		TargetID   json.RawValue `json:"targetId"`
+		Key        string        `json:"key"`
 	}
 	x := X{}
 	err := json.Unmarshal(data, &x)
@@ -218,27 +217,19 @@ func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):
 		var accountID string
-		targetIDBytes, err := json.Marshal(x.TargetID)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(targetIDBytes, &accountID)
+		err = json.Unmarshal(x.TargetID, &accountID)
 		if err == nil {
 			dm.Target = &Target{
 				Target: &Target_Account{
 					Account: &TargetAccount{
-						Addr: string(targetIDBytes),
+						Addr: accountID,
 					},
 				},
 			}
 		}
 	case strings.ToUpper(MetaTargetTypeTransaction):
 		var txID uint64
-		targetIDBytes, err := json.Marshal(x.TargetID)
-		if err != nil {
-			return err
-		}
-		txID, err = strconv.ParseUint(string(targetIDBytes), 10, 64)
+		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 		if err == nil {
 			dm.Target = &Target{
 				Target: &Target_Transaction{
@@ -259,7 +250,7 @@ func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
-		TargetID   jsontext.Value    `json:"targetId"`
+		TargetID   json.RawValue     `json:"targetId"`
 		Metadata   metadata.Metadata `json:"metadata"`
 	}
 	x := X{}
@@ -275,27 +266,19 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):
 		var accountID string
-		targetIDBytes, err := json.Marshal(x.TargetID)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(targetIDBytes, &accountID)
+		err = json.Unmarshal(x.TargetID, &accountID)
 		if err == nil {
 			sm.Target = &Target{
 				Target: &Target_Account{
 					Account: &TargetAccount{
-						Addr: string(targetIDBytes),
+						Addr: accountID,
 					},
 				},
 			}
 		}
 	case strings.ToUpper(MetaTargetTypeTransaction):
 		var txID uint64
-		targetIDBytes, err := json.Marshal(x.TargetID)
-		if err != nil {
-			return err
-		}
-		txID, err = strconv.ParseUint(string(targetIDBytes), 10, 64)
+		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 		if err == nil {
 			sm.Target = &Target{
 				Target: &Target_Transaction{

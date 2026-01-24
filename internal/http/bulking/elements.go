@@ -1,13 +1,12 @@
 package bulking
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
@@ -35,7 +34,7 @@ func (b *BulkElement) UnmarshalJSON(data []byte) error {
 	type Aux BulkElement
 	type X struct {
 		Aux
-		Data jsontext.Value `json:"data"`
+		Data json.RawValue `json:"data"`
 	}
 	x := X{}
 	if err := json.Unmarshal(data, &x); err != nil {
@@ -50,7 +49,7 @@ func (b *BulkElement) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func UnmarshalBulkElementPayload(action string, data jsontext.Value) (any, error) {
+func UnmarshalBulkElementPayload(action string, data json.RawValue) (any, error) {
 	var req any
 	switch action {
 	case ActionCreateTransaction:
@@ -64,11 +63,7 @@ func UnmarshalBulkElementPayload(action string, data jsontext.Value) (any, error
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling jsontext.Value: %w", err)
-	}
-	if err := json.Unmarshal(dataBytes, req); err != nil {
+	if err := json.Unmarshal(data, req); err != nil {
 		return nil, fmt.Errorf("error parsing payload: %s", err)
 	}
 
@@ -123,9 +118,9 @@ type RevertTransactionRequest struct {
 }
 
 type DeleteMetadataRequest struct {
-	TargetType string         `json:"targetType"`
-	TargetID   jsontext.Value `json:"targetId"`
-	Key        string         `json:"key"`
+	TargetType string        `json:"targetType"`
+	TargetID   json.RawValue `json:"targetId"`
+	Key        string        `json:"key"`
 }
 
 type TransactionRequest struct {

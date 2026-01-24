@@ -1,7 +1,6 @@
 package ledgerpb
 
 import (
-	"encoding/json/v2"
 	"math/big"
 	"slices"
 	"sort"
@@ -9,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 // NewTransactionData creates a new TransactionData with empty metadata

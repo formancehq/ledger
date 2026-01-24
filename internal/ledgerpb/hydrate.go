@@ -1,10 +1,10 @@
 package ledgerpb
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"google.golang.org/protobuf/proto"
 )
 

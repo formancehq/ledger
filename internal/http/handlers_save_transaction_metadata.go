@@ -1,12 +1,12 @@
 package http
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"

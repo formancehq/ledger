@@ -1,8 +1,9 @@
 package http
 
 import (
-	"encoding/json/v2"
 	"net/http"
+
+	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
 // ErrorResponse represents an error response structure
