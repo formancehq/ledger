@@ -115,9 +115,7 @@ Outgoing messages are first queued in a global pending send queue before being d
 
 ### Reception Channel Metrics
 
-Messages received from other nodes are queued in 3 priority reception channels before being merged into a single output queue.
-
-#### Per-Priority Reception Queues
+Messages received from other nodes are queued in 3 priority reception channels. The Raft node consumes directly from these channels with priority ordering (high > medium > low).
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
@@ -134,15 +132,6 @@ Messages received from other nodes are queued in 3 priority reception channels b
 | 0 | high | `MsgHeartbeat`, `MsgHeartbeatResp` |
 | 1 | medium | `MsgVote`, `MsgVoteResp`, `MsgPreVote`, `MsgPreVoteResp`, `MsgAppResp` |
 | 2 | low | All others (`MsgApp`, `MsgSnap`, etc.) |
-
-#### Merged Reception Queue
-
-The 3 priority queues are merged into a single output queue for consumption by the Raft node.
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `raft.transport.recv.merged.load` | Histogram | 1 | Current load of the merged reception queue. |
-| `raft.transport.recv.merged.full` | Counter | 1 | Number of times the merged queue was full. **Alert if non-zero**. |
 
 ### Unreachable Channel Metrics
 
@@ -326,9 +315,6 @@ The dashboard is organized into the following sections:
 - Reception Queue Throughput (by priority)
 - Reception Queue Load Heatmap (by priority)
 - Reception Queue Full Counter
-- Merged Reception Queue Throughput
-- Merged Reception Queue Load Heatmap
-- Merged Reception Queue Full Counter
 - Pending Send Queue Throughput
 - Pending Send Queue Load Heatmap
 - Pending Send Queue Full Counter

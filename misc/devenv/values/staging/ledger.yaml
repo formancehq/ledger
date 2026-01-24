@@ -47,7 +47,7 @@ config:
     compactionMargin: 50000
     proposeQueueCapacity: 1024
     snapshotInterval: 30s
-    snapshotThreshold: 150000
+    snapshotThreshold: "999999"
     tickInterval: 100ms
     transport:
       receptionQueues:
@@ -72,7 +72,7 @@ ingress:
 persistence:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
-replicaCount: 3
+replicaCount: 1
 resources:
   limits:
     cpu: 4000m

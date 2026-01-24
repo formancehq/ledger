@@ -2,13 +2,14 @@ package raft
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
@@ -72,7 +73,8 @@ type Node struct {
 	stopped             chan struct{}
 	ctx                 context.Context
 	cancel              func()
-	proposeCh           Queue[proposal]
+	proposeCh           chan proposal
+	proposeChCapacity   int
 	confState           *raftpb.ConfState
 	futures             SyncMap[uint64, *future]
 	lastSoftState       atomic.Pointer[raft.SoftState]
@@ -96,6 +98,11 @@ type Node struct {
 	compactionMargin        uint64
 	taskExecutor            *singleTaskExecutor
 	gatingTerminated        chan struct{}
+
+	// Propose queue metrics
+	proposeQueueLoadHistogram metric.Int64Histogram
+	proposeQueueFullCounter   metric.Float64Counter
+	proposeQueueInflight      atomic.Int32
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -180,17 +187,13 @@ func NewNode(
 	initialStatus.Store(statusNormal)
 
 	node := &Node{
-		logger:    logger,
-		meter:     meter,
-		wal:       wal,
-		transport: transport,
-		config:    cfg,
-		proposeCh: NewQueueObserver[proposal](
-			"raft.node.propose",
-			NewSimpleQueue[proposal](cfg.ProposeQueueCapacity),
-			WithLogger[proposal](logger),
-			WithMeter[proposal](meter),
-		),
+		logger:              logger,
+		meter:               meter,
+		wal:                 wal,
+		transport:           transport,
+		config:              cfg,
+		proposeCh:           make(chan proposal, cfg.ProposeQueueCapacity),
+		proposeChCapacity:   cfg.ProposeQueueCapacity,
 		store:               store,
 		fsm:                 fsm,
 		spool:               spool,
@@ -253,6 +256,9 @@ func NewNode(
 	node.processEntryHistogram, err = meter.Int64Histogram("raft.process_entry",
 		metric.WithDescription("Time spent processing ready from raft"),
 		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+		),
 	)
 	if err != nil {
 		panic(err)
@@ -286,6 +292,22 @@ func NewNode(
 			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
 			// Larger buckets (500ms-5s)
 			600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.proposeQueueFullCounter, err = meter.Float64Counter("raft.node.propose.full", metric.WithUnit("1"))
+	if err != nil {
+		panic(err)
+	}
+
+	node.proposeQueueLoadHistogram, err = meter.Int64Histogram(
+		"raft.node.propose.load",
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			logBoundaries(12, cfg.ProposeQueueCapacity)...,
 		),
 	)
 	if err != nil {
@@ -348,45 +370,196 @@ func (node *Node) Start(ctx context.Context) error {
 		}
 	}
 
-	processingTick := time.NewTicker(tickInterval / 20) // todo: make configurable
+	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
 	defer processingTick.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			// Prevent election timeouts from happening while syncing the FSM
-			status := node.status.Load()
-			if status != statusSyncing && status != statusOutOfSync {
-				node.rawNode.Tick()
+	readies := make(chan raft.Ready, 1)
+	readyTerminated := make(chan raft.Ready, 1)
+
+	processReadiesErrCh := make(chan error, 1)
+	processReadiesStopCh := make(chan struct{})
+	processReadiesStoppedCh := make(chan struct{})
+	isProcessingReadies := false
+
+	otlplogs.Go(func() {
+		defer close(processReadiesStoppedCh)
+
+		for {
+			select {
+			case rd := <-readies:
+				now := time.Now()
+				err := node.processReady(node.ctx, rd)
+				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+				if err != nil {
+					select {
+					case <-processReadiesStopCh:
+					case processReadiesErrCh <- err:
+					}
+					return
+				}
+				select {
+				case readyTerminated <- rd:
+				case <-processReadiesStopCh:
+					return
+				}
+			case <-processReadiesStopCh:
+				return
 			}
-		case <-node.ctx.Done():
-			node.logger.Infof("Stopping readyLoop as context was cancelled")
-			close(node.stopped)
-			return nil
-		case nodeID := <-node.transport.Unreachable():
-			node.rawNode.ReportUnreachable(nodeID)
-		case msg := <-node.transport.Recv():
+		}
+	}, node.logger)
+
+	// Helper to process a batch of messages
+	stepMessages := func(msgs []raftpb.Message) error {
+		for _, msg := range msgs {
 			if err := node.rawNode.Step(msg); err != nil {
 				return err
 			}
-		case proposal := <-node.proposeCh.Recv():
-			proposal.rejected <- node.rawNode.Propose(proposal.data)
-		case <-node.gatingTerminated:
-			if err := node.unspoolThenResume(ctx); err != nil {
-				return err
+		}
+		return nil
+	}
+
+	pushProposal := func(proposal proposal) {
+		node.proposeQueueInflight.Add(-1)
+		proposal.rejected <- node.rawNode.Propose(proposal.data)
+	}
+
+	drainProposals := func(initial proposal) {
+		pushProposal(initial)
+		const drainMax = 500
+		for i := 0; i < drainMax; i++ {
+			select {
+			case p := <-node.proposeCh:
+				pushProposal(p)
+			default:
+				return
 			}
-		case err := <-node.taskExecutor.error():
-			return fmt.Errorf("task executor error: %w", err)
-		case <-processingTick.C:
-			for node.rawNode.HasReady() {
-				now := time.Now()
-				err := node.processReady(node.ctx)
-				if err != nil {
-					if !errors.Is(err, context.Canceled) {
+		}
+	}
+
+	for {
+		if isProcessingReadies {
+			// Priority-based message handling: high > medium > low
+			select {
+			case msgs := <-node.transport.RecvHighPriority():
+				if err := stepMessages(msgs); err != nil {
+					return err
+				}
+			default:
+				select {
+				case msgs := <-node.transport.RecvHighPriority():
+					if err := stepMessages(msgs); err != nil {
 						return err
 					}
+				case msgs := <-node.transport.RecvMediumPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case p := <-node.proposeCh:
+					drainProposals(p)
+				default:
+					select {
+					case <-ticker.C:
+						// Prevent election timeouts from happening while syncing the FSM
+						status := node.status.Load()
+						if status != statusSyncing && status != statusOutOfSync {
+							node.rawNode.Tick()
+						}
+					case err := <-processReadiesErrCh:
+						return fmt.Errorf("processing raft readies: %w", err)
+					case <-node.ctx.Done():
+						node.logger.Infof("Stopping readyLoop as context was cancelled")
+						close(processReadiesStopCh)
+						<-processReadiesStoppedCh
+						close(node.stopped)
+						return nil
+					case nodeID := <-node.transport.Unreachable():
+						node.rawNode.ReportUnreachable(nodeID)
+					case msgs := <-node.transport.RecvHighPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case msgs := <-node.transport.RecvMediumPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case msgs := <-node.transport.RecvLowPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case p := <-node.proposeCh:
+						drainProposals(p)
+					case err := <-node.taskExecutor.error():
+						return fmt.Errorf("task executor error: %w", err)
+					case rd := <-readyTerminated:
+						node.rawNode.Advance(rd)
+						isProcessingReadies = false
+					}
 				}
-				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+			}
+		} else {
+			// Priority-based message handling: high > medium > low
+			select {
+			case msgs := <-node.transport.RecvHighPriority():
+				if err := stepMessages(msgs); err != nil {
+					return err
+				}
+			default:
+				select {
+				case msgs := <-node.transport.RecvHighPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case msgs := <-node.transport.RecvMediumPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case p := <-node.proposeCh:
+					drainProposals(p)
+				default:
+					select {
+					case <-ticker.C:
+						// Prevent election timeouts from happening while syncing the FSM
+						status := node.status.Load()
+						if status != statusSyncing && status != statusOutOfSync {
+							node.rawNode.Tick()
+						}
+					case <-node.ctx.Done():
+						node.logger.Infof("Stopping readyLoop as context was cancelled")
+						close(processReadiesStopCh)
+						<-processReadiesStoppedCh
+						close(node.stopped)
+						return nil
+					case nodeID := <-node.transport.Unreachable():
+						node.rawNode.ReportUnreachable(nodeID)
+					case msgs := <-node.transport.RecvHighPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case msgs := <-node.transport.RecvMediumPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case msgs := <-node.transport.RecvLowPriority():
+						if err := stepMessages(msgs); err != nil {
+							return err
+						}
+					case p := <-node.proposeCh:
+						drainProposals(p)
+					case <-node.gatingTerminated:
+						if err := node.unspoolThenResume(ctx); err != nil {
+							return err
+						}
+					case err := <-node.taskExecutor.error():
+						return fmt.Errorf("task executor error: %w", err)
+					case <-processingTick.C:
+						if !node.rawNode.HasReady() {
+							continue
+						}
+
+						isProcessingReadies = true
+						readies <- node.rawNode.Ready()
+					}
+				}
 			}
 		}
 	}
@@ -416,10 +589,9 @@ func (node *Node) unspoolThenResume(ctx context.Context) error {
 	return nil
 }
 
-func (node *Node) processReady(ctx context.Context) error {
+func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 
 	node.logger.Debugf("Processing ready")
-	rd := node.rawNode.Ready()
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
 
@@ -525,9 +697,6 @@ func (node *Node) processReady(ctx context.Context) error {
 		}
 	}
 
-	// Advance the rawNode
-	node.rawNode.Advance(rd)
-
 	return nil
 }
 
@@ -570,7 +739,14 @@ func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 
 	proposal := newProposal(cmdData)
 
-	if !node.proposeCh.Push(proposal) {
+	select {
+	case node.proposeCh <- proposal:
+		node.proposeQueueLoadHistogram.Record(context.Background(), int64(node.proposeQueueInflight.Add(1)))
+	default:
+		node.logger.WithFields(map[string]any{
+			"channel": "raft.node.propose",
+		}).Errorf("Channel full")
+		node.proposeQueueFullCounter.Add(context.Background(), 1)
 		return nil, fmt.Errorf("propose channel full")
 	}
 
@@ -836,6 +1012,8 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 
 	count := 0
 	batch := make([]raftpb.Entry, 0, 1000)
+	logFields := map[string]any{}
+	var lastEntry *raftpb.Entry
 	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
 		batch = append(batch, entry)
 		if len(batch) >= 1000 { // todo: configure
@@ -844,6 +1022,7 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 			}
 			count += len(batch)
 			batch = batch[:0]
+			lastEntry = &entry
 		}
 		return nil
 	}); err != nil {
@@ -854,8 +1033,16 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
 			return err
 		}
+		lastEntry = pointer.For(batch[len(batch)-1])
 	}
-	node.logger.WithField("count", count).Infof("Replayed spool")
+	if lastEntry != nil {
+		logFields["last_entry_index"] = lastEntry.Index
+	}
+	logFields["count"] = count
+	node.logger.
+		WithFields(logFields).
+		WithField("count", count).
+		Infof("Replayed spool")
 
 	return nil
 }
