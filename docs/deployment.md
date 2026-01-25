@@ -335,6 +335,11 @@ config:
       insecure: "false"  # Set to "true" for insecure connections
       mode: "grpc"  # or "http"
       batch: "false"
+      
+      # Error-aware sampling (reduces volume while keeping all errors)
+      sampling:
+        enabled: false      # Enable error-aware trace sampling
+        successRatio: 0.1   # Sample 10% of successful traces
     
     # Metrics configuration
     metrics:
@@ -414,6 +419,60 @@ config:
 ```
 
 **Note**: Monitoring configuration can also be set globally. Global values take precedence if `config.monitoring` values are not set.
+
+#### Error-Aware Trace Sampling
+
+The application supports intelligent trace sampling that prioritizes error traces while reducing the volume of successful traces. This is particularly useful in high-throughput production environments where you want to:
+
+- **Always capture errors**: All traces containing errors are exported, regardless of sampling ratio
+- **Reduce costs**: Lower the volume of successful traces to reduce storage and processing costs
+- **Maintain visibility**: Keep enough successful traces for baseline performance analysis
+
+**Configuration**:
+
+```bash
+# Enable error-aware sampling with 10% success rate
+go run . run \
+  --trace-sampling-enabled \
+  --trace-sampling-success-ratio 0.1
+
+# Environment variables
+export TRACE_SAMPLING_ENABLED=true
+export TRACE_SAMPLING_SUCCESS_RATIO=0.1
+```
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--trace-sampling-enabled` | `TRACE_SAMPLING_ENABLED` | `false` | Enable error-aware trace sampling |
+| `--trace-sampling-success-ratio` | `TRACE_SAMPLING_SUCCESS_RATIO` | `0.1` | Sampling ratio for successful spans (0.0-1.0) |
+
+**How it works**:
+
+1. All spans are recorded locally
+2. At export time, the sampling decision is made:
+   - **Error spans**: Always exported (status code ERROR, exception attributes, or error=true)
+   - **Successful spans**: Sampled based on `successRatio` using deterministic hash of trace ID
+3. All spans within the same trace have the same sampling decision (trace-level consistency)
+
+**Recommendations**:
+
+| Environment | `successRatio` | Notes |
+|-------------|---------------|-------|
+| Development | `1.0` (disabled) | Keep all traces for debugging |
+| Staging | `0.5` | Balance between visibility and volume |
+| Production (low traffic) | `0.2` | Keep 20% of successful traces |
+| Production (high traffic) | `0.05-0.1` | Keep 5-10% of successful traces |
+
+**Kubernetes/Helm configuration**:
+
+```yaml
+config:
+  monitoring:
+    traces:
+      sampling:
+        enabled: true
+        successRatio: 0.1  # 10% of successful traces
+```
 
 #### ServiceMonitor (Prometheus)
 

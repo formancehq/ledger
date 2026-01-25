@@ -80,6 +80,11 @@ config:
       insecure: "false"
       mode: "grpc"
       batch: "false"
+      # Error-aware sampling configuration
+      # When enabled, all error traces are exported, but successful traces are sampled
+      sampling:
+        enabled: false       # Enable error-aware trace sampling
+        successRatio: 0.1    # Sampling ratio for successful traces (0.0-1.0)
     # Metrics configuration
     metrics:
       enabled: false

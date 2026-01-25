@@ -32,6 +32,9 @@ config:
       insecure: "true"
       mode: grpc
       port: "4317"
+      sampling:
+        enabled: true
+        successRatio: 0.1    # Sampling ratio for successful traces (0.0-1.0)
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"

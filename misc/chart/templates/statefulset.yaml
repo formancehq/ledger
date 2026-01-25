@@ -187,6 +187,13 @@ spec:
           value: {{ .Values.config.monitoring.pyroscope.disableGCRuns | toString | quote }}
         {{- end }}
         {{- end }}
+        # Trace sampling configuration
+        {{- if .Values.config.monitoring.traces.sampling.enabled }}
+        - name: TRACE_SAMPLING_ENABLED
+          value: "true"
+        - name: TRACE_SAMPLING_SUCCESS_RATIO
+          value: {{ .Values.config.monitoring.traces.sampling.successRatio | default 0.1 | toString | quote }}
+        {{- end }}
         command:
         - /bin/sh
         - -c
