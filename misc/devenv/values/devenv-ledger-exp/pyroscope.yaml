@@ -6,6 +6,8 @@ pyroscope:
   enabled: true
   extraArgs:
     log.level: info
+    # Data retention: 7 days (168h)
+    compactor.blocks-retention-period: "168h"
   resources:
     limits:
       cpu: 1000m
@@ -15,7 +17,7 @@ pyroscope:
       memory: 512Mi
   persistence:
     enabled: true
-    size: 10Gi
+    size: 50Gi
 
 # Disable other components we don't need
 agent:

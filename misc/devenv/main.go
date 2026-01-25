@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
@@ -15,6 +18,37 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"gopkg.in/yaml.v3"
 )
+
+// getBuildVersion generates a version string based on git commit and timestamp.
+// Format: <short-commit>-<timestamp> (e.g., "abc1234-20260125-143022")
+// If git is not available, falls back to timestamp only.
+func getBuildVersion() string {
+	// Get git short commit hash
+	cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	cmd.Dir = "../.." // Root of the project
+	output, err := cmd.Output()
+	
+	timestamp := time.Now().Format("20060102-150405")
+	
+	if err != nil {
+		// Fallback to timestamp only
+		return timestamp
+	}
+	
+	commit := strings.TrimSpace(string(output))
+	
+	// Check if working directory is dirty
+	cmd = exec.Command("git", "status", "--porcelain")
+	cmd.Dir = "../.."
+	statusOutput, _ := cmd.Output()
+	
+	if len(statusOutput) > 0 {
+		// Working directory has uncommitted changes
+		return fmt.Sprintf("%s-dirty-%s", commit, timestamp)
+	}
+	
+	return fmt.Sprintf("%s-%s", commit, timestamp)
+}
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
@@ -96,9 +130,14 @@ func main() {
 		if pullRegistry == "" {
 			pullRegistry = registry
 		}
+		
+		// Generate build version from git commit + timestamp
+		buildVersion := getBuildVersion()
+		ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
+		
 		imageTag := cfg.Get("imageTag")
 		if imageTag == "" {
-			imageTag = "latest"
+			imageTag = buildVersion
 		}
 
 		// Build Docker image using the same parameters as justfile
@@ -138,7 +177,7 @@ func main() {
 				},
 			},
 			Tags: pulumi.StringArray{
-				pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
+				pulumi.Sprintf("%s/formancehq/ledger-exp:%s", registry, buildVersion),
 			},
 		})
 		if err != nil {
@@ -488,7 +527,20 @@ func main() {
 		}
 		ledgerValues["image"] = map[string]any{
 			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
-			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
+			"tag":        pulumi.Sprintf("%s@%s", buildVersion, dockerImage.Digest),
+		}
+		
+		// Add build version to Pyroscope tags for profile comparison
+		if configMonitoring, ok := ledgerValues["config"].(map[string]interface{}); ok {
+			if monitoring, ok := configMonitoring["monitoring"].(map[string]interface{}); ok {
+				if pyroscope, ok := monitoring["pyroscope"].(map[string]interface{}); ok {
+					existingTags := ""
+					if tags, ok := pyroscope["tags"].(string); ok && tags != "" {
+						existingTags = tags + ","
+					}
+					pyroscope["tags"] = fmt.Sprintf("%sversion=%s", existingTags, buildVersion)
+				}
+			}
 		}
 		// Get the chart path (relative to the devenv directory where Pulumi.yaml is)
 		// The chart is in ../chart relative to devenv
@@ -574,6 +626,7 @@ func main() {
 
 		// Export outputs
 		ctx.Export("namespace", namespace.Metadata.Name())
+		ctx.Export("buildVersion", pulumi.String(buildVersion))
 		ctx.Export("dockerImage", dockerImage.Tags.Index(pulumi.Int(0)))
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)
