@@ -133,7 +133,7 @@ func NewTransport(
 		t.recvQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.recv.load",
 			metric.WithUnit("1"),
-			metric.WithExplicitBucketBoundaries(logBoundaries(12, config.Reception[priority])...),
+			metric.WithExplicitBucketBoundaries(expBoundaries(12, config.Reception[priority])...),
 		)
 		if err != nil {
 			panic(err)
@@ -149,7 +149,7 @@ func NewTransport(
 	t.unreachableLoadHistogram, err = meter.Int64Histogram(
 		"raft.transport.unreachable.load",
 		metric.WithUnit("1"),
-		metric.WithExplicitBucketBoundaries(logBoundaries(12, unreachableCapacity)...),
+		metric.WithExplicitBucketBoundaries(expBoundaries(12, unreachableCapacity)...),
 	)
 	if err != nil {
 		panic(err)
@@ -163,7 +163,7 @@ func NewTransport(
 	t.pendingSendLoadHistogram, err = meter.Int64Histogram(
 		"raft.send.pending_messages.load",
 		metric.WithUnit("1"),
-		metric.WithExplicitBucketBoundaries(logBoundaries(12, pendingSendCapacity)...),
+		metric.WithExplicitBucketBoundaries(expBoundaries(12, pendingSendCapacity)...),
 	)
 	if err != nil {
 		panic(err)
@@ -291,7 +291,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		conn.sendQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.peer.sending.load",
 			metric.WithUnit("1"),
-			metric.WithExplicitBucketBoundaries(logBoundaries(12, t.config.Send[priority])...),
+			metric.WithExplicitBucketBoundaries(expBoundaries(12, t.config.Send[priority])...),
 		)
 		if err != nil {
 			panic(err)

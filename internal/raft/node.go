@@ -308,7 +308,7 @@ func NewNode(
 		"raft.node.propose.load",
 		metric.WithUnit("1"),
 		metric.WithExplicitBucketBoundaries(
-			logBoundaries(12, cfg.ProposeQueueCapacity)...,
+			expBoundaries(12, cfg.ProposeQueueCapacity)...,
 		),
 	)
 	if err != nil {
