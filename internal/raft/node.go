@@ -100,9 +100,10 @@ type Node struct {
 	gatingTerminated        chan struct{}
 
 	// Propose queue metrics
-	proposeQueueLoadHistogram metric.Int64Histogram
-	proposeQueueFullCounter   metric.Float64Counter
-	proposeQueueInflight      atomic.Int32
+	proposeQueueLoadHistogram  metric.Int64Histogram
+	proposeQueueFullCounter    metric.Float64Counter
+	proposeQueueInflight       atomic.Int32
+	readyWaitDurationHistogram metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -314,6 +315,18 @@ func NewNode(
 		panic(err)
 	}
 
+	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
+		"raft.node.ready.wait_duration",
+		metric.WithDescription("Time spent waiting for a Ready from Raft"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return node, nil
 }
 
@@ -385,8 +398,10 @@ func (node *Node) Start(ctx context.Context) error {
 		defer close(processReadiesStoppedCh)
 
 		for {
+			waitStart := time.Now()
 			select {
 			case rd := <-readies:
+				node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
 				now := time.Now()
 				err := node.processReady(node.ctx, rd)
 				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
@@ -425,7 +440,7 @@ func (node *Node) Start(ctx context.Context) error {
 
 	drainProposals := func(initial proposal) {
 		pushProposal(initial)
-		const drainMax = 500
+		const drainMax = 5000
 		for i := 0; i < drainMax; i++ {
 			select {
 			case p := <-node.proposeCh:
@@ -497,6 +512,11 @@ func (node *Node) Start(ctx context.Context) error {
 				}
 			}
 		} else {
+			if node.rawNode.HasReady() {
+				isProcessingReadies = true
+				readies <- node.rawNode.Ready()
+				continue
+			}
 			// Priority-based message handling: high > medium > low
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
@@ -715,9 +735,7 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 		if !exists {
 			continue
 		}
-		if !future.Done() {
-			future.Resolve(result.Result, result.Error)
-		}
+		future.Resolve(result.Result, result.Error)
 	}
 
 	return nil
@@ -755,19 +773,6 @@ func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 	}
 
 	return future.wait(ctx)
-}
-
-// NotifyApplied notifies the wrapper that a command with the given ID has been applied
-// This should be called from the readyLoop when entries are applied
-func (node *Node) NotifyApplied(commandID uint64, result any, err error) {
-	future, exists := node.futures.Load(commandID)
-	if !exists {
-		return
-	}
-
-	if !future.Done() {
-		future.Resolve(result, err)
-	}
 }
 
 func (node *Node) IsLeader() bool {

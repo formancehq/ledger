@@ -18,18 +18,14 @@ function generateTransaction(iteration) {
   return {
     action: 'CREATE_TRANSACTION',
     data: {
-      script: {
-        plain: `vars {
-            account $source
-        }
-        send [USD/2 100] (
-            source = $source allowing unbounded overdraft
-            destination = @bank
-        )`,
-        vars: {
+      postings: [
+        {
           source: `src:${uuidv4()}`,
+          destination: 'bank',
+          asset: 'USD/2',
+          amount: 100,
         },
-      },
+      ],
     },
   };
 }

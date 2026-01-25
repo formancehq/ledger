@@ -50,7 +50,7 @@ config:
     compactionMargin: 50000
     proposeQueueCapacity: 1024
     snapshotInterval: 30s
-    snapshotThreshold: "999999"
+    snapshotThreshold: "200000"
     tickInterval: 100ms
     transport:
       receptionQueues:
@@ -78,10 +78,10 @@ persistence:
 replicaCount: 1
 resources:
   limits:
-    cpu: 4000m
+    cpu: 8000m
     memory: 2048Mi
   requests:
-    cpu: 4000m
+    cpu: 8000m
     memory: 2048Mi
 service:
   grpcPort: 8888

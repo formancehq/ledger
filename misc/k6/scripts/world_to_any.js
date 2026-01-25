@@ -18,18 +18,14 @@ function generateTransaction(iteration) {
   return {
     action: 'CREATE_TRANSACTION',
     data: {
-      script: {
-        plain: `vars {
-            account $destination
-        }
-        send [USD/2 100] (
-            source = @world
-            destination = $destination
-        )`,
-        vars: {
+      postings: [
+        {
+          source: 'world',
           destination: `dst:${uuidv4()}`,
+          asset: 'USD/2',
+          amount: 100,
         },
-      },
+      ],
     },
   };
 }

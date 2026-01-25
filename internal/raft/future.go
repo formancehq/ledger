@@ -4,41 +4,32 @@ import "context"
 
 // future represents a future for an applied entry
 type future struct {
-	ch     chan error
+	ch     chan struct{}
 	result any
 	done   bool
 	err    error
-}
-
-func (f *future) Err() <-chan error {
-	return f.ch
 }
 
 func (f *future) Result() any {
 	return f.result
 }
 
-func (f *future) Done() bool {
-	return f.done
+func (f *future) Done() chan struct{} {
+	return f.ch
 }
 
 func (f *future) Resolve(result any, err error) {
 	f.done = true
 	f.result = result
 	f.err = err
-	// Send error (or nil) to channel
-	select {
-	case f.ch <- err:
-	default:
-		// Channel already closed or error already sent
-	}
+	close(f.ch)
 }
 
 func (f *future) wait(ctx context.Context) (any, error) {
 	select {
-	case err := <-f.Err():
-		if err != nil {
-			return nil, err
+	case <-f.Done():
+		if f.err != nil {
+			return nil, f.err
 		}
 		return f.Result(), nil
 	case <-ctx.Done():
@@ -48,6 +39,6 @@ func (f *future) wait(ctx context.Context) (any, error) {
 
 func newFuture() future {
 	return future{
-		ch: make(chan error, 1),
+		ch: make(chan struct{}),
 	}
 }
