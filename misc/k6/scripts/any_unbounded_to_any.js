@@ -15,19 +15,25 @@ const transactionLatency = new Trend('transaction_latency', true);
 export const options = buildOptions(config);
 
 function generateTransaction(iteration) {
-  const source = `src:${exec.scenario.iterationInTest}`;
-  const destination = `dst:${exec.scenario.iterationInTest}`;
+  const source = `src:${exec.scenario.iterationInTest}`
+  const destination = `dst:${exec.scenario.iterationInTest}`
   return {
     action: 'CREATE_TRANSACTION',
     data: {
-      postings: [
-        {
-          source,
+      script: {
+        plain: `vars {
+            account $source
+            account $destination
+        }
+        send [USD/2 100] (
+            source = $source allowing unbounded overdraft
+            destination = $destination
+        )`,
+        vars: {
           destination,
-          asset: 'USD/2',
-          amount: 100,
+          source,
         },
-      ],
+      },
     },
   };
 }

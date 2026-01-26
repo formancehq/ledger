@@ -35,6 +35,9 @@ Documentation of HTTP and gRPC APIs, service interfaces, and data formats.
 ### 🔄 [API Comparison](./api-comparison.md)
 Comparison of the write API between this POC and the original ledger (`github.com/formancehq/ledger`), including missing and intentionally removed features.
 
+### ✅ [Problems Solved from v2](./v2-problems-solved.md)
+Summary of key problems and limitations from Ledger v2 that have been addressed in this v3 POC, including PostgreSQL elimination, Raft consensus, pure Go builds, and improved observability.
+
 ### 💾 [Storage and Persistence](./storage.md)
 Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 

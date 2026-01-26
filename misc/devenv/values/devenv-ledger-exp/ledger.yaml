@@ -38,7 +38,7 @@ config:
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"
-      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
       uploadRate: "15s"
       mutexProfileFraction: 5
       blockProfileRate: 5

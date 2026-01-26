@@ -121,7 +121,7 @@ config:
       basicAuthPassword: ""
       uploadRate: "15s"
       tags: ""  # Format: key=value,key2=value2
-      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
       mutexProfileFraction: 5
       blockProfileRate: 5
       disableGCRuns: false

@@ -13,19 +13,18 @@ const transactionLatency = new Trend('transaction_latency', true);
 
 export const options = buildOptions(config);
 
-// Generate transaction
+// Generate transaction script
 function generateTransaction(iteration) {
   return {
     action: 'CREATE_TRANSACTION',
     data: {
-      postings: [
-        {
-          source: 'world',
-          destination: 'bank',
-          asset: 'USD/2',
-          amount: 100,
-        },
-      ],
+      script: {
+        plain: `send [USD/2 100] (
+            source = @world
+            destination = @bank
+        )`,
+        vars: {},
+      },
     },
   };
 }

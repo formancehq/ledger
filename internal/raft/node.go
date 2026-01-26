@@ -104,6 +104,7 @@ type Node struct {
 	proposeQueueFullCounter    metric.Float64Counter
 	proposeQueueInflight       atomic.Int32
 	readyWaitDurationHistogram metric.Int64Histogram
+	commandDurationHistogram   metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -321,6 +322,18 @@ func NewNode(
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.commandDurationHistogram, err = meter.Int64Histogram(
+		"raft.command.duration",
+		metric.WithDescription("Total time to resolve a command (from Apply call to future resolution)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
 		),
 	)
 	if err != nil {
@@ -744,11 +757,15 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
+	start := time.Now()
 
 	future := newFuture()
 
 	node.futures.Store(cmd.Id, &future)
-	defer node.futures.Delete(cmd.Id)
+	defer func() {
+		node.futures.Delete(cmd.Id)
+		node.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+	}()
 
 	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
