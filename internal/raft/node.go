@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -526,8 +527,21 @@ func (node *Node) Start(ctx context.Context) error {
 			}
 		} else {
 			if node.rawNode.HasReady() {
-				isProcessingReadies = true
-				readies <- node.rawNode.Ready()
+				select {
+				case readies <- node.rawNode.Ready():
+					isProcessingReadies = true
+				case err := <-node.taskExecutor.error():
+					return fmt.Errorf("task executor error: %w", err)
+				case err := <-processReadiesErrCh:
+					return fmt.Errorf("processing raft readies: %w", err)
+				case <-node.ctx.Done():
+					node.logger.Infof("Stopping readyLoop as context was cancelled")
+					close(processReadiesStopCh)
+					<-processReadiesStoppedCh
+					close(node.stopped)
+					return nil
+				}
+
 				continue
 			}
 			// Priority-based message handling: high > medium > low
@@ -584,6 +598,8 @@ func (node *Node) Start(ctx context.Context) error {
 						}
 					case err := <-node.taskExecutor.error():
 						return fmt.Errorf("task executor error: %w", err)
+					case err := <-processReadiesErrCh:
+						return fmt.Errorf("processing raft readies: %w", err)
 					case <-processingTick.C:
 						if !node.rawNode.HasReady() {
 							continue
@@ -1048,6 +1064,7 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		}
 		return nil
 	}); err != nil {
+		spew.Dump(err)
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 	if len(batch) > 0 {

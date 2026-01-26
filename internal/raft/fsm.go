@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -16,7 +15,6 @@ import (
 type FSM struct {
 	// todo: don't expose the state, to avoid the lock
 	// use the store directly
-	mu        sync.RWMutex    // Protects access to state
 	state     *ledgerpb.State // FSM state
 	logger    logging.Logger
 	store     store.Store
@@ -45,9 +43,6 @@ func newFSM(logger logging.Logger, store store.Store, transport Transport) (*FSM
 
 // GetState returns a copy of the FSM state
 func (fsm *FSM) GetState() *ledgerpb.State {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-
 	return proto.CloneOf(fsm.state)
 }
 
@@ -57,9 +52,6 @@ func (fsm *FSM) GetState() *ledgerpb.State {
 
 // handleCreateLedger handles the create ledger command
 func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) (*ledgerpb.LedgerInfo, error) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
 	var createCmd ledgerpb.CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		fsm.logger.
@@ -104,9 +96,6 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *
 
 // handleDeleteLedger handles the delete ledger command (hard delete)
 func (fsm *FSM) handleDeleteLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) error {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
 	var deleteCmd ledgerpb.DeleteLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete ledger command")
@@ -139,9 +128,6 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 		return nil, err
 	}
-
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
 
 	var logPayload *ledgerpb.LogPayload
 	switch cmd := createCmd.Input.Command.(type) {
@@ -309,9 +295,6 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 
 // GetLedgerByName returns the ledger node for a given name (including deleted ledgers)
 func (fsm *FSM) GetLedgerByName(name string) (*ledgerpb.LedgerInfo, error) {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-
 	for _, state := range fsm.state.Ledgers {
 		if state.LedgerInfo.Name == name {
 			return proto.CloneOf(state.LedgerInfo), nil
@@ -322,9 +305,6 @@ func (fsm *FSM) GetLedgerByName(name string) (*ledgerpb.LedgerInfo, error) {
 }
 
 func (fsm *FSM) GetLedgerInfo(id uint32) (*ledgerpb.LedgerInfo, error) {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-
 	ledger, ok := fsm.state.Ledgers[id]
 	if !ok {
 		return nil, ledgerpb.NewNotFoundError("ledger %d does not exist", id)
@@ -335,9 +315,6 @@ func (fsm *FSM) GetLedgerInfo(id uint32) (*ledgerpb.LedgerInfo, error) {
 
 // GetAllLedgers returns all ledgers (including deleted ones)
 func (fsm *FSM) GetAllLedgers() map[string]*ledgerpb.LedgerInfo {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-
 	ret := make(map[string]*ledgerpb.LedgerInfo, len(fsm.state.Ledgers))
 	for _, state := range fsm.state.Ledgers {
 		ret[state.LedgerInfo.Name] = proto.CloneOf(state.LedgerInfo)
@@ -348,9 +325,6 @@ func (fsm *FSM) GetAllLedgers() map[string]*ledgerpb.LedgerInfo {
 
 // CreateSnapshot creates a snapshot of the FSM state
 func (fsm *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-
 	if err := fsm.store.CreateSnapshot(ctx); err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}

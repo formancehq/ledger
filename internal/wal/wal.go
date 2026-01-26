@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -27,8 +26,6 @@ const (
 
 // WAL implements raft.Storage interface for etcd/raft using etcd/wal
 type WAL struct {
-	mu sync.RWMutex
-
 	// HardState contains the current term and commit index
 	hardState raftpb.HardState
 
@@ -259,28 +256,22 @@ func (s *WAL) saveSnapshot() error {
 
 // InitialState returns the saved HardState and ConfState information
 func (s *WAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
-	// todo: is the store accessed sequentially?
-	// if yes, we can avoid locking
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	return s.hardState, s.snapshot.Metadata.ConfState, nil
 }
 
 // Entries returns a slice of log entries in the range [lo, hi)
 func (s *WAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if lo >= hi {
 		return nil, fmt.Errorf("invalid range: lo=%d, hi=%d", lo, hi)
 	}
 
-	firstIndex, err := s.firstIndexLocked()
+	firstIndex, err := s.FirstIndex()
 	if err != nil {
 		return nil, err
 	}
-	lastIndex, err := s.lastIndexLocked()
+
+	lastIndex, err := s.LastIndex()
 	if err != nil {
 		return nil, err
 	}
@@ -323,33 +314,29 @@ func (s *WAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 
 // Term returns the term of entry i
 func (s *WAL) Term(i uint64) (uint64, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	return s.termLocked(i)
 }
 
 // LastIndex returns the index of the last entry in the log
 func (s *WAL) LastIndex() (uint64, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	if len(s.entries) == 0 {
+		return s.snapshot.Metadata.Index, nil
+	}
 
-	return s.lastIndexLocked()
+	return s.entries[len(s.entries)-1].Index, nil
 }
 
 // FirstIndex returns the index of the first log entry
 func (s *WAL) FirstIndex() (uint64, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	if len(s.entries) == 0 {
+		return s.snapshot.Metadata.Index + 1, nil
+	}
 
-	return s.firstIndexLocked()
+	return s.entries[0].Index, nil
 }
 
 // Snapshot returns the most recent snapshot
 func (s *WAL) Snapshot() (raftpb.Snapshot, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	return s.snapshot, nil
 }
 
@@ -358,9 +345,6 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 	if hardState == s.hardState && len(entries) == 0 {
 		return nil
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	logger := s.logger.WithFields(map[string]any{
 		"entries":          len(entries),
@@ -417,9 +401,6 @@ func (s *WAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 
 // CreateSnapshot creates a snapshot at the given index
 func (s *WAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
 
 	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
@@ -502,10 +483,8 @@ func (s *WAL) termLocked(i uint64) (uint64, error) {
 
 // ApplySnapshot applies a snapshot to the storage
 func (s *WAL) ApplySnapshot(snap raftpb.Snapshot) error {
-	s.mu.Lock()
 	s.snapshot = snap
 	s.entries = nil // Clear entries after applying snapshot
-	s.mu.Unlock()
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.saveSnapshot(); err != nil {
@@ -517,9 +496,6 @@ func (s *WAL) ApplySnapshot(snap raftpb.Snapshot) error {
 
 // Compact compacts the log up to the given index
 func (s *WAL) Compact(compactIndex uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if compactIndex > s.snapshot.Metadata.Index {
 		return fmt.Errorf(
 			"index (%d) after last snapshot index(%d): %w",
@@ -529,7 +505,7 @@ func (s *WAL) Compact(compactIndex uint64) error {
 		)
 	}
 
-	firstIndex, err := s.firstIndexLocked()
+	firstIndex, err := s.FirstIndex()
 	if err != nil {
 		return err
 	}
@@ -554,24 +530,5 @@ func (s *WAL) Compact(compactIndex uint64) error {
 
 // Close closes the WAL
 func (s *WAL) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	return s.wal.Close()
-}
-
-func (s *WAL) firstIndexLocked() (uint64, error) {
-	if len(s.entries) == 0 {
-		return s.snapshot.Metadata.Index + 1, nil
-	}
-
-	return s.entries[0].Index, nil
-}
-
-func (s *WAL) lastIndexLocked() (uint64, error) {
-	if len(s.entries) == 0 {
-		return s.snapshot.Metadata.Index, nil
-	}
-
-	return s.entries[len(s.entries)-1].Index, nil
 }

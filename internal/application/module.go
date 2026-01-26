@@ -63,7 +63,9 @@ func Module() fx.Option {
 				}
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger.WithField("cmp", "wal"), meterProvider.Meter("wal"))
+				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
+					"cmp": "wal",
+				}), meterProvider.Meter("wal"))
 			},
 			func(cfg Config) (*raft.DefaultSpool, error) {
 				return raft.NewDefaultSpool(raft.DefaultSpoolConfig{
