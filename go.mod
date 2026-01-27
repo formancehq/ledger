@@ -28,6 +28,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.etcd.io/etcd/raft/v3 v3.5.25
 	go.etcd.io/etcd/server/v3 v3.5.25
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.15.0

@@ -405,7 +405,7 @@ func (node *Node) Start(ctx context.Context) error {
 	processReadiesErrCh := make(chan error, 1)
 	processReadiesStopCh := make(chan struct{})
 	processReadiesStoppedCh := make(chan struct{})
-	isProcessingReadies := false
+	//isProcessingReadies := false
 
 	otlplogs.Go(func() {
 		defer close(processReadiesStoppedCh)
@@ -446,111 +446,63 @@ func (node *Node) Start(ctx context.Context) error {
 		return nil
 	}
 
-	pushProposal := func(proposal *proposal) {
-		node.proposeQueueInflight.Add(-1)
-		proposal.Resolve(nil, node.rawNode.Propose(proposal.data))
-	}
-
-	drainProposals := func(initial *proposal) {
-		pushProposal(initial)
-		const drainMax = 5000
-		for i := 0; i < drainMax; i++ {
-			select {
-			case p := <-node.proposeCh:
-				pushProposal(p)
-			default:
-				return
-			}
-		}
-	}
-
 	for {
-		if isProcessingReadies {
-			// Priority-based message handling: high > medium > low
+		select {
+		case <-ticker.C:
+			// Prevent election timeouts from happening while syncing the FSM
+			status := node.status.Load()
+			if status != statusSyncing && status != statusOutOfSync {
+				node.rawNode.Tick()
+			}
+		case msgs := <-node.transport.RecvHighPriority():
+			if err := stepMessages(msgs); err != nil {
+				return err
+			}
+		default:
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
 				if err := stepMessages(msgs); err != nil {
 					return err
 				}
+			case msgs := <-node.transport.RecvMediumPriority():
+				if err := stepMessages(msgs); err != nil {
+					return err
+				}
+			case p := <-node.proposeCh:
+				node.proposeQueueInflight.Add(-1)
+				p.Resolve(nil, node.rawNode.Propose(p.data))
 			default:
 				select {
-				case msgs := <-node.transport.RecvHighPriority():
-					if err := stepMessages(msgs); err != nil {
+				case <-node.gatingTerminated:
+					if err := node.unspoolThenResume(node.ctx); err != nil {
 						return err
 					}
-				case msgs := <-node.transport.RecvMediumPriority():
-					if err := stepMessages(msgs); err != nil {
-						return err
+				case rd := <-readyTerminated:
+					node.rawNode.Advance(rd)
+					if node.rawNode.HasReady() {
+						readies <- node.rawNode.Ready()
+					} else {
+						processingTick.Reset(tickInterval / 10)
+						readyTerminated = nil
 					}
-				case p := <-node.proposeCh:
-					drainProposals(p)
-				default:
-					select {
-					case <-ticker.C:
-						// Prevent election timeouts from happening while syncing the FSM
-						status := node.status.Load()
-						if status != statusSyncing && status != statusOutOfSync {
-							node.rawNode.Tick()
-						}
-					case err := <-processReadiesErrCh:
-						return fmt.Errorf("processing raft readies: %w", err)
-					case <-node.ctx.Done():
-						node.logger.Infof("Stopping readyLoop as context was cancelled")
-						close(processReadiesStopCh)
-						<-processReadiesStoppedCh
-						close(node.stopped)
-						return nil
-					case nodeID := <-node.transport.Unreachable():
-						node.rawNode.ReportUnreachable(nodeID)
-					case msgs := <-node.transport.RecvHighPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case msgs := <-node.transport.RecvMediumPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case msgs := <-node.transport.RecvLowPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case p := <-node.proposeCh:
-						drainProposals(p)
-					case err := <-node.taskExecutor.error():
-						return fmt.Errorf("task executor error: %w", err)
-					case rd := <-readyTerminated:
-						node.rawNode.Advance(rd)
-						isProcessingReadies = false
+				case <-processingTick.C:
+					if !node.rawNode.HasReady() {
+						continue
 					}
-				}
-			}
-		} else {
-			if node.rawNode.HasReady() {
-				select {
-				case readies <- node.rawNode.Ready():
-					isProcessingReadies = true
-				case err := <-node.taskExecutor.error():
-					return fmt.Errorf("task executor error: %w", err)
-				case err := <-processReadiesErrCh:
-					return fmt.Errorf("processing raft readies: %w", err)
+
+					readyTerminated = make(chan raft.Ready, 1)
+					processingTick.Stop()
+					readies <- node.rawNode.Ready()
 				case <-node.ctx.Done():
 					node.logger.Infof("Stopping readyLoop as context was cancelled")
 					close(processReadiesStopCh)
 					<-processReadiesStoppedCh
 					close(node.stopped)
 					return nil
-				}
-
-				continue
-			}
-			// Priority-based message handling: high > medium > low
-			select {
-			case msgs := <-node.transport.RecvHighPriority():
-				if err := stepMessages(msgs); err != nil {
-					return err
-				}
-			default:
-				select {
+				case err := <-processReadiesErrCh:
+					return fmt.Errorf("processing raft readies: %w", err)
+				case nodeID := <-node.transport.Unreachable():
+					node.rawNode.ReportUnreachable(nodeID)
 				case msgs := <-node.transport.RecvHighPriority():
 					if err := stepMessages(msgs); err != nil {
 						return err
@@ -559,54 +511,15 @@ func (node *Node) Start(ctx context.Context) error {
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
-				case p := <-node.proposeCh:
-					drainProposals(p)
-				default:
-					select {
-					case <-ticker.C:
-						// Prevent election timeouts from happening while syncing the FSM
-						status := node.status.Load()
-						if status != statusSyncing && status != statusOutOfSync {
-							node.rawNode.Tick()
-						}
-					case <-node.ctx.Done():
-						node.logger.Infof("Stopping readyLoop as context was cancelled")
-						close(processReadiesStopCh)
-						<-processReadiesStoppedCh
-						close(node.stopped)
-						return nil
-					case nodeID := <-node.transport.Unreachable():
-						node.rawNode.ReportUnreachable(nodeID)
-					case msgs := <-node.transport.RecvHighPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case msgs := <-node.transport.RecvMediumPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case msgs := <-node.transport.RecvLowPriority():
-						if err := stepMessages(msgs); err != nil {
-							return err
-						}
-					case p := <-node.proposeCh:
-						drainProposals(p)
-					case <-node.gatingTerminated:
-						if err := node.unspoolThenResume(ctx); err != nil {
-							return err
-						}
-					case err := <-node.taskExecutor.error():
-						return fmt.Errorf("task executor error: %w", err)
-					case err := <-processReadiesErrCh:
-						return fmt.Errorf("processing raft readies: %w", err)
-					case <-processingTick.C:
-						if !node.rawNode.HasReady() {
-							continue
-						}
-
-						isProcessingReadies = true
-						readies <- node.rawNode.Ready()
+				case msgs := <-node.transport.RecvLowPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
 					}
+				case p := <-node.proposeCh:
+					node.proposeQueueInflight.Add(-1)
+					p.Resolve(nil, node.rawNode.Propose(p.data))
+				case err := <-node.taskExecutor.error():
+					return fmt.Errorf("task executor error: %w", err)
 				}
 			}
 		}
@@ -773,6 +686,7 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
 	future := newFuture()
+	start := time.Now()
 
 	node.futures.Store(cmd.Id, future)
 	defer func() {

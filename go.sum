@@ -503,6 +503,8 @@ go.etcd.io/etcd/server/v3 v3.5.25 h1:oBOx7t8oWppq6due0U90kTwUSlnPFRs2cYC8Z0t1w6E
 go.etcd.io/etcd/server/v3 v3.5.25/go.mod h1:FEA8m9ioIsPieWqKOvzDf6bD/GeiQA0flsN3Ho/Errw=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0 h1:rbRJ8BBoVMsQShESYZ0FkvcITu8X8QNwJogcLUmDNNw=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0/go.mod h1:ru6KHrNtNHxM4nD/vd6QrLVWgKhxPYgblq4VAtNawTQ=
 go.opentelemetry.io/contrib/instrumentation/host v0.62.0 h1:hAVkLihKCrIkiX/cUvY0qn6yi0uMdr1/zWpb7lEjdYY=
 go.opentelemetry.io/contrib/instrumentation/host v0.62.0/go.mod h1:GiuKDIEAJPhz+D9gApgUxthEVmwC29T73Eg158qBT2g=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 h1:RbKq8BG0FI8OiXhBfcRtqqHcZcka+gU3cskNuf05R18=
