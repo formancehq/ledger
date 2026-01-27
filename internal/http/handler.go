@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -20,14 +21,14 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 
 	// Apply middlewares
 	r.Use(
-		//middleware.RequestID,
-		//middleware.RealIP,
-		//otelhttp.NewMiddleware("ledger-http-server",
-		//	otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-		//),
-		//middleware.RequestLogger(&chiLogFormatter{
-		//	logger: logger,
-		//}),
+		middleware.RequestID,
+		middleware.RealIP,
+		otelhttp.NewMiddleware("ledger-http-server",
+			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+		),
+		middleware.RequestLogger(&chiLogFormatter{
+			logger: logger,
+		}),
 		middleware.Recoverer,
 	)
 

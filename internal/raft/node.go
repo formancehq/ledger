@@ -73,7 +73,7 @@ type Node struct {
 	stopped             chan struct{}
 	ctx                 context.Context
 	cancel              func()
-	proposeCh           chan proposal
+	proposeCh           chan *proposal
 	proposeChCapacity   int
 	confState           *raftpb.ConfState
 	futures             SyncMap[uint64, *future]
@@ -194,7 +194,7 @@ func NewNode(
 		wal:                 wal,
 		transport:           transport,
 		config:              cfg,
-		proposeCh:           make(chan proposal, cfg.ProposeQueueCapacity),
+		proposeCh:           make(chan *proposal, cfg.ProposeQueueCapacity),
 		proposeChCapacity:   cfg.ProposeQueueCapacity,
 		store:               store,
 		fsm:                 fsm,
@@ -446,12 +446,12 @@ func (node *Node) Start(ctx context.Context) error {
 		return nil
 	}
 
-	pushProposal := func(proposal proposal) {
+	pushProposal := func(proposal *proposal) {
 		node.proposeQueueInflight.Add(-1)
-		proposal.rejected <- node.rawNode.Propose(proposal.data)
+		proposal.Resolve(nil, node.rawNode.Propose(proposal.data))
 	}
 
-	drainProposals := func(initial proposal) {
+	drainProposals := func(initial *proposal) {
 		pushProposal(initial)
 		const drainMax = 5000
 		for i := 0; i < drainMax; i++ {
@@ -774,10 +774,10 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
 	future := newFuture()
 
-	node.futures.Store(cmd.Id, &future)
+	node.futures.Store(cmd.Id, future)
 	defer func() {
 		node.futures.Delete(cmd.Id)
-		//node.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+		node.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
 	cmdData, err := proto.Marshal(cmd)
@@ -789,7 +789,7 @@ func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 
 	select {
 	case node.proposeCh <- proposal:
-		//node.proposeQueueLoadHistogram.Record(context.Background(), int64(node.proposeQueueInflight.Add(1)))
+		node.proposeQueueLoadHistogram.Record(context.Background(), int64(node.proposeQueueInflight.Add(1)))
 	default:
 		node.logger.WithFields(map[string]any{
 			"channel": "raft.node.propose",
@@ -798,11 +798,11 @@ func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 		return nil, fmt.Errorf("propose channel full")
 	}
 
-	if err := proposal.wait(ctx); err != nil {
+	if _, err := proposal.wait(); err != nil {
 		return nil, err
 	}
 
-	return future.wait(ctx)
+	return future.wait()
 }
 
 func (node *Node) IsLeader() bool {
@@ -1185,25 +1185,13 @@ func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.L
 }
 
 type proposal struct {
-	data     []byte
-	rejected chan error
+	*future
+	data []byte
 }
 
-func (p proposal) wait(ctx context.Context) error {
-	select {
-	case err := <-p.rejected:
-		if err != nil {
-			return err
-		}
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	return nil
-}
-
-func newProposal(data []byte) proposal {
-	return proposal{
-		data:     data,
-		rejected: make(chan error, 1),
+func newProposal(data []byte) *proposal {
+	return &proposal{
+		data:   data,
+		future: newFuture(),
 	}
 }

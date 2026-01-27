@@ -3,9 +3,12 @@ package grpc
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 )
 
 type Server struct {
@@ -18,11 +21,11 @@ type Server struct {
 func NewServer(port int, logger logging.Logger) *Server {
 	opts := []grpc.ServerOption{
 		// todo: make configurable (performance cost)
-		//grpc.StatsHandler(otelgrpc.NewServerHandler(
-		//	otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
-		//		return !strings.Contains(info.FullMethodName, "RaftTransportService")
-		//	}),
-		//)),
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
+				return !strings.Contains(info.FullMethodName, "RaftTransportService")
+			}),
+		)),
 		grpc.InitialWindowSize(16 * 1024 * 1024),
 		grpc.InitialConnWindowSize(64 * 1024 * 1024),
 		grpc.ReadBufferSize(1 * 1024 * 1024),
