@@ -33,7 +33,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       - name: fetch numary control
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v5
         with:
           name: control-dist
           path: cmd/control/

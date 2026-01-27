@@ -97,7 +97,10 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
-		sb.Select("account", "array_agg((asset, input - output))")
+		sb.Select(
+			"account",
+			"array_agg(ROW(asset, input - output)::"+s.schema.Table("asset_delta")+") AS volumes",
+		)
 	case sqlbuilder.SQLite:
 		// we try to get the same format as array_agg from postgres : {"(USD,-12686)","(EUR,-250)"}
 		// so don't have to dev a marshal method for each storage
