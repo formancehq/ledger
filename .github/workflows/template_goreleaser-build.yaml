@@ -23,7 +23,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: fetch numary control
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v5
         with:
           name: control-dist
           path: cmd/control/
@@ -47,7 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-      - uses: actions/upload-artifact@v2
-        with:
-          name: dist
-          path: ./dist/**
+#      - uses: actions/upload-artifact@v4
+#        with:
+#          name: dist
+#          path: ./dist/**
