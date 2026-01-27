@@ -231,7 +231,7 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						otlplogs.Go(func() {
-							if err := node.Start(context.WithoutCancel(ctx)); err != nil {
+							if err := node.Run(context.WithoutCancel(ctx)); err != nil {
 								panic(err)
 							}
 						}, logger)

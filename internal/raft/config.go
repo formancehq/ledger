@@ -22,30 +22,38 @@ type NodeConfig struct {
 	BindAddr             string
 }
 
-func (c *NodeConfig) Validate() error {
-	if c.NodeID == 0 {
+func (cfg *NodeConfig) Validate() error {
+	if cfg.NodeID == 0 {
 		return fmt.Errorf("node-id is required and must be non-zero")
 	}
 
-	// Node IDs must be < 0x10000 (65536) to avoid collision with bucket Raft groups
-	// Bucket Raft groups use IDs >= 0x10000 (bucketID << 16)
-	if c.NodeID >= 0x10000 {
-		return fmt.Errorf("node-id must be < 0x10000 (65536), got %d (0x%x). Bucket Raft groups use IDs >= 0x10000", c.NodeID, c.NodeID)
-	}
-
-	// Validate peer IDs are also < 0x10000
-	for _, peer := range c.Peers {
-		if peer.ID >= 0x10000 {
-			return fmt.Errorf("peer ID for %s must be < 0x10000 (65536), got %d (0x%x)", peer.Address, peer.ID, peer.ID)
-		}
-	}
-
 	// If AdvertiseAddr is not set, use BindAddr
-	if c.AdvertiseAddr == "" {
-		c.AdvertiseAddr = c.BindAddr
+	if cfg.AdvertiseAddr == "" {
+		cfg.AdvertiseAddr = cfg.BindAddr
 	}
 
 	return nil
+}
+
+func (cfg *NodeConfig) SetDefaults() {
+	if cfg.ElectionTick == 0 {
+		cfg.ElectionTick = 10
+	}
+	if cfg.HeartbeatTick == 0 {
+		cfg.HeartbeatTick = 1
+	}
+	if cfg.MaxSizePerMsg == 0 {
+		cfg.MaxSizePerMsg = 1024 * 1024 // 1MB
+	}
+	if cfg.MaxInflightMsgs == 0 {
+		cfg.MaxInflightMsgs = 256
+	}
+	if cfg.SnapshotThreshold == 0 {
+		cfg.SnapshotThreshold = 1000
+	}
+	if cfg.ProposeQueueCapacity == 0 {
+		cfg.ProposeQueueCapacity = 100
+	}
 }
 
 type Peer struct {

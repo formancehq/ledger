@@ -227,7 +227,7 @@ func (c *Cluster) Start(ctx context.Context) []chan error {
 					}
 				}
 			}()
-			errCh <- node.Start(ctx)
+			errCh <- node.Run(ctx)
 		}(clusterNode.Node, errorChans[i])
 	}
 
@@ -470,7 +470,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	// Start the node and return error channel
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- node.Start(ctx)
+		errCh <- node.Run(ctx)
 	}()
 
 	return errCh, nil
@@ -1190,7 +1190,11 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Find a follower to restart
 	var follower *ClusterNode
-	for _, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
+	for _, node := range []*ClusterNode{
+		cluster.GetNode(0),
+		cluster.GetNode(1),
+		cluster.GetNode(2),
+	} {
 		if node.ID != leaderID {
 			follower = node
 			break
@@ -1396,7 +1400,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	// Wait for leader election
 	_, err = cluster.WaitForLeader(5 * time.Second)
 	require.NoError(t, err)
-	t.Logf("Node became leader after restart")
+	t.Logf("Got leader after restart")
 
 	// Verify the state is consistent after replay
 	// Since the snapshot was not saved, all entries should be replayed

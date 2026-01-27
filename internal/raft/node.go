@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
@@ -70,16 +69,27 @@ type Node struct {
 	wal                 WAL
 	transport           Transport
 	config              NodeConfig
-	stopped             chan struct{}
-	ctx                 context.Context
-	cancel              func()
 	proposeCh           chan *proposal
-	proposeChCapacity   int
 	confState           *raftpb.ConfState
 	futures             SyncMap[uint64, *future]
 	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
 
+	defaultLedger *service.DefaultController
+
+	store             store.Store
+	spool             Spool
+	status            *atomic.Int32
+	snapshotThreshold uint64
+	compactionMargin  uint64
+	taskExecutor      *singleTaskExecutor
+	gatingTerminated  chan struct{}
+	readies           chan raft.Ready
+	readyTerminated   chan raft.Ready
+	tasks             *taskSet
+	stopChannel       chan chan struct{}
+
+	// Metrics
 	meter                             metric.Meter
 	applyEntriesHistogram             metric.Int64Histogram
 	applyEntriesBatchSizeCounter      metric.Int64Counter
@@ -88,23 +98,12 @@ type Node struct {
 	appendEntriesHistogram            metric.Int64Histogram
 	leadMonitorHistogram              metric.Int64Gauge
 	committedEntriesPerReadyHistogram metric.Int64Histogram
-	defaultLedger                     *service.DefaultController
-	store                             store.Store
-
-	spool                   Spool
-	createSnapshotHistogram metric.Float64Histogram
-	status                  *atomic.Int32
-	snapshotThreshold       uint64
-	compactionMargin        uint64
-	taskExecutor            *singleTaskExecutor
-	gatingTerminated        chan struct{}
-
-	// Propose queue metrics
-	proposeQueueLoadHistogram  metric.Int64Histogram
-	proposeQueueFullCounter    metric.Float64Counter
-	proposeQueueInflight       atomic.Int32
-	readyWaitDurationHistogram metric.Int64Histogram
-	commandDurationHistogram   metric.Int64Histogram
+	createSnapshotHistogram           metric.Float64Histogram
+	proposeQueueLoadHistogram         metric.Int64Histogram
+	proposeQueueFullCounter           metric.Float64Counter
+	proposeQueueInflight              atomic.Int32
+	readyWaitDurationHistogram        metric.Int64Histogram
+	commandDurationHistogram          metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -119,32 +118,18 @@ func NewNode(
 	logStreamerProvider LogStreamerProvider,
 ) (*Node, error) {
 
-	// Set defaults if not configured
-	if cfg.ElectionTick == 0 {
-		cfg.ElectionTick = 10
-	}
-	if cfg.HeartbeatTick == 0 {
-		cfg.HeartbeatTick = 1
-	}
-	if cfg.MaxSizePerMsg == 0 {
-		cfg.MaxSizePerMsg = 1024 * 1024 // 1MB
-	}
-	if cfg.MaxInflightMsgs == 0 {
-		cfg.MaxInflightMsgs = 256
-	}
-	if cfg.SnapshotThreshold == 0 {
-		cfg.SnapshotThreshold = 1000
-	}
-	if cfg.ProposeQueueCapacity == 0 {
-		cfg.ProposeQueueCapacity = 100
-	}
+	cfg.SetDefaults()
 
-	fsm, _ := newFSM(logger, store, transport)
+	fsm, err := newFSM(logger, store, transport)
+	if err != nil {
+		return nil, fmt.Errorf("creating FSM: %w", err)
+	}
 
 	snapshot, err := wal.Snapshot()
 	if err != nil {
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
+
 	var initialConfState raftpb.ConfState
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
@@ -195,7 +180,6 @@ func NewNode(
 		transport:           transport,
 		config:              cfg,
 		proposeCh:           make(chan *proposal, cfg.ProposeQueueCapacity),
-		proposeChCapacity:   cfg.ProposeQueueCapacity,
 		store:               store,
 		fsm:                 fsm,
 		spool:               spool,
@@ -205,6 +189,10 @@ func NewNode(
 		taskExecutor:        newSingleTaskExecutor(logger),
 		confState:           &initialConfState,
 		logStreamerProvider: logStreamerProvider,
+		readies:             make(chan raft.Ready, 1),
+		readyTerminated:     make(chan raft.Ready, 1),
+		tasks:               newTaskSet(),
+		stopChannel:         make(chan chan struct{}),
 	}
 
 	node.defaultLedger = service.NewDefaultController(node, store, logger)
@@ -343,14 +331,10 @@ func NewNode(
 	return node, nil
 }
 
-func (node *Node) Start(ctx context.Context) error {
-
-	node.stopped = make(chan struct{})
-	node.ctx, node.cancel = context.WithCancel(ctx)
+func (node *Node) Run(ctx context.Context) error {
 
 	raftConfig := &raft.Config{
-		ID: node.config.NodeID,
-		// todo: add random delay on election tick
+		ID:                        node.config.NodeID,
 		ElectionTick:              node.config.ElectionTick,
 		HeartbeatTick:             node.config.HeartbeatTick,
 		Storage:                   node.wal,
@@ -369,13 +353,6 @@ func (node *Node) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
-
-	tickInterval := node.config.TickInterval
-	if tickInterval == 0 {
-		tickInterval = 100 * time.Millisecond
-	}
-	ticker := time.NewTicker(tickInterval)
-	defer ticker.Stop()
 
 	isStoreUpToDate, err := node.fsm.IsStoreUpToDate(ctx)
 	if err != nil {
@@ -396,158 +373,43 @@ func (node *Node) Start(ctx context.Context) error {
 		}
 	}
 
-	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
-	defer processingTick.Stop()
+	node.tasks.add(newTask(node.orchestrate))
+	node.tasks.add(newTask(node.processReadies))
+	node.tasks.run(ctx)
 
-	readies := make(chan raft.Ready, 1)
-	readyTerminated := make(chan raft.Ready, 1)
-
-	processReadiesErrCh := make(chan error, 1)
-	processReadiesStopCh := make(chan struct{})
-	processReadiesStoppedCh := make(chan struct{})
-	//isProcessingReadies := false
-
-	otlplogs.Go(func() {
-		defer close(processReadiesStoppedCh)
-
-		for {
-			waitStart := time.Now()
-			select {
-			case rd := <-readies:
-				node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
-				now := time.Now()
-				err := node.processReady(node.ctx, rd)
-				node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
-				if err != nil {
-					select {
-					case <-processReadiesStopCh:
-					case processReadiesErrCh <- err:
-					}
-					return
-				}
-				select {
-				case readyTerminated <- rd:
-				case <-processReadiesStopCh:
-					return
-				}
-			case <-processReadiesStopCh:
-				return
-			}
+	select {
+	case ch := <-node.stopChannel:
+		if err := node.tasks.stop(); err != nil {
+			node.logger.Errorf("Error stopping task pool: %v", err)
 		}
-	}, node.logger)
-
-	// Helper to process a batch of messages
-	stepMessages := func(msgs []raftpb.Message) error {
-		for _, msg := range msgs {
-			if err := node.rawNode.Step(msg); err != nil {
-				return err
-			}
-		}
+		close(ch)
 		return nil
-	}
-
-	for {
-		select {
-		case <-ticker.C:
-			// Prevent election timeouts from happening while syncing the FSM
-			status := node.status.Load()
-			if status != statusSyncing && status != statusOutOfSync {
-				node.rawNode.Tick()
-			}
-		case msgs := <-node.transport.RecvHighPriority():
-			if err := stepMessages(msgs); err != nil {
-				return err
-			}
-		default:
-			select {
-			case msgs := <-node.transport.RecvHighPriority():
-				if err := stepMessages(msgs); err != nil {
-					return err
-				}
-			case msgs := <-node.transport.RecvMediumPriority():
-				if err := stepMessages(msgs); err != nil {
-					return err
-				}
-			case p := <-node.proposeCh:
-				node.proposeQueueInflight.Add(-1)
-				p.Resolve(nil, node.rawNode.Propose(p.data))
-			default:
-				select {
-				case <-node.gatingTerminated:
-					if err := node.unspoolThenResume(node.ctx); err != nil {
-						return err
-					}
-				case rd := <-readyTerminated:
-					node.rawNode.Advance(rd)
-					if node.rawNode.HasReady() {
-						readies <- node.rawNode.Ready()
-					} else {
-						processingTick.Reset(tickInterval / 10)
-						readyTerminated = nil
-					}
-				case <-processingTick.C:
-					if !node.rawNode.HasReady() {
-						continue
-					}
-
-					readyTerminated = make(chan raft.Ready, 1)
-					processingTick.Stop()
-					readies <- node.rawNode.Ready()
-				case <-node.ctx.Done():
-					node.logger.Infof("Stopping readyLoop as context was cancelled")
-					close(processReadiesStopCh)
-					<-processReadiesStoppedCh
-					close(node.stopped)
-					return nil
-				case err := <-processReadiesErrCh:
-					return fmt.Errorf("processing raft readies: %w", err)
-				case nodeID := <-node.transport.Unreachable():
-					node.rawNode.ReportUnreachable(nodeID)
-				case msgs := <-node.transport.RecvHighPriority():
-					if err := stepMessages(msgs); err != nil {
-						return err
-					}
-				case msgs := <-node.transport.RecvMediumPriority():
-					if err := stepMessages(msgs); err != nil {
-						return err
-					}
-				case msgs := <-node.transport.RecvLowPriority():
-					if err := stepMessages(msgs); err != nil {
-						return err
-					}
-				case p := <-node.proposeCh:
-					node.proposeQueueInflight.Add(-1)
-					p.Resolve(nil, node.rawNode.Propose(p.data))
-				case err := <-node.taskExecutor.error():
-					return fmt.Errorf("task executor error: %w", err)
-				}
-			}
-		}
+	case err := <-node.tasks.err():
+		return fmt.Errorf("task pool error: %w", err)
 	}
 }
 
-func (node *Node) unspoolThenResume(ctx context.Context) error {
-	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
-	node.gatingTerminated = nil
-	node.status.Store(statusNormal)
-
-	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
-	if err != nil {
-		return fmt.Errorf("getting last applied index: %w", err)
+func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error {
+	for {
+		waitStart := time.Now()
+		select {
+		case rd := <-node.readies:
+			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+			now := time.Now()
+			err := node.processReady(ctx, rd)
+			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+			if err != nil {
+				return err
+			}
+			select {
+			case node.readyTerminated <- rd:
+			case <-stop:
+				return nil
+			}
+		case <-stop:
+			return nil
+		}
 	}
-
-	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
-	}
-
-	// todo: decorallate, this is not needed at this point
-	if err := node.spool.Prune(lastAppliedIndex); err != nil {
-		return fmt.Errorf("pruning spool: %w", err)
-	}
-
-	node.logger.Infof("Unspooling operation terminated, resuming...")
-
-	return nil
 }
 
 func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
@@ -680,6 +542,268 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	}
 
 	return nil
+}
+
+// applyEntriesToFSM applies entries directly to the FSM
+func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
+	err := node.applyEntriesAndResolveCommands(ctx, entries...)
+	if err != nil {
+		return err
+	}
+
+	lastSnapshot, err := node.wal.Snapshot()
+	if err != nil {
+		panic(fmt.Errorf("getting last snapshot: %w", err))
+	}
+
+	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
+		// Short circuit the state machine
+		// Futures entries will be spooled and applied later
+		node.status.Store(statusSnapshotting)
+
+		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+			node.logger.WithFields(map[string]any{
+				"applied":           entries[len(entries)-1].Index,
+				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
+				"snapshotThreshold": node.snapshotThreshold,
+				"compactionMargin":  node.compactionMargin,
+			}).Infof("Creating new snapshot")
+
+			startTime := time.Now()
+			data, err := node.fsm.CreateSnapshot(ctx)
+			if err != nil {
+				return 0, err
+			}
+
+			err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
+			if err != nil {
+				return 0, err
+			}
+			duration := time.Since(startTime)
+			node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+
+			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
+			// todo: decorallate compaction as it increase the spooling time and this is not needed
+			if entries[len(entries)-1].Index > node.compactionMargin {
+				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
+				if err != nil {
+					return 0, err
+				}
+			}
+
+			return entries[len(entries)-1].Index, nil
+		})
+	}
+
+	return nil
+}
+
+func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
+
+	tickInterval := node.config.TickInterval
+	if tickInterval == 0 {
+		tickInterval = 100 * time.Millisecond
+	}
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+
+	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
+	defer processingTick.Stop()
+
+	// Helper to process a batch of messages
+	stepMessages := func(msgs []raftpb.Message) error {
+		for _, msg := range msgs {
+			if err := node.rawNode.Step(msg); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			// Prevent election timeouts from happening while syncing the FSM
+			status := node.status.Load()
+			if status != statusSyncing && status != statusOutOfSync {
+				node.rawNode.Tick()
+			}
+		case msgs := <-node.transport.RecvHighPriority():
+			if err := stepMessages(msgs); err != nil {
+				return err
+			}
+		default:
+			select {
+			case msgs := <-node.transport.RecvHighPriority():
+				if err := stepMessages(msgs); err != nil {
+					return err
+				}
+			case msgs := <-node.transport.RecvMediumPriority():
+				if err := stepMessages(msgs); err != nil {
+					return err
+				}
+			case p := <-node.proposeCh:
+				node.proposeQueueInflight.Add(-1)
+				p.Resolve(nil, node.rawNode.Propose(p.data))
+			default:
+				select {
+				case <-node.gatingTerminated:
+					if err := node.unspoolAndResume(ctx); err != nil {
+						return err
+					}
+				case rd := <-node.readyTerminated:
+					node.rawNode.Advance(rd)
+					if node.rawNode.HasReady() {
+						node.readies <- node.rawNode.Ready()
+					} else {
+						processingTick.Reset(tickInterval / 10)
+						node.readyTerminated = nil
+					}
+				case <-processingTick.C:
+					if !node.rawNode.HasReady() {
+						continue
+					}
+
+					node.readyTerminated = make(chan raft.Ready, 1)
+					processingTick.Stop()
+					node.readies <- node.rawNode.Ready()
+				case <-stop:
+					node.logger.Infof("Stopping readyLoop as context was cancelled")
+					node.taskExecutor.interrupt()
+					return nil
+				case nodeID := <-node.transport.Unreachable():
+					node.rawNode.ReportUnreachable(nodeID)
+				case msgs := <-node.transport.RecvHighPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case msgs := <-node.transport.RecvMediumPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case msgs := <-node.transport.RecvLowPriority():
+					if err := stepMessages(msgs); err != nil {
+						return err
+					}
+				case p := <-node.proposeCh:
+					node.proposeQueueInflight.Add(-1)
+					p.Resolve(nil, node.rawNode.Propose(p.data))
+				case err := <-node.taskExecutor.error():
+					return fmt.Errorf("task executor error: %w", err)
+				}
+			}
+		}
+	}
+}
+
+func (node *Node) unspoolAndResume(ctx context.Context) error {
+	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
+
+	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
+	if err != nil {
+		return fmt.Errorf("getting last applied index: %w", err)
+	}
+
+	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
+		return fmt.Errorf("replaying spool: %w", err)
+	}
+
+	// todo: measure time
+	if err := node.spool.Prune(lastAppliedIndex); err != nil {
+		return fmt.Errorf("pruning spool: %w", err)
+	}
+
+	node.logger.Infof("Unspooling operation terminated, resuming...")
+	node.gatingTerminated = nil
+	node.status.Store(statusNormal)
+
+	return nil
+}
+
+// syncSnapshot syncs a snapshot from a leader
+func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
+	node.logger.
+		WithFields(map[string]any{
+			"leader": leader,
+		}).
+		Infof("Syncing snapshot from leader")
+
+	node.status.Store(statusSyncing)
+
+	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+		logStreamer, err := node.logStreamerProvider.GetForPeer(leader)
+		if err != nil {
+			return 0, fmt.Errorf("getting log reader for leader %d: %w", leader, err)
+		}
+		return node.fsm.SynchronizeWithLeader(ctx, logStreamer)
+	})
+
+	return nil
+}
+
+func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
+
+	node.logger.Infof("Replaying spool")
+
+	until, err := node.spool.End()
+	if err != nil {
+		return fmt.Errorf("getting spool end position: %w", err)
+	}
+
+	count := 0
+	batch := make([]raftpb.Entry, 0, 1000)
+	logFields := map[string]any{}
+	var lastEntry *raftpb.Entry
+	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
+		batch = append(batch, entry)
+		if len(batch) >= 1000 { // todo: configure
+			if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+				return err
+			}
+			count += len(batch)
+			batch = batch[:0]
+			lastEntry = &entry
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("replaying spool: %w", err)
+	}
+	if len(batch) > 0 {
+		count += len(batch)
+		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+			return err
+		}
+		lastEntry = pointer.For(batch[len(batch)-1])
+	}
+	if lastEntry != nil {
+		logFields["last_entry_index"] = lastEntry.Index
+	}
+	logFields["count"] = count
+	node.logger.
+		WithFields(logFields).
+		WithField("count", count).
+		Infof("Replayed spool")
+
+	return nil
+}
+
+func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) (uint64, error)) {
+	gatingTerminated := make(chan struct{})
+	node.gatingTerminated = gatingTerminated
+
+	node.taskExecutor.interrupt()
+	node.taskExecutor.run(ctx, func(ctx context.Context) error {
+		defer func() {
+			close(gatingTerminated)
+		}()
+
+		frozenAtIndex, err := task(ctx)
+		if err != nil {
+			return err
+		}
+
+		return node.replaySpool(ctx, frozenAtIndex)
+	})
 }
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
@@ -929,173 +1053,24 @@ func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *l
 	return log.(*ledgerpb.Log), nil
 }
 
-// syncSnapshot syncs a snapshot from a leader
-func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
-	node.logger.
-		WithFields(map[string]any{
-			"leader": leader,
-		}).
-		Infof("Syncing snapshot from leader")
-
-	node.status.Store(statusSyncing)
-
-	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		logStreamer, err := node.logStreamerProvider.GetForPeer(leader)
-		if err != nil {
-			return 0, fmt.Errorf("getting log reader for leader %d: %w", leader, err)
-		}
-		return node.fsm.SynchronizeWithLeader(ctx, logStreamer)
-	})
-
-	return nil
-}
-
-func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
-
-	node.logger.Infof("Replaying spool")
-
-	until, err := node.spool.End()
-	if err != nil {
-		return fmt.Errorf("getting spool end position: %w", err)
-	}
-
-	count := 0
-	batch := make([]raftpb.Entry, 0, 1000)
-	logFields := map[string]any{}
-	var lastEntry *raftpb.Entry
-	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
-		batch = append(batch, entry)
-		if len(batch) >= 1000 { // todo: configure
-			if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
-				return err
-			}
-			count += len(batch)
-			batch = batch[:0]
-			lastEntry = &entry
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
-	}
-	if len(batch) > 0 {
-		count += len(batch)
-		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
-			return err
-		}
-		lastEntry = pointer.For(batch[len(batch)-1])
-	}
-	if lastEntry != nil {
-		logFields["last_entry_index"] = lastEntry.Index
-	}
-	logFields["count"] = count
-	node.logger.
-		WithFields(logFields).
-		WithField("count", count).
-		Infof("Replayed spool")
-
-	return nil
-}
-
-func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) (uint64, error)) {
-	gatingTerminated := make(chan struct{})
-	node.gatingTerminated = gatingTerminated
-
-	node.taskExecutor.interrupt()
-	node.taskExecutor.run(ctx, func(ctx context.Context) error {
-		defer func() {
-			close(gatingTerminated)
-		}()
-
-		frozenAtIndex, err := task(ctx)
-		if err != nil {
-			return err
-		}
-
-		return node.replaySpool(ctx, frozenAtIndex)
-	})
-}
-
-// applyEntriesToFSM applies entries directly to the FSM
-func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	err := node.applyEntriesAndResolveCommands(ctx, entries...)
-	if err != nil {
-		return err
-	}
-
-	lastSnapshot, err := node.wal.Snapshot()
-	if err != nil {
-		panic(fmt.Errorf("getting last snapshot: %w", err))
-	}
-
-	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
-		// Short circuit the state machine
-		// Futures entries will be spooled and applied later
-		node.status.Store(statusSnapshotting)
-
-		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-			node.logger.WithFields(map[string]any{
-				"applied":           entries[len(entries)-1].Index,
-				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-				"snapshotThreshold": node.snapshotThreshold,
-				"compactionMargin":  node.compactionMargin,
-			}).Infof("Creating new snapshot")
-
-			startTime := time.Now()
-			data, err := node.fsm.CreateSnapshot(ctx)
-			if err != nil {
-				return 0, err
-			}
-
-			err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
-			if err != nil {
-				return 0, err
-			}
-			duration := time.Since(startTime)
-			node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
-
-			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-			// todo: decorallate compaction as it increase the spooling time and this is not needed
-			if entries[len(entries)-1].Index > node.compactionMargin {
-				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
-				if err != nil {
-					return 0, err
-				}
-			}
-
-			return entries[len(entries)-1].Index, nil
-		})
-	}
-
-	return nil
+func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	return node.fsm.GetLedgerByName(name)
 }
 
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
-	isStarted := node.stopped != nil
-	if !isStarted {
-		node.logger.Infof("Node is not started, skipping stop")
-		return nil
-	}
-
-	node.logger.Infof("Cancelling context...")
-	node.cancel()
-
-	node.logger.Infof("Waiting for node to stop...")
+	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
-		node.logger.Infof("Context timed out while waiting for node to stop")
 		return ctx.Err()
-	case <-node.stopped:
-		node.logger.Infof("Node stopped as expected")
+	case node.stopChannel <- ch:
+		select {
+		case <-ch:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-
-	// todo: close channels
-
-	return nil
-}
-
-func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	return node.fsm.GetLedgerByName(name)
 }
 
 type proposal struct {

@@ -397,7 +397,6 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *ledgerpb
 }
 
 func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStreamer) (uint64, error) {
-
 	ledgers, err := fsm.store.ListLedgers(ctx)
 	if err != nil {
 		return 0, err
