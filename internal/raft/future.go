@@ -22,16 +22,16 @@ func (f *future) Resolve(result any, err error) {
 	f.done = true
 	f.result = result
 	f.err = err
-	close(f.ch)
+	f.ch <- struct{}{}
 }
 
 func (f *future) wait(ctx context.Context) (any, error) {
 	select {
-	case <-f.Done():
+	case <-f.ch:
 		if f.err != nil {
 			return nil, f.err
 		}
-		return f.Result(), nil
+		return f.result, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -39,6 +39,6 @@ func (f *future) wait(ctx context.Context) (any, error) {
 
 func newFuture() future {
 	return future{
-		ch: make(chan struct{}),
+		ch: make(chan struct{}, 1),
 	}
 }

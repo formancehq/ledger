@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
@@ -773,14 +772,12 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
-	start := time.Now()
-
 	future := newFuture()
 
 	node.futures.Store(cmd.Id, &future)
 	defer func() {
 		node.futures.Delete(cmd.Id)
-		node.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+		//node.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
 	cmdData, err := proto.Marshal(cmd)
@@ -792,7 +789,7 @@ func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 
 	select {
 	case node.proposeCh <- proposal:
-		node.proposeQueueLoadHistogram.Record(context.Background(), int64(node.proposeQueueInflight.Add(1)))
+		//node.proposeQueueLoadHistogram.Record(context.Background(), int64(node.proposeQueueInflight.Add(1)))
 	default:
 		node.logger.WithFields(map[string]any{
 			"channel": "raft.node.propose",
@@ -1064,7 +1061,6 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		}
 		return nil
 	}); err != nil {
-		spew.Dump(err)
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 	if len(batch) > 0 {
