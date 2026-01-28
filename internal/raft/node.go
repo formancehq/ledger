@@ -384,6 +384,13 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 			case <-stop:
 				return nil
 			}
+		case <-node.gatingTerminated:
+			// Drain the spool in this goroutine - no race condition possible
+			// since this is the same goroutine that does spooling
+			if err := node.unspoolAndResume(ctx); err != nil {
+				return err
+			}
+			node.gatingTerminated = nil
 		case <-stop:
 			return nil
 		}
@@ -625,10 +632,6 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				p.Resolve(nil, node.rawNode.Propose(p.data))
 			default:
 				select {
-				case <-node.gatingTerminated:
-					if err := node.unspoolAndResume(ctx); err != nil {
-						return err
-					}
 				case rd := <-node.readyTerminated:
 					node.rawNode.Advance(rd)
 					if node.rawNode.HasReady() {
@@ -686,10 +689,13 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 
-	node.gatingTerminated = nil
 	node.status.Store(statusNormal)
 
 	// todo: measure time
+	lastAppliedIndex, err = node.store.GetLastAppliedIndex()
+	if err != nil {
+		return fmt.Errorf("getting last applied index: %w", err)
+	}
 	if err := node.spool.Prune(lastAppliedIndex); err != nil {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
