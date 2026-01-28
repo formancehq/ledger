@@ -177,6 +177,10 @@ func (e ErrRuntime) Is(err error) bool {
 	return ok
 }
 
+func (e ErrRuntime) Unwrap() error {
+	return e.InterpreterError
+}
+
 type ErrParsing struct {
 	Source string
 	// Precondition: Errors is not empty
