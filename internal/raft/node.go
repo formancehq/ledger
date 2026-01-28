@@ -8,8 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
-	raftcommand "github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -787,7 +786,7 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node) Apply(ctx context.Context, cmd *raftcommand.Command) (any, error) {
+func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
 	future := newFuture()
 	start := time.Now()
 

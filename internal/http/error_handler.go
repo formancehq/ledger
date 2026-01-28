@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 // handleError handles errors and returns appropriate HTTP responses

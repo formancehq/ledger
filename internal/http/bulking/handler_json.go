@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 type JsonBulkHandler struct {

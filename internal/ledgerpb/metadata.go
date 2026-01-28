@@ -1,4 +1,4 @@
-package commonpb
+package ledgerpb
 
 const (
 	MetaTargetTypeAccount     = "ACCOUNT"

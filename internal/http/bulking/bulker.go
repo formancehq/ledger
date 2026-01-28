@@ -12,8 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
@@ -113,7 +112,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.Ledge
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction) (*commonpb.Log, error) {
+func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction) (*ledgerpb.Log, error) {
 	switch data := elem.Data.(type) {
 	case *ledgerpb.LedgerAction_CreateTransaction:
 		return b.ledger.CreateTransaction(ctx, b.ledgerID, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
@@ -127,7 +126,7 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction
 		}
 
 		switch t := data.AddMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
+		case *ledgerpb.Target_Account:
 			return b.ledger.SaveAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
@@ -135,7 +134,7 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction
 					Metadata: data.AddMetadata.Metadata,
 				},
 			})
-		case *commonpb.Target_Transaction:
+		case *ledgerpb.Target_Transaction:
 			return b.ledger.SaveTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
@@ -159,7 +158,7 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction
 		}
 
 		switch t := data.DeleteMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
+		case *ledgerpb.Target_Account:
 			return b.ledger.DeleteAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
@@ -167,7 +166,7 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction
 					Key:     data.DeleteMetadata.Key,
 				},
 			})
-		case *commonpb.Target_Transaction:
+		case *ledgerpb.Target_Transaction:
 			return b.ledger.DeleteTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{

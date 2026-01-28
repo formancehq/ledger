@@ -9,7 +9,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	raftpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -37,7 +37,7 @@ func (m *MockEngine) EXPECT() *MockEngineMockRecorder {
 }
 
 // Apply mocks base method.
-func (m *MockEngine) Apply(ctx context.Context, cmd *raftpb.Command) (any, error) {
+func (m *MockEngine) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Apply", ctx, cmd)
 	ret0, _ := ret[0].(any)

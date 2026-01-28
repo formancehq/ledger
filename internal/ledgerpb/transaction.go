@@ -1,4 +1,4 @@
-package commonpb
+package ledgerpb
 
 import (
 	"math/big"

@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/stretchr/testify/require"
 )
@@ -50,10 +50,10 @@ func TestSQLiteModernStore(t *testing.T) {
 func registerLedger(ctx context.Context, t *testing.T, s store.Store, name string, id uint32) {
 	t.Helper()
 	batch := s.NewBatch(0)
-	err := batch.RegisterLedger(ctx, &commonpb.LedgerInfo{
+	err := batch.RegisterLedger(ctx, &ledgerpb.LedgerInfo{
 		Id:        id,
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 	})
 	require.NoError(t, err)
 	err = batch.Commit(ctx)
@@ -61,7 +61,7 @@ func registerLedger(ctx context.Context, t *testing.T, s store.Store, name strin
 }
 
 // appendLogs is a helper function to append logs using the batch pattern
-func appendLogs(ctx context.Context, t *testing.T, s store.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
+func appendLogs(ctx context.Context, t *testing.T, s store.Store, lastAppliedIndex uint64, logs ...*ledgerpb.Log) {
 	t.Helper()
 	batch := s.NewBatch(lastAppliedIndex)
 	err := batch.AppendLogs(ctx, logs...)
@@ -91,10 +91,10 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch(0)
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "world", "USD", commonpb.NewBigInt(big.NewInt(-100)), 1))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", commonpb.NewBigInt(big.NewInt(100)), 1))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "user", "USD", commonpb.NewBigInt(big.NewInt(50)), 2))
-		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", commonpb.NewBigInt(big.NewInt(-50)), 2))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "world", "USD", ledgerpb.NewBigInt(big.NewInt(-100)), 1))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", ledgerpb.NewBigInt(big.NewInt(100)), 1))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "user", "USD", ledgerpb.NewBigInt(big.NewInt(50)), 2))
+		require.NoError(t, batch.AppendBalanceDiff(ctx, testLedgerID, "bank", "USD", ledgerpb.NewBigInt(big.NewInt(-50)), 2))
 		require.NoError(t, batch.Commit(ctx))
 
 		balances, err := s.GetBalances(ctx, testLedgerID, map[string][]string{
@@ -121,7 +121,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		require.NotNil(t, cursor)
 		t.Cleanup(func() { _ = cursor.Close() })
 
-		var logs []*commonpb.Log
+		var logs []*ledgerpb.Log
 		for {
 			log, err := cursor.Next(ctx)
 			if err == io.EOF {
@@ -162,12 +162,12 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch(0)
-		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedgerID, "bank", &commonpb.Metadata{
+		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedgerID, "bank", &ledgerpb.Metadata{
 			Entries: metadata.Metadata{
 				"account_type": "asset",
 			},
 		}))
-		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedgerID, "bank", &commonpb.Metadata{
+		require.NoError(t, batch.SaveAccountMetadata(ctx, testLedgerID, "bank", &ledgerpb.Metadata{
 			Entries: metadata.Metadata{
 				"label": "Bank Account",
 			},
@@ -345,20 +345,20 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 	})
 }
 
-func createTestLogs(ledgerID uint32) []*commonpb.Log {
+func createTestLogs(ledgerID uint32) []*ledgerpb.Log {
 	now := libtime.New(time.Now())
 
-	logs := []*commonpb.Log{
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{
-					Transaction: commonpb.NewTransaction().
+	logs := []*ledgerpb.Log{
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
 						WithPostings(
-							commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+							ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
 						).
 						WithID(1).
 						WithTimestamp(now),
-					AccountMetadata: map[string]*commonpb.Metadata{
+					AccountMetadata: map[string]*ledgerpb.Metadata{
 						"bank": {Entries: metadata.Metadata{
 							"account_type": "asset",
 						}},
@@ -370,12 +370,12 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 			WithID(1).
 			WithIdempotency("idempotency-key-1", []byte("hash-1")).
 			WithDate(now),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{
-					Transaction: commonpb.NewTransaction().
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{
+					Transaction: ledgerpb.NewTransaction().
 						WithPostings(
-							commonpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+							ledgerpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
 						).
 						WithID(2).
 						WithTimestamp(now),
@@ -386,15 +386,15 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 			WithID(2).
 			WithIdempotency("idempotency-key-2", []byte("hash-2")).
 			WithDate(now.Add(time.Second)),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_SavedMetadata{
-				SavedMetadata: &commonpb.SavedMetadata{
-					Target: &commonpb.Target{
-						Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_SavedMetadata{
+				SavedMetadata: &ledgerpb.SavedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 							Addr: "bank",
 						}},
 					},
-					Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
+					Metadata: &ledgerpb.Metadata{Entries: metadata.Metadata{
 						"label": "Bank Account",
 					}},
 				},
@@ -403,11 +403,11 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 			WithLedgerID(ledgerID).
 			WithID(3).
 			WithDate(now.Add(2 * time.Second)),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_DeletedMetadata{
-				DeletedMetadata: &commonpb.DeletedMetadata{
-					Target: &commonpb.Target{
-						Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+		ledgerpb.NewLog(&ledgerpb.LogPayload{
+			Payload: &ledgerpb.LogPayload_DeletedMetadata{
+				DeletedMetadata: &ledgerpb.DeletedMetadata{
+					Target: &ledgerpb.Target{
+						Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 							Addr: "bank",
 						}},
 					},

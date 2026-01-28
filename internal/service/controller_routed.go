@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
@@ -31,7 +29,7 @@ func (b *RoutedController) getCtrl() (Controller, error) {
 	return NewLedgerGrpcClient(ledgerpb.NewLedgerServiceClient(grpcConn)), nil
 }
 
-func (b *RoutedController) CreateLedger(ctx context.Context, req *raftpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
+func (b *RoutedController) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
 	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -39,7 +37,7 @@ func (b *RoutedController) CreateLedger(ctx context.Context, req *raftpb.CreateL
 	return clusterLeader.CreateLedger(ctx, req)
 }
 
-func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	ledgerInfo, err := b.localController.GetLedgerByName(ctx, name)
 	if err != nil && !errors.Is(err, &ledgerpb.NotFoundError{}) {
 		return nil, err
@@ -68,7 +66,7 @@ func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {
+func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
 	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -76,7 +74,7 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) CreateTransaction(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) CreateTransaction(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -84,7 +82,7 @@ func (b *RoutedController) CreateTransaction(ctx context.Context, ledger uint32,
 
 	return ctrl.CreateTransaction(ctx, ledger, parameters)
 }
-func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -92,7 +90,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, tr
 
 	return ctrl.GetTransaction(ctx, ledger, transactionID)
 }
-func (b *RoutedController) RevertTransaction(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) RevertTransaction(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -100,7 +98,7 @@ func (b *RoutedController) RevertTransaction(ctx context.Context, ledger uint32,
 
 	return ctrl.RevertTransaction(ctx, ledger, parameters)
 }
-func (b *RoutedController) SaveTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) SaveTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -108,7 +106,7 @@ func (b *RoutedController) SaveTransactionMetadata(ctx context.Context, ledger u
 
 	return ctrl.SaveTransactionMetadata(ctx, ledger, parameters)
 }
-func (b *RoutedController) SaveAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) SaveAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -116,7 +114,7 @@ func (b *RoutedController) SaveAccountMetadata(ctx context.Context, ledger uint3
 
 	return ctrl.SaveAccountMetadata(ctx, ledger, parameters)
 }
-func (b *RoutedController) DeleteTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) DeleteTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -124,7 +122,7 @@ func (b *RoutedController) DeleteTransactionMetadata(ctx context.Context, ledger
 
 	return ctrl.DeleteTransactionMetadata(ctx, ledger, parameters)
 }
-func (b *RoutedController) DeleteAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) DeleteAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -132,7 +130,7 @@ func (b *RoutedController) DeleteAccountMetadata(ctx context.Context, ledger uin
 
 	return ctrl.DeleteAccountMetadata(ctx, ledger, parameters)
 }
-func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.Log) error {
+func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *ledgerpb.Log) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return err
@@ -148,7 +146,7 @@ func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWr
 
 	return ctrl.Export(ctx, ledger, w)
 }
-func (b *RoutedController) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (b *RoutedController) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err

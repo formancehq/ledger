@@ -21,7 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
@@ -180,13 +180,13 @@ func (s *Store) Close(ctx context.Context) error {
 	return nil
 }
 
-// logCursor implements store.Cursor[*commonpb.Log] for Pebble.
+// logCursor implements store.Cursor[*ledgerpb.Log] for Pebble.
 type logCursor struct {
 	iter *pebble.Iterator
 	s    *Store
 }
 
-func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
+func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 	if !c.iter.Valid() {
 		if err := c.iter.Error(); err != nil {
 			return nil, err
@@ -201,7 +201,7 @@ func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
 	}
 
 	// Unmarshal protobuf Log
-	log := &commonpb.Log{}
+	log := &ledgerpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
 		return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
 	}
@@ -223,7 +223,7 @@ func (c *logCursor) Close() error {
 // Logs are returned in ascending order by id.
 // from: optional log id to start from (0 = from beginning).
 // to: optional log id to stop at (0 = until end, inclusive).
-func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	// Set up iterator bounds
 
 	buf := bytes.NewBuffer(nil)
@@ -266,12 +266,12 @@ func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to u
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 	return s.GetLogWithID(ctx, ledger, id)
 }
 
 // GetLogWithID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
+func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -290,7 +290,7 @@ func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*co
 	}()
 
 	// Unmarshal protobuf Log
-	log := &commonpb.Log{}
+	log := &ledgerpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
 		return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
 	}
@@ -304,8 +304,8 @@ func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*co
 
 // GetBalances retrieves balances from Pebble for a specific ledger (implements store.Store)
 // Sums all balance diffs for each account/asset combination
-func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
-	result := make(commonpb.Balances)
+func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+	result := make(ledgerpb.Balances)
 
 	buf := bytes.NewBuffer(nil)
 
@@ -350,7 +350,7 @@ func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map
 					return nil, fmt.Errorf("reading balance diff value: %w", err)
 				}
 
-				diff := &commonpb.BigInt{}
+				diff := &ledgerpb.BigInt{}
 				if err := proto.Unmarshal(valueBytes, diff); err != nil {
 					_ = iter.Close()
 					return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
@@ -612,7 +612,7 @@ func (s *Store) GetLastLogID(ctx context.Context, id uint32) (uint64, error) {
 		return 0, fmt.Errorf("reading log value: %w", err)
 	}
 
-	log := &commonpb.Log{}
+	log := &ledgerpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
 		return 0, fmt.Errorf("unmarshaling log from protobuf: %w", err)
 	}
@@ -621,7 +621,7 @@ func (s *Store) GetLastLogID(ctx context.Context, id uint32) (uint64, error) {
 }
 
 // ListLedgers returns all registered ledgers.
-func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+func (s *Store) ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error) {
 	// Create bounds for ledger info prefix
 	lowerBound := []byte{keyPrefixLedgerInfo}
 	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -637,14 +637,14 @@ func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 		_ = iter.Close()
 	}()
 
-	var ledgers []*commonpb.LedgerInfo
+	var ledgers []*ledgerpb.LedgerInfo
 	for iter.First(); iter.Valid(); iter.Next() {
 		value, err := iter.ValueAndErr()
 		if err != nil {
 			return nil, fmt.Errorf("reading ledger info value: %w", err)
 		}
 
-		info := &commonpb.LedgerInfo{}
+		info := &ledgerpb.LedgerInfo{}
 		if err := proto.Unmarshal(value, info); err != nil {
 			return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
 		}
@@ -655,7 +655,7 @@ func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 }
 
 // GetLedgerByName retrieves a ledger by its name.
-func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (s *Store) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	// Iterate over all ledgers to find by name
 	ledgers, err := s.ListLedgers(ctx)
 	if err != nil {

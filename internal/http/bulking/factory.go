@@ -3,7 +3,7 @@ package bulking
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 type Handler interface {

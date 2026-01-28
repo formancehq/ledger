@@ -1,4 +1,4 @@
-package raftpb
+package ledgerpb
 
 func (state *LedgerState) GetNextTransactionID() uint64 {
 	ret := state.NextTransactionId

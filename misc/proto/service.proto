@@ -155,12 +155,13 @@ message GetLedgerByNameRequest {
 
 // LedgerAction represents a single action in a bulk request
 message LedgerAction {
-  string idempotency_key = 1;
+  uint32 ledger_id = 1;
+  string idempotency_key = 2;
   oneof data {
-    CreateTransactionRequestPayload create_transaction = 2;
-    common.SaveMetadataCommand add_metadata = 3;
-    RevertTransactionRequestPayload revert_transaction = 4;
-    common.DeleteMetadataCommand delete_metadata = 5;
+    CreateTransactionRequestPayload create_transaction = 3;
+    common.SaveMetadataCommand add_metadata = 4;
+    RevertTransactionRequestPayload revert_transaction = 5;
+    common.DeleteMetadataCommand delete_metadata = 6;
   }
 }
 

@@ -1,6 +1,5 @@
 package ledgerpb
 
-import "github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
 
 // RaftStatus represents the complete Raft status information
 type RaftStatus struct {
@@ -47,7 +46,7 @@ type ClusterState struct {
 	Nodes      []NodeInfo    `json:"nodes"`      // List of all nodes in the cluster
 	LocalNode  uint          `json:"localNode"`  // ID of the local node
 	RaftStatus *RaftStatus   `json:"raftStatus"` // Complete Raft status information
-	InnerState *raftpb.State `json:"innerState"`
+	InnerState *State `json:"innerState"`
 }
 
 // NodeInfo represents information about a node in the cluster

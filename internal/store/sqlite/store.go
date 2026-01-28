@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
@@ -280,13 +280,13 @@ func (s *Store) createTables(ctx context.Context) error {
 	return nil
 }
 
-// logCursor implements store.Cursor[*commonpb.Log] for SQLite.
+// logCursor implements store.Cursor[*ledgerpb.Log] for SQLite.
 type logCursor struct {
 	rows *sql.Rows
 	s    *Store
 }
 
-func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
+func (c *logCursor) Next(ctx context.Context) (*ledgerpb.Log, error) {
 	if !c.rows.Next() {
 		if err := c.rows.Err(); err != nil {
 			return nil, err
@@ -306,12 +306,12 @@ func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
 		return nil, fmt.Errorf("scanning log row: %w", err)
 	}
 
-	log := &commonpb.Log{LedgerId: ledger}
+	log := &ledgerpb.Log{LedgerId: ledger}
 	if id.Valid {
 		log.Id = uint64(id.Int64)
 	}
 
-	logPayload := &commonpb.LogPayload{}
+	logPayload := &ledgerpb.LogPayload{}
 	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
 		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
 	}
@@ -322,11 +322,11 @@ func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing date: %w", err)
 		}
-		log.Date = commonpb.NewTimestamp(time.New(date))
+		log.Date = ledgerpb.NewTimestamp(time.New(date))
 	}
 
 	if idempotencyKey.Valid {
-		log.Idempotency = &commonpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
+		log.Idempotency = &ledgerpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
 	}
 
 	return log, nil
@@ -340,7 +340,7 @@ func (c *logCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger.
-func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	query := `SELECT id, ledger, data, date, idempotency_key, idempotency_hash FROM logs WHERE ledger = ?`
 	args := []interface{}{ledger}
 	if from > 0 {
@@ -362,7 +362,7 @@ func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to u
 }
 
 // GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
+func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
 	row := s.stmtGetLogByID.QueryRowContext(ctx, ledger, id)
 
 	var logID sql.NullInt64
@@ -380,12 +380,12 @@ func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*comm
 		return nil, fmt.Errorf("getting log by id: %w", err)
 	}
 
-	log := &commonpb.Log{LedgerId: logLedger}
+	log := &ledgerpb.Log{LedgerId: logLedger}
 	if logID.Valid {
 		log.Id = uint64(logID.Int64)
 	}
 
-	logPayload := &commonpb.LogPayload{}
+	logPayload := &ledgerpb.LogPayload{}
 	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
 		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
 	}
@@ -396,11 +396,11 @@ func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*comm
 		if err != nil {
 			return nil, fmt.Errorf("parsing date: %w", err)
 		}
-		log.Date = commonpb.NewTimestamp(time.New(date))
+		log.Date = ledgerpb.NewTimestamp(time.New(date))
 	}
 
 	if idempotencyKey.Valid {
-		log.Idempotency = &commonpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
+		log.Idempotency = &ledgerpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
 	}
 
 	return log, nil
@@ -439,8 +439,8 @@ func (s *Store) Close(ctx context.Context) error {
 }
 
 // GetBalances retrieves balances from the balances table for a specific ledger
-func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
-	result := make(commonpb.Balances)
+func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+	result := make(ledgerpb.Balances)
 
 	for account, assets := range balanceQuery {
 		if len(assets) == 0 {
@@ -615,7 +615,7 @@ func (s *Store) GetLastLogID(ctx context.Context, ledger uint32) (uint64, error)
 }
 
 // GetLedgerByName retrieves a ledger by its name.
-func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (s *Store) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, name, metadata, created_at FROM ledgers WHERE name = ?`, name)
 
 	var id uint32
@@ -630,7 +630,7 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 		return nil, fmt.Errorf("querying ledger by name: %w", err)
 	}
 
-	info := &commonpb.LedgerInfo{
+	info := &ledgerpb.LedgerInfo{
 		Id:   id,
 		Name: ledgerName,
 	}
@@ -648,21 +648,21 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 		if err != nil {
 			return nil, fmt.Errorf("parsing created_at: %w", err)
 		}
-		info.CreatedAt = commonpb.NewTimestamp(time.New(createdAt))
+		info.CreatedAt = ledgerpb.NewTimestamp(time.New(createdAt))
 	}
 
 	return info, nil
 }
 
 // ListLedgers returns all registered ledgers.
-func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+func (s *Store) ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error) {
 	rows, err := s.stmtListLedgers.QueryContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("querying ledgers: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var ledgers []*commonpb.LedgerInfo
+	var ledgers []*ledgerpb.LedgerInfo
 	for rows.Next() {
 		var id uint32
 		var name string
@@ -673,7 +673,7 @@ func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 			return nil, fmt.Errorf("scanning ledger row: %w", err)
 		}
 
-		info := &commonpb.LedgerInfo{
+		info := &ledgerpb.LedgerInfo{
 			Id:   id,
 			Name: name,
 		}
@@ -691,7 +691,7 @@ func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 			if err != nil {
 				return nil, fmt.Errorf("parsing created_at: %w", err)
 			}
-			info.CreatedAt = commonpb.NewTimestamp(time.New(createdAt))
+			info.CreatedAt = ledgerpb.NewTimestamp(time.New(createdAt))
 		}
 
 		ledgers = append(ledgers, info)

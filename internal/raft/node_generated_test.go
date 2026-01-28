@@ -9,7 +9,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	store "github.com/formancehq/ledger-v3-poc/internal/store"
 	raftpb "go.etcd.io/etcd/raft/v3/raftpb"
 	gomock "go.uber.org/mock/gomock"
@@ -39,10 +39,10 @@ func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
-	ret0, _ := ret[0].(store.Cursor[*commonpb.Log])
+	ret0, _ := ret[0].(store.Cursor[*ledgerpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -60,19 +60,19 @@ type MockLogStreamerGetAllLogsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockLogStreamerGetAllLogsCall) Return(arg0 store.Cursor[*commonpb.Log], arg1 error) *MockLogStreamerGetAllLogsCall {
+func (c *MockLogStreamerGetAllLogsCall) Return(arg0 store.Cursor[*ledgerpb.Log], arg1 error) *MockLogStreamerGetAllLogsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockLogStreamerGetAllLogsCall) Do(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
+func (c *MockLogStreamerGetAllLogsCall) Do(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*ledgerpb.Log], error)) *MockLogStreamerGetAllLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLogStreamerGetAllLogsCall) DoAndReturn(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
+func (c *MockLogStreamerGetAllLogsCall) DoAndReturn(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*ledgerpb.Log], error)) *MockLogStreamerGetAllLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
@@ -45,7 +45,7 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 }
 
 // RegisterLedger registers a new ledger in the store.
-func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
+func (b *Batch) RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -78,7 +78,7 @@ func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) e
 }
 
 // AppendLogs appends logs to the batch.
-func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+func (b *Batch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -130,7 +130,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -146,7 +146,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 }
 
 // SaveAccountMetadata saves metadata for an account.
-func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error {
+func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}

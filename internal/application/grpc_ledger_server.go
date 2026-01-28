@@ -6,9 +6,7 @@ import (
 	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/grpc"
 )
@@ -26,7 +24,7 @@ func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller) ledg
 	}
 }
 
-func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.Log, error) {
 	impl.logger.WithFields(map[string]any{"reference": req.Payload.Reference}).Debugf("CreateTransaction request received")
 
 	return impl.ctrl.CreateTransaction(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
@@ -66,47 +64,47 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *ledgerpb.StreamLogsRequest,
 	return nil
 }
 
-func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.Log, error) {
 	return impl.ctrl.SaveAccountMetadata(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	})
 }
 
-func (impl *LedgerServiceServerImpl) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.Log, error) {
 	return impl.ctrl.SaveTransactionMetadata(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	})
 }
 
-func (impl *LedgerServiceServerImpl) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.Log, error) {
 	return impl.ctrl.DeleteAccountMetadata(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	})
 }
 
-func (impl *LedgerServiceServerImpl) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.Log, error) {
 	return impl.ctrl.DeleteTransactionMetadata(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	})
 }
 
-func (impl *LedgerServiceServerImpl) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*commonpb.Log, error) {
+func (impl *LedgerServiceServerImpl) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.Log, error) {
 	return impl.ctrl.RevertTransaction(ctx, req.Parameters.LedgerId, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 		IdempotencyKey: req.Parameters.IdempotencyKey,
 		Input:          req.Payload,
 	})
 }
 
-func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *ledgerpb.GetTransactionRequest) (*commonpb.Transaction, error) {
+func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *ledgerpb.GetTransactionRequest) (*ledgerpb.Transaction, error) {
 	return impl.ctrl.GetTransaction(ctx, req.LedgerId, req.TransactionId)
 }
 
-func (impl *LedgerServiceServerImpl) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
-	return impl.ctrl.CreateLedger(ctx, &raftpb.CreateLedgerCommand{
+func (impl *LedgerServiceServerImpl) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
+	return impl.ctrl.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
 		Name:     req.Name,
 		Metadata: req.Metadata,
 	})
@@ -135,7 +133,7 @@ func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *l
 	}, nil
 }
 
-func (impl *LedgerServiceServerImpl) GetLedgerByName(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
+func (impl *LedgerServiceServerImpl) GetLedgerByName(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
 	return impl.ctrl.GetLedgerByName(ctx, req.Name)
 }
 

@@ -9,9 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
-	raftcommand "github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -39,7 +37,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "test-account",
-				Metadata: &commonpb.Metadata{Entries: md},
+				Metadata: &ledgerpb.Metadata{Entries: md},
 			},
 		})
 		require.NoError(t, err)
@@ -55,7 +53,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 			Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 				Address:  "",
-				Metadata: &commonpb.Metadata{Entries: md1},
+				Metadata: &ledgerpb.Metadata{Entries: md1},
 			},
 		})
 		require.Error(t, err)
@@ -87,7 +85,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		md := commonpb.Metadata{
+		md := ledgerpb.Metadata{
 			Entries: metadata.Metadata{
 				"tx_label": "Test Transaction",
 			},
@@ -107,7 +105,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		md := &commonpb.Metadata{
+		md := &ledgerpb.Metadata{
 			Entries: metadata.Metadata{"key": "value"},
 		}
 		log, err := ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
@@ -285,18 +283,18 @@ func expectApplyWithSequentialIDs(engine *MockEngine, times int) {
 	var counter uint64
 	engine.EXPECT().
 		Apply(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, cmd *raftcommand.Command) (any, error) {
+		DoAndReturn(func(_ context.Context, cmd *ledgerpb.Command) (any, error) {
 			counter++
 			// Extract idempotency from the command if present
-			var idempotency *commonpb.Idempotency
-			if len(cmd.Actions) > 0 && cmd.Actions[0].ActionType == raftcommand.ActionType_CreateLog {
-				var createLogCmd raftcommand.CreateLogCommand
+			var idempotency *ledgerpb.Idempotency
+			if len(cmd.Actions) > 0 && cmd.Actions[0].ActionType == ledgerpb.ActionType_CreateLog {
+				var createLogCmd ledgerpb.CreateLogCommand
 				if err := proto.Unmarshal(cmd.Actions[0].Data, &createLogCmd); err == nil {
 					idempotency = createLogCmd.Idempotency
 				}
 			}
 			// Return []any with a log as first element (matching the Apply return format)
-			return []any{&commonpb.Log{
+			return []any{&ledgerpb.Log{
 				Id:          counter,
 				Idempotency: idempotency,
 			}}, nil
@@ -318,17 +316,17 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		logID := uint64(1)
 
 		// Create original transaction log
-		originalTx := &commonpb.Transaction{
+		originalTx := &ledgerpb.Transaction{
 			Id: transactionID,
-			Postings: []*commonpb.Posting{
-				commonpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
 			},
 		}
-		originalLog := &commonpb.Log{
+		originalLog := &ledgerpb.Log{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
 				},
@@ -347,7 +345,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			Return(originalLog, nil)
 		runtimeStore.EXPECT().
 			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
-			Return(commonpb.Balances{
+			Return(ledgerpb.Balances{
 				"account-1": map[string]*big.Int{
 					"USD": big.NewInt(100),
 				},
@@ -429,17 +427,17 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		logID := uint64(1)
 
 		// Create original transaction log
-		originalTx := &commonpb.Transaction{
+		originalTx := &ledgerpb.Transaction{
 			Id: transactionID,
-			Postings: []*commonpb.Posting{
-				commonpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
 			},
 		}
-		originalLog := &commonpb.Log{
+		originalLog := &ledgerpb.Log{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
 				},
@@ -477,19 +475,19 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		logID := uint64(1)
 
 		// Create original transaction log with timestamp
-		originalTimestamp := commonpb.NewTimestamp(libtime.New(time.Now()))
-		originalTx := &commonpb.Transaction{
+		originalTimestamp := ledgerpb.NewTimestamp(libtime.New(time.Now()))
+		originalTx := &ledgerpb.Transaction{
 			Id:        transactionID,
 			Timestamp: originalTimestamp,
-			Postings: []*commonpb.Posting{
-				commonpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
+			Postings: []*ledgerpb.Posting{
+				ledgerpb.NewPosting("world", "account-1", "USD", big.NewInt(100)),
 			},
 		}
-		originalLog := &commonpb.Log{
+		originalLog := &ledgerpb.Log{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{
+			Data: &ledgerpb.LogPayload{
+				Payload: &ledgerpb.LogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
 				},
@@ -508,7 +506,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			Return(originalLog, nil)
 		runtimeStore.EXPECT().
 			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
-			Return(commonpb.Balances{
+			Return(ledgerpb.Balances{
 				"account-1": map[string]*big.Int{
 					"USD": big.NewInt(100),
 				},
@@ -518,14 +516,14 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		revertLogID := uint64(1)
 		engine.EXPECT().
 			Apply(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, cmd *raftcommand.Command) (any, error) {
-				return []any{&commonpb.Log{
+			DoAndReturn(func(_ context.Context, cmd *ledgerpb.Command) (any, error) {
+				return []any{&ledgerpb.Log{
 					Id: revertLogID,
-					Data: &commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+					Data: &ledgerpb.LogPayload{
+						Payload: &ledgerpb.LogPayload_RevertedTransaction{
+							RevertedTransaction: &ledgerpb.RevertedTransaction{
 								RevertedTransactionId: originalTx.Id,
-								RevertTransaction: &commonpb.Transaction{
+								RevertTransaction: &ledgerpb.Transaction{
 									Id:        2,
 									Timestamp: originalTimestamp,
 								},
