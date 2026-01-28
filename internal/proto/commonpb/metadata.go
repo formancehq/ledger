@@ -1,7 +1,6 @@
-package ledgerpb
+package commonpb
 
 const (
 	MetaTargetTypeAccount     = "ACCOUNT"
 	MetaTargetTypeTransaction = "TRANSACTION"
 )
-

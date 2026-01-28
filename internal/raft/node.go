@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -786,7 +786,7 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node) Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error) {
+func (node *Node) Apply(ctx context.Context, cmd *raftcmdpb.Command) (any, error) {
 	future := newFuture()
 	start := time.Now()
 
@@ -838,7 +838,7 @@ func (node *Node) GetLeader() uint64 {
 }
 
 // GetClusterState returns the current state of the Raft cluster
-func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, error) {
+func (node *Node) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState, error) {
 	status := node.rawNode.Status()
 
 	// Get leader
@@ -859,7 +859,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 	}
 
 	// Build nodes list from progress
-	nodes := make([]ledgerpb.NodeInfo, 0)
+	nodes := make([]raftcmdpb.NodeInfo, 0)
 	for id := range status.Progress {
 		suffrage := "Voter"
 
@@ -871,7 +871,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 		//	address = rawNode.transport.GetPeerAddress(id)
 		//}
 
-		nodes = append(nodes, ledgerpb.NodeInfo{
+		nodes = append(nodes, raftcmdpb.NodeInfo{
 			ID:       uint(id),
 			Address:  address,
 			Suffrage: suffrage,
@@ -879,7 +879,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 	}
 
 	// Build progress information map
-	progress := make(map[uint64]ledgerpb.ProgressInfo)
+	progress := make(map[uint64]raftcmdpb.ProgressInfo)
 	for id, prog := range status.Progress {
 		// Convert StateType to string
 		stateStr := "Unknown"
@@ -892,7 +892,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 			stateStr = "Snapshot"
 		}
 
-		progress[id] = ledgerpb.ProgressInfo{
+		progress[id] = raftcmdpb.ProgressInfo{
 			Match:           prog.Match,
 			Next:            prog.Next,
 			State:           stateStr,
@@ -916,7 +916,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 	}
 
 	// Build complete Raft status
-	raftStatus := &ledgerpb.RaftStatus{
+	raftStatus := &raftcmdpb.RaftStatus{
 		State:     stateStr,
 		Term:      hardState.Term,
 		Leader:    leaderID,
@@ -927,7 +927,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, 
 		Progress:  progress,
 	}
 
-	return &ledgerpb.ClusterState{
+	return &raftcmdpb.ClusterState{
 		State:      stateStr,
 		Leader:     uint(leaderID),
 		Nodes:      nodes,

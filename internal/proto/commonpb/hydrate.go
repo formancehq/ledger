@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import (
 	"fmt"
@@ -38,4 +38,3 @@ func HydrateLog(logType LogType, data []byte) (LogPayloadInterface, error) {
 
 	return reflect.ValueOf(payload).Interface().(LogPayloadInterface), nil
 }
-

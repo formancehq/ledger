@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import (
 	"database/sql/driver"
@@ -89,4 +89,3 @@ func GetLogTypeFromLog(log *Log) LogType {
 	}
 	return GetLogType(log.Data)
 }
-

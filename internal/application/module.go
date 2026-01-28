@@ -14,7 +14,7 @@ import (
 	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
@@ -202,7 +202,7 @@ func Module() fx.Option {
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
-			func(grpcServer *grpcserver.Server, ledgerServiceServer ledgerpb.LedgerServiceServer) error {
+			func(grpcServer *grpcserver.Server, ledgerServiceServer servicepb.LedgerServiceServer) error {
 				RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
 				return nil
 			},

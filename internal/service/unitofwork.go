@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/numscript"
 )
@@ -50,7 +50,7 @@ func (s *unitOfWork) GetLogIDForTransactionID(ctx context.Context, ledgerID uint
 	return s.Store.GetLogIDForTransactionID(ctx, ledgerID, id)
 }
 
-func (s *unitOfWork) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*ledgerpb.Log, error) {
+func (s *unitOfWork) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*commonpb.Log, error) {
 	return s.Store.GetLogByID(ctx, ledgerID, id)
 }
 

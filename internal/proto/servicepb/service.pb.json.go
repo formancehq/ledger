@@ -1,21 +1,22 @@
-package ledgerpb
+package servicepb
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // MarshalJSON implements json.Marshaler for CreateTransactionRequestPayload
 func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		AccountMetadata map[string]*Metadata `json:"accountMetadata,omitempty"`
+		AccountMetadata map[string]*commonpb.Metadata `json:"accountMetadata,omitempty"`
 		Metadata        map[string]string             `json:"metadata,omitempty"`
-		Timestamp       *Timestamp           `json:"timestamp,omitempty"`
+		Timestamp       *commonpb.Timestamp           `json:"timestamp,omitempty"`
 		Reference       string                        `json:"reference,omitempty"`
-		Postings        []*Posting           `json:"postings,omitempty"`
-		Script          *Script              `json:"script,omitempty"`
+		Postings        []*commonpb.Posting           `json:"postings,omitempty"`
+		Script          *commonpb.Script              `json:"script,omitempty"`
 	}{
 		AccountMetadata: x.AccountMetadata,
 		Metadata:        x.Metadata,
@@ -140,7 +141,7 @@ func GetLedgerActionType(action *LedgerAction) string {
 }
 
 // unmarshalSaveMetadataCommand unmarshals JSON into SaveMetadataCommand
-func unmarshalSaveMetadataCommand(data json.RawValue) (*SaveMetadataCommand, error) {
+func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCommand, error) {
 	type rawReq struct {
 		TargetType string            `json:"targetType"`
 		TargetID   json.RawValue     `json:"targetId"`
@@ -151,9 +152,9 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*SaveMetadataCommand, err
 		return nil, err
 	}
 
-	return &SaveMetadataCommand{
-		Target:   ParseTarget(raw.TargetType, raw.TargetID),
-		Metadata: &Metadata{Entries: raw.Metadata},
+	return &commonpb.SaveMetadataCommand{
+		Target:   commonpb.ParseTarget(raw.TargetType, raw.TargetID),
+		Metadata: &commonpb.Metadata{Entries: raw.Metadata},
 	}, nil
 }
 
@@ -179,7 +180,7 @@ func unmarshalRevertTransactionRequestPayload(data json.RawValue) (*RevertTransa
 }
 
 // unmarshalDeleteMetadataCommand unmarshals JSON into DeleteMetadataCommand
-func unmarshalDeleteMetadataCommand(data json.RawValue) (*DeleteMetadataCommand, error) {
+func unmarshalDeleteMetadataCommand(data json.RawValue) (*commonpb.DeleteMetadataCommand, error) {
 	type rawReq struct {
 		TargetType string        `json:"targetType"`
 		TargetID   json.RawValue `json:"targetId"`
@@ -190,35 +191,35 @@ func unmarshalDeleteMetadataCommand(data json.RawValue) (*DeleteMetadataCommand,
 		return nil, err
 	}
 
-	return &DeleteMetadataCommand{
-		Target: ParseTarget(raw.TargetType, raw.TargetID),
+	return &commonpb.DeleteMetadataCommand{
+		Target: commonpb.ParseTarget(raw.TargetType, raw.TargetID),
 		Key:    raw.Key,
 	}, nil
 }
 
 // parseTarget parses targetType and targetId into a Target message
-// Deprecated: use ParseTarget instead
-func parseTarget(targetType string, targetID json.RawValue) *Target {
+// Deprecated: use commonpb.ParseTarget instead
+func parseTarget(targetType string, targetID json.RawValue) *commonpb.Target {
 	if len(targetID) == 0 {
 		return nil
 	}
 
 	switch strings.ToUpper(targetType) {
-	case MetaTargetTypeAccount:
+	case commonpb.MetaTargetTypeAccount:
 		var addr string
 		if err := json.Unmarshal(targetID, &addr); err == nil {
-			return &Target{
-				Target: &Target_Account{
-					Account: &TargetAccount{Addr: addr},
+			return &commonpb.Target{
+				Target: &commonpb.Target_Account{
+					Account: &commonpb.TargetAccount{Addr: addr},
 				},
 			}
 		}
-	case MetaTargetTypeTransaction:
+	case commonpb.MetaTargetTypeTransaction:
 		var id uint64
 		if err := json.Unmarshal(targetID, &id); err == nil {
-			return &Target{
-				Target: &Target_Transaction{
-					Transaction: &TargetTransaction{Id: id},
+			return &commonpb.Target{
+				Target: &commonpb.Target_Transaction{
+					Transaction: &commonpb.TargetTransaction{Id: id},
 				},
 			}
 		}

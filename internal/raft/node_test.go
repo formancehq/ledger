@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	storepkg "github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
@@ -477,8 +478,8 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 }
 
 // createLedger is a test helper that creates a ledger via the node's Apply method
-func createLedger(ctx context.Context, node *Node, name string) (*ledgerpb.LedgerInfo, error) {
-	cmd := NewCreateLedgerCommand(&ledgerpb.CreateLedgerCommand{
+func createLedger(ctx context.Context, node *Node, name string) (*commonpb.LedgerInfo, error) {
+	cmd := NewCreateLedgerCommand(&raftcmdpb.CreateLedgerCommand{
 		Name: name,
 	})
 	ret, err := node.Apply(ctx, cmd)
@@ -486,7 +487,7 @@ func createLedger(ctx context.Context, node *Node, name string) (*ledgerpb.Ledge
 		return nil, err
 	}
 	results := ret.([]any)
-	return results[0].(*ledgerpb.LedgerInfo), nil
+	return results[0].(*commonpb.LedgerInfo), nil
 }
 
 func TestClusterBasic(t *testing.T) {
@@ -519,14 +520,14 @@ func TestClusterBasic(t *testing.T) {
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
 	// Create a transaction
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -582,14 +583,14 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	_, err = createLedger(ctx, clusterNode.Node, "default")
 	require.NoError(t, err)
 
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -705,14 +706,14 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 		return delegate.ApplySnapshot(snapshot)
 	})
 
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -840,14 +841,14 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	t.Logf("Disconnecting follower node %d", follower.ID)
 	cluster.DisconnectNode(follower.ID)
 
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -870,7 +871,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*ledgerpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
@@ -1033,14 +1034,14 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	t.Logf("Disconnecting follower node %d", follower.ID)
 	cluster.DisconnectNode(follower.ID)
 
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -1075,7 +1076,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
 	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*ledgerpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
 		return nil, errSyncFailed
 	})
@@ -1255,14 +1256,14 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Verify the restarted follower can still receive replication
 	// Create another transaction on the leader
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},
@@ -1322,14 +1323,14 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
-	createTransaction := func() *ledgerpb.Command {
-		return NewCreateLogCommand(&ledgerpb.CommandInput{
-			Command: &ledgerpb.CommandInput_AppendTransaction{
-				AppendTransaction: &ledgerpb.AppendTransactionCommand{
-					Postings: []*ledgerpb.Posting{{
+	createTransaction := func() *raftcmdpb.Command {
+		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+			Command: &raftcmdpb.CommandInput_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					Postings: []*commonpb.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewBigInt(big.NewInt(100)),
+						Amount:      commonpb.NewBigInt(big.NewInt(100)),
 						Asset:       "USD",
 					}},
 				},

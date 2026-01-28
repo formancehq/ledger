@@ -5,7 +5,8 @@ import (
 	"encoding/binary"
 
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -22,36 +23,36 @@ func GenerateRandomID() uint64 {
 }
 
 // NewAction creates a new Action with the given type and data
-func NewAction(actionType ledgerpb.ActionType, msg proto.Message) *ledgerpb.Action {
+func NewAction(actionType raftcmdpb.ActionType, msg proto.Message) *raftcmdpb.Action {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		panic(err)
 	}
-	return &ledgerpb.Action{
+	return &raftcmdpb.Action{
 		ActionType: actionType,
 		Data:       data,
 	}
 }
 
 // NewCommand creates a new Command with the given actions
-func NewCommand(actions ...*ledgerpb.Action) *ledgerpb.Command {
-	return &ledgerpb.Command{
+func NewCommand(actions ...*raftcmdpb.Action) *raftcmdpb.Command {
+	return &raftcmdpb.Command{
 		Id:      GenerateRandomID(),
 		Actions: actions,
-		Date:    ledgerpb.NewTimestamp(time.Now()),
+		Date:    commonpb.NewTimestamp(time.Now()),
 	}
 }
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateLedgerCommand(cmd *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
-	action := NewAction(ledgerpb.ActionType_CreateLedger, cmd)
+func NewCreateLedgerCommand(cmd *raftcmdpb.CreateLedgerCommand) *raftcmdpb.Command {
+	action := NewAction(raftcmdpb.ActionType_CreateLedger, cmd)
 	return NewCommand(action)
 }
 
 // NewDeleteLedgerCommand creates a new DeleteLedgerCommand
-func NewDeleteLedgerCommand(id uint32) *ledgerpb.Command {
-	action := NewAction(ledgerpb.ActionType_DeleteLedger, &ledgerpb.DeleteLedgerCommand{
+func NewDeleteLedgerCommand(id uint32) *raftcmdpb.Command {
+	action := NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
 		Id: id,
 	})
 	return NewCommand(action)
@@ -60,11 +61,11 @@ func NewDeleteLedgerCommand(id uint32) *ledgerpb.Command {
 // UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
 	switch cmd := v.(type) {
-	case *ledgerpb.CreateLedgerCommand:
+	case *raftcmdpb.CreateLedgerCommand:
 		return proto.Unmarshal(data, cmd)
-	case *ledgerpb.DeleteLedgerCommand:
+	case *raftcmdpb.DeleteLedgerCommand:
 		return proto.Unmarshal(data, cmd)
-	case *ledgerpb.CreateLogCommand:
+	case *raftcmdpb.CreateLogCommand:
 		return proto.Unmarshal(data, cmd)
 	default:
 		return proto.Unmarshal(data, v.(proto.Message))
@@ -72,8 +73,8 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 }
 
 // NewCreateLogAction creates a new action for creating a log
-func NewCreateLogAction(input *ledgerpb.CommandInput, ledgerID uint32, idempotency *ledgerpb.Idempotency) *ledgerpb.Action {
-	return NewAction(ledgerpb.ActionType_CreateLog, &ledgerpb.CreateLogCommand{
+func NewCreateLogAction(input *raftcmdpb.CommandInput, ledgerID uint32, idempotency *commonpb.Idempotency) *raftcmdpb.Action {
+	return NewAction(raftcmdpb.ActionType_CreateLog, &raftcmdpb.CreateLogCommand{
 		Input:       input,
 		Idempotency: idempotency,
 		LedgerId:    ledgerID,
@@ -81,6 +82,6 @@ func NewCreateLogAction(input *ledgerpb.CommandInput, ledgerID uint32, idempoten
 }
 
 // NewCreateLogCommand creates a new command with a single CreateLog action
-func NewCreateLogCommand(input *ledgerpb.CommandInput, ledgerID uint32, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
+func NewCreateLogCommand(input *raftcmdpb.CommandInput, ledgerID uint32, idempotency *commonpb.Idempotency) *raftcmdpb.Command {
 	return NewCommand(NewCreateLogAction(input, ledgerID, idempotency))
 }

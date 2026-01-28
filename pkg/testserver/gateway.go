@@ -8,7 +8,8 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
@@ -120,12 +121,12 @@ func (g *Gateway) Start(ctx context.Context) error {
 			gateway: g,
 		})
 
-		ledgerpb.RegisterLedgerServiceServer(server, &ledgerServiceGateway{
+		servicepb.RegisterLedgerServiceServer(server, &ledgerServiceGateway{
 			logger: g.logger.WithFields(map[string]any{
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: ledgerpb.NewLedgerServiceClient(conn),
+			client: servicepb.NewLedgerServiceClient(conn),
 		})
 
 		// Start listening
@@ -335,56 +336,56 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 
 // ledgerServiceGateway forwards LedgerService calls
 type ledgerServiceGateway struct {
-	ledgerpb.UnimplementedLedgerServiceServer
+	servicepb.UnimplementedLedgerServiceServer
 	logger logging.Logger
-	client ledgerpb.LedgerServiceClient
+	client servicepb.LedgerServiceClient
 }
 
-func (g *ledgerServiceGateway) CreateTransaction(ctx context.Context, req *ledgerpb.CreateTransactionRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) CreateTransaction(ctx context.Context, req *servicepb.CreateTransactionRequest) (*commonpb.Log, error) {
 	return g.client.CreateTransaction(ctx, req)
 }
 
-func (g *ledgerServiceGateway) RevertTransaction(ctx context.Context, req *ledgerpb.RevertTransactionRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) RevertTransaction(ctx context.Context, req *servicepb.RevertTransactionRequest) (*commonpb.Log, error) {
 	return g.client.RevertTransaction(ctx, req)
 }
 
-func (g *ledgerServiceGateway) SaveAccountMetadata(ctx context.Context, req *ledgerpb.SaveAccountMetadataRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) SaveAccountMetadata(ctx context.Context, req *servicepb.SaveAccountMetadataRequest) (*commonpb.Log, error) {
 	return g.client.SaveAccountMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) SaveTransactionMetadata(ctx context.Context, req *ledgerpb.SaveTransactionMetadataRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) SaveTransactionMetadata(ctx context.Context, req *servicepb.SaveTransactionMetadataRequest) (*commonpb.Log, error) {
 	return g.client.SaveTransactionMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) DeleteAccountMetadata(ctx context.Context, req *ledgerpb.DeleteAccountMetadataRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) DeleteAccountMetadata(ctx context.Context, req *servicepb.DeleteAccountMetadataRequest) (*commonpb.Log, error) {
 	return g.client.DeleteAccountMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) DeleteTransactionMetadata(ctx context.Context, req *ledgerpb.DeleteTransactionMetadataRequest) (*ledgerpb.Log, error) {
+func (g *ledgerServiceGateway) DeleteTransactionMetadata(ctx context.Context, req *servicepb.DeleteTransactionMetadataRequest) (*commonpb.Log, error) {
 	return g.client.DeleteTransactionMetadata(ctx, req)
 }
 
-func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerRequest) (*ledgerpb.LedgerInfo, error) {
+func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return g.client.CreateLedger(ctx, req)
 }
 
-func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *ledgerpb.DeleteLedgerRequest) (*ledgerpb.DeleteLedgerResponse, error) {
+func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
 	return g.client.DeleteLedger(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *ledgerpb.GetAllLedgersRequest) (*ledgerpb.GetAllLedgersResponse, error) {
+func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *servicepb.GetAllLedgersRequest) (*servicepb.GetAllLedgersResponse, error) {
 	return g.client.GetAllLedgersInfo(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetLedgerInfo(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
+func (g *ledgerServiceGateway) GetLedgerInfo(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedgerByName(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *ledgerpb.GetLedgerByNameRequest) (*ledgerpb.LedgerInfo, error) {
+func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedgerByName(ctx, req)
 }
 
-func (g *ledgerServiceGateway) StreamLogs(req *ledgerpb.StreamLogsRequest, stream ledgerpb.LedgerService_StreamLogsServer) error {
+func (g *ledgerServiceGateway) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
 	ctx := stream.Context()
 
 	// Create client stream to backend

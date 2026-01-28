@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -30,7 +30,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := &ledgerpb.CreateLedgerCommand{}
+	req := &raftcmdpb.CreateLedgerCommand{}
 	unmarshalOptions := protojson.UnmarshalOptions{DiscardUnknown: true}
 	if err := unmarshalOptions.Unmarshal(body, req); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))

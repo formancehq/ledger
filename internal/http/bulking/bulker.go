@@ -12,7 +12,8 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
@@ -25,7 +26,7 @@ type Bulker struct {
 	tracer      trace.Tracer
 }
 
-func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.LedgerActionResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *servicepb.LedgerActionResult, continueOnFailure, parallel bool) bool {
 
 	submit := func(fn func()) {
 		fn()
@@ -85,7 +86,7 @@ func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.Ledge
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.LedgerActionResult, bulkOptions BulkingOptions) error {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *servicepb.LedgerActionResult, bulkOptions BulkingOptions) error {
 	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
 		attribute.Bool("atomic", bulkOptions.Atomic),
 		attribute.Bool("parallel", bulkOptions.Parallel),
@@ -112,32 +113,32 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.Ledge
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction) (*ledgerpb.Log, error) {
+func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerAction) (*commonpb.Log, error) {
 	switch data := elem.Data.(type) {
-	case *ledgerpb.LedgerAction_CreateTransaction:
-		return b.ledger.CreateTransaction(ctx, b.ledgerID, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+	case *servicepb.LedgerAction_CreateTransaction:
+		return b.ledger.CreateTransaction(ctx, b.ledgerID, service.Parameters[*servicepb.CreateTransactionRequestPayload]{
 			IdempotencyKey: elem.IdempotencyKey,
 			Input:          data.CreateTransaction,
 		})
 
-	case *ledgerpb.LedgerAction_AddMetadata:
+	case *servicepb.LedgerAction_AddMetadata:
 		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
 			return nil, fmt.Errorf("missing add metadata data or target")
 		}
 
 		switch t := data.AddMetadata.Target.Target.(type) {
-		case *ledgerpb.Target_Account:
-			return b.ledger.SaveAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
+		case *commonpb.Target_Account:
+			return b.ledger.SaveAccountMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
-				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
+				Input: &servicepb.SaveAccountMetadataRequestPayload{
 					Address:  t.Account.Addr,
 					Metadata: data.AddMetadata.Metadata,
 				},
 			})
-		case *ledgerpb.Target_Transaction:
-			return b.ledger.SaveTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
+		case *commonpb.Target_Transaction:
+			return b.ledger.SaveTransactionMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.SaveTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
-				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
+				Input: &servicepb.SaveTransactionMetadataRequestPayload{
 					TransactionId: t.Transaction.Id,
 					Metadata:      data.AddMetadata.Metadata,
 				},
@@ -146,30 +147,30 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction
 			return nil, fmt.Errorf("unsupported target type")
 		}
 
-	case *ledgerpb.LedgerAction_RevertTransaction:
-		return b.ledger.RevertTransaction(ctx, b.ledgerID, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+	case *servicepb.LedgerAction_RevertTransaction:
+		return b.ledger.RevertTransaction(ctx, b.ledgerID, service.Parameters[*servicepb.RevertTransactionRequestPayload]{
 			IdempotencyKey: elem.IdempotencyKey,
 			Input:          data.RevertTransaction,
 		})
 
-	case *ledgerpb.LedgerAction_DeleteMetadata:
+	case *servicepb.LedgerAction_DeleteMetadata:
 		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
 			return nil, fmt.Errorf("missing delete metadata data or target")
 		}
 
 		switch t := data.DeleteMetadata.Target.Target.(type) {
-		case *ledgerpb.Target_Account:
-			return b.ledger.DeleteAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+		case *commonpb.Target_Account:
+			return b.ledger.DeleteAccountMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
-				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+				Input: &servicepb.DeleteAccountMetadataRequestPayload{
 					Address: t.Account.Addr,
 					Key:     data.DeleteMetadata.Key,
 				},
 			})
-		case *ledgerpb.Target_Transaction:
-			return b.ledger.DeleteTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+		case *commonpb.Target_Transaction:
+			return b.ledger.DeleteTransactionMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
-				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+				Input: &servicepb.DeleteTransactionMetadataRequestPayload{
 					TransactionId: t.Transaction.Id,
 					Key:           data.DeleteMetadata.Key,
 				},

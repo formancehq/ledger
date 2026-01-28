@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -29,9 +29,9 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	params := service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
+	params := service.Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
+		Input: &servicepb.DeleteAccountMetadataRequestPayload{
 			Address: address,
 			Key:     key,
 		},

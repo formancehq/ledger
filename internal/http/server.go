@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
@@ -27,7 +27,7 @@ func NewServer(logger logging.Logger, backend Backend) *Server {
 
 type Backend interface {
 	service.Controller
-	GetClusterState(context context.Context) (*ledgerpb.ClusterState, error)
+	GetClusterState(context context.Context) (*raftcmdpb.ClusterState, error)
 	IsHealthy() bool
 }
 
@@ -36,7 +36,7 @@ type DefaultBackend struct {
 	Node *raft.Node
 }
 
-func (b *DefaultBackend) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, error) {
+func (b *DefaultBackend) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState, error) {
 	return b.Node.GetClusterState(ctx)
 }
 

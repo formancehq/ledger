@@ -1,12 +1,13 @@
-package ledgerpb
+package raftcmdpb
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func (state *LedgerState) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		LedgerInfo        *LedgerInfo `json:"ledgerInfo,omitempty"`
+		LedgerInfo        *commonpb.LedgerInfo `json:"ledgerInfo,omitempty"`
 		NextLogId         uint64               `json:"nextLogId,omitempty"`
 		NextTransactionId uint64               `json:"nextTransactionId,omitempty"`
 	}{
@@ -35,7 +36,7 @@ func (state *State) MarshalJSON() ([]byte, error) {
 func (x *CreatedTransactionMemento) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Transaction     *TransactionResume            `json:"transaction,omitempty"`
-		AccountMetadata map[string]*Metadata `json:"accountMetadata,omitempty"`
+		AccountMetadata map[string]*commonpb.Metadata `json:"accountMetadata,omitempty"`
 	}{
 		Transaction:     x.Transaction,
 		AccountMetadata: x.AccountMetadata,

@@ -1,15 +1,16 @@
 package bulking
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // Bulk is a channel of protobuf LedgerAction
-type Bulk chan *ledgerpb.LedgerAction
+type Bulk chan *servicepb.LedgerAction
 
 // NewLedgerActionResult creates a new LedgerActionResult from a log or error
-func NewLedgerActionResult(elementID int, log *ledgerpb.Log, err error) *ledgerpb.LedgerActionResult {
-	result := &ledgerpb.LedgerActionResult{
+func NewLedgerActionResult(elementID int, log *commonpb.Log, err error) *servicepb.LedgerActionResult {
+	result := &servicepb.LedgerActionResult{
 		ElementId: int32(elementID),
 	}
 	if err != nil {
@@ -24,6 +25,6 @@ func NewLedgerActionResult(elementID int, log *ledgerpb.Log, err error) *ledgerp
 }
 
 // HasError returns true if the result has an error
-func HasError(result *ledgerpb.LedgerActionResult) bool {
+func HasError(result *servicepb.LedgerActionResult) bool {
 	return result.ErrorCode != ""
 }

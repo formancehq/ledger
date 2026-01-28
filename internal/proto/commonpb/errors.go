@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import (
 	"errors"
@@ -25,4 +25,3 @@ func (e *NotFoundError) Is(err error) bool {
 func NewNotFoundError(f string, args ...any) *NotFoundError {
 	return &NotFoundError{msg: fmt.Sprintf(f, args...)}
 }
-

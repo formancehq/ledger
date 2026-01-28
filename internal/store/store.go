@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs in the given ledger
 	// from: optional log ID to start from (0 = from beginning)
 	// to: optional log ID to stop at (0 = until end, inclusive)
-	GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
+	GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*commonpb.Log], error) // from: optional log ID to start from (0 = from beginning), to: optional log ID to stop at (0 = until end, inclusive)
 }
 
 // LogReader handles log reading operations
@@ -19,7 +19,7 @@ type LogStreamer interface {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
 type LogReader interface {
 	LogStreamer
-	GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error)
+	GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error)
 }
 
 // Batch allows atomic operations on the store.
@@ -27,15 +27,15 @@ type LogReader interface {
 // Cancel must be called if the batch is not committed to release resources.
 type Batch interface {
 	// RegisterLedger ledger register a new ledger in the store
-	RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error
+	RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error
 	// DeleteLedger deletes all data for a ledger
 	DeleteLedger(ctx context.Context, id uint32) error
 	// AppendLogs appends logs to the store
-	AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error
+	AppendLogs(ctx context.Context, logs ...*commonpb.Log) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error
+	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error
 	// SaveAccountMetadata saves metadata for an account
-	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error
+	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account
 	DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error
 	// StoreTransactionID stores the log ID associated to a transaction ID
@@ -54,8 +54,8 @@ type Batch interface {
 type Store interface {
 	LogReader
 	// ListLedgers lists all ledgers
-	ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error)
-	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error)
+	ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
+	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key
 	GetLogIDForIdempotencyKey(ctx context.Context, ledgerID uint32, idempotencyKey string) (uint64, error)
@@ -69,6 +69,6 @@ type Store interface {
 	CreateSnapshot(ctx context.Context) error
 	GetLastAppliedIndex() (uint64, error)
 	GetLastLogID(ctx context.Context, ledgerID uint32) (uint64, error)
-	GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error)
+	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 	Close(ctx context.Context) error
 }

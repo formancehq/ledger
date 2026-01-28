@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import (
 	"crypto/sha256"
@@ -18,4 +18,3 @@ func ComputeIdempotencyHash(inputs proto.Message) []byte {
 
 	return digest.Sum(nil)
 }
-

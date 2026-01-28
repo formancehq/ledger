@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -37,9 +37,9 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 		return
 	}
 
-	params := service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
+	params := service.Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
+		Input: &servicepb.DeleteTransactionMetadataRequestPayload{
 			TransactionId: transactionID,
 			Key:           key,
 		},

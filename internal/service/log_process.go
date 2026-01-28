@@ -5,7 +5,8 @@ import (
 	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/protobuf/proto"
@@ -17,7 +18,7 @@ type logProcessor[INPUT proto.Message] struct {
 	engine       Engine
 	keySetLocker KeySetLocker
 	logger       logging.Logger
-	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
+	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftcmdpb.CommandInput, error)
 }
 
 func newLogProcessor[INPUT proto.Message](
@@ -26,7 +27,7 @@ func newLogProcessor[INPUT proto.Message](
 	engine Engine,
 	keySetLocker KeySetLocker,
 	logger logging.Logger,
-	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
+	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftcmdpb.CommandInput, error),
 
 ) *logProcessor[INPUT] {
 	return &logProcessor[INPUT]{
@@ -43,7 +44,7 @@ func (lp *logProcessor[INPUT]) forgeAction(
 	ctx context.Context,
 	ledgerID uint32,
 	parameters Parameters[INPUT],
-) (*ledgerpb.Action, *ledgerpb.Log, error) {
+) (*raftcmdpb.Action, *commonpb.Log, error) {
 
 	if parameters.IdempotencyKey != "" {
 		release, err := lp.keySetLocker.TryLockKeys(ctx, ledgerID, "ik/"+parameters.IdempotencyKey)
@@ -63,7 +64,7 @@ func (lp *logProcessor[INPUT]) forgeAction(
 				return nil, nil, err
 			}
 
-			if string(ledgerpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
+			if string(commonpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
 				return nil, nil, ErrIdempotencyKeyConflict
 			}
 
@@ -83,11 +84,11 @@ func (lp *logProcessor[INPUT]) forgeAction(
 		return nil, nil, err
 	}
 
-	var idp *ledgerpb.Idempotency
+	var idp *commonpb.Idempotency
 	if parameters.IdempotencyKey != "" {
-		idp = &ledgerpb.Idempotency{
+		idp = &commonpb.Idempotency{
 			Key:  parameters.IdempotencyKey,
-			Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
+			Hash: commonpb.ComputeIdempotencyHash(parameters.Input),
 		}
 	}
 

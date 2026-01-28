@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 )
 
@@ -13,7 +13,7 @@ func (p *grpcLogStreamerProvider) GetForPeer(id uint64) (raft.LogStreamer, error
 	conn := p.transport.GetPeerConnection(id)
 
 	return NewLedgerGrpcClient(
-		ledgerpb.NewLedgerServiceClient(conn),
+		servicepb.NewLedgerServiceClient(conn),
 	), nil
 }
 

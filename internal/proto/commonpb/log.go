@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import (
 	"github.com/formancehq/go-libs/v3/pointer"

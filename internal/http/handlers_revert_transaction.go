@@ -7,7 +7,8 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -42,7 +43,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build request payload
-	payload := &ledgerpb.RevertTransactionRequestPayload{
+	payload := &servicepb.RevertTransactionRequestPayload{
 		TransactionId: transactionID,
 	}
 
@@ -64,7 +65,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	params := service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
+	params := service.Parameters[*servicepb.RevertTransactionRequestPayload]{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input:          payload,
 	}
@@ -87,6 +88,6 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the revert transaction response
-	revertedPayload := log.Data.Payload.(*ledgerpb.LogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
+	revertedPayload := log.Data.Payload.(*commonpb.LogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
 	writeCreated(w, revertedPayload)
 }

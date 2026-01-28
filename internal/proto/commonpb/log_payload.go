@@ -1,4 +1,4 @@
-package ledgerpb
+package commonpb
 
 import "google.golang.org/protobuf/proto"
 

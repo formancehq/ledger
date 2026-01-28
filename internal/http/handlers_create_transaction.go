@@ -6,7 +6,8 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -20,7 +21,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Decode request body into protobuf CreateTransactionRequest
-	req := &ledgerpb.CreateTransactionRequestPayload{}
+	req := &servicepb.CreateTransactionRequestPayload{}
 	err := json.UnmarshalRead(r.Body, req)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
@@ -34,7 +35,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Call ledger service
-	log, err := s.backend.CreateTransaction(r.Context(), ledgerInfo.Id, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
+	log, err := s.backend.CreateTransaction(r.Context(), ledgerInfo.Id, service.Parameters[*servicepb.CreateTransactionRequestPayload]{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input:          req,
 	})
@@ -45,5 +46,5 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the service response directly - JSON encoding will handle it
-	writeCreated(w, log.Data.Payload.(*ledgerpb.LogPayload_CreatedTransaction).CreatedTransaction)
+	writeCreated(w, log.Data.Payload.(*commonpb.LogPayload_CreatedTransaction).CreatedTransaction)
 }
