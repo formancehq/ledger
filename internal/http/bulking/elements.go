@@ -1,15 +1,16 @@
 package bulking
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 )
 
-// Bulk is a channel of protobuf BulkElement
-type Bulk chan *ledgerpb.BulkElement
+// Bulk is a channel of protobuf LedgerAction
+type Bulk chan *ledgerpb.LedgerAction
 
-// NewBulkElementResult creates a new BulkElementResult from a log or error
-func NewBulkElementResult(elementID int, log *ledgerpb.Log, err error) *ledgerpb.BulkElementResult {
-	result := &ledgerpb.BulkElementResult{
+// NewLedgerActionResult creates a new LedgerActionResult from a log or error
+func NewLedgerActionResult(elementID int, log *commonpb.Log, err error) *ledgerpb.LedgerActionResult {
+	result := &ledgerpb.LedgerActionResult{
 		ElementId: int32(elementID),
 	}
 	if err != nil {
@@ -18,12 +19,12 @@ func NewBulkElementResult(elementID int, log *ledgerpb.Log, err error) *ledgerpb
 	}
 	if log != nil {
 		result.LogId = log.Id
-		result.Data = &ledgerpb.BulkElementResult_Log{Log: log}
+		result.Log = log
 	}
 	return result
 }
 
 // HasError returns true if the result has an error
-func HasError(result *ledgerpb.BulkElementResult) bool {
+func HasError(result *ledgerpb.LedgerActionResult) bool {
 	return result.ErrorCode != ""
 }

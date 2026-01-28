@@ -12,7 +12,8 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
@@ -25,7 +26,7 @@ type Bulker struct {
 	tracer      trace.Tracer
 }
 
-func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.BulkElementResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.LedgerActionResult, continueOnFailure, parallel bool) bool {
 
 	submit := func(fn func()) {
 		fn()
@@ -57,21 +58,21 @@ func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.BulkE
 
 			select {
 			case <-ctx.Done():
-				result <- NewBulkElementResult(itemIndex, nil, ctx.Err())
+				result <- NewLedgerActionResult(itemIndex, nil, ctx.Err())
 			default:
 				if hasError.Load() && !continueOnFailure {
-					result <- NewBulkElementResult(itemIndex, nil, context.Canceled)
+					result <- NewLedgerActionResult(itemIndex, nil, context.Canceled)
 					return
 				}
 				log, err := b.processElement(ctx, element)
 				if err != nil {
 					hasError.Store(true)
 					otlp.RecordError(ctx, err)
-					result <- NewBulkElementResult(itemIndex, nil, err)
+					result <- NewLedgerActionResult(itemIndex, nil, err)
 					return
 				}
 
-				result <- NewBulkElementResult(itemIndex, log, nil)
+				result <- NewLedgerActionResult(itemIndex, log, nil)
 			}
 
 		})
@@ -85,7 +86,7 @@ func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *ledgerpb.BulkE
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.BulkElementResult, bulkOptions BulkingOptions) error {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.LedgerActionResult, bulkOptions BulkingOptions) error {
 	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
 		attribute.Bool("atomic", bulkOptions.Atomic),
 		attribute.Bool("parallel", bulkOptions.Parallel),
@@ -112,78 +113,66 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *ledgerpb.BulkE
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.BulkElement) (*ledgerpb.Log, error) {
-	switch elem.Action {
-	case ledgerpb.BulkAction_BULK_ACTION_CREATE_TRANSACTION:
-		payload := elem.GetCreateTransaction()
-		if payload == nil {
-			return nil, fmt.Errorf("missing create transaction data")
-		}
-
+func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.LedgerAction) (*commonpb.Log, error) {
+	switch data := elem.Data.(type) {
+	case *ledgerpb.LedgerAction_CreateTransaction:
 		return b.ledger.CreateTransaction(ctx, b.ledgerID, service.Parameters[*ledgerpb.CreateTransactionRequestPayload]{
 			IdempotencyKey: elem.IdempotencyKey,
-			Input:          payload,
+			Input:          data.CreateTransaction,
 		})
 
-	case ledgerpb.BulkAction_BULK_ACTION_ADD_METADATA:
-		data := elem.GetAddMetadata()
-		if data == nil || data.Target == nil {
+	case *ledgerpb.LedgerAction_AddMetadata:
+		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
 			return nil, fmt.Errorf("missing add metadata data or target")
 		}
 
-		switch t := data.Target.Target.(type) {
-		case *ledgerpb.Target_Account:
+		switch t := data.AddMetadata.Target.Target.(type) {
+		case *commonpb.Target_Account:
 			return b.ledger.SaveAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 					Address:  t.Account.Addr,
-					Metadata: data.Metadata,
+					Metadata: data.AddMetadata.Metadata,
 				},
 			})
-		case *ledgerpb.Target_Transaction:
+		case *commonpb.Target_Transaction:
 			return b.ledger.SaveTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 					TransactionId: t.Transaction.Id,
-					Metadata:      data.Metadata,
+					Metadata:      data.AddMetadata.Metadata,
 				},
 			})
 		default:
 			return nil, fmt.Errorf("unsupported target type")
 		}
 
-	case ledgerpb.BulkAction_BULK_ACTION_REVERT_TRANSACTION:
-		data := elem.GetRevertTransaction()
-		if data == nil {
-			return nil, fmt.Errorf("missing revert transaction data")
-		}
-
+	case *ledgerpb.LedgerAction_RevertTransaction:
 		return b.ledger.RevertTransaction(ctx, b.ledgerID, service.Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			IdempotencyKey: elem.IdempotencyKey,
-			Input:          data,
+			Input:          data.RevertTransaction,
 		})
 
-	case ledgerpb.BulkAction_BULK_ACTION_DELETE_METADATA:
-		data := elem.GetDeleteMetadata()
-		if data == nil || data.Target == nil {
+	case *ledgerpb.LedgerAction_DeleteMetadata:
+		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
 			return nil, fmt.Errorf("missing delete metadata data or target")
 		}
 
-		switch t := data.Target.Target.(type) {
-		case *ledgerpb.Target_Account:
+		switch t := data.DeleteMetadata.Target.Target.(type) {
+		case *commonpb.Target_Account:
 			return b.ledger.DeleteAccountMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
 					Address: t.Account.Addr,
-					Key:     data.Key,
+					Key:     data.DeleteMetadata.Key,
 				},
 			})
-		case *ledgerpb.Target_Transaction:
+		case *commonpb.Target_Transaction:
 			return b.ledger.DeleteTransactionMetadata(ctx, b.ledgerID, service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 				IdempotencyKey: elem.IdempotencyKey,
 				Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
 					TransactionId: t.Transaction.Id,
-					Key:           data.Key,
+					Key:           data.DeleteMetadata.Key,
 				},
 			})
 		default:
@@ -191,7 +180,7 @@ func (b *Bulker) processElement(ctx context.Context, elem *ledgerpb.BulkElement)
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported action: %s", elem.Action)
+		return nil, fmt.Errorf("unsupported action type")
 	}
 }
 

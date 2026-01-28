@@ -71,7 +71,9 @@ generate-proto:
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
         -I misc/proto \
         misc/proto/raft_transport.proto \
-        misc/proto/ledger.proto
+        misc/proto/common.proto \
+        misc/proto/service.proto \
+        misc/proto/raftcmd.proto
 
 # Docker builds are handled via Pulumi
 

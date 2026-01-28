@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +25,7 @@ func NewLedgerGrpcClient(client ledgerpb.LedgerServiceClient) *LedgerGrpcClient 
 }
 
 // CreateTransaction forwards the request via gRPC to the leader
-func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*commonpb.Log, error) {
 	// Call leader via gRPC
 	log, err := g.client.CreateTransaction(ctx, &ledgerpb.CreateTransactionRequest{
 		Parameters: &ledgerpb.Parameters{
@@ -39,14 +41,14 @@ func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, ledgerID uint3
 	return log, nil
 }
 
-func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
+func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
 	return g.client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 		LedgerId:      ledgerID,
 		TransactionId: transactionID,
 	})
 }
 
-func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*commonpb.Log, error) {
 	return g.client.RevertTransaction(ctx, &ledgerpb.RevertTransactionRequest{
 		Parameters: &ledgerpb.Parameters{
 			LedgerId:       ledgerID,
@@ -56,7 +58,7 @@ func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, ledgerID uint3
 	})
 }
 
-func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
 	log, err := g.client.SaveTransactionMetadata(ctx, &ledgerpb.SaveTransactionMetadataRequest{
 		Payload: parameters.Input,
 		Parameters: &ledgerpb.Parameters{
@@ -71,7 +73,7 @@ func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerID
 	return log, nil
 }
 
-func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*commonpb.Log, error) {
 	// Call leader via gRPC
 	log, err := g.client.SaveAccountMetadata(ctx, &ledgerpb.SaveAccountMetadataRequest{
 		Payload: parameters.Input,
@@ -87,7 +89,7 @@ func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerID uin
 	return log, nil
 }
 
-func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
 	log, err := g.client.DeleteTransactionMetadata(ctx, &ledgerpb.DeleteTransactionMetadataRequest{
 		Payload: parameters.Input,
 		Parameters: &ledgerpb.Parameters{
@@ -102,7 +104,7 @@ func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledger
 	return log, nil
 }
 
-func (g *LedgerGrpcClient) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*commonpb.Log, error) {
 	log, err := g.client.DeleteAccountMetadata(ctx, &ledgerpb.DeleteAccountMetadataRequest{
 		Payload: parameters.Input,
 		Parameters: &ledgerpb.Parameters{
@@ -117,7 +119,7 @@ func (g *LedgerGrpcClient) DeleteAccountMetadata(ctx context.Context, ledgerID u
 	return log, nil
 }
 
-func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
+func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.Log) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
@@ -126,7 +128,7 @@ func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerID uint32, w Export
 }
 
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
-func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	req := &ledgerpb.StreamLogsRequest{
 		LedgerId: ledgerID,
 		FromId:   from,
@@ -141,13 +143,13 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledgerID uint32, from
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
 
-	return store.NewGRPCStreamCursor(stream, func(res *ledgerpb.StreamLogsResponse) (*ledgerpb.Log, error) {
+	return store.NewGRPCStreamCursor(stream, func(res *ledgerpb.StreamLogsResponse) (*commonpb.Log, error) {
 		return res.Log, nil
 	}), nil
 }
 
 // GetLogByID retrieves a log by its ID (implements LogReader)
-func (g *LedgerGrpcClient) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*ledgerpb.Log, error) {
+func (g *LedgerGrpcClient) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*commonpb.Log, error) {
 	if id == 0 {
 		return nil, nil
 	}
@@ -161,16 +163,19 @@ func (g *LedgerGrpcClient) GetLogByID(ctx context.Context, ledgerID uint32, id u
 	return cursor.Next(ctx)
 }
 
-func (g *LedgerGrpcClient) CreateLedger(ctx context.Context, request *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
-	return g.client.CreateLedger(ctx, request)
+func (g *LedgerGrpcClient) CreateLedger(ctx context.Context, request *raftpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
+	return g.client.CreateLedger(ctx, &ledgerpb.CreateLedgerRequest{
+		Name:     request.Name,
+		Metadata: request.Metadata,
+	})
 }
 
 func (g *LedgerGrpcClient) DeleteLedger(ctx context.Context, id uint32) error {
-	_, err := g.client.DeleteLedger(ctx, &ledgerpb.DeleteLedgerCommand{Id: id})
+	_, err := g.client.DeleteLedger(ctx, &ledgerpb.DeleteLedgerRequest{Id: id})
 	return err
 }
 
-func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
+func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {
 	resp, err := g.client.GetAllLedgersInfo(ctx, &ledgerpb.GetAllLedgersRequest{})
 	if err != nil {
 		return nil, err
@@ -179,6 +184,6 @@ func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*l
 	return resp.Ledgers, nil
 }
 
-func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedgerByName(ctx, &ledgerpb.GetLedgerByNameRequest{Name: name})
 }

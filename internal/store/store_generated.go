@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 
 	metadata "github.com/formancehq/go-libs/v3/metadata"
-	ledgerpb "github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,10 +38,10 @@ func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
-	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
+	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -76,10 +76,10 @@ func (m *MockLogReader) EXPECT() *MockLogReaderMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogReader) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+func (m *MockLogReader) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
-	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
+	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -91,10 +91,10 @@ func (mr *MockLogReaderMockRecorder) GetAllLogs(ctx, ledger, from, to any) *gomo
 }
 
 // GetLogByID mocks base method.
-func (m *MockLogReader) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
+func (m *MockLogReader) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogByID", ctx, ledger, id)
-	ret0, _ := ret[0].(*ledgerpb.Log)
+	ret0, _ := ret[0].(*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -129,7 +129,7 @@ func (m *MockBatch) EXPECT() *MockBatchMockRecorder {
 }
 
 // AppendBalanceDiff mocks base method.
-func (m *MockBatch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *ledgerpb.BigInt, logID uint64) error {
+func (m *MockBatch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AppendBalanceDiff", ctx, ledger, account, asset, diff, logID)
 	ret0, _ := ret[0].(error)
@@ -143,7 +143,7 @@ func (mr *MockBatchMockRecorder) AppendBalanceDiff(ctx, ledger, account, asset, 
 }
 
 // AppendLogs mocks base method.
-func (m *MockBatch) AppendLogs(ctx context.Context, logs ...*ledgerpb.Log) error {
+func (m *MockBatch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range logs {
@@ -218,7 +218,7 @@ func (mr *MockBatchMockRecorder) DeleteLedger(ctx, id any) *gomock.Call {
 }
 
 // RegisterLedger mocks base method.
-func (m *MockBatch) RegisterLedger(ctx context.Context, info *ledgerpb.LedgerInfo) error {
+func (m *MockBatch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RegisterLedger", ctx, info)
 	ret0, _ := ret[0].(error)
@@ -232,7 +232,7 @@ func (mr *MockBatchMockRecorder) RegisterLedger(ctx, info any) *gomock.Call {
 }
 
 // SaveAccountMetadata mocks base method.
-func (m *MockBatch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *ledgerpb.Metadata) error {
+func (m *MockBatch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, ledger, account, metadata)
 	ret0, _ := ret[0].(error)
@@ -340,10 +340,10 @@ func (mr *MockStoreMockRecorder) GetAccountMetadata(ctx, ledgerID, accounts any)
 }
 
 // GetAllLogs mocks base method.
-func (m *MockStore) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*ledgerpb.Log], error) {
+func (m *MockStore) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
-	ret0, _ := ret[0].(Cursor[*ledgerpb.Log])
+	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -355,10 +355,10 @@ func (mr *MockStoreMockRecorder) GetAllLogs(ctx, ledger, from, to any) *gomock.C
 }
 
 // GetBalances mocks base method.
-func (m *MockStore) GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (ledgerpb.Balances, error) {
+func (m *MockStore) GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, ledgerID, balanceQuery)
-	ret0, _ := ret[0].(ledgerpb.Balances)
+	ret0, _ := ret[0].(commonpb.Balances)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -400,10 +400,10 @@ func (mr *MockStoreMockRecorder) GetLastLogID(ctx, ledgerID any) *gomock.Call {
 }
 
 // GetLedgerByName mocks base method.
-func (m *MockStore) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+func (m *MockStore) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerByName", ctx, name)
-	ret0, _ := ret[0].(*ledgerpb.LedgerInfo)
+	ret0, _ := ret[0].(*commonpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -415,10 +415,10 @@ func (mr *MockStoreMockRecorder) GetLedgerByName(ctx, name any) *gomock.Call {
 }
 
 // GetLogByID mocks base method.
-func (m *MockStore) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
+func (m *MockStore) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogByID", ctx, ledger, id)
-	ret0, _ := ret[0].(*ledgerpb.Log)
+	ret0, _ := ret[0].(*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -475,10 +475,10 @@ func (mr *MockStoreMockRecorder) IsTransactionReverted(ctx, ledgerID, transactio
 }
 
 // ListLedgers mocks base method.
-func (m *MockStore) ListLedgers(ctx context.Context) ([]*ledgerpb.LedgerInfo, error) {
+func (m *MockStore) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].([]*ledgerpb.LedgerInfo)
+	ret0, _ := ret[0].([]*commonpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

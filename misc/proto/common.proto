@@ -1,0 +1,224 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/commonpb";
+
+// ============================================================================
+// Core Data Types
+// ============================================================================
+
+message Timestamp {
+  uint64 data = 1;
+}
+
+// Metadata represents account or transaction metadata as a map of string key-value pairs
+message Metadata {
+  map<string, string> entries = 1;
+}
+
+message BigInt {
+  bytes data = 1;
+}
+
+// Posting represents a single posting in a transaction
+message Posting {
+  string source = 1;
+  string destination = 2;
+  BigInt amount = 3;
+  string asset = 4;
+}
+
+// Transaction represents a transaction
+message Transaction {
+  repeated Posting postings = 1;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+  uint64 id = 5;
+  bool reverted = 6;
+  Timestamp inserted_at = 7;
+  Timestamp updated_at = 8;
+  Timestamp reverted_at = 9;
+}
+
+// TransactionData represents transaction data without ID and timestamps
+message TransactionData {
+  repeated Posting postings = 1;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+}
+
+// Transactions represents a collection of transactions
+message Transactions {
+  repeated TransactionData transactions = 1;
+}
+
+message Script {
+  string plain = 1;
+  map<string, string> vars = 2;
+}
+
+// ============================================================================
+// Volumes
+// ============================================================================
+
+// Volumes represents input and output volumes
+message Volumes {
+  string input = 1;   // big.Int as string
+  string output = 2;  // big.Int as string
+}
+
+// VolumesWithBalance represents volumes with balance
+message VolumesWithBalance {
+  string input = 1;    // big.Int as string
+  string output = 2;   // big.Int as string
+  string balance = 3;  // big.Int as string
+}
+
+// VolumesByAssets represents volumes grouped by asset
+message VolumesByAssets {
+  map<string, Volumes> volumes = 1;
+}
+
+// PostCommitVolumes represents volumes after commit, grouped by account and asset
+message PostCommitVolumes {
+  map<string, VolumesByAssets> volumes_by_account = 1;
+}
+
+// VolumesWithBalanceByAssetByAccount represents volumes with balance grouped by asset and account
+message VolumesWithBalanceByAssetByAccount {
+  string account = 1;
+  string asset = 2;
+  VolumesWithBalance volumes_with_balance = 3;
+}
+
+// AggregatedVolumes represents aggregated volumes
+message AggregatedVolumes {
+  VolumesByAssets aggregated = 1;
+}
+
+// ============================================================================
+// Account
+// ============================================================================
+
+// Account represents an account in the ledger
+message Account {
+  string address = 1;
+  map<string, string> metadata = 2;
+  Timestamp first_usage = 3;
+  Timestamp insertion_date = 4;
+  Timestamp updated_at = 5;
+}
+
+// AccountsVolumes represents volumes for a specific account and asset
+message AccountsVolumes {
+  string account = 1;
+  string asset = 2;
+  string input = 3;   // big.Int as string
+  string output = 4;  // big.Int as string
+}
+
+// ============================================================================
+// Target (for metadata operations)
+// ============================================================================
+
+message TargetAccount {
+  string addr = 1;
+}
+
+message TargetTransaction {
+  uint64 id = 1;
+}
+
+message Target {
+  oneof target {
+    TargetAccount account = 1;
+    TargetTransaction transaction = 2;
+  }
+}
+
+// ============================================================================
+// Idempotency
+// ============================================================================
+
+message Idempotency {
+  string key = 1;
+  bytes hash = 2;
+}
+
+// IdempotencyEntry represents an idempotency key entry stored in Pebble
+message IdempotencyEntry {
+  bytes hash = 1;                          // Idempotency hash
+  uint64 log_id = 2;                        // Log ID
+}
+
+// ============================================================================
+// Log
+// ============================================================================
+
+message Log {
+  LogPayload data = 1;
+  Timestamp date = 2;
+  Idempotency idempotency = 3;
+  uint64 id = 4;
+  uint32 ledger_id = 5;
+}
+
+message LogPayload {
+  oneof payload {
+    CreatedTransaction created_transaction = 1;
+    RevertedTransaction reverted_transaction = 2;
+    SavedMetadata saved_metadata = 3;
+    DeletedMetadata deleted_metadata = 4;
+  }
+}
+
+message CreatedTransaction {
+  Transaction transaction = 1;
+  map<string, Metadata> account_metadata = 2;
+}
+
+message RevertedTransaction {
+  uint64 reverted_transaction_id = 1;
+  Transaction revert_transaction = 2;
+}
+
+message SavedMetadata {
+  Target target = 1;
+  Metadata metadata = 2;
+}
+
+message DeletedMetadata {
+  Target target = 1;
+  string key = 2;                           // Metadata key to delete
+}
+
+// ============================================================================
+// Ledger Info
+// ============================================================================
+
+// LedgerInfo represents information about a ledger
+message LedgerInfo {
+  string name = 1;                          // Ledger name
+  map<string, string> metadata = 2;         // Optional metadata
+  Timestamp created_at = 3;                 // Creation timestamp
+  uint32 id = 4;                            // Numeric ledger ID (auto-assigned, max 65535)
+}
+
+// ============================================================================
+// Metadata Commands (shared between bulk operations and raft)
+// ============================================================================
+
+// SaveMetadataCommand is used for adding metadata
+message SaveMetadataCommand {
+  Target target = 1;
+  Metadata metadata = 2;
+}
+
+// DeleteMetadataCommand is used for deleting metadata
+message DeleteMetadataCommand {
+  Target target = 1;
+  string key = 2;
+}

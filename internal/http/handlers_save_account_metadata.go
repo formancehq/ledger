@@ -6,7 +6,8 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -37,7 +38,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input: &ledgerpb.SaveAccountMetadataRequestPayload{
 			Address:  address,
-			Metadata: &ledgerpb.Metadata{Entries: inputMetadata},
+			Metadata: &commonpb.Metadata{Entries: inputMetadata},
 		},
 	}
 

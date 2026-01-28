@@ -5,7 +5,8 @@ import (
 	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/protobuf/proto"
@@ -17,7 +18,7 @@ type logProcessor[INPUT proto.Message] struct {
 	engine       Engine
 	keySetLocker KeySetLocker
 	logger       logging.Logger
-	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error)
+	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftpb.CommandInput, error)
 }
 
 func newLogProcessor[INPUT proto.Message](
@@ -26,7 +27,7 @@ func newLogProcessor[INPUT proto.Message](
 	engine Engine,
 	keySetLocker KeySetLocker,
 	logger logging.Logger,
-	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*ledgerpb.CommandInput, error),
+	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftpb.CommandInput, error),
 
 ) *logProcessor[INPUT] {
 	return &logProcessor[INPUT]{
@@ -39,35 +40,36 @@ func newLogProcessor[INPUT proto.Message](
 	}
 }
 
-func (lp *logProcessor[INPUT]) forgeLog(
+func (lp *logProcessor[INPUT]) forgeAction(
 	ctx context.Context,
 	ledgerID uint32,
 	parameters Parameters[INPUT],
-) (*ledgerpb.Log, bool, error) {
+) (*raftpb.Action, *commonpb.Log, error) {
 
 	if parameters.IdempotencyKey != "" {
 		release, err := lp.keySetLocker.TryLockKeys(ctx, ledgerID, "ik/"+parameters.IdempotencyKey)
 		if err != nil {
-			return nil, false, errors.Join(ErrIdempotencyKeyConflict, err)
+			return nil, nil, errors.Join(ErrIdempotencyKeyConflict, err)
 		}
 		defer release()
 
 		id, err := lp.store.GetLogIDForIdempotencyKey(ctx, ledgerID, parameters.IdempotencyKey)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return nil, false, err
+			return nil, nil, err
 		}
 
 		if err == nil {
 			log, err := lp.store.GetLogByID(ctx, ledgerID, id)
 			if err != nil {
-				return nil, false, err
+				return nil, nil, err
 			}
 
-			if string(ledgerpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
-				return nil, false, ErrIdempotencyKeyConflict
+			if string(commonpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
+				return nil, nil, ErrIdempotencyKeyConflict
 			}
 
-			return log, true, nil
+			// Return cached log (idempotent response)
+			return nil, log, nil
 		}
 	}
 
@@ -79,29 +81,19 @@ func (lp *logProcessor[INPUT]) forgeLog(
 
 	input, err := lp.builder(ctx, uow, ledgerID, parameters)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 
-	var idp *ledgerpb.Idempotency
+	var idp *commonpb.Idempotency
 	if parameters.IdempotencyKey != "" {
-		idp = &ledgerpb.Idempotency{
+		idp = &commonpb.Idempotency{
 			Key:  parameters.IdempotencyKey,
-			Hash: ledgerpb.ComputeIdempotencyHash(parameters.Input),
+			Hash: commonpb.ComputeIdempotencyHash(parameters.Input),
 		}
 	}
 
-	// Build the command
-	cmd := raft.NewCreateLogCommand(input, ledgerID, idp)
+	// Build the action
+	action := raft.NewCreateLogAction(input, ledgerID, idp)
 
-	ret, err := lp.engine.Apply(ctx, cmd)
-	if err != nil {
-		lp.logger.WithField("operation", lp.operation).Errorf("failed to write log: %v", err)
-		return nil, false, err
-	}
-
-	// Extract the log from the result (first element of the results array)
-	results := ret.([]any)
-	log := results[0].(*ledgerpb.Log)
-
-	return log, false, nil
+	return action, nil, nil
 }

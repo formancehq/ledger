@@ -6,16 +6,16 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 )
 
 type JsonBulkHandler struct {
 	bulkMaxSize  int
-	bulkElements []*ledgerpb.BulkElement
-	receive      chan *ledgerpb.BulkElementResult
+	bulkElements []*ledgerpb.LedgerAction
+	receive      chan *ledgerpb.LedgerActionResult
 }
 
-func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *ledgerpb.BulkElementResult, bool) {
+func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *ledgerpb.LedgerActionResult, bool) {
 	// Parse JSON array of bulk elements
 	var rawElements []json.RawValue
 	if err := json.UnmarshalRead(r.Body, &rawElements); err != nil {
@@ -29,9 +29,9 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 	}
 
 	// Parse each element using protobuf types
-	h.bulkElements = make([]*ledgerpb.BulkElement, 0, len(rawElements))
+	h.bulkElements = make([]*ledgerpb.LedgerAction, 0, len(rawElements))
 	for i, rawElem := range rawElements {
-		elem := &ledgerpb.BulkElement{}
+		elem := &ledgerpb.LedgerAction{}
 		if err := json.Unmarshal(rawElem, elem); err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", fmt.Errorf("error parsing element %d: %w", i, err))
 			return nil, nil, false
@@ -45,20 +45,20 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 	}
 	close(bulk)
 
-	h.receive = make(chan *ledgerpb.BulkElementResult, len(h.bulkElements))
+	h.receive = make(chan *ledgerpb.LedgerActionResult, len(h.bulkElements))
 
 	return bulk, h.receive, true
 }
 
 func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
-	results := make([]*ledgerpb.BulkElementResult, 0, len(h.bulkElements))
+	results := make([]*ledgerpb.LedgerActionResult, 0, len(h.bulkElements))
 	for element := range h.receive {
 		results = append(results, element)
 	}
 
 	actions := make([]string, len(h.bulkElements))
 	for i, element := range h.bulkElements {
-		actions[i] = ledgerpb.BulkActionFromProto(element.Action)
+		actions[i] = ledgerpb.GetLedgerActionType(element)
 	}
 	writeJSONResponse(w, actions, results, nil)
 }
@@ -85,7 +85,7 @@ func NewJSONBulkHandlerFactory(bulkMaxSize int) HandlerFactory {
 
 var _ HandlerFactory = (*jsonBulkHandlerFactory)(nil)
 
-func writeJSONResponse(w http.ResponseWriter, actions []string, results []*ledgerpb.BulkElementResult, error error) {
+func writeJSONResponse(w http.ResponseWriter, actions []string, results []*ledgerpb.LedgerActionResult, error error) {
 	for _, result := range results {
 		if HasError(result) {
 			w.WriteHeader(http.StatusBadRequest)
@@ -93,7 +93,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []*ledge
 		}
 	}
 
-	slices.SortFunc(results, func(a, b *ledgerpb.BulkElementResult) int {
+	slices.SortFunc(results, func(a, b *ledgerpb.LedgerActionResult) int {
 		return int(a.ElementId) - int(b.ElementId)
 	})
 

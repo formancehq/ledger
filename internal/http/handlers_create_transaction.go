@@ -6,7 +6,8 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -45,5 +46,5 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the service response directly - JSON encoding will handle it
-	writeCreated(w, log.Data.Payload.(*ledgerpb.LogPayload_CreatedTransaction).CreatedTransaction)
+	writeCreated(w, log.Data.Payload.(*commonpb.LogPayload_CreatedTransaction).CreatedTransaction)
 }

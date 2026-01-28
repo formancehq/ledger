@@ -7,7 +7,8 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
-	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -42,7 +43,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Input: &ledgerpb.SaveTransactionMetadataRequestPayload{
 			TransactionId: transactionID,
-			Metadata:      &ledgerpb.Metadata{Entries: inputMetadata},
+			Metadata:      &commonpb.Metadata{Entries: inputMetadata},
 		},
 	}
 
