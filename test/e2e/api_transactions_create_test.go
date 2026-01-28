@@ -371,15 +371,8 @@ var _ = Context("Ledger transactions create API tests", func() {
 						}}
 					})
 					It("should fail", func() {
-						var expectedErr string
-						if data.numscriptRewrite {
-							expectedErr = string(components.V2ErrorsEnumInterpreterRuntime)
-						} else {
-							expectedErr = string(components.V2ErrorsEnumInsufficientFund)
-						}
-
 						Expect(err).To(HaveOccurred())
-						Expect(err).To(HaveErrorCode(expectedErr))
+						Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInsufficientFund)))
 					})
 				})
 				When("with nil amount", func() {
