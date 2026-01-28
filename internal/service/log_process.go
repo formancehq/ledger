@@ -12,25 +12,24 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type logProcessor[INPUT proto.Message] struct {
+type logProcessor struct {
 	operation    string
 	store        store.Store
 	engine       Engine
 	keySetLocker KeySetLocker
 	logger       logging.Logger
-	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftcmdpb.CommandInput, error)
+	builder      func(ctx context.Context, store *unitOfWork, ledgerID uint32, input proto.Message) (*raftcmdpb.CommandInput, error)
 }
 
-func newLogProcessor[INPUT proto.Message](
+func newLogProcessor(
 	operation string,
 	store store.Store,
 	engine Engine,
 	keySetLocker KeySetLocker,
 	logger logging.Logger,
-	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[INPUT]) (*raftcmdpb.CommandInput, error),
-
-) *logProcessor[INPUT] {
-	return &logProcessor[INPUT]{
+	builder func(ctx context.Context, store *unitOfWork, ledgerID uint32, input proto.Message) (*raftcmdpb.CommandInput, error),
+) *logProcessor {
+	return &logProcessor{
 		operation:    operation,
 		store:        store,
 		keySetLocker: keySetLocker,
@@ -40,20 +39,21 @@ func newLogProcessor[INPUT proto.Message](
 	}
 }
 
-func (lp *logProcessor[INPUT]) forgeAction(
+func (lp *logProcessor) forgeAction(
 	ctx context.Context,
 	ledgerID uint32,
-	parameters Parameters[INPUT],
+	idempotencyKey string,
+	input proto.Message,
 ) (*raftcmdpb.Action, *commonpb.Log, error) {
 
-	if parameters.IdempotencyKey != "" {
-		release, err := lp.keySetLocker.TryLockKeys(ctx, ledgerID, "ik/"+parameters.IdempotencyKey)
+	if idempotencyKey != "" {
+		release, err := lp.keySetLocker.TryLockKeys(ctx, ledgerID, "ik/"+idempotencyKey)
 		if err != nil {
 			return nil, nil, errors.Join(ErrIdempotencyKeyConflict, err)
 		}
 		defer release()
 
-		id, err := lp.store.GetLogIDForIdempotencyKey(ctx, ledgerID, parameters.IdempotencyKey)
+		id, err := lp.store.GetLogIDForIdempotencyKey(ctx, ledgerID, idempotencyKey)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return nil, nil, err
 		}
@@ -64,7 +64,7 @@ func (lp *logProcessor[INPUT]) forgeAction(
 				return nil, nil, err
 			}
 
-			if string(commonpb.ComputeIdempotencyHash(parameters.Input)) != string(log.Idempotency.Hash) {
+			if string(commonpb.ComputeIdempotencyHash(input)) != string(log.Idempotency.Hash) {
 				return nil, nil, ErrIdempotencyKeyConflict
 			}
 
@@ -79,21 +79,41 @@ func (lp *logProcessor[INPUT]) forgeAction(
 	}
 	defer uow.ReleaseLocks()
 
-	input, err := lp.builder(ctx, uow, ledgerID, parameters)
+	commandInput, err := lp.builder(ctx, uow, ledgerID, input)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var idp *commonpb.Idempotency
-	if parameters.IdempotencyKey != "" {
+	if idempotencyKey != "" {
 		idp = &commonpb.Idempotency{
-			Key:  parameters.IdempotencyKey,
-			Hash: commonpb.ComputeIdempotencyHash(parameters.Input),
+			Key:  idempotencyKey,
+			Hash: commonpb.ComputeIdempotencyHash(input),
 		}
 	}
 
 	// Build the action
-	action := raft.NewCreateLogAction(input, ledgerID, idp)
+	action := raft.NewCreateLogAction(commandInput, ledgerID, idp)
 
 	return action, nil, nil
+}
+
+// forgeLogAndApply forges an action and applies it, returning the resulting log
+func forgeLogAndApply(
+	ctx context.Context,
+	lp *logProcessor,
+	ledgerID uint32,
+	idempotencyKey string,
+	input proto.Message,
+	apply func(ctx context.Context, action *raftcmdpb.Action) (*commonpb.Log, error),
+) (*commonpb.Log, error) {
+	action, cachedLog, err := lp.forgeAction(ctx, ledgerID, idempotencyKey, input)
+	if err != nil {
+		return nil, err
+	}
+	if cachedLog != nil {
+		return cachedLog, nil
+	}
+
+	return apply(ctx, action)
 }

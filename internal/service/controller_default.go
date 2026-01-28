@@ -29,12 +29,12 @@ type DefaultController struct {
 	engine Engine
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
-	createTransactionLp         *logProcessor[*servicepb.CreateTransactionPayload]
-	saveTransactionMetadataLp   *logProcessor[*commonpb.SaveMetadataCommand]
-	saveAccountMetadataLp       *logProcessor[*commonpb.SaveMetadataCommand]
-	deleteTransactionMetadataLp *logProcessor[*commonpb.DeleteMetadataCommand]
-	deleteAccountMetadataLp     *logProcessor[*commonpb.DeleteMetadataCommand]
-	revertTransactionLp         *logProcessor[*servicepb.RevertTransactionPayload]
+	createTransactionLp         *logProcessor
+	saveTransactionMetadataLp   *logProcessor
+	saveAccountMetadataLp       *logProcessor
+	deleteTransactionMetadataLp *logProcessor
+	deleteAccountMetadataLp     *logProcessor
+	revertTransactionLp         *logProcessor
 	store                       store.Store
 }
 
@@ -205,31 +205,6 @@ func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdp
 	return results[0].(*commonpb.Log), nil
 }
 
-// Parameters holds action parameters
-type Parameters[INPUT proto.Message] struct {
-	IdempotencyKey string `json:"idempotencyKey,omitempty"`
-	Input          INPUT  `json:"-"`
-}
-
-// forgeLogAndApply forges an action and applies it, returning the resulting log
-func forgeLogAndApply[INPUT proto.Message](
-	ctx context.Context,
-	lp *logProcessor[INPUT],
-	ledgerID uint32,
-	parameters Parameters[INPUT],
-	apply func(ctx context.Context, action *raftcmdpb.Action) (*commonpb.Log, error),
-) (*commonpb.Log, error) {
-	action, cachedLog, err := lp.forgeAction(ctx, ledgerID, parameters)
-	if err != nil {
-		return nil, err
-	}
-	if cachedLog != nil {
-		return cachedLog, nil
-	}
-
-	return apply(ctx, action)
-}
-
 // Apply applies a ledger action and returns the resulting log
 func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
 	if action == nil {
@@ -241,10 +216,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 
 	switch data := action.Data.(type) {
 	case *servicepb.LedgerAction_CreateTransaction:
-		return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, Parameters[*servicepb.CreateTransactionPayload]{
-			IdempotencyKey: idempotencyKey,
-			Input:          data.CreateTransaction,
-		}, ctrl.applyAction)
+		return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, idempotencyKey, data.CreateTransaction, ctrl.applyAction)
 
 	case *servicepb.LedgerAction_AddMetadata:
 		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
@@ -253,24 +225,15 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 
 		switch data.AddMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			return forgeLogAndApply(ctx, ctrl.saveAccountMetadataLp, ledgerID, Parameters[*commonpb.SaveMetadataCommand]{
-				IdempotencyKey: idempotencyKey,
-				Input:          data.AddMetadata,
-			}, ctrl.applyAction)
+			return forgeLogAndApply(ctx, ctrl.saveAccountMetadataLp, ledgerID, idempotencyKey, data.AddMetadata, ctrl.applyAction)
 		case *commonpb.Target_Transaction:
-			return forgeLogAndApply(ctx, ctrl.saveTransactionMetadataLp, ledgerID, Parameters[*commonpb.SaveMetadataCommand]{
-				IdempotencyKey: idempotencyKey,
-				Input:          data.AddMetadata,
-			}, ctrl.applyAction)
+			return forgeLogAndApply(ctx, ctrl.saveTransactionMetadataLp, ledgerID, idempotencyKey, data.AddMetadata, ctrl.applyAction)
 		default:
 			return nil, fmt.Errorf("unsupported target type for add metadata")
 		}
 
 	case *servicepb.LedgerAction_RevertTransaction:
-		return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, Parameters[*servicepb.RevertTransactionPayload]{
-			IdempotencyKey: idempotencyKey,
-			Input:          data.RevertTransaction,
-		}, ctrl.applyAction)
+		return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, idempotencyKey, data.RevertTransaction, ctrl.applyAction)
 
 	case *servicepb.LedgerAction_DeleteMetadata:
 		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
@@ -279,15 +242,9 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 
 		switch data.DeleteMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			return forgeLogAndApply(ctx, ctrl.deleteAccountMetadataLp, ledgerID, Parameters[*commonpb.DeleteMetadataCommand]{
-				IdempotencyKey: idempotencyKey,
-				Input:          data.DeleteMetadata,
-			}, ctrl.applyAction)
+			return forgeLogAndApply(ctx, ctrl.deleteAccountMetadataLp, ledgerID, idempotencyKey, data.DeleteMetadata, ctrl.applyAction)
 		case *commonpb.Target_Transaction:
-			return forgeLogAndApply(ctx, ctrl.deleteTransactionMetadataLp, ledgerID, Parameters[*commonpb.DeleteMetadataCommand]{
-				IdempotencyKey: idempotencyKey,
-				Input:          data.DeleteMetadata,
-			}, ctrl.applyAction)
+			return forgeLogAndApply(ctx, ctrl.deleteTransactionMetadataLp, ledgerID, idempotencyKey, data.DeleteMetadata, ctrl.applyAction)
 		default:
 			return nil, fmt.Errorf("unsupported target type for delete metadata")
 		}
@@ -297,19 +254,19 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 	}
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.CreateTransactionPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
 	ctrl.logger.Debugf("Creating transaction")
 
-	input := parameters.Input
+	input := msg.(*servicepb.CreateTransactionPayload)
 
 	// Validate that we have either postings or script, but not both
 	hasScript := input.Script != nil && input.Script.Plain != ""
 
-	if len(parameters.Input.Postings) > 0 && hasScript {
+	if len(input.Postings) > 0 && hasScript {
 		return nil, fmt.Errorf("cannot pass postings and numscript in the same request")
 	}
 
-	if len(parameters.Input.Postings) == 0 && !hasScript {
+	if len(input.Postings) == 0 && !hasScript {
 		return nil, fmt.Errorf("you need to pass either a posting array or a numscript script")
 	}
 
@@ -394,8 +351,8 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 			AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 				AccountMetadata: accountMetadataProto,
 				Metadata:        finalMetadata,
-				Timestamp:       parameters.Input.Timestamp,
-				Reference:       parameters.Input.Reference,
+				Timestamp:       input.Timestamp,
+				Reference:       input.Reference,
 				Postings:        postings,
 			},
 		},
@@ -465,8 +422,8 @@ func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOf
 	return postings, txMetadata, accountMetadata, nil
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.RevertTransactionPayload]) (*raftcmdpb.CommandInput, error) {
-	input := parameters.Input
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+	input := msg.(*servicepb.RevertTransactionPayload)
 
 	// Validate input
 	if input.TransactionId == 0 {
@@ -585,8 +542,8 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	}, nil
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.SaveMetadataCommand]) (*raftcmdpb.CommandInput, error) {
-	input := parameters.Input
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+	input := msg.(*commonpb.SaveMetadataCommand)
 
 	// Validate input
 	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
@@ -607,8 +564,8 @@ func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, stor
 	}, nil
 }
 
-func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.SaveMetadataCommand]) (*raftcmdpb.CommandInput, error) {
-	input := parameters.Input
+func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+	input := msg.(*commonpb.SaveMetadataCommand)
 
 	// Validate input
 	target, ok := input.Target.Target.(*commonpb.Target_Account)
@@ -629,8 +586,8 @@ func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *u
 	}, nil
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.DeleteMetadataCommand]) (*raftcmdpb.CommandInput, error) {
-	input := parameters.Input
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+	input := msg.(*commonpb.DeleteMetadataCommand)
 
 	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
 	if !ok {
@@ -650,8 +607,8 @@ func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, st
 	}, nil
 }
 
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.DeleteMetadataCommand]) (*raftcmdpb.CommandInput, error) {
-	input := parameters.Input
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+	input := msg.(*commonpb.DeleteMetadataCommand)
 
 	target, ok := input.Target.Target.(*commonpb.Target_Account)
 	if !ok {
