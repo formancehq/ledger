@@ -2,6 +2,11 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+	"github.com/formancehq/ledger/pkg/client/types"
+)
+
 type V2VolumesWithBalanceCursorResponseCursor struct {
 	PageSize int64                  `json:"pageSize"`
 	HasMore  bool                   `json:"hasMore"`
@@ -46,7 +51,23 @@ func (o *V2VolumesWithBalanceCursorResponseCursor) GetData() []V2VolumesWithBala
 }
 
 type V2VolumesWithBalanceCursorResponse struct {
-	Cursor V2VolumesWithBalanceCursorResponseCursor `json:"cursor"`
+	resource *string                                  `const:"volumes" json:"resource,omitempty"`
+	Cursor   V2VolumesWithBalanceCursorResponseCursor `json:"cursor"`
+}
+
+func (v V2VolumesWithBalanceCursorResponse) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2VolumesWithBalanceCursorResponse) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *V2VolumesWithBalanceCursorResponse) GetResource() *string {
+	return types.String("volumes")
 }
 
 func (o *V2VolumesWithBalanceCursorResponse) GetCursor() V2VolumesWithBalanceCursorResponseCursor {

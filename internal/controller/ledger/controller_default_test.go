@@ -689,12 +689,13 @@ func TestRunQuery(t *testing.T) {
 		},
 	}).Return(cursor, nil)
 
-	ret, err := l.RunQuery(context.Background(), schema.Version, "FOO", common.RunQuery{
-		Vars: map[string]string{
+	resource, ret, err := l.RunQuery(context.Background(), schema.Version, "FOO", common.RunQuery{
+		Vars: map[string]any{
 			"aaa": "bbb",
 		},
 	}, bunpaginate.QueryDefaultPageSize)
 	require.NoError(t, err)
+	require.Equal(t, "accounts", resource)
 	require.Equal(t, &bunpaginate.Cursor[any]{
 		Data: []any{},
 	}, ret)

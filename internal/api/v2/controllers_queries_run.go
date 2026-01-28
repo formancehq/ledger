@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,8 +12,18 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/resources"
 	storage "github.com/formancehq/ledger/internal/storage/common"
 )
+
+type RenderedResponse struct {
+	any
+	Resource resources.ResourceKind `json:"resource,omitempty"`
+}
+
+// func renderResponse(json.Raw) {
+
+// }
 
 func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -22,25 +33,54 @@ func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
 			schemaVersion := r.URL.Query().Get("schemaVersion")
 			queryId := chi.URLParam(r, "id")
 
-			cursor, err := l.RunQuery(r.Context(), schemaVersion, queryId, payload, paginationConfig.DefaultPageSize)
+			resource, cursor, err := l.RunQuery(r.Context(), schemaVersion, queryId, payload, paginationConfig.DefaultPageSize)
 			if err != nil {
 				common.HandleCommonPaginationErrors(w, r, err)
 				return
 			}
 
-			api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(item any) any {
-				switch v := item.(type) {
-				case ledger.Transaction:
-					return renderTransaction(r, v)
-				case ledger.Account:
-					return renderAccount(r, v)
-				case ledger.VolumesWithBalanceByAssetByAccount:
-					return renderVolumesWithBalances(r, v)
-				case ledger.Log:
-					return renderLog(r, v)
-				}
-				return item
-			}))
+			err = getJsonResponse(r, w, *resource, *cursor)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
 		})
 	}
+}
+
+func getJsonResponse(r *http.Request, w http.ResponseWriter, resource resources.ResourceKind, cursor bunpaginate.Cursor[any]) error {
+	renderedCursor := *bunpaginate.MapCursor(&cursor, func(item any) any {
+		switch v := item.(type) {
+		case ledger.Transaction:
+			return renderTransaction(r, v)
+		case ledger.Account:
+			return renderAccount(r, v)
+		case ledger.VolumesWithBalanceByAssetByAccount:
+			return renderVolumesWithBalances(r, v)
+		case ledger.Log:
+			return renderLog(r, v)
+		}
+		return item
+	})
+	{
+		v := api.BaseResponse[any]{
+			Cursor: &renderedCursor,
+		}
+		s, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		var fields map[string]any
+		err = json.Unmarshal(s, &fields)
+		if err != nil {
+			return err
+		}
+		fields["resource"] = resource
+		if err := json.NewEncoder(w).Encode(fields); err != nil {
+			return err
+		}
+	}
+	return nil
 }

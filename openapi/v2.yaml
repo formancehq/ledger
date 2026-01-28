@@ -2192,6 +2192,8 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          const: accounts
         cursor:
           type: object
           required:
@@ -2223,6 +2225,8 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          const: transactions
         cursor:
           type: object
           required:
@@ -2254,6 +2258,8 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          const: logs
         cursor:
           type: object
           required:
@@ -2299,6 +2305,8 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          const: volumes
         cursor:
           type: object
           required:

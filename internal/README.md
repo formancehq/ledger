@@ -13,7 +13,7 @@ import "github.com/formancehq/ledger/internal"
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
 - [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
 - [func MarkReverts\(m metadata.Metadata, txID uint64\) metadata.Metadata](<#MarkReverts>)
-- [func ResolveFilterTemplate\(body json.RawMessage, vars map\[string\]string\) \(query.Builder, error\)](<#ResolveFilterTemplate>)
+- [func ResolveFilterTemplate\(resourceKind resources.ResourceKind, body json.RawMessage, varDeclarations map\[string\]VarSpec, callVars map\[string\]any\) \(query.Builder, error\)](<#ResolveFilterTemplate>)
 - [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
@@ -142,7 +142,6 @@ import "github.com/formancehq/ledger/internal"
   - [func \(q QueryTemplateParams\[Opts\]\) Overwrite\(others ...json.RawMessage\) \(\*QueryTemplateParams\[Opts\], error\)](<#QueryTemplateParams[Opts].Overwrite>)
 - [type QueryTemplates](<#QueryTemplates>)
   - [func \(t QueryTemplates\) Validate\(\) error](<#QueryTemplates.Validate>)
-- [type ResourceKind](<#ResourceKind>)
 - [type RevertedTransaction](<#RevertedTransaction>)
   - [func \(r RevertedTransaction\) GetMemento\(\) any](<#RevertedTransaction.GetMemento>)
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
@@ -312,10 +311,10 @@ func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata
 
 
 <a name="ResolveFilterTemplate"></a>
-## func [ResolveFilterTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L117>)
+## func [ResolveFilterTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L116>)
 
 ```go
-func ResolveFilterTemplate(body json.RawMessage, vars map[string]string) (query.Builder, error)
+func ResolveFilterTemplate(resourceKind resources.ResourceKind, body json.RawMessage, varDeclarations map[string]VarSpec, callVars map[string]any) (query.Builder, error)
 ```
 
 Resolve filter template using the provided vars
@@ -1559,22 +1558,22 @@ func (p Postings) Validate() (int, error)
 
 
 <a name="QueryTemplate"></a>
-## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L85-L91>)
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L82-L88>)
 
 
 
 ```go
 type QueryTemplate struct {
-    Name     string             `json:"name,omitempty"`
-    Resource ResourceKind       `json:"resource"`
-    Params   json.RawMessage    `json:"params"`
-    Vars     map[string]VarSpec `json:"vars"`
-    Body     json.RawMessage    `json:"body"`
+    Name     string                 `json:"name,omitempty"`
+    Resource resources.ResourceKind `json:"resource"`
+    Params   json.RawMessage        `json:"params"`
+    Vars     map[string]VarSpec     `json:"vars"`
+    Body     json.RawMessage        `json:"body"`
 }
 ```
 
 <a name="QueryTemplate.Validate"></a>
-### func \(QueryTemplate\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L94>)
+### func \(QueryTemplate\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L91>)
 
 ```go
 func (q QueryTemplate) Validate() error
@@ -1583,7 +1582,7 @@ func (q QueryTemplate) Validate() error
 Validate a query template
 
 <a name="QueryTemplateParams"></a>
-## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L59-L67>)
+## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L56-L64>)
 
 
 
@@ -1600,7 +1599,7 @@ type QueryTemplateParams[Opts any] struct {
 ```
 
 <a name="QueryTemplateParams[Opts].Overwrite"></a>
-### func \(QueryTemplateParams\[Opts\]\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L69>)
+### func \(QueryTemplateParams\[Opts\]\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L66>)
 
 ```go
 func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryTemplateParams[Opts], error)
@@ -1609,7 +1608,7 @@ func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryT
 
 
 <a name="QueryTemplates"></a>
-## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L23>)
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L20>)
 
 
 
@@ -1618,33 +1617,13 @@ type QueryTemplates map[string]QueryTemplate
 ```
 
 <a name="QueryTemplates.Validate"></a>
-### func \(QueryTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L25>)
+### func \(QueryTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L22>)
 
 ```go
 func (t QueryTemplates) Validate() error
 ```
 
 
-
-<a name="ResourceKind"></a>
-## type [ResourceKind](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L14>)
-
-
-
-```go
-type ResourceKind string
-```
-
-<a name="ResourceKindTransactions"></a>
-
-```go
-const (
-    ResourceKindTransactions ResourceKind = "transactions"
-    ResourceKindAccounts     ResourceKind = "accounts"
-    ResourceKindLogs         ResourceKind = "logs"
-    ResourceKindVolumes      ResourceKind = "volumes"
-)
-```
 
 <a name="RevertedTransaction"></a>
 ## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L370-L373>)
@@ -1695,7 +1674,7 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 
 
 <a name="RunQueryTemplateParams"></a>
-## type [RunQueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L54-L57>)
+## type [RunQueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L51-L54>)
 
 
 
@@ -2089,19 +2068,19 @@ type Transactions struct {
 ```
 
 <a name="VarSpec"></a>
-## type [VarSpec](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L34-L37>)
+## type [VarSpec](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L31-L34>)
 
 
 
 ```go
 type VarSpec struct {
-    Type    string  `json:"type,omitempty"`
-    Default *string `json:"default"`
+    Type    string `json:"type,omitempty"`
+    Default any    `json:"default"`
 }
 ```
 
 <a name="VarSpec.UnmarshalJSON"></a>
-### func \(\*VarSpec\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L39>)
+### func \(\*VarSpec\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L36>)
 
 ```go
 func (p *VarSpec) UnmarshalJSON(b []byte) error

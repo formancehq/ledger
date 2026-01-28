@@ -1148,6 +1148,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -1593,6 +1594,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2345,6 +2347,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2428,6 +2431,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2646,6 +2650,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3760,6 +3765,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3809,6 +3815,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|any|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
@@ -3825,6 +3832,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3926,6 +3934,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|any|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
@@ -3942,6 +3951,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3987,6 +3997,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|any|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
@@ -4078,6 +4089,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -4101,6 +4113,7 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|any|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|

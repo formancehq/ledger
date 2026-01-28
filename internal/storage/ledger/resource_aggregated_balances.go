@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/resources"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 )
@@ -14,13 +15,8 @@ type aggregatedBalancesResourceRepositoryHandler struct {
 	store *Store
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchema {
-	return common.EntitySchema{
-		Fields: map[string]common.Field{
-			"address":  common.NewStringField().Paginated(),
-			"metadata": common.NewStringMapField(),
-		},
-	}
+func (h aggregatedBalancesResourceRepositoryHandler) Schema() resources.EntitySchema {
+	return resources.AggregatedBalanceSchema
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
@@ -106,7 +102,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.Reso
 	switch {
 	case property == "address":
 		switch operator {
-		case common.OperatorIn:
+		case resources.OperatorIn:
 			addresses, err := assetAddressArray(value)
 			if err != nil {
 				return "", nil, err

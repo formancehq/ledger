@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/resources"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 )
@@ -588,10 +589,11 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	return schemas, nil
 }
 
-func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, defaultPageSize uint64) (*bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
 	var (
-		cursor *bunpaginate.Cursor[any]
-		err    error
+		resource *resources.ResourceKind
+		cursor   *bunpaginate.Cursor[any]
+		err      error
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -599,15 +601,15 @@ func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion strin
 		c.tracer,
 		c.runQueryHistogram,
 		func(ctx context.Context) (any, error) {
-			cursor, err = c.underlying.RunQuery(ctx, schemaVersion, id, query, defaultPageSize)
+			resource, cursor, err = c.underlying.RunQuery(ctx, schemaVersion, id, query, defaultPageSize)
 			return nil, err
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return cursor, nil
+	return resource, cursor, nil
 }
 
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {

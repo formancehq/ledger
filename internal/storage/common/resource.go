@@ -14,21 +14,23 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/internal/resources"
 )
 
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
-	case OperatorMatch:
+	case resources.OperatorMatch:
 		return "="
-	case OperatorLT:
+	case resources.OperatorLT:
 		return "<"
-	case OperatorGT:
+	case resources.OperatorGT:
 		return ">"
-	case OperatorLTE:
+	case resources.OperatorLTE:
 		return "<="
-	case OperatorGTE:
+	case resources.OperatorGTE:
 		return ">="
-	case OperatorLike:
+	case resources.OperatorLike:
 		return "like"
 	}
 	panic("unreachable")
@@ -55,20 +57,6 @@ func AcceptOperators(operators ...string) PropertyValidator {
 		}
 		return nil
 	})
-}
-
-type EntitySchema struct {
-	Fields map[string]Field
-}
-
-func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
-	for fieldName, field := range s.Fields {
-		if fieldName == name || slices.Contains(field.Aliases, name) {
-			return fieldName, &field
-		}
-	}
-
-	return "", nil
 }
 
 type RepositoryHandlerBuildContext[Opts any] struct {
@@ -102,7 +90,7 @@ func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...f
 }
 
 type RepositoryHandler[Opts any] interface {
-	Schema() EntitySchema
+	Schema() resources.EntitySchema
 	BuildDataset(query RepositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	ResolveFilter(query ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	Project(query ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
@@ -126,7 +114,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 			if property.Type.IsIndexable() {
 				key = strings.Split(key, "[")[0]
 			}
-			if !property.matchKey(name, key) {
+			if !property.MatchKey(name, key) {
 				continue
 			}
 

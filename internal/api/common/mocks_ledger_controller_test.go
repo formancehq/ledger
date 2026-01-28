@@ -16,6 +16,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	resources "github.com/formancehq/ledger/internal/resources"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
@@ -442,12 +443,13 @@ func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 }
 
 // RunQuery mocks base method.
-func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*bunpaginate.Cursor[any], error) {
+func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[any])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(*resources.ResourceKind)
+	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // RunQuery indicates an expected call of RunQuery.

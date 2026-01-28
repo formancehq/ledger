@@ -178,7 +178,7 @@ var _ = Context("Ledger query API tests", func() {
 					},
 				})
 				Expect(err).To(BeNil())
-				Expect(len(res.V2AccountsCursorResponse.Cursor.Data)).To(Equal(1))
+				Expect(len(res.OneOf.V2AccountsCursorResponse.Cursor.Data)).To(Equal(1))
 			})
 		})
 	})

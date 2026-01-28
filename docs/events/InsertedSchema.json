@@ -207,9 +207,7 @@
         "type": {
           "type": "string"
         },
-        "default": {
-          "type": "string"
-        }
+        "default": true
       },
       "additionalProperties": false,
       "type": "object",

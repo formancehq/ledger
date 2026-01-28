@@ -1,8 +1,9 @@
-package common
+package resources
 
 import (
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/formancehq/go-libs/v3/time"
 )
@@ -18,11 +19,26 @@ const (
 	OperatorGTE    = "$gte"
 )
 
+type EntitySchema struct {
+	Fields map[string]Field
+}
+
+func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
+	for fieldName, field := range s.Fields {
+		if fieldName == name || slices.Contains(field.Aliases, name) {
+			return fieldName, &field
+		}
+	}
+
+	return "", nil
+}
+
 type FieldType interface {
 	Operators() []string
 	ValidateValue(operator string, value any) error
 	IsIndexable() bool
 	IsPaginated() bool
+	ValueType() FieldType
 }
 
 type Field struct {
@@ -41,7 +57,7 @@ func (f Field) Paginated() Field {
 	return f
 }
 
-func (f Field) matchKey(name, key string) bool {
+func (f Field) MatchKey(name, key string) bool {
 	if key == name {
 		return true
 	}
@@ -137,6 +153,10 @@ func (t TypeString) ValidateValue(operator string, value any) error {
 	return nil
 }
 
+func (t TypeString) ValueType() FieldType {
+	return t
+}
+
 var _ FieldType = (*TypeString)(nil)
 
 func NewTypeString() TypeString {
@@ -177,6 +197,10 @@ func (t TypeDate) ValidateValue(_ string, value any) error {
 	return nil
 }
 
+func (t TypeDate) ValueType() FieldType {
+	return t
+}
+
 func NewTypeDate() TypeDate {
 	return TypeDate{}
 }
@@ -207,6 +231,10 @@ func NewTypeMap(underlyingType FieldType) TypeMap {
 	return TypeMap{
 		underlyingType: underlyingType,
 	}
+}
+
+func (t TypeMap) ValueType() FieldType {
+	return t.underlyingType
 }
 
 var _ FieldType = (*TypeMap)(nil)
@@ -241,6 +269,10 @@ func (t TypeNumeric) ValidateValue(_ string, value any) error {
 	}
 }
 
+func (t TypeNumeric) ValueType() FieldType {
+	return t
+}
+
 func NewTypeNumeric() TypeNumeric {
 	return TypeNumeric{}
 }
@@ -270,6 +302,10 @@ func (t TypeBoolean) ValidateValue(_ string, value any) error {
 	}
 
 	return nil
+}
+
+func (t TypeBoolean) ValueType() FieldType {
+	return t
 }
 
 func NewTypeBoolean() TypeBoolean {

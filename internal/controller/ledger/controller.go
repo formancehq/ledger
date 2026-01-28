@@ -12,6 +12,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/internal/resources"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -87,7 +88,7 @@ type Controller interface {
 	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
 
 	// Run a query template on the ledger
-	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*bunpaginate.Cursor[any], error)
+	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error)
 }
 
 type RunScript = vm.RunScript
