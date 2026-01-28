@@ -18,7 +18,7 @@ func Extract[OF any](
 	modifiers ...func(query *InitialPaginatedQuery[OF]) error,
 ) (PaginatedQuery[OF], error) {
 	if r.URL.Query().Get(bunpaginate.QueryKeyCursor) != "" {
-		return unmarshalCursor[OF](r.URL.Query().Get(bunpaginate.QueryKeyCursor), modifiers...)
+		return UnmarshalCursor[OF](r.URL.Query().Get(bunpaginate.QueryKeyCursor), modifiers...)
 	} else {
 		initialQuery, err := defaulter()
 		if err != nil {
@@ -28,7 +28,7 @@ func Extract[OF any](
 	}
 }
 
-func unmarshalCursor[Options any](v string, modifiers ...func(query *InitialPaginatedQuery[Options]) error) (PaginatedQuery[Options], error) {
+func UnmarshalCursor[Options any](v string, modifiers ...func(query *InitialPaginatedQuery[Options]) error) (PaginatedQuery[Options], error) {
 	res, err := base64.RawURLEncoding.DecodeString(v)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func Iterate[OF any, Options any](
 			break
 		}
 
-		query, err = unmarshalCursor[Options](cursor.Next)
+		query, err = UnmarshalCursor[Options](cursor.Next)
 		if err != nil {
 			return fmt.Errorf("paginating next request: %w", err)
 		}

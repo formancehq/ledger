@@ -11,6 +11,7 @@ import (
 type SchemaData struct {
 	Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
 	Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
+	Queries      QueryTemplates       `json:"queries" bun:"queries"`
 }
 
 type Schema struct {
@@ -29,6 +30,9 @@ func NewSchema(version string, data SchemaData) (Schema, error) {
 		return Schema{}, NewErrInvalidSchema(errors.New("missing transaction templates"))
 	}
 	if err := data.Transactions.Validate(); err != nil {
+		return Schema{}, NewErrInvalidSchema(err)
+	}
+	if err := data.Queries.Validate(); err != nil {
 		return Schema{}, NewErrInvalidSchema(err)
 	}
 	return Schema{

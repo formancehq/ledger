@@ -2,6 +2,11 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+	"github.com/formancehq/ledger/pkg/client/types"
+)
+
 type V2LogsCursorResponseCursor struct {
 	PageSize int64   `json:"pageSize"`
 	HasMore  bool    `json:"hasMore"`
@@ -46,7 +51,23 @@ func (o *V2LogsCursorResponseCursor) GetData() []V2Log {
 }
 
 type V2LogsCursorResponse struct {
-	Cursor V2LogsCursorResponseCursor `json:"cursor"`
+	resource *string                    `const:"logs" json:"resource,omitempty"`
+	Cursor   V2LogsCursorResponseCursor `json:"cursor"`
+}
+
+func (v V2LogsCursorResponse) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2LogsCursorResponse) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *V2LogsCursorResponse) GetResource() *string {
+	return types.String("logs")
 }
 
 func (o *V2LogsCursorResponse) GetCursor() V2LogsCursorResponseCursor {

@@ -127,6 +127,8 @@ func NewRouter(
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
 				router.Get("/volumes", readVolumes(routerOptions.paginationConfig))
+
+				router.Post("/queries/{id}/run", runQuery(routerOptions.paginationConfig))
 			})
 		})
 	})

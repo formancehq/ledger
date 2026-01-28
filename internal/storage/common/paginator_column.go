@@ -11,10 +11,12 @@ import (
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/internal/resources"
 )
 
 type columnPaginator[ResourceType, OptionsType any] struct {
-	fieldType FieldType
+	fieldType resources.FieldType
 	fieldName string
 	query     ColumnPaginatedQuery[OptionsType]
 }
@@ -242,7 +244,7 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 func newColumnPaginator[ResourceType, OptionsType any](
 	query ColumnPaginatedQuery[OptionsType],
 	fieldName string,
-	fieldType FieldType,
+	fieldType resources.FieldType,
 ) columnPaginator[ResourceType, OptionsType] {
 	return columnPaginator[ResourceType, OptionsType]{
 		query:     query,
@@ -251,9 +253,9 @@ func newColumnPaginator[ResourceType, OptionsType any](
 	}
 }
 
-func convertPaginationIDToSQLType(fieldType FieldType, id *big.Int) any {
+func convertPaginationIDToSQLType(fieldType resources.FieldType, id *big.Int) any {
 	switch fieldType.(type) {
-	case TypeDate:
+	case resources.TypeDate:
 		return libtime.UnixMicro(id.Int64())
 	default:
 		return id

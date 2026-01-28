@@ -71,7 +71,8 @@ func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err er
 	switch {
 	case errors.Is(err, storagecommon.ErrInvalidQuery{}) ||
 		errors.Is(err, ledger.ErrMissingFeature{}) ||
-		errors.Is(err, storagecommon.ErrNotPaginatedField{}):
+		errors.Is(err, storagecommon.ErrNotPaginatedField{}) ||
+		errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		api.BadRequest(w, ErrValidation, err)
 	default:
 		HandleCommonErrors(w, r, err)

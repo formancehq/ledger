@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/resources"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -169,6 +170,20 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	})
 
 	return schemas, err
+}
+
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+	var (
+		resource *resources.ResourceKind
+		cursor   *bunpaginate.Cursor[any]
+		err      error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		resource, cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, q, defaultPageSize)
+		return err
+	})
+
+	return resource, cursor, err
 }
 
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
