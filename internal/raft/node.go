@@ -975,9 +975,9 @@ func (node *Node) CreateLedger(ctx context.Context, cmd *ledgerpb.CreateLedgerCo
 		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
-	// ledgerInfo is already *ledgerpb.LedgerInfo
-	ledgerInfo := ret.(*ledgerpb.LedgerInfo)
-	return ledgerInfo, nil
+	// Result is now a []any, extract the first element
+	results := ret.([]any)
+	return results[0].(*ledgerpb.LedgerInfo), nil
 }
 
 func (node *Node) GetLedgerInfo(ctx context.Context, id uint32) (*ledgerpb.LedgerInfo, error) {
@@ -993,13 +993,10 @@ func (node *Node) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.L
 func (node *Node) DeleteLedger(ctx context.Context, id uint32) error {
 
 	// Create the command
-	cmd, err := NewDeleteLedgerCommand(id)
-	if err != nil {
-		return fmt.Errorf("creating delete ledger command: %w", err)
-	}
+	cmd := NewDeleteLedgerCommand(id)
 
 	// Apply the command via Raft (waits for application)
-	_, err = node.Apply(ctx, cmd)
+	_, err := node.Apply(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
@@ -1045,12 +1042,14 @@ func (node *Node) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, 
 
 func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
 
-	log, err := node.Apply(ctx, NewCreateLogCommand(input, ledgerID, idempotency))
+	ret, err := node.Apply(ctx, NewCreateLogCommand(input, ledgerID, idempotency))
 	if err != nil {
 		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
 	}
 
-	return log.(*ledgerpb.Log), nil
+	// Result is now a []any, extract the first element
+	results := ret.([]any)
+	return results[0].(*ledgerpb.Log), nil
 }
 
 func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {

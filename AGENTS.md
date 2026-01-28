@@ -304,7 +304,7 @@ To add a new command model (e.g., for a new FSM command):
        }
        return &ledgerpb.Command{
            Id:   generateRandomID(),
-           Type: ledgerpb.CommandType_UpdateLedger,
+           Type: ledgerpb.ActionType_UpdateLedger,
            Data: data,
            Date: timestamppb.Now(),
        }

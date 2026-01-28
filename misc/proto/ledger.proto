@@ -381,16 +381,21 @@ message State {
   uint32 next_ledger_id = 2;                // Next available ledger ID (max 65535)
 }
 
-// CommandProto represents a command to be executed in the FSM (protobuf serialization format)
+// Command represents a command to be executed in the FSM (protobuf serialization format)
+// A command can contain multiple actions that will be executed atomically
 message Command {
   uint64 id = 1;                    // Random command ID
-  CommandType type = 2;                  // Command type (e.g., "create_bucket", "delete_bucket", "create_ledger", "insert_log")
-  bytes data = 3;                   // Protobuf-encoded command data
-  ledger.Timestamp date = 4; // Creation date in UTC
+  repeated Action actions = 2;      // List of actions to execute atomically
+  ledger.Timestamp date = 3;        // Creation date in UTC
 }
 
-enum CommandType {
+enum ActionType {
   CreateLedger = 0;
   DeleteLedger = 1;
   CreateLog = 2;
+}
+
+message Action {
+  ActionType action_type = 1;
+  bytes data = 2;
 }

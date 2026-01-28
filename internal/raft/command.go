@@ -21,40 +21,40 @@ func GenerateRandomID() uint64 {
 	return binary.BigEndian.Uint64(b[:])
 }
 
-// NewCreateLedgerCommand creates a new CreateLedgerCommand
-// snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateLedgerCommand(cmd *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
-
-	data, err := proto.Marshal(cmd)
+// NewAction creates a new Action with the given type and data
+func NewAction(actionType ledgerpb.ActionType, msg proto.Message) *ledgerpb.Action {
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		panic(err)
 	}
-
-	return &ledgerpb.Command{
-		Id:   GenerateRandomID(),
-		Type: ledgerpb.CommandType_CreateLedger,
-		Data: data,
-		Date: ledgerpb.NewTimestamp(time.Now()),
+	return &ledgerpb.Action{
+		ActionType: actionType,
+		Data:       data,
 	}
 }
 
-// NewDeleteLedgerCommand creates a new DeleteLedgerCommand
-func NewDeleteLedgerCommand(id uint32) (*ledgerpb.Command, error) {
-	cmdProto := &ledgerpb.DeleteLedgerCommand{
-		Id: id,
-	}
-
-	data, err := proto.Marshal(cmdProto)
-	if err != nil {
-		return nil, err
-	}
-
+// NewCommand creates a new Command with the given actions
+func NewCommand(actions ...*ledgerpb.Action) *ledgerpb.Command {
 	return &ledgerpb.Command{
-		Id:   GenerateRandomID(),
-		Type: ledgerpb.CommandType_DeleteLedger,
-		Data: data,
-		Date: ledgerpb.NewTimestamp(time.Now()),
-	}, nil
+		Id:      GenerateRandomID(),
+		Actions: actions,
+		Date:    ledgerpb.NewTimestamp(time.Now()),
+	}
+}
+
+// NewCreateLedgerCommand creates a new CreateLedgerCommand
+// snapshotThreshold is optional: if nil or 0, uses global config
+func NewCreateLedgerCommand(cmd *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
+	action := NewAction(ledgerpb.ActionType_CreateLedger, cmd)
+	return NewCommand(action)
+}
+
+// NewDeleteLedgerCommand creates a new DeleteLedgerCommand
+func NewDeleteLedgerCommand(id uint32) *ledgerpb.Command {
+	action := NewAction(ledgerpb.ActionType_DeleteLedger, &ledgerpb.DeleteLedgerCommand{
+		Id: id,
+	})
+	return NewCommand(action)
 }
 
 // UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
@@ -73,21 +73,10 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 
 // NewCreateLogCommand creates a new command
 func NewCreateLogCommand(input *ledgerpb.CommandInput, ledgerID uint32, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
-	cmdProto := &ledgerpb.CreateLogCommand{
+	action := NewAction(ledgerpb.ActionType_CreateLog, &ledgerpb.CreateLogCommand{
 		Input:       input,
 		Idempotency: idempotency,
 		LedgerId:    ledgerID,
-	}
-
-	data, err := proto.Marshal(cmdProto)
-	if err != nil {
-		panic(err)
-	}
-
-	return &ledgerpb.Command{
-		Id:   GenerateRandomID(),
-		Type: ledgerpb.CommandType_CreateLog,
-		Data: data,
-		Date: ledgerpb.NewTimestamp(time.Now()),
-	}
+	})
+	return NewCommand(action)
 }

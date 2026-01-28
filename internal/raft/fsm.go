@@ -50,10 +50,10 @@ func (fsm *FSM) GetState() *ledgerpb.State {
 // The entries are applied directly in the readyLoop of Node.
 // Ledgers and logs are now managed by ledger Raft groups.
 
-// handleCreateLedger handles the create ledger command
-func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) (*ledgerpb.LedgerInfo, error) {
+// handleCreateLedger handles the create ledger action
+func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, action *ledgerpb.Action, cmdDate *ledgerpb.Timestamp) (*ledgerpb.LedgerInfo, error) {
 	var createCmd ledgerpb.CreateLedgerCommand
-	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
+	if err := UnmarshalCommandData(action.Data, &createCmd); err != nil {
 		fsm.logger.
 			WithFields(map[string]any{"error": err}).
 			Errorf("Failed to unmarshal create ledger command")
@@ -74,7 +74,7 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *
 	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name:      createCmd.Name,
 		Metadata:  createCmd.Metadata,
-		CreatedAt: cmd.Date,
+		CreatedAt: cmdDate,
 		Id:        ledgerID,
 	}
 	fsm.state.Ledgers[ledgerID] = &ledgerpb.LedgerState{
@@ -94,10 +94,10 @@ func (fsm *FSM) handleCreateLedger(ctx context.Context, batch store.Batch, cmd *
 	return ledgerInfo, nil
 }
 
-// handleDeleteLedger handles the delete ledger command (hard delete)
-func (fsm *FSM) handleDeleteLedger(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) error {
+// handleDeleteLedger handles the delete ledger action (hard delete)
+func (fsm *FSM) handleDeleteLedger(ctx context.Context, batch store.Batch, action *ledgerpb.Action) error {
 	var deleteCmd ledgerpb.DeleteLedgerCommand
-	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
+	if err := UnmarshalCommandData(action.Data, &deleteCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete ledger command")
 		return fmt.Errorf("unmarshaling delete ledger command: %w", err)
 	}
@@ -121,10 +121,10 @@ func (fsm *FSM) deleteLedger(ctx context.Context, batch store.Batch, id uint32) 
 	return nil
 }
 
-// processInsertLog handles the insert log command by building the log entry
-func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*ledgerpb.Log, error) {
+// createLog handles the insert log action by building the log entry
+func (fsm *FSM) createLog(ctx context.Context, action *ledgerpb.Action, cmdDate *ledgerpb.Timestamp) (*ledgerpb.Log, error) {
 	var createCmd ledgerpb.CreateLogCommand
-	if err := UnmarshalCommandData(raftCommand.Data, &createCmd); err != nil {
+	if err := UnmarshalCommandData(action.Data, &createCmd); err != nil {
 		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 	case *ledgerpb.CommandInput_AppendTransaction:
 		timestamp := cmd.AppendTransaction.Timestamp
 		if timestamp == nil || timestamp.Data == 0 {
-			timestamp = raftCommand.Date
+			timestamp = cmdDate
 		}
 		logPayload = &ledgerpb.LogPayload{
 			Payload: &ledgerpb.LogPayload_CreatedTransaction{
@@ -145,8 +145,8 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 						Timestamp:  timestamp,
 						Reference:  cmd.AppendTransaction.Reference,
 						Id:         fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID(),
-						InsertedAt: raftCommand.Date,
-						UpdatedAt:  raftCommand.Date,
+						InsertedAt: cmdDate,
+						UpdatedAt:  cmdDate,
 					},
 					AccountMetadata: cmd.AppendTransaction.AccountMetadata,
 				},
@@ -176,13 +176,13 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 
 		// Set timestamp if not provided (use current date)
 		if revertTx.Timestamp == nil || revertTx.Timestamp.Data == 0 {
-			revertTx.Timestamp = raftCommand.Date
+			revertTx.Timestamp = cmdDate
 		}
 
 		// Assign transaction ID and timestamps
 		revertTx.Id = fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID()
-		revertTx.InsertedAt = raftCommand.Date
-		revertTx.UpdatedAt = raftCommand.Date
+		revertTx.InsertedAt = cmdDate
+		revertTx.UpdatedAt = cmdDate
 
 		logPayload = &ledgerpb.LogPayload{
 			Payload: &ledgerpb.LogPayload_RevertedTransaction{
@@ -198,7 +198,7 @@ func (fsm *FSM) createLog(ctx context.Context, raftCommand *ledgerpb.Command) (*
 
 	return &ledgerpb.Log{
 		Data:        logPayload,
-		Date:        raftCommand.Date,
+		Date:        cmdDate,
 		Idempotency: createCmd.Idempotency,
 		Id:          fsm.state.Ledgers[createCmd.LedgerId].GetNextLogID(),
 		LedgerId:    createCmd.LedgerId,
@@ -238,52 +238,12 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 			return nil, err
 		}
 
-		switch cmd.Type {
-		case ledgerpb.CommandType_CreateLedger:
-			info, err := fsm.handleCreateLedger(ctx, batch, cmd)
-			if err != nil {
-				ret = append(ret, ApplyResult{
-					Error:     err,
-					CommandID: cmd.Id,
-				})
-				continue
-			}
-			ret = append(ret, ApplyResult{
-				Result:    info,
-				CommandID: cmd.Id,
-			})
-		case ledgerpb.CommandType_DeleteLedger:
-			ret = append(ret, ApplyResult{
-				Error:     fsm.handleDeleteLedger(ctx, batch, cmd),
-				CommandID: cmd.Id,
-			})
-		case ledgerpb.CommandType_CreateLog:
-			log, err := fsm.createLog(ctx, cmd)
-			if err != nil {
-				ret = append(ret, ApplyResult{
-					Error:     err,
-					CommandID: cmd.Id,
-				})
-				continue
-			}
-			ret = append(ret, ApplyResult{
-				Result:    log,
-				CommandID: cmd.Id,
-			})
-
-			if err := fsm.projectLog(ctx, batch, log); err != nil {
-				return nil, fmt.Errorf("projecting log %d: %w", log.Id, err)
-			}
-
-			if err := batch.AppendLogs(ctx, log); err != nil {
-				return nil, fmt.Errorf("writing log to runtime store: %w", err)
-			}
-		default:
-			ret = append(ret, ApplyResult{
-				Error:     fmt.Errorf("unknown command type: %s", cmd.Type),
-				CommandID: cmd.Id,
-			})
+		// Process all actions in the command
+		result, err := fsm.applyCommand(ctx, batch, cmd)
+		if err != nil {
+			return nil, err
 		}
+		ret = append(ret, result)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
@@ -291,6 +251,59 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 	}
 
 	return ret, nil
+}
+
+// applyCommand processes all actions in a command atomically
+func (fsm *FSM) applyCommand(ctx context.Context, batch store.Batch, cmd *ledgerpb.Command) (ApplyResult, error) {
+	var results []any
+
+	for _, action := range cmd.Actions {
+		result, err := fsm.applyAction(ctx, batch, action, cmd.Date)
+		if err != nil {
+			return ApplyResult{
+				Error:     err,
+				CommandID: cmd.Id,
+			}, nil
+		}
+		if result != nil {
+			results = append(results, result)
+		}
+	}
+
+	return ApplyResult{
+		Result:    results,
+		CommandID: cmd.Id,
+	}, nil
+}
+
+// applyAction processes a single action
+func (fsm *FSM) applyAction(ctx context.Context, batch store.Batch, action *ledgerpb.Action, cmdDate *ledgerpb.Timestamp) (any, error) {
+	switch action.ActionType {
+	case ledgerpb.ActionType_CreateLedger:
+		return fsm.handleCreateLedger(ctx, batch, action, cmdDate)
+
+	case ledgerpb.ActionType_DeleteLedger:
+		return nil, fsm.handleDeleteLedger(ctx, batch, action)
+
+	case ledgerpb.ActionType_CreateLog:
+		log, err := fsm.createLog(ctx, action, cmdDate)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := fsm.projectLog(ctx, batch, log); err != nil {
+			return nil, fmt.Errorf("projecting log %d: %w", log.Id, err)
+		}
+
+		if err := batch.AppendLogs(ctx, log); err != nil {
+			return nil, fmt.Errorf("writing log to runtime store: %w", err)
+		}
+
+		return log, nil
+
+	default:
+		return nil, fmt.Errorf("unknown action type: %s", action.ActionType)
+	}
 }
 
 // GetLedgerByName returns the ledger node for a given name (including deleted ledgers)
