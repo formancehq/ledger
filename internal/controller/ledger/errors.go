@@ -169,16 +169,16 @@ func newErrCompilationFailed(err error) ErrCompilationFailed {
 
 type ErrRuntime struct {
 	Source string
-	Inner  numscript.InterpreterError
-}
-
-func (e ErrRuntime) Error() string {
-	return e.Inner.Error()
+	numscript.InterpreterError
 }
 
 func (e ErrRuntime) Is(err error) bool {
 	_, ok := err.(ErrRuntime)
 	return ok
+}
+
+func (e ErrRuntime) Unwrap() error {
+	return e.InterpreterError
 }
 
 type ErrParsing struct {

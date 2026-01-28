@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/numscript"
 )
 
 func createTransaction(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +50,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		_, res, idempotencyHit, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
 		if err != nil {
 			switch {
-			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
+			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}), errors.Is(err, numscript.MissingFundsErr{}):
 				api.BadRequest(w, common.ErrInsufficientFund, err)
 			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
 				api.BadRequest(w, common.ErrCompilationFailed, err)
