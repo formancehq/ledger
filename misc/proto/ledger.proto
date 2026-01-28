@@ -16,6 +16,8 @@ service LedgerService {
   rpc GetLedgerByName(GetLedgerByNameRequest) returns (LedgerInfo);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (Log);
+  // GetTransaction retrieves a transaction by ID
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction);
   // RevertTransaction reverts a transaction
   rpc RevertTransaction(RevertTransactionRequest) returns (Log);
   // SaveAccountMetadata saves metadata for an account
@@ -203,6 +205,11 @@ message DeleteTransactionMetadataRequestPayload {
 message DeleteTransactionMetadataRequest {
   DeleteTransactionMetadataRequestPayload payload = 1;
   Parameters parameters = 2;
+}
+
+message GetTransactionRequest {
+  uint32 ledger_id = 1;
+  uint64 transaction_id = 2;
 }
 
 message StreamLogsRequest {

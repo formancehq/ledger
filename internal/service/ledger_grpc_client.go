@@ -39,6 +39,13 @@ func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, ledgerID uint3
 	return log, nil
 }
 
+func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
+	return g.client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
+		LedgerId:      ledgerID,
+		TransactionId: transactionID,
+	})
+}
+
 func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
 	return g.client.RevertTransaction(ctx, &ledgerpb.RevertTransactionRequest{
 		Parameters: &ledgerpb.Parameters{

@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 9a13162dd9931c0d3d012b570767e427
+  docChecksum: 99251cc5b89fc45f88a6de325a9e289d
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.12.20
-  configChecksum: 2e1be87ea5fa70ae9e97170e9f629337
+  releaseVersion: 0.12.22
+  configChecksum: face518e0a96fb7d01a480718e14a3f7
 features:
   go:
     additionalDependencies: 0.1.0
@@ -39,6 +39,7 @@ generatedFiles:
   - /models/components/createtransactionresponse.go
   - /models/components/deletemetadatarequest.go
   - /models/components/getledgerresponse.go
+  - /models/components/gettransactionresponse.go
   - /models/components/httpmetadata.go
   - /models/components/ledgerinfo.go
   - /models/components/ledgerstate.go
@@ -65,6 +66,7 @@ generatedFiles:
   - /models/operations/deletetransactionmetadata.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
+  - /models/operations/gettransaction.go
   - /models/operations/listallledgers.go
   - /models/operations/reverttransaction.go
   - /models/operations/sanitycheck.go
@@ -93,6 +95,7 @@ generatedFiles:
   - docs/models/components/deletemetadatarequesttargetid.md
   - docs/models/components/deletemetadatarequesttargettype.md
   - docs/models/components/getledgerresponse.md
+  - docs/models/components/gettransactionresponse.md
   - docs/models/components/httpmetadata.md
   - docs/models/components/ledgerinfo.md
   - docs/models/components/ledgerstate.md
@@ -132,6 +135,8 @@ generatedFiles:
   - docs/models/operations/getclusterstateresponse.md
   - docs/models/operations/getledgerrequest.md
   - docs/models/operations/getledgerresponse.md
+  - docs/models/operations/gettransactionrequest.md
+  - docs/models/operations/gettransactionresponse.md
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/option.md
   - docs/models/operations/reverttransactionrequest.md
@@ -469,6 +474,21 @@ examples:
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  getTransaction:
+    speakeasy-default-get-transaction:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          transactionId: 648203
+      responses:
+        "200":
+          application/json: {"data": {"postings": [{"source": "<value>", "destination": "<value>", "amount": 806070, "asset": "<value>"}], "timestamp": "2025-02-20T16:48:48.465Z", "id": 206803}}
+        "404":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
 examplesVersion: 1.0.2
 generatedTests: {}

@@ -1,18 +1,21 @@
-# Write API Comparison: ledger-v3-poc vs github.com/formancehq/ledger
+# API Comparison: ledger-v3-poc vs github.com/formancehq/ledger
 
-This document compares the POC's write API with the original Formance ledger API and documents missing features.
+This document compares the POC's API with the original Formance ledger API and documents missing features.
 
 ## Summary
 
 | Feature | POC | Original | Notes |
 |---------|-----|----------|-------|
-| **Transactions** |
+| **Transactions (Write)** |
 | Create transaction (postings) | ✅ | ✅ | |
 | Create transaction (numscript) | ✅ | ✅ | |
 | Revert transaction | ✅ | ✅ | |
 | Revert with `force` | ✅ | ✅ | |
 | Revert with `atEffectiveDate` | ✅ | ✅ | |
 | Create transaction with `force` | ❌ | ✅ | Not implemented |
+| **Transactions (Read)** |
+| Get transaction by ID | ✅ | ✅ | |
+| List transactions | ❌ | ✅ | Not implemented |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -29,6 +32,15 @@ This document compares the POC's write API with the original Formance ledger API
 | **Ledger** |
 | Create ledger | ✅ | ✅ | |
 | Delete ledger | ✅ | ✅ | |
+| Get ledger | ✅ | ✅ | |
+| List ledgers | ✅ | ✅ | |
+| **Accounts (Read)** |
+| Get account | ❌ | ✅ | Not implemented |
+| List accounts | ❌ | ✅ | Not implemented |
+| Get account balances | ❌ | ✅ | Not implemented |
+| Get account volumes | ❌ | ✅ | Not implemented |
+| **Logs** |
+| List logs | ❌ | ✅ | Not implemented |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -102,6 +114,28 @@ This document compares the POC's write API with the original Formance ledger API
 - `DELETE /{ledgerName}` - Delete a ledger
 - `GET /{ledgerName}` - Get ledger info (read)
 - `GET /` - List all ledgers (read)
+
+### 6. Transaction Read
+
+**Endpoint:** `GET /{ledgerName}/transactions/{transactionId}`
+
+**Features:**
+- ✅ Get transaction by ID
+- ✅ Returns transaction details (postings, metadata, timestamp, reference)
+- ✅ Works from any node (leader or follower)
+- ✅ Returns 404 for non-existent transactions
+
+**Response includes:**
+- Transaction ID
+- Postings (source, destination, amount, asset)
+- Metadata
+- Timestamp
+- Reference (if set)
+
+**CLI command:**
+```bash
+ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
+```
 
 ---
 
@@ -266,19 +300,23 @@ This document compares the POC's write API with the original Formance ledger API
 
 ---
 
-## Read Features (Out of Scope but Noted)
+## Read Features
 
-These read endpoints exist in the original ledger but are not documented here as the focus is on write operations:
+Read endpoints comparison with the original ledger:
 
-- `GET /{ledgerName}/transactions` - List transactions
-- `GET /{ledgerName}/transactions/{id}` - Get a transaction
-- `GET /{ledgerName}/accounts` - List accounts
-- `GET /{ledgerName}/accounts/{address}` - Get an account
-- `GET /{ledgerName}/accounts/{address}/balances` - Get account balances
-- `GET /{ledgerName}/accounts/{address}/volumes` - Get account volumes
-- `GET /{ledgerName}/logs` - List logs
-- `GET /{ledgerName}/aggregate/balances` - Balance aggregation
-- `GET /{ledgerName}/stats` - Ledger statistics
+| Endpoint | POC | Original | Notes |
+|----------|-----|----------|-------|
+| `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
+| `GET /{ledgerName}/transactions` | ❌ | ✅ | List transactions |
+| `GET /{ledgerName}/accounts` | ❌ | ✅ | List accounts |
+| `GET /{ledgerName}/accounts/{address}` | ❌ | ✅ | Get an account |
+| `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
+| `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
+| `GET /{ledgerName}/logs` | ❌ | ✅ | List logs |
+| `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
+| `GET /{ledgerName}/stats` | ❌ | ✅ | Ledger statistics |
+| `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
+| `GET /` | ✅ | ✅ | List all ledgers |
 
 ---
 

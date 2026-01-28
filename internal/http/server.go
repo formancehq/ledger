@@ -110,6 +110,14 @@ func (b *DefaultBackend) CreateTransaction(ctx context.Context, ledger uint32, p
 
 	return ctrl.CreateTransaction(ctx, ledger, parameters)
 }
+func (b *DefaultBackend) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.GetTransaction(ctx, ledger, transactionID)
+}
 func (b *DefaultBackend) RevertTransaction(ctx context.Context, ledger uint32, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {

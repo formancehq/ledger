@@ -200,6 +200,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/transactions/{transactionId}:
+    get:
+      summary: Get a transaction
+      description: Retrieves a transaction by its ID from the specified ledger
+      operationId: getTransaction
+      tags:
+        - Transactions
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transaction ID
+      responses:
+        '200':
+          description: Transaction retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTransactionResponse'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
@@ -888,6 +931,14 @@ components:
                 additionalProperties:
                   type: string
               description: Metadata for accounts involved in the transaction
+
+    GetTransactionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/TransactionResponse'
 
     TransactionResponse:
       type: object

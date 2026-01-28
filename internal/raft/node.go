@@ -708,6 +708,8 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 
+	node.status.Store(statusNormal)
+
 	// todo: measure time
 	if err := node.spool.Prune(lastAppliedIndex); err != nil {
 		return fmt.Errorf("pruning spool: %w", err)
@@ -715,7 +717,6 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 
 	node.logger.Infof("Unspooling operation terminated, resuming...")
 	node.gatingTerminated = nil
-	node.status.Store(statusNormal)
 
 	return nil
 }
@@ -1038,6 +1039,42 @@ func (node *Node) Export(ctx context.Context, ledgerID uint32, w service.ExportW
 
 func (node *Node) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
 	return node.store.GetAllLogs(ctx, ledgerID, from, to)
+}
+
+func (node *Node) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
+	// Get the log ID for the transaction ID
+	logID, err := node.store.GetLogIDForTransactionID(ctx, ledgerID, transactionID)
+	if err != nil {
+		return nil, fmt.Errorf("getting log ID for transaction %d: %w", transactionID, err)
+	}
+	if logID == 0 {
+		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
+	}
+
+	// Get the log containing the transaction
+	log, err := node.store.GetLogByID(ctx, ledgerID, logID)
+	if err != nil {
+		return nil, fmt.Errorf("getting log %d: %w", logID, err)
+	}
+	if log == nil {
+		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
+	}
+
+	// Extract the transaction from the log payload
+	switch payload := log.Data.Payload.(type) {
+	case *ledgerpb.LogPayload_CreatedTransaction:
+		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
+			return nil, fmt.Errorf("invalid log payload: missing transaction")
+		}
+		return payload.CreatedTransaction.Transaction, nil
+	case *ledgerpb.LogPayload_RevertedTransaction:
+		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
+			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
+		}
+		return payload.RevertedTransaction.RevertTransaction, nil
+	default:
+		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+	}
 }
 
 func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
