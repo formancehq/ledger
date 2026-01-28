@@ -6,24 +6,37 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 )
 
 type JsonBulkHandler struct {
 	bulkMaxSize  int
-	bulkElements []BulkElement
-	receive      chan BulkElementResult
+	bulkElements []*ledgerpb.BulkElement
+	receive      chan *ledgerpb.BulkElementResult
 }
 
-func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool) {
-	h.bulkElements = make([]BulkElement, 0)
-	if err := json.UnmarshalRead(r.Body, &h.bulkElements); err != nil {
+func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *ledgerpb.BulkElementResult, bool) {
+	// Parse JSON array of bulk elements
+	var rawElements []json.RawValue
+	if err := json.UnmarshalRead(r.Body, &rawElements); err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 		return nil, nil, false
 	}
 
-	if h.bulkMaxSize != 0 && len(h.bulkElements) > h.bulkMaxSize {
+	if h.bulkMaxSize != 0 && len(rawElements) > h.bulkMaxSize {
 		writeErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED", fmt.Errorf("bulk size exceeded, max size is %d", h.bulkMaxSize))
 		return nil, nil, false
+	}
+
+	// Parse each element using protobuf types
+	h.bulkElements = make([]*ledgerpb.BulkElement, 0, len(rawElements))
+	for i, rawElem := range rawElements {
+		elem := &ledgerpb.BulkElement{}
+		if err := json.Unmarshal(rawElem, elem); err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", fmt.Errorf("error parsing element %d: %w", i, err))
+			return nil, nil, false
+		}
+		h.bulkElements = append(h.bulkElements, elem)
 	}
 
 	bulk := make(Bulk, len(h.bulkElements))
@@ -32,20 +45,20 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 	}
 	close(bulk)
 
-	h.receive = make(chan BulkElementResult, len(h.bulkElements))
+	h.receive = make(chan *ledgerpb.BulkElementResult, len(h.bulkElements))
 
 	return bulk, h.receive, true
 }
 
 func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
-	results := make([]BulkElementResult, 0, len(h.bulkElements))
+	results := make([]*ledgerpb.BulkElementResult, 0, len(h.bulkElements))
 	for element := range h.receive {
 		results = append(results, element)
 	}
 
 	actions := make([]string, len(h.bulkElements))
 	for i, element := range h.bulkElements {
-		actions[i] = element.GetAction()
+		actions[i] = ledgerpb.BulkActionFromProto(element.Action)
 	}
 	writeJSONResponse(w, actions, results, nil)
 }
@@ -72,38 +85,45 @@ func NewJSONBulkHandlerFactory(bulkMaxSize int) HandlerFactory {
 
 var _ HandlerFactory = (*jsonBulkHandlerFactory)(nil)
 
-func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkElementResult, error error) {
+func writeJSONResponse(w http.ResponseWriter, actions []string, results []*ledgerpb.BulkElementResult, error error) {
 	for _, result := range results {
-		if result.Error != nil {
+		if HasError(result) {
 			w.WriteHeader(http.StatusBadRequest)
 			break
 		}
 	}
 
-	slices.SortFunc(results, func(a, b BulkElementResult) int {
-		return a.ElementID - b.ElementID
+	slices.SortFunc(results, func(a, b *ledgerpb.BulkElementResult) int {
+		return int(a.ElementId) - int(b.ElementId)
 	})
 
 	mappedResults := make([]APIResult, 0)
-	for index, result := range results {
+	for _, result := range results {
 		var (
-			errorCode        string
-			errorDescription string
-			responseType     = actions[index]
+			responseType = actions[result.ElementId]
+			data         any
 		)
 
-		if result.Error != nil {
-			errorCode = "ERROR"
-			errorDescription = result.Error.Error()
+		if HasError(result) {
 			responseType = "ERROR"
 		}
 
+		// Extract data from oneof
+		if log := result.GetLog(); log != nil {
+			// For create transaction, return the transaction
+			if log.Data != nil {
+				if ct := log.Data.GetCreatedTransaction(); ct != nil {
+					data = ct.Transaction
+				}
+			}
+		}
+
 		mappedResults = append(mappedResults, APIResult{
-			ErrorCode:        errorCode,
-			ErrorDescription: errorDescription,
-			Data:             result.Data,
+			ErrorCode:        result.ErrorCode,
+			ErrorDescription: result.ErrorDescription,
+			Data:             data,
 			ResponseType:     responseType,
-			LogID:            result.LogID,
+			LogID:            result.LogId,
 		})
 	}
 
@@ -147,4 +167,3 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, errorCode string,
 		return
 	}
 }
-

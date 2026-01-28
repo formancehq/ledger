@@ -137,17 +137,17 @@ message Script {
 }
 
 message Parameters {
-  uint32 ledger_id = 2;
-  string idempotency_key = 3;
+  uint32 ledger_id = 1;
+  string idempotency_key = 2;
 }
 
 message CreateTransactionRequestPayload {
-  map<string, Metadata> account_metadata = 2;
-  map<string, string> metadata = 4;
+  repeated Posting postings = 1;
+  Script script = 2;
   Timestamp timestamp = 3;
-  string reference = 5;
-  repeated Posting postings = 6;
-  Script script = 9;
+  string reference = 4;
+  map<string, string> metadata = 5;
+  map<string, Metadata> account_metadata = 6;
 }
 
 message CreateTransactionRequest {
@@ -156,8 +156,8 @@ message CreateTransactionRequest {
 }
 
 message SaveAccountMetadataRequestPayload {
-  string address = 9;
-  Metadata metadata = 3;
+  string address = 1;
+  Metadata metadata = 2;
 }
 
 message SaveAccountMetadataRequest {
@@ -166,20 +166,20 @@ message SaveAccountMetadataRequest {
 }
 
 message RevertTransactionRequestPayload {
-  uint64 transaction_id = 2;
-  bool force = 3;
-  bool at_effective_date = 4;
-  map<string, string> metadata = 5;
+  uint64 transaction_id = 1;
+  bool force = 2;
+  bool at_effective_date = 3;
+  map<string, string> metadata = 4;
 }
 
 message RevertTransactionRequest {
   RevertTransactionRequestPayload payload = 1;
-  Parameters parameters = 3;
+  Parameters parameters = 2;
 }
 
 message SaveTransactionMetadataRequestPayload {
-  uint64 transaction_id = 2;
-  Metadata metadata = 3;
+  uint64 transaction_id = 1;
+  Metadata metadata = 2;
 }
 
 message SaveTransactionMetadataRequest {
@@ -188,8 +188,8 @@ message SaveTransactionMetadataRequest {
 }
 
 message DeleteAccountMetadataRequestPayload {
-  string address = 2;
-  string key = 3;
+  string address = 1;
+  string key = 2;
 }
 
 message DeleteAccountMetadataRequest {
@@ -198,8 +198,8 @@ message DeleteAccountMetadataRequest {
 }
 
 message DeleteTransactionMetadataRequestPayload {
-  uint64 transaction_id = 2;
-  string key = 3;
+  uint64 transaction_id = 1;
+  string key = 2;
 }
 
 message DeleteTransactionMetadataRequest {
@@ -323,34 +323,34 @@ message LedgerState {
 }
 
 message AppendTransactionCommand {
-  map<string, Metadata> account_metadata = 2;
-  map<string, string> metadata = 3;
-  Timestamp timestamp = 4;
-  string reference = 5;
-  repeated Posting postings = 6;
+  repeated Posting postings = 1;
+  map<string, string> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+  map<string, Metadata> account_metadata = 5;
 }
 
 message SaveMetadataCommand {
-  Target target = 2;
-  Metadata metadata = 3;
+  Target target = 1;
+  Metadata metadata = 2;
 }
 
 message DeleteMetadataCommand {
-  Target target = 2;
-  string key = 3;
+  Target target = 1;
+  string key = 2;
 }
 
 message RevertTransactionCommand {
-  uint64 transaction_id = 2;
-  Transaction revert_transaction = 3;
+  uint64 transaction_id = 1;
+  Transaction revert_transaction = 2;
 }
 
 message CommandInput {
   oneof command {
-    AppendTransactionCommand append_transaction = 2;
-    SaveMetadataCommand save_metadata = 3;
-    DeleteMetadataCommand delete_metadata = 4;
-    RevertTransactionCommand revert_transaction = 5;
+    AppendTransactionCommand append_transaction = 1;
+    SaveMetadataCommand save_metadata = 2;
+    DeleteMetadataCommand delete_metadata = 3;
+    RevertTransactionCommand revert_transaction = 4;
   }
 }
 
@@ -405,4 +405,50 @@ enum ActionType {
 message Action {
   ActionType action_type = 1;
   bytes data = 2;
+}
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+// BulkAction represents the type of action in a bulk operation
+enum BulkAction {
+  BULK_ACTION_UNSPECIFIED = 0;
+  BULK_ACTION_CREATE_TRANSACTION = 1;
+  BULK_ACTION_ADD_METADATA = 2;
+  BULK_ACTION_REVERT_TRANSACTION = 3;
+  BULK_ACTION_DELETE_METADATA = 4;
+}
+
+// BulkElement represents a single element in a bulk request
+message BulkElement {
+  BulkAction action = 1;
+  string idempotency_key = 2;
+  oneof data {
+    CreateTransactionRequestPayload create_transaction = 3;
+    SaveMetadataCommand add_metadata = 4;
+    RevertTransactionRequestPayload revert_transaction = 5;
+    DeleteMetadataCommand delete_metadata = 6;
+  }
+}
+
+// BulkElementResult represents the result of a single bulk element
+message BulkElementResult {
+  int32 element_id = 1;
+  uint64 log_id = 2;
+  string error_code = 3;            // Empty if no error
+  string error_description = 4;     // Error description if error_code is set
+  oneof data {
+    Log log = 5;                    // For successful operations that return a log
+  }
+}
+
+// BulkRequest represents a bulk request containing multiple elements
+message BulkRequest {
+  repeated BulkElement elements = 1;
+}
+
+// BulkResponse represents the response to a bulk request
+message BulkResponse {
+  repeated BulkElementResult results = 1;
 }

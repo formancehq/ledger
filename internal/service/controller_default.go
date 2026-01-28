@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -153,7 +154,14 @@ func (ctrl *DefaultController) GetAllLogs(ctx context.Context, ledgerID uint32, 
 }
 
 func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	return ctrl.store.GetLedgerByName(ctx, name)
+	ledgerInfo, err := ctrl.store.GetLedgerByName(ctx, name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, ledgerpb.NewNotFoundError("ledger %s not found", name)
+		}
+		return nil, err
+	}
+	return ledgerInfo, nil
 }
 
 // CreateLedger creates a new ledger

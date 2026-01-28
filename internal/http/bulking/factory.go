@@ -1,9 +1,13 @@
 package bulking
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+)
 
 type Handler interface {
-	GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool)
+	GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *ledgerpb.BulkElementResult, bool)
 	Terminate(w http.ResponseWriter, r *http.Request)
 }
 
