@@ -1,5 +1,3 @@
-//go:build it
-
 package service
 
 import (
@@ -15,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
@@ -27,7 +26,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, logFactory := newTestLedgerService(t, ctx)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		// Save account metadata
 		md := metadata.Metadata{
@@ -84,7 +83,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, logFactory := newTestLedgerService(t, ctx)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		md := ledgerpb.Metadata{
 			Entries: metadata.Metadata{
@@ -141,7 +140,7 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, logFactory := newTestLedgerService(t, ctx)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		log, err := ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteAccountMetadataRequestPayload{
@@ -189,7 +188,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, logFactory := newTestLedgerService(t, ctx)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		log, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			Input: &ledgerpb.DeleteTransactionMetadataRequestPayload{
@@ -211,7 +210,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			GetLogIDForIdempotencyKey(gomock.Any(), testLedgerID, idempotencyKey).
 			Return(uint64(0), store.ErrNotFound)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		log1, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]{
 			IdempotencyKey: idempotencyKey,
@@ -280,16 +279,25 @@ func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController
 	return ledgerService, store, logFactory
 }
 
-func expectCreateLogsWithSequentialIDs(logFactory *MockLogFactory, times int) {
+func expectApplyWithSequentialIDs(logFactory *MockLogFactory, times int) {
 	var counter uint64
 	logFactory.EXPECT().
-		CreateLog(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, ledger uint32, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
+		Apply(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, cmd *ledgerpb.Command) (any, error) {
 			counter++
-			return &ledgerpb.Log{
+			// Extract idempotency from the command if present
+			var idempotency *ledgerpb.Idempotency
+			if len(cmd.Actions) > 0 && cmd.Actions[0].ActionType == ledgerpb.ActionType_CreateLog {
+				var createLogCmd ledgerpb.CreateLogCommand
+				if err := proto.Unmarshal(cmd.Actions[0].Data, &createLogCmd); err == nil {
+					idempotency = createLogCmd.Idempotency
+				}
+			}
+			// Return []any with a log as first element (matching the Apply return format)
+			return []any{&ledgerpb.Log{
 				Id:          counter,
-				Idempotency: idp,
-			}, nil
+				Idempotency: idempotency,
+			}}, nil
 		}).
 		Times(times)
 }
@@ -343,7 +351,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 				},
 			}, nil)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
@@ -447,7 +455,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			GetLogByID(gomock.Any(), testLedgerID, logID).
 			Return(originalLog, nil)
 
-		expectCreateLogsWithSequentialIDs(logFactory, 1)
+		expectApplyWithSequentialIDs(logFactory, 1)
 
 		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*ledgerpb.RevertTransactionRequestPayload]{
 			Input: &ledgerpb.RevertTransactionRequestPayload{
@@ -507,9 +515,9 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		// Create a log with data for the revert transaction
 		revertLogID := uint64(1)
 		logFactory.EXPECT().
-			CreateLog(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, ledger uint32, idp *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
-				return &ledgerpb.Log{
+			Apply(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, cmd *ledgerpb.Command) (any, error) {
+				return []any{&ledgerpb.Log{
 					Id: revertLogID,
 					Data: &ledgerpb.LogPayload{
 						Payload: &ledgerpb.LogPayload_RevertedTransaction{
@@ -522,7 +530,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 							},
 						},
 					},
-				}, nil
+				}}, nil
 			}).
 			Times(1)
 

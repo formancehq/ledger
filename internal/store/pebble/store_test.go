@@ -1,5 +1,3 @@
-//go:build it
-
 package pebble
 
 import (
@@ -298,9 +296,8 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		require.Equal(t, "ledger-1", ledger.Name)
 
 		// Get non-existing ledger
-		ledger, err = s.GetLedgerByName(ctx, "non-existing")
-		require.NoError(t, err)
-		require.Nil(t, ledger)
+		_, err = s.GetLedgerByName(ctx, "non-existing")
+		require.Error(t, err)
 	})
 
 	t.Run("DeleteLedger", func(t *testing.T) {

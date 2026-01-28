@@ -668,12 +668,7 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.Led
 		}
 	}
 
-	return nil, nil
-}
-
-// Metrics returns Pebble database metrics (implements MetricsAware)
-func (s *Store) Metrics() any {
-	return s.db.Metrics()
+	return nil, store.ErrNotFound
 }
 
 func writeLedgerPrefix(buf *bytes.Buffer, ledgerID uint32) {

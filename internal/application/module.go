@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/store/sqlite"
@@ -73,7 +74,7 @@ func Module() fx.Option {
 				})
 			},
 			func(transport *raft.DefaultTransport) raft.LogStreamerProvider {
-				return raft.GRPCLogStreamerProvider(transport)
+				return service.GRPCLogStreamerProvider(transport)
 			},
 			func(
 				params struct {
@@ -120,8 +121,24 @@ func Module() fx.Option {
 			NewLedgerServiceServer,
 			httphandler.NewServer,
 			httphandler.NewHandler,
-			func(node *raft.Node, connectionPool *transport.ConnectionPool, cfg raft.NodeConfig) httphandler.Backend {
-				return httphandler.NewDefaultBackend(node, connectionPool, cfg.NodeID)
+			func(node *raft.Node, ctrl service.Controller) httphandler.Backend {
+				return httphandler.NewDefaultBackend(node, ctrl)
+			},
+			func(node *raft.Node) service.Engine {
+				return node
+			},
+			func(
+				raftNode *raft.Node,
+				connectionPool *transport.ConnectionPool,
+				engine service.Engine,
+				store store.Store,
+				logger logging.Logger,
+			) service.Controller {
+				return service.NewRoutedController(
+					service.NewDefaultController(engine, store, logger),
+					raftNode,
+					connectionPool,
+				)
 			},
 		),
 		fx.Decorate(func(

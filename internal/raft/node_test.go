@@ -476,6 +476,19 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	return errCh, nil
 }
 
+// createLedger is a test helper that creates a ledger via the node's Apply method
+func createLedger(ctx context.Context, node *Node, name string) (*ledgerpb.LedgerInfo, error) {
+	cmd := NewCreateLedgerCommand(&ledgerpb.CreateLedgerCommand{
+		Name: name,
+	})
+	ret, err := node.Apply(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	results := ret.([]any)
+	return results[0].(*ledgerpb.LedgerInfo), nil
+}
+
 func TestClusterBasic(t *testing.T) {
 	t.Parallel()
 
@@ -499,9 +512,7 @@ func TestClusterBasic(t *testing.T) {
 	require.NotNil(t, leader)
 
 	// Create a ledger via the leader
-	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
 	require.Equal(t, "test-ledger", ledgerInfo.Name)
 
@@ -568,9 +579,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	})
 
 	// Create a ledger
-	_, err = clusterNode.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "default",
-	})
+	_, err = createLedger(ctx, clusterNode.Node, "default")
 	require.NoError(t, err)
 
 	createTransaction := func() *ledgerpb.Command {
@@ -663,9 +672,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	t.Logf("Selected follower to disconnect: node %d", follower.ID)
 
 	// Create a ledger before disconnecting the follower
-	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
@@ -811,9 +818,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	t.Logf("Selected follower: node %d", follower.ID)
 
 	// Create a ledger before disconnecting the follower
-	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
@@ -1006,9 +1011,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	t.Logf("Selected follower: node %d (index %d)", follower.ID, followerIndex)
 
 	// Create a ledger before disconnecting the follower
-	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
@@ -1204,9 +1207,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	t.Logf("Selected follower to restart: node %d", follower.ID)
 
 	// Create a ledger to verify cluster is working
-	ledgerInfo, err := leader.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
@@ -1317,9 +1318,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	t.Logf("Node %d became leader", node.ID)
 
 	// Create a ledger
-	ledgerInfo, err := node.Node.CreateLedger(ctx, &ledgerpb.CreateLedgerCommand{
-		Name: "test-ledger",
-	})
+	ledgerInfo, err := createLedger(ctx, node.Node, "test-ledger")
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 

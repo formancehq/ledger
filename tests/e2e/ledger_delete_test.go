@@ -146,6 +146,7 @@ var _ = Describe("Ledger Deletion", func() {
 				_, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
 					LedgerName: ledgerName,
 				})
+
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 

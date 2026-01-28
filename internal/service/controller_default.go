@@ -2,25 +2,30 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/numscript"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package service . LogFactory
-type LogFactory interface {
-	CreateLog(ctx context.Context, ledger uint32, idempotency *ledgerpb.Idempotency, payload *ledgerpb.CommandInput) (*ledgerpb.Log, error)
+type Engine interface {
+	Apply(ctx context.Context, cmd *ledgerpb.Command) (any, error)
 }
 
 // DefaultController is the default implementation of the Ledger interface
 type DefaultController struct {
 	logger logging.Logger
+	engine Engine
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
 	createTransactionLp         *logProcessor[*ledgerpb.CreateTransactionRequestPayload]
@@ -29,62 +34,65 @@ type DefaultController struct {
 	deleteTransactionMetadataLp *logProcessor[*ledgerpb.DeleteTransactionMetadataRequestPayload]
 	deleteAccountMetadataLp     *logProcessor[*ledgerpb.DeleteAccountMetadataRequestPayload]
 	revertTransactionLp         *logProcessor[*ledgerpb.RevertTransactionRequestPayload]
+	store                       store.Store
 }
 
 // NewDefaultLedger creates a new default ledger service
 func NewDefaultController(
-	logFactory LogFactory,
-	runtimeStore store.Store,
+	engine Engine,
+	store store.Store,
 	logger logging.Logger,
 ) *DefaultController {
 	l := &DefaultController{
 		logger: logger,
+		engine: engine,
+		store:  store,
 	}
 	keySetLocker := NewDefaultKeySetLocker()
 	l.createTransactionLp = newLogProcessor(
 		"CreateTransaction",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.createTransaction,
 	)
 	l.saveTransactionMetadataLp = newLogProcessor(
 		"SaveTransactionMetadata",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.saveTransactionMetadata,
 	)
 	l.saveAccountMetadataLp = newLogProcessor(
 		"SaveAccountMetadata",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.saveAccountMetadata,
 	)
 	l.deleteTransactionMetadataLp = newLogProcessor(
 		"DeleteTransactionMetadata",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.deleteTransactionMetadata,
 	)
 	l.deleteAccountMetadataLp = newLogProcessor(
 		"DeleteAccountMetadata",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.deleteAccountMetadata,
 	)
 	l.revertTransactionLp = newLogProcessor(
 		"RevertTransaction",
-		runtimeStore,
-		logFactory,
+		store,
+		engine,
 		keySetLocker,
 		logger,
 		l.revertTransaction,
@@ -93,14 +101,99 @@ func NewDefaultController(
 	return l
 }
 
+
+// GetAllLedgersInfo returns all ledgers
+func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
+	ledgers, err := ctrl.store.ListLedgers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing ledgers: %w", err)
+	}
+
+	ret := make(map[string]*ledgerpb.LedgerInfo)
+	for _, ledger := range ledgers {
+		ret[ledger.Name] = ledger
+	}
+	return ret, nil
+}
+
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
+	// Get the log ID for the transaction ID
+	logID, err := ctrl.store.GetLogIDForTransactionID(ctx, ledgerID, transactionID)
+	if err != nil {
+		return nil, fmt.Errorf("getting log ID for transaction %d: %w", transactionID, err)
+	}
+	if logID == 0 {
+		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
+	}
+
+	// Get the log containing the transaction
+	log, err := ctrl.store.GetLogByID(ctx, ledgerID, logID)
+	if err != nil {
+		return nil, fmt.Errorf("getting log %d: %w", logID, err)
+	}
+	if log == nil {
+		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
+	}
+
+	// Extract the transaction from the log payload
+	switch payload := log.Data.Payload.(type) {
+	case *ledgerpb.LogPayload_CreatedTransaction:
+		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
+			return nil, fmt.Errorf("invalid log payload: missing transaction")
+		}
+		return payload.CreatedTransaction.Transaction, nil
+	case *ledgerpb.LogPayload_RevertedTransaction:
+		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
+			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
+		}
+		return payload.RevertedTransaction.RevertTransaction, nil
+	default:
+		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+	}
+}
+
+func (ctrl *DefaultController) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
+	return ctrl.store.GetAllLogs(ctx, ledgerID, from, to)
+}
+
+func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+	return ctrl.store.GetLedgerByName(ctx, name)
+}
+
+// CreateLedger creates a new ledger
+func (ctrl *DefaultController) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
+	cmd := newCreateLedgerCommand(req)
+
+	ret, err := ctrl.engine.Apply(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("applying create ledger command: %w", err)
+	}
+
+	// Extract the ledger info from the result (first element of the results array)
+	results := ret.([]any)
+	return results[0].(*ledgerpb.LedgerInfo), nil
+}
+
+// DeleteLedger deletes a ledger
+func (ctrl *DefaultController) DeleteLedger(ctx context.Context, id uint32) error {
+	cmd := newDeleteLedgerCommand(id)
+
+	_, err := ctrl.engine.Apply(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("applying delete ledger command: %w", err)
+	}
+
+	return nil
+}
+
 // CreateTransaction creates a new transaction
-func (l *DefaultController) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.createTransactionLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.createTransactionLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
-	l.logger.Debugf("Creating transaction")
+func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+	ctrl.logger.Debugf("Creating transaction")
 
 	input := parameters.Input
 
@@ -116,7 +209,7 @@ func (l *DefaultController) createTransaction(ctx context.Context, unitOfWork *u
 	}
 
 	if input.Reference != "" {
-		_, err := unitOfWork.LockKeys(ctx, fmt.Sprintf("tx/references/%s", input.Reference))
+		_, err := unitOfWork.LockKeys(ctx, ledgerID, fmt.Sprintf("tx/references/%s", input.Reference))
 		if err != nil {
 			return nil, fmt.Errorf("locking reference %s: %w", input.Reference, err)
 		}
@@ -131,14 +224,14 @@ func (l *DefaultController) createTransaction(ctx context.Context, unitOfWork *u
 	if hasScript {
 		script := input.Script
 		var err error
-		postings, scriptMetadata, scriptAccountMetadata, err = l.executeNumscript(ctx, unitOfWork, script)
+		postings, scriptMetadata, scriptAccountMetadata, err = ctrl.executeNumscript(ctx, unitOfWork, ledgerID, script)
 		if err != nil {
 			return nil, fmt.Errorf("executing numscript: %w", err)
 		}
 	} else {
 		postings = input.Postings
 		// Check that all source accounts have sufficient funds
-		if err := l.checkBalances(ctx, unitOfWork, postings); err != nil {
+		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerID, postings); err != nil {
 			return nil, err
 		}
 	}
@@ -205,14 +298,14 @@ func (l *DefaultController) createTransaction(ctx context.Context, unitOfWork *u
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
-func (l *DefaultController) executeNumscript(ctx context.Context, store *unitOfWork, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
+func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOfWork, ledgerID uint32, script *ledgerpb.Script) ([]*ledgerpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
 	if script == nil || script.Plain == "" {
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
 
 	// Check cache first
 	scriptKey := script.Plain
-	cached, ok := l.scriptCache.Load(scriptKey)
+	cached, ok := ctrl.scriptCache.Load(scriptKey)
 	var parseResult numscript.ParseResult
 	if ok {
 		parseResult = cached.(numscript.ParseResult)
@@ -227,8 +320,11 @@ func (l *DefaultController) executeNumscript(ctx context.Context, store *unitOfW
 		}
 
 		// Cache the parsed result only if parsing succeeded
-		l.scriptCache.Store(scriptKey, parseResult)
+		ctrl.scriptCache.Store(scriptKey, parseResult)
 	}
+
+	// Create numscriptStore wrapper with ledgerID for numscript interface methods
+	store := &numscriptStore{unitOfWork: uow, ledgerID: ledgerID}
 
 	// Execute the script
 	result, err := parseResult.Run(ctx, script.Vars, store)
@@ -265,12 +361,12 @@ func (l *DefaultController) executeNumscript(ctx context.Context, store *unitOfW
 }
 
 // RevertTransaction reverts a transaction by creating a reverse transaction
-func (l *DefaultController) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.revertTransactionLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.revertTransactionLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -280,13 +376,13 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 
 	// Lock the transaction ID to prevent concurrent revert operations
 	lockKey := fmt.Sprintf("tx/revert/%d", input.TransactionId)
-	_, err := unitOfWork.LockKeys(ctx, lockKey)
+	_, err := unitOfWork.LockKeys(ctx, ledgerID, lockKey)
 	if err != nil {
 		return nil, fmt.Errorf("locking transaction %d: %w", input.TransactionId, err)
 	}
 
 	// Check if transaction is already reverted (fast path using store index)
-	isReverted, err := unitOfWork.IsTransactionReverted(ctx, input.TransactionId)
+	isReverted, err := unitOfWork.IsTransactionReverted(ctx, ledgerID, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("checking if transaction %d is reverted: %w", input.TransactionId, err)
 	}
@@ -295,7 +391,7 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 	}
 
 	// Get the log ID for the transaction ID
-	logID, err := unitOfWork.GetLogIDForTransactionID(ctx, input.TransactionId)
+	logID, err := unitOfWork.GetLogIDForTransactionID(ctx, ledgerID, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("getting log ID for transaction %d: %w", input.TransactionId, err)
 	}
@@ -304,7 +400,7 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 	}
 
 	// Get the log containing the original transaction
-	log, err := unitOfWork.GetLogByID(ctx, logID)
+	log, err := unitOfWork.GetLogByID(ctx, ledgerID, logID)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", logID, err)
 	}
@@ -348,7 +444,7 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 
 	// Validate balances for revert transaction (unless force is true)
 	if !input.Force {
-		if err := l.checkBalances(ctx, unitOfWork, reversedPostings); err != nil {
+		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerID, reversedPostings); err != nil {
 			return nil, err
 		}
 	}
@@ -391,12 +487,12 @@ func (l *DefaultController) revertTransaction(ctx context.Context, unitOfWork *u
 }
 
 // SaveTransactionMetadata saves metadata for a transaction
-func (l *DefaultController) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.saveTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -424,12 +520,12 @@ func (l *DefaultController) saveTransactionMetadata(ctx context.Context, store *
 }
 
 // SaveAccountMetadata saves metadata for an account
-func (l *DefaultController) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.saveAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.saveAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -457,12 +553,12 @@ func (l *DefaultController) saveAccountMetadata(ctx context.Context, store *unit
 }
 
 // DeleteTransactionMetadata deletes a metadata key from a transaction
-func (l *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.deleteTransactionMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.TransactionId == 0 {
@@ -489,12 +585,12 @@ func (l *DefaultController) deleteTransactionMetadata(ctx context.Context, store
 }
 
 // DeleteAccountMetadata deletes a metadata key from an account
-func (l *DefaultController) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	log, _, err := l.deleteAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
+func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
+	log, _, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ledgerID, parameters)
 	return log, err
 }
 
-func (l *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.CommandInput, error) {
 	input := parameters.Input
 
 	if input.Address == "" {
@@ -521,19 +617,19 @@ func (l *DefaultController) deleteAccountMetadata(ctx context.Context, store *un
 }
 
 // Import is not implemented yet
-func (l *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
+func (ctrl *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
 // Export is not implemented yet
-func (l *DefaultController) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
+func (ctrl *DefaultController) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
 	return fmt.Errorf("export is not implemented yet")
 }
 
 // checkBalances verifies that all source accounts have sufficient funds for the given postings.
 // It locks the relevant balance keys, fetches current balances, and returns ErrInsufficientFunds
 // if any source account lacks the required funds.
-func (l *DefaultController) checkBalances(ctx context.Context, store *unitOfWork, postings []*ledgerpb.Posting) error {
+func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWork, ledgerID uint32, postings []*ledgerpb.Posting) error {
 	// Group postings by source account and asset to check balances
 	// Build balance query: map[account] = [assets]
 	balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
@@ -578,7 +674,14 @@ func (l *DefaultController) checkBalances(ctx context.Context, store *unitOfWork
 		balanceQueryList[account] = assetList
 	}
 
-	balances, err := store.GetBalances(ctx, balanceQueryList)
+	// Lock balance keys
+	lockKeys := makeBalanceLockKeys(balanceQueryList)
+	_, err := uow.LockKeys(ctx, ledgerID, lockKeys...)
+	if err != nil {
+		return err
+	}
+
+	balances, err := uow.Store.GetBalances(ctx, ledgerID, balanceQueryList)
 	if err != nil {
 		return err
 	}
@@ -603,4 +706,54 @@ func (l *DefaultController) checkBalances(ctx context.Context, store *unitOfWork
 	}
 
 	return nil
+}
+
+var _ Controller = (*DefaultController)(nil)
+
+// newCreateLedgerCommand creates a new CreateLedger command
+func newCreateLedgerCommand(req *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
+	data, err := proto.Marshal(req)
+	if err != nil {
+		panic(err)
+	}
+
+	action := &ledgerpb.Action{
+		ActionType: ledgerpb.ActionType_CreateLedger,
+		Data:       data,
+	}
+
+	return &ledgerpb.Command{
+		Id:      generateCommandID(),
+		Actions: []*ledgerpb.Action{action},
+		Date:    ledgerpb.NewTimestamp(time.Now()),
+	}
+}
+
+// newDeleteLedgerCommand creates a new DeleteLedger command
+func newDeleteLedgerCommand(id uint32) *ledgerpb.Command {
+	data, err := proto.Marshal(&ledgerpb.DeleteLedgerCommand{Id: id})
+	if err != nil {
+		panic(err)
+	}
+
+	action := &ledgerpb.Action{
+		ActionType: ledgerpb.ActionType_DeleteLedger,
+		Data:       data,
+	}
+
+	return &ledgerpb.Command{
+		Id:      generateCommandID(),
+		Actions: []*ledgerpb.Action{action},
+		Date:    ledgerpb.NewTimestamp(time.Now()),
+	}
+}
+
+// generateCommandID generates a random uint64 ID for commands
+func generateCommandID() uint64 {
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		return uint64(time.Now().UnixNano())
+	}
+	return binary.BigEndian.Uint64(b[:])
 }

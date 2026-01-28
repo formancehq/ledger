@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -43,24 +42,6 @@ type LogStreamerProvider interface {
 	GetForPeer(id uint64) (LogStreamer, error)
 }
 
-type grpcLogStreamerProvider struct {
-	transport *DefaultTransport
-}
-
-func (p *grpcLogStreamerProvider) GetForPeer(id uint64) (LogStreamer, error) {
-	conn := p.transport.GetPeerConnection(id)
-
-	return service.NewLedgerGrpcClient(
-		ledgerpb.NewLedgerServiceClient(conn),
-	), nil
-}
-
-func GRPCLogStreamerProvider(transport *DefaultTransport) *grpcLogStreamerProvider {
-	return &grpcLogStreamerProvider{
-		transport: transport,
-	}
-}
-
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
 	rawNode             *raft.RawNode
@@ -74,8 +55,6 @@ type Node struct {
 	futures             SyncMap[uint64, *future]
 	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
-
-	defaultLedger *service.DefaultController
 
 	store             store.Store
 	spool             Spool
@@ -194,8 +173,6 @@ func NewNode(
 		tasks:               newTaskSet(),
 		stopChannel:         make(chan chan struct{}),
 	}
-
-	node.defaultLedger = service.NewDefaultController(node, store, logger)
 
 	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
 		metric.WithDescription("Time spent applying entries to FSM"),
@@ -965,132 +942,6 @@ func (node *Node) IsHealthy() bool {
 	status := node.rawNode.Status()
 	// Node is healthy if it's a leader or follower
 	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
-}
-
-// CreateLedger creates a new ledger via a FSM command
-func (node *Node) CreateLedger(ctx context.Context, cmd *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
-
-	// Apply the command via Raft (waits for application)
-	ret, err := node.Apply(ctx, NewCreateLedgerCommand(cmd))
-	if err != nil {
-		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
-	}
-
-	// Result is now a []any, extract the first element
-	results := ret.([]any)
-	return results[0].(*ledgerpb.LedgerInfo), nil
-}
-
-func (node *Node) GetLedgerInfo(ctx context.Context, id uint32) (*ledgerpb.LedgerInfo, error) {
-	return node.fsm.GetLedgerInfo(id)
-}
-
-// GetAllLedgersInfo returns all ledgers
-func (node *Node) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
-	return node.fsm.GetAllLedgers(), nil
-}
-
-// DeleteLedger deletes a ledger via a FSM command
-func (node *Node) DeleteLedger(ctx context.Context, id uint32) error {
-
-	// Create the command
-	cmd := NewDeleteLedgerCommand(id)
-
-	// Apply the command via Raft (waits for application)
-	_, err := node.Apply(ctx, cmd)
-	if err != nil {
-		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
-	}
-
-	return nil
-}
-
-func (node *Node) CreateTransaction(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.CreateTransaction(ctx, ledgerID, parameters)
-}
-
-func (node *Node) RevertTransaction(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.RevertTransaction(ctx, ledgerID, parameters)
-}
-
-func (node *Node) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveTransactionMetadata(ctx, ledgerID, parameters)
-}
-
-func (node *Node) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.SaveAccountMetadata(ctx, ledgerID, parameters)
-}
-
-func (node *Node) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.DeleteTransactionMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteTransactionMetadata(ctx, ledgerID, parameters)
-}
-
-func (node *Node) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters service.Parameters[*ledgerpb.DeleteAccountMetadataRequestPayload]) (*ledgerpb.Log, error) {
-	return node.defaultLedger.DeleteAccountMetadata(ctx, ledgerID, parameters)
-}
-
-func (node *Node) Import(ctx context.Context, ledgerID uint32, stream chan *ledgerpb.Log) error {
-	return node.defaultLedger.Import(ctx, ledgerID, stream)
-}
-
-func (node *Node) Export(ctx context.Context, ledgerID uint32, w service.ExportWriter) error {
-	return node.defaultLedger.Export(ctx, ledgerID, w)
-}
-
-func (node *Node) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*ledgerpb.Log], error) {
-	return node.store.GetAllLogs(ctx, ledgerID, from, to)
-}
-
-func (node *Node) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*ledgerpb.Transaction, error) {
-	// Get the log ID for the transaction ID
-	logID, err := node.store.GetLogIDForTransactionID(ctx, ledgerID, transactionID)
-	if err != nil {
-		return nil, fmt.Errorf("getting log ID for transaction %d: %w", transactionID, err)
-	}
-	if logID == 0 {
-		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
-	}
-
-	// Get the log containing the transaction
-	log, err := node.store.GetLogByID(ctx, ledgerID, logID)
-	if err != nil {
-		return nil, fmt.Errorf("getting log %d: %w", logID, err)
-	}
-	if log == nil {
-		return nil, ledgerpb.NewNotFoundError("transaction %d not found", transactionID)
-	}
-
-	// Extract the transaction from the log payload
-	switch payload := log.Data.Payload.(type) {
-	case *ledgerpb.LogPayload_CreatedTransaction:
-		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
-			return nil, fmt.Errorf("invalid log payload: missing transaction")
-		}
-		return payload.CreatedTransaction.Transaction, nil
-	case *ledgerpb.LogPayload_RevertedTransaction:
-		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
-			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
-		}
-		return payload.RevertedTransaction.RevertTransaction, nil
-	default:
-		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
-	}
-}
-
-func (node *Node) CreateLog(ctx context.Context, ledgerID uint32, idempotency *ledgerpb.Idempotency, input *ledgerpb.CommandInput) (*ledgerpb.Log, error) {
-
-	ret, err := node.Apply(ctx, NewCreateLogCommand(input, ledgerID, idempotency))
-	if err != nil {
-		return nil, fmt.Errorf("applying insert log command via etcdraft: %w", err)
-	}
-
-	// Result is now a []any, extract the first element
-	results := ret.([]any)
-	return results[0].(*ledgerpb.Log), nil
-}
-
-func (node *Node) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
-	return node.fsm.GetLedgerByName(name)
 }
 
 func (node *Node) Stop(ctx context.Context) error {
