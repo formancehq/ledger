@@ -100,6 +100,10 @@ func (impl *LedgerServiceServerImpl) RevertTransaction(ctx context.Context, req 
 	})
 }
 
+func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *ledgerpb.GetTransactionRequest) (*ledgerpb.Transaction, error) {
+	return impl.systemNode.GetTransaction(ctx, req.LedgerId, req.TransactionId)
+}
+
 func (impl *LedgerServiceServerImpl) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
 	return impl.systemNode.CreateLedger(ctx, req)
 }

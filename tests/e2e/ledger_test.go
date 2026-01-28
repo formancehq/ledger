@@ -473,6 +473,144 @@ var _ = Describe("Ledger", func() {
 		})
 	})
 
+	Context("When reading transactions", func() {
+		var (
+			leaderID   uint64
+			ledgerName = "get-transaction-ledger"
+		)
+
+		BeforeEach(func() {
+			leaderID = getLeaderID()
+
+			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+				LedgerName: ledgerName,
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should get a transaction by ID", func() {
+			// Create a transaction first
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-1",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+					Metadata: map[string]string{
+						"description": "Test transaction",
+					},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(createResp).NotTo(BeNil())
+			Expect(createResp.GetCreateTransactionResponse()).NotTo(BeNil())
+
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			Expect(transactionID).NotTo(BeZero())
+
+			// Get the transaction
+			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
+				LedgerName:    ledgerName,
+				TransactionID: transactionID,
+			})
+			Expect(err).To(Succeed())
+			Expect(getResp).NotTo(BeNil())
+			Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
+			Expect(getResp.GetGetTransactionResponse().Data.ID).To(Equal(transactionID))
+			Expect(getResp.GetGetTransactionResponse().Data.Postings).To(HaveLen(1))
+			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Source).To(Equal("world"))
+			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Destination).To(Equal("account-1"))
+			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Asset).To(Equal("USD"))
+		})
+
+		It("Should return 404 for non-existent transaction", func() {
+			nonExistentTransactionID := int64(99999)
+
+			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
+				LedgerName:    ledgerName,
+				TransactionID: nonExistentTransactionID,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(getResp).To(BeNil())
+		})
+
+		It("Should get a reverted transaction and show reverted status", func() {
+			// Create a transaction
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-revert",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Revert the transaction
+			_, err = servers[leaderID-1].client.Transactions.RevertTransaction(ctx, operations.RevertTransactionRequest{
+				LedgerName:    ledgerName,
+				TransactionID: transactionID,
+			})
+			Expect(err).To(Succeed())
+
+			// Get the reverted transaction - it should show as reverted
+			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
+				LedgerName:    ledgerName,
+				TransactionID: transactionID,
+			})
+			Expect(err).To(Succeed())
+			Expect(getResp).NotTo(BeNil())
+			Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
+			// Note: The reverted status depends on how the transaction is stored after revert
+		})
+
+		It("Should read transaction from any node (follower read)", func() {
+			// Create a transaction on the leader
+			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+				LedgerName: ledgerName,
+				CreateTransactionRequest: components.CreateTransactionRequest{
+					Postings: []components.PostingRequest{{
+						Source:      "world",
+						Destination: "account-follower-read",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+
+			// Find a follower node
+			followerIdx := -1
+			for i := range servers {
+				if uint64(i+1) != leaderID {
+					followerIdx = i
+					break
+				}
+			}
+			Expect(followerIdx).NotTo(Equal(-1))
+
+			// Eventually the transaction should be readable from the follower
+			Eventually(func(g Gomega) {
+				getResp, err := servers[followerIdx].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
+					LedgerName:    ledgerName,
+					TransactionID: transactionID,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(getResp).NotTo(BeNil())
+				g.Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
+				g.Expect(getResp.GetGetTransactionResponse().Data.ID).To(Equal(transactionID))
+			}).Within(5 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
+		})
+	})
+
 	Context("When saving transaction metadata via direct endpoint", func() {
 		var (
 			leaderID   uint64

@@ -76,6 +76,7 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 			r.Get("/{ledgerName}", server.handleGetLedger)                                                                // GET /{ledgerName}
 			r.Delete("/{ledgerName}", server.handleDeleteLedger)                                                          // DELETE /{ledgerName}
 			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                                          // POST /{ledgerName}/transactions
+			r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)                              // GET /{ledgerName}/transactions/{transactionId}
 			r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)                   // POST /{ledgerName}/transactions/{transactionId}/revert
 			r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)           // POST /{ledgerName}/transactions/{transactionId}/metadata
 			r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata) // DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}

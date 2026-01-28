@@ -13,6 +13,7 @@ type Controller interface {
 	DeleteLedger(ctx context.Context, id uint32) error
 	GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error)
 	CreateTransaction(ctx context.Context, id uint32, parameters Parameters[*ledgerpb.CreateTransactionRequestPayload]) (*ledgerpb.Log, error)
+	GetTransaction(ctx context.Context, id uint32, transactionID uint64) (*ledgerpb.Transaction, error)
 	RevertTransaction(ctx context.Context, id uint32, parameters Parameters[*ledgerpb.RevertTransactionRequestPayload]) (*ledgerpb.Log, error)
 	SaveTransactionMetadata(ctx context.Context, id uint32, parameters Parameters[*ledgerpb.SaveTransactionMetadataRequestPayload]) (*ledgerpb.Log, error)
 	SaveAccountMetadata(ctx context.Context, id uint32, parameters Parameters[*ledgerpb.SaveAccountMetadataRequestPayload]) (*ledgerpb.Log, error)

@@ -6,6 +6,7 @@
 ### Available Operations
 
 * [CreateTransaction](#createtransaction) - Create a new transaction
+* [GetTransaction](#gettransaction) - Get a transaction
 * [SaveTransactionMetadata](#savetransactionmetadata) - Save transaction metadata
 * [DeleteTransactionMetadata](#deletetransactionmetadata) - Delete transaction metadata
 * [RevertTransaction](#reverttransaction) - Revert a transaction
@@ -63,6 +64,61 @@ func main() {
 | Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400                     | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
+
+## GetTransaction
+
+Retrieves a transaction by its ID from the specified ledger
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New()
+
+    res, err := s.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
+        LedgerName: "<value>",
+        TransactionID: 648203,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.GetTransactionResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
+| `request`                                                                            | [operations.GetTransactionRequest](../../models/operations/gettransactionrequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
+| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
+
+### Response
+
+**[*operations.GetTransactionResponse](../../models/operations/gettransactionresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

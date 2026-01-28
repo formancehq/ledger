@@ -22,11 +22,21 @@ The ledger service implementation follows the same patterns and best practices a
 When implementing new features, fixing bugs, or refactoring code:
 - **Update relevant documentation files** in the `docs/` directory
 - **Update API documentation** in `openapi.yml` if endpoints change
+- **Update `docs/api-comparison.md`** when adding, modifying, or removing API endpoints to track feature parity with the original ledger
 - **Update code comments** if interfaces or behavior change
 - **Update examples** if usage patterns change
 - **Keep documentation in English** - all technical documentation must be in English
 
 The documentation should always reflect the current state of the codebase. Outdated documentation is worse than no documentation.
+
+### API Comparison Document
+
+The `docs/api-comparison.md` file tracks feature parity between this POC and the original `github.com/formancehq/ledger`. When implementing new endpoints:
+
+1. **Update the Summary table** - Add or modify the feature row with ✅/❌/⚠️ status
+2. **Add implementation details** - Document the endpoint in "Features Implemented in POC" section
+3. **Update Read Features table** - If it's a read endpoint, update the comparison table
+4. **Remove from Missing Features** - If the feature was previously listed as missing, remove or update it
 
 ## OpenAPI and SDK Regeneration
 
