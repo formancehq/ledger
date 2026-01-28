@@ -82,8 +82,8 @@ func GetLogType(payload *LogPayload) LogType {
 	}
 }
 
-// GetLogTypeFromLog extracts the log type from a Log
-func GetLogTypeFromLog(log *Log) LogType {
+// GetLogTypeFromLog extracts the log type from a LedgerLog
+func GetLogTypeFromLog(log *LedgerLog) LogType {
 	if log == nil || log.Data == nil {
 		return 0
 	}

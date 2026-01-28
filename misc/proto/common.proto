@@ -159,11 +159,32 @@ message IdempotencyEntry {
 // ============================================================================
 
 message Log {
+  uint64 sequence = 1;
+  oneof payload {
+    CreateLedgerLog create_ledger = 2;
+    DeleteLedgerLog delete_ledger = 3;
+    ApplyLog apply = 4;
+  }
+  Idempotency idempotency = 5;
+}
+
+message CreateLedgerLog {
+  LedgerInfo info = 1;
+}
+
+message DeleteLedgerLog {
+  uint32 ledger_id = 1;
+}
+
+message ApplyLog {
+  uint32 ledger_id = 1;
+  LedgerLog log = 2;
+}
+
+message LedgerLog {
   LogPayload data = 1;
   Timestamp date = 2;
-  Idempotency idempotency = 3;
-  uint64 id = 4;
-  uint32 ledger_id = 5;
+  uint64 id = 3;
 }
 
 message LogPayload {

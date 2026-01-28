@@ -38,6 +38,41 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 	}
 }
 
+// AppendLogs appends system logs to the batch.
+func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	for _, log := range logs {
+		// Store the system log by sequence
+		logBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, log)
+		if err != nil {
+			return fmt.Errorf("marshaling system log to protobuf: %w", err)
+		}
+
+		writeByte(b.keyBuffer, keyPrefixLog)
+		writeUInt64(b.keyBuffer, log.Sequence)
+
+		if err := setOnBatch(b.batch, b.keyBuffer, logBinary); err != nil {
+			return fmt.Errorf("inserting system log: %w", err)
+		}
+
+		// Create idempotency index if present
+		if log.Idempotency != nil && log.Idempotency.Key != "" {
+			seqValue := make([]byte, 8)
+			binary.BigEndian.PutUint64(seqValue, log.Sequence)
+			writeByte(b.keyBuffer, keyPrefixIdempotency)
+			writeString(b.keyBuffer, log.Idempotency.Key)
+			if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
+				return fmt.Errorf("inserting idempotency index: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // RegisterLedger registers a new ledger in the store.
 func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
 	if b.committed {
@@ -63,46 +98,8 @@ func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) e
 	return nil
 }
 
-// AppendLogs appends logs to the batch.
-func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	for _, log := range logs {
-		// Marshal protobuf Log to binary
-		logBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, log)
-		if err != nil {
-			return fmt.Errorf("marshaling log to protobuf: %w", err)
-		}
-
-		writeLedgerPrefix(b.keyBuffer, log.LedgerId)
-		writeByte(b.keyBuffer, keyPrefixLog)
-		writeUInt64(b.keyBuffer, log.Id)
-
-		if err := setOnBatch(b.batch, b.keyBuffer, logBinary); err != nil {
-			return fmt.Errorf("inserting log: %w", err)
-		}
-
-		// Also create an index by idempotency key if present
-		if log.Idempotency != nil && log.Idempotency.Key != "" {
-			writeLedgerPrefix(b.keyBuffer, log.LedgerId)
-			writeByte(b.keyBuffer, keyPrefixIdempotency)
-			writeString(b.keyBuffer, log.Idempotency.Key)
-			// Store the log ID as value for quick lookup
-			idValue := make([]byte, 8)
-			binary.BigEndian.PutUint64(idValue, log.Id)
-			if err := setOnBatch(b.batch, b.keyBuffer, idValue); err != nil {
-				return fmt.Errorf("inserting idempotency index: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -111,7 +108,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 	writeByte(b.keyBuffer, keyPrefixBalanceDiff)
 	writeString(b.keyBuffer, account)
 	writeString(b.keyBuffer, asset)
-	writeUInt64(b.keyBuffer, logID)
+	writeUInt64(b.keyBuffer, sequence)
 
 	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff)
 	if err != nil {
@@ -169,8 +166,8 @@ func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, accoun
 	return nil
 }
 
-// StoreTransactionID stores the log ID associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+// StoreTransactionID stores the sequence associated to a transaction ID.
+func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -179,17 +176,17 @@ func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transacti
 	writeByte(b.keyBuffer, keyPrefixTransactionID)
 	writeUInt64(b.keyBuffer, transactionID)
 
-	logIDValue := make([]byte, 8)
-	binary.BigEndian.PutUint64(logIDValue, logID)
-	if err := setOnBatch(b.batch, b.keyBuffer, logIDValue); err != nil {
+	seqValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(seqValue, sequence)
+	if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
 		return fmt.Errorf("storing transaction ID mapping: %w", err)
 	}
 
 	return nil
 }
 
-// StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+// StoreRevertedTransactionID stores the sequence associated to a transaction ID that has been reverted.
+func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -198,9 +195,9 @@ func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, t
 	writeByte(b.keyBuffer, keyPrefixRevertedTxID)
 	writeUInt64(b.keyBuffer, transactionID)
 
-	logIDValue := make([]byte, 8)
-	binary.BigEndian.PutUint64(logIDValue, logID)
-	if err := setOnBatch(b.batch, b.keyBuffer, logIDValue); err != nil {
+	seqValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(seqValue, sequence)
+	if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
 		return fmt.Errorf("storing reverted transaction ID: %w", err)
 	}
 

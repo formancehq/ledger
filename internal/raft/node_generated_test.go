@@ -39,18 +39,18 @@ func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogStreamer) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (m *MockLogStreamer) GetAllLogs(ctx context.Context, from, to uint64) (store.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllLogs", ctx, ledger, from, to)
+	ret := m.ctrl.Call(m, "GetAllLogs", ctx, from, to)
 	ret0, _ := ret[0].(store.Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAllLogs indicates an expected call of GetAllLogs.
-func (mr *MockLogStreamerMockRecorder) GetAllLogs(ctx, ledger, from, to any) *MockLogStreamerGetAllLogsCall {
+func (mr *MockLogStreamerMockRecorder) GetAllLogs(ctx, from, to any) *MockLogStreamerGetAllLogsCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogStreamer)(nil).GetAllLogs), ctx, ledger, from, to)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogStreamer)(nil).GetAllLogs), ctx, from, to)
 	return &MockLogStreamerGetAllLogsCall{Call: call}
 }
 
@@ -66,13 +66,13 @@ func (c *MockLogStreamerGetAllLogsCall) Return(arg0 store.Cursor[*commonpb.Log],
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockLogStreamerGetAllLogsCall) Do(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
+func (c *MockLogStreamerGetAllLogsCall) Do(f func(context.Context, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLogStreamerGetAllLogsCall) DoAndReturn(f func(context.Context, uint32, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
+func (c *MockLogStreamerGetAllLogsCall) DoAndReturn(f func(context.Context, uint64, uint64) (store.Cursor[*commonpb.Log], error)) *MockLogStreamerGetAllLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

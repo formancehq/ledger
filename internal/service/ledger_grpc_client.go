@@ -25,14 +25,15 @@ func NewLedgerGrpcClient(client servicepb.LedgerServiceClient) *LedgerGrpcClient
 }
 
 // Apply forwards the action via gRPC to the leader
-func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
+func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
 	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
 		Action: action,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
-	return log, nil
+	// Extract the LedgerLog from the ApplyLog payload
+	return log.GetApply().GetLog(), nil
 }
 
 func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
@@ -42,7 +43,7 @@ func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, 
 	})
 }
 
-func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.Log) error {
+func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.LedgerLog) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
@@ -50,12 +51,32 @@ func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerID uint32, w Export
 	return fmt.Errorf("export is not implemented yet")
 }
 
-// GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
-func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
-	req := &servicepb.StreamLogsRequest{
+// GetAllLedgerLogs returns a cursor to iterate over all ledger logs (implements LedgerLogReader)
+func (g *LedgerGrpcClient) GetAllLedgerLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
+	req := &servicepb.StreamLedgerLogsRequest{
 		LedgerId: ledgerID,
 		FromId:   from,
 		ToId:     to, // 0 means no limit
+	}
+
+	stream, err := g.client.StreamLedgerLogs(ctx, req)
+	if err != nil {
+		if status.Code(err) == codes.Canceled {
+			return nil, context.Canceled
+		}
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	return store.NewGRPCStreamCursor(stream, func(res *servicepb.StreamLedgerLogsResponse) (*commonpb.LedgerLog, error) {
+		return res.Log, nil
+	}), nil
+}
+
+// GetAllLogs returns a cursor to iterate over all logs (implements LogStreamer)
+func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+	req := &servicepb.StreamLogsRequest{
+		FromSequence: from,
+		ToSequence:   to,
 	}
 
 	stream, err := g.client.StreamLogs(ctx, req)
@@ -69,21 +90,6 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, ledgerID uint32, from
 	return store.NewGRPCStreamCursor(stream, func(res *servicepb.StreamLogsResponse) (*commonpb.Log, error) {
 		return res.Log, nil
 	}), nil
-}
-
-// GetLogByID retrieves a log by its ID (implements LogReader)
-func (g *LedgerGrpcClient) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*commonpb.Log, error) {
-	if id == 0 {
-		return nil, nil
-	}
-	cursor, err := g.GetAllLogs(ctx, ledgerID, id-1, id)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = cursor.Close()
-	}()
-	return cursor.Next(ctx)
 }
 
 func (g *LedgerGrpcClient) CreateLedger(ctx context.Context, request *raftcmdpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {

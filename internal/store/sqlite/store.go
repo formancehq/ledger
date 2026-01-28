@@ -31,8 +31,9 @@ type Store struct {
 	logger logging.Logger
 
 	// Prepared statements
-	stmtGetLogByID                  *sql.Stmt
-	stmtInsertLog                   *sql.Stmt
+	stmtInsertSystemLog             *sql.Stmt
+	stmtGetLogBySequence            *sql.Stmt
+	stmtInsertIdempotency           *sql.Stmt
 	stmtGetIdempotency              *sql.Stmt
 	stmtInsertBalance               *sql.Stmt
 	stmtUpsertAccountMetadata       *sql.Stmt
@@ -100,26 +101,32 @@ func NewModernStore(dsn string, logger logging.Logger) (*Store, error) {
 
 func (s *Store) prepareStatements(ctx context.Context) error {
 	var err error
-	s.stmtGetLogByID, err = s.db.PrepareContext(ctx, `
-		SELECT id, ledger, data, date, idempotency_key, idempotency_hash
-		FROM logs WHERE ledger = ? AND id = ?
+
+	s.stmtInsertSystemLog, err = s.db.PrepareContext(ctx, `
+		INSERT INTO system_logs (sequence, data) VALUES (?, ?)
 	`)
 	if err != nil {
-		return fmt.Errorf("preparing getLogByID statement: %w", err)
+		return fmt.Errorf("preparing insertSystemLog statement: %w", err)
 	}
 
-	s.stmtInsertLog, err = s.db.PrepareContext(ctx, `
-		INSERT INTO logs (ledger, data, date, idempotency_key, idempotency_hash, id)
-		VALUES (?, ?, ?, ?, ?, ?)
+	s.stmtGetLogBySequence, err = s.db.PrepareContext(ctx, `
+		SELECT sequence, data FROM system_logs WHERE sequence = ?
 	`)
 	if err != nil {
-		return fmt.Errorf("preparing insertLog statement: %w", err)
+		return fmt.Errorf("preparing getLogBySequence statement: %w", err)
+	}
+
+	s.stmtInsertIdempotency, err = s.db.PrepareContext(ctx, `
+		INSERT INTO idempotency_keys (key, sequence, hash) VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing insertIdempotency statement: %w", err)
 	}
 
 	s.stmtGetIdempotency, err = s.db.PrepareContext(ctx, `
-		SELECT id 
-		FROM logs 
-		WHERE ledger = ? AND idempotency_key = ?
+		SELECT sequence 
+		FROM idempotency_keys 
+		WHERE key = ?
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing getIdempotency statement: %w", err)
@@ -194,6 +201,16 @@ func (s *Store) prepareStatements(ctx context.Context) error {
 
 func (s *Store) createTables(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS system_logs (
+			sequence INTEGER NOT NULL PRIMARY KEY,
+			data BLOB NOT NULL
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating system_logs table: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS ledgers (
 			id INTEGER NOT NULL PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE,
@@ -203,23 +220,6 @@ func (s *Store) createTables(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("creating ledgers table: %w", err)
-	}
-
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS logs (
-			ledger INTEGER NOT NULL, 
-			id INTEGER NOT NULL, 
-			data BLOB NOT NULL,
-			date TEXT, 
-			idempotency_key TEXT, 
-			idempotency_hash TEXT,
-			PRIMARY KEY (ledger, id), 
-			UNIQUE(ledger, idempotency_key)
-		) WITHOUT ROWID;
-		CREATE INDEX IF NOT EXISTS idx_logs_ledger_idempotency_key ON logs(ledger, idempotency_key);
-	`)
-	if err != nil {
-		return fmt.Errorf("creating logs table: %w", err)
 	}
 
 	_, err = s.db.ExecContext(ctx, `
@@ -277,10 +277,21 @@ func (s *Store) createTables(ctx context.Context) error {
 		return fmt.Errorf("creating raft_state table: %w", err)
 	}
 
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS idempotency_keys (
+			key TEXT NOT NULL PRIMARY KEY,
+			sequence INTEGER NOT NULL,
+			hash BLOB
+		) WITHOUT ROWID;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating idempotency_keys table: %w", err)
+	}
+
 	return nil
 }
 
-// logCursor implements store.Cursor[*ledgerpb.Log] for SQLite.
+// logCursor implements store.Cursor[*commonpb.Log] for SQLite.
 type logCursor struct {
 	rows *sql.Rows
 	s    *Store
@@ -294,39 +305,17 @@ func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
 		return nil, io.EOF
 	}
 
-	var id sql.NullInt64
-	var ledger uint32
+	var sequence uint64
 	var dataBinary []byte
-	var dateStr sql.NullString
-	var idempotencyKey sql.NullString
-	var idempotencyHash sql.Null[[]byte]
 
-	err := c.rows.Scan(&id, &ledger, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
+	err := c.rows.Scan(&sequence, &dataBinary)
 	if err != nil {
-		return nil, fmt.Errorf("scanning log row: %w", err)
+		return nil, fmt.Errorf("scanning system log row: %w", err)
 	}
 
-	log := &commonpb.Log{LedgerId: ledger}
-	if id.Valid {
-		log.Id = uint64(id.Int64)
-	}
-
-	logPayload := &commonpb.LogPayload{}
-	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
-		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
-	}
-	log.Data = logPayload
-
-	if dateStr.Valid {
-		date, err := stdtime.Parse(stdtime.RFC3339, dateStr.String)
-		if err != nil {
-			return nil, fmt.Errorf("parsing date: %w", err)
-		}
-		log.Date = commonpb.NewTimestamp(time.New(date))
-	}
-
-	if idempotencyKey.Valid {
-		log.Idempotency = &commonpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
+	log := &commonpb.Log{}
+	if err := proto.Unmarshal(dataBinary, log); err != nil {
+		return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
 	return log, nil
@@ -339,79 +328,138 @@ func (c *logCursor) Close() error {
 	return nil
 }
 
-// GetAllLogs returns a cursor to iterate over all logs for a specific ledger.
-func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
-	query := `SELECT id, ledger, data, date, idempotency_key, idempotency_hash FROM logs WHERE ledger = ?`
-	args := []interface{}{ledger}
+// GetAllLogs returns a cursor to iterate over all system logs.
+func (s *Store) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+	query := `SELECT sequence, data FROM system_logs WHERE 1=1`
+	args := []interface{}{}
 	if from > 0 {
-		query += ` AND id > ?`
+		query += ` AND sequence > ?`
 		args = append(args, int64(from))
 	}
 	if to > 0 {
-		query += ` AND id <= ?`
+		query += ` AND sequence <= ?`
 		args = append(args, int64(to))
 	}
-	query += ` ORDER BY id ASC`
+	query += ` ORDER BY sequence ASC`
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("querying logs: %w", err)
+		return nil, fmt.Errorf("querying system logs: %w", err)
 	}
 
 	return &logCursor{rows: rows, s: s}, nil
 }
 
-// GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
-	row := s.stmtGetLogByID.QueryRowContext(ctx, ledger, id)
+// GetLogBySequence retrieves a system log by its sequence number.
+func (s *Store) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	row := s.stmtGetLogBySequence.QueryRowContext(ctx, sequence)
 
-	var logID sql.NullInt64
-	var logLedger uint32
+	var seq uint64
 	var dataBinary []byte
-	var dateStr sql.NullString
-	var idempotencyKey sql.NullString
-	var idempotencyHash sql.Null[[]byte]
 
-	err := row.Scan(&logID, &logLedger, &dataBinary, &dateStr, &idempotencyKey, &idempotencyHash)
+	err := row.Scan(&seq, &dataBinary)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("getting log by id: %w", err)
+		return nil, fmt.Errorf("getting system log by sequence: %w", err)
 	}
 
-	log := &commonpb.Log{LedgerId: logLedger}
-	if logID.Valid {
-		log.Id = uint64(logID.Int64)
-	}
-
-	logPayload := &commonpb.LogPayload{}
-	if err := proto.Unmarshal(dataBinary, logPayload); err != nil {
-		return nil, fmt.Errorf("unmarshaling log payload from protobuf: %w", err)
-	}
-	log.Data = logPayload
-
-	if dateStr.Valid {
-		date, err := stdtime.Parse(stdtime.RFC3339, dateStr.String)
-		if err != nil {
-			return nil, fmt.Errorf("parsing date: %w", err)
-		}
-		log.Date = commonpb.NewTimestamp(time.New(date))
-	}
-
-	if idempotencyKey.Valid {
-		log.Idempotency = &commonpb.Idempotency{Key: idempotencyKey.String, Hash: idempotencyHash.V}
+	log := &commonpb.Log{}
+	if err := proto.Unmarshal(dataBinary, log); err != nil {
+		return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
 	return log, nil
+}
+
+// ledgerLogCursor implements store.Cursor[*commonpb.LedgerLog] for SQLite.
+// It scans system_logs and filters for ApplyLog payloads matching the target ledger.
+type ledgerLogCursor struct {
+	rows   *sql.Rows
+	ledger uint32
+	from   uint64
+	to     uint64
+}
+
+func (c *ledgerLogCursor) Next(ctx context.Context) (*commonpb.LedgerLog, error) {
+	for c.rows.Next() {
+		var sequence uint64
+		var dataBinary []byte
+
+		err := c.rows.Scan(&sequence, &dataBinary)
+		if err != nil {
+			return nil, fmt.Errorf("scanning system log row: %w", err)
+		}
+
+		log := &commonpb.Log{}
+		if err := proto.Unmarshal(dataBinary, log); err != nil {
+			return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
+		}
+
+		// Only process ApplyLog payloads
+		applyLog := log.GetApply()
+		if applyLog == nil || applyLog.Log == nil {
+			continue
+		}
+
+		// Filter by ledger
+		if applyLog.LedgerId != c.ledger {
+			continue
+		}
+
+		ledgerLog := applyLog.Log
+
+		// Filter by log ID range
+		if c.from > 0 && ledgerLog.Id <= c.from {
+			continue
+		}
+		if c.to > 0 && ledgerLog.Id > c.to {
+			continue
+		}
+
+		return ledgerLog, nil
+	}
+
+	if err := c.rows.Err(); err != nil {
+		return nil, err
+	}
+	return nil, io.EOF
+}
+
+func (c *ledgerLogCursor) Close() error {
+	if c.rows != nil {
+		return c.rows.Close()
+	}
+	return nil
+}
+
+// GetAllLedgerLogs returns a cursor to iterate over all ledger logs for a specific ledger.
+// Scans all system_logs and filters for ApplyLog payloads matching the ledger.
+// Logs are returned in sequence order (which may differ from log ID order).
+// from: optional log id to start from (0 = from beginning).
+// to: optional log id to stop at (0 = until end, inclusive).
+func (s *Store) GetAllLedgerLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT sequence, data FROM system_logs ORDER BY sequence ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("querying system logs: %w", err)
+	}
+
+	return &ledgerLogCursor{
+		rows:   rows,
+		ledger: ledger,
+		from:   from,
+		to:     to,
+	}, nil
 }
 
 // Close closes the database connection and prepared statements
 func (s *Store) Close(ctx context.Context) error {
 	var errs []error
 	for _, stmt := range []*sql.Stmt{
-		s.stmtGetLogByID,
-		s.stmtInsertLog,
+		s.stmtInsertSystemLog,
+		s.stmtGetLogBySequence,
+		s.stmtInsertIdempotency,
 		s.stmtGetIdempotency,
 		s.stmtInsertBalance,
 		s.stmtUpsertAccountMetadata,
@@ -541,31 +589,31 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts 
 }
 
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log
-func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger uint32, idempotencyKey string) (uint64, error) {
+func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
 
-	var logID uint64
-	err := s.stmtGetIdempotency.QueryRowContext(ctx, ledger, idempotencyKey).Scan(&logID)
+	var sequence uint64
+	err := s.stmtGetIdempotency.QueryRowContext(ctx, idempotencyKey).Scan(&sequence)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("querying idempotency entry: %w", err)
 	}
-	return logID, nil
+	return sequence, nil
 }
 
-// GetLogIDForTransactionID retrieves the log ID for a given transaction ID
-func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
+// GetSequenceForTransactionID retrieves the sequence for a given transaction ID
+func (s *Store) GetSequenceForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
 
-	var logID uint64
-	err := s.stmtGetLogIDForTransactionID.QueryRowContext(ctx, ledger, transactionID).Scan(&logID)
+	var sequence uint64
+	err := s.stmtGetLogIDForTransactionID.QueryRowContext(ctx, ledger, transactionID).Scan(&sequence)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("querying transaction ID mapping: %w", err)
 	}
-	return logID, nil
+	return sequence, nil
 }
 
 // IsTransactionReverted checks if a transaction has been reverted
@@ -600,18 +648,18 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	return lastAppliedIndex, nil
 }
 
-// GetLastLogID retrieves the ID of the last log for a specific ledger.
-func (s *Store) GetLastLogID(ctx context.Context, ledger uint32) (uint64, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id FROM logs WHERE ledger = ? ORDER BY id DESC LIMIT 1`, ledger)
+// GetLastSequence retrieves the last sequence number for system logs.
+func (s *Store) GetLastSequence(ctx context.Context) (uint64, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT sequence FROM system_logs ORDER BY sequence DESC LIMIT 1`)
 
-	var lastLogID uint64
-	if err := row.Scan(&lastLogID); err != nil {
+	var lastSequence uint64
+	if err := row.Scan(&lastSequence); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("querying last log ID: %w", err)
+		return 0, fmt.Errorf("querying last sequence: %w", err)
 	}
-	return lastLogID, nil
+	return lastSequence, nil
 }
 
 // GetLedgerByName retrieves a ledger by its name.
@@ -625,7 +673,7 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 
 	if err := row.Scan(&id, &ledgerName, &metadataJSON, &createdAtStr); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, store.ErrNotFound
 		}
 		return nil, fmt.Errorf("querying ledger by name: %w", err)
 	}

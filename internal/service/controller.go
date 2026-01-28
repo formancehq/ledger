@@ -18,16 +18,17 @@ type Controller interface {
 
 	// Read operations
 	GetTransaction(ctx context.Context, id uint32, transactionID uint64) (*commonpb.Transaction, error)
-	GetAllLogs(ctx context.Context, id uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error)
+	GetAllLedgerLogs(ctx context.Context, id uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error)
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error)
 
 	// Write operations - single entry point for all ledger actions
-	Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error)
+	Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error)
 
 	// Import/Export
-	Import(ctx context.Context, id uint32, stream chan *commonpb.Log) error
+	Import(ctx context.Context, id uint32, stream chan *commonpb.LedgerLog) error
 	Export(ctx context.Context, id uint32, w ExportWriter) error
 }
 
 type ExportWriter interface {
-	Write(ctx context.Context, log *commonpb.Log) error
+	Write(ctx context.Context, log *commonpb.LedgerLog) error
 }

@@ -76,7 +76,7 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, tr
 	return ctrl.GetTransaction(ctx, ledger, transactionID)
 }
 
-func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.Log) error {
+func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.LedgerLog) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return err
@@ -111,13 +111,22 @@ func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWr
 	return ctrl.Export(ctx, ledger, w)
 }
 
-func (b *RoutedController) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (b *RoutedController) GetAllLedgerLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
 
-	return ctrl.GetAllLogs(ctx, ledger, from, to)
+	return ctrl.GetAllLedgerLogs(ctx, ledger, from, to)
+}
+
+func (b *RoutedController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+
+	return ctrl.GetAllLogs(ctx, from, to)
 }
 
 var _ Controller = (*RoutedController)(nil)

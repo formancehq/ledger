@@ -479,15 +479,15 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 // createLedger is a test helper that creates a ledger via the node's Apply method
 func createLedger(ctx context.Context, node *Node, name string) (*commonpb.LedgerInfo, error) {
-	cmd := NewCreateLedgerCommand(&raftcmdpb.CreateLedgerCommand{
+	action := NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
 		Name: name,
 	})
-	ret, err := node.Apply(ctx, cmd)
+	logs, err := node.Apply(ctx, action)
 	if err != nil {
 		return nil, err
 	}
-	results := ret.([]any)
-	return results[0].(*commonpb.LedgerInfo), nil
+
+	return logs[0].GetCreateLedger().GetInfo(), nil
 }
 
 func TestClusterBasic(t *testing.T) {
@@ -520,8 +520,8 @@ func TestClusterBasic(t *testing.T) {
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
 	// Create a transaction
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -583,8 +583,8 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	_, err = createLedger(ctx, clusterNode.Node, "default")
 	require.NoError(t, err)
 
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -706,8 +706,8 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 		return delegate.ApplySnapshot(snapshot)
 	})
 
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -841,8 +841,8 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	t.Logf("Disconnecting follower node %d", follower.ID)
 	cluster.DisconnectNode(follower.ID)
 
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -871,17 +871,17 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
 		default:
 		}
 		// Block until we're told to continue
-		t.Logf("Leader GetAllLogs called (ledger=%d, from=%d, to=%d) - BLOCKING", ledger, from, to)
+		t.Logf("Leader GetAllLogs called (from=%d, to=%d) - BLOCKING", from, to)
 		<-syncBlocked
 		t.Logf("Leader GetAllLogs UNBLOCKED")
-		return delegate.GetAllLogs(ctx, ledger, from, to)
+		return delegate.GetAllLogs(ctx, from, to)
 	})
 
 	// Track when the follower receives a snapshot
@@ -1034,8 +1034,8 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	t.Logf("Disconnecting follower node %d", follower.ID)
 	cluster.DisconnectNode(follower.ID)
 
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -1076,7 +1076,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
 	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, ledger uint32, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
 		return nil, errSyncFailed
 	})
@@ -1256,8 +1256,8 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Verify the restarted follower can still receive replication
 	// Create another transaction on the leader
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
@@ -1323,8 +1323,8 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
-	createTransaction := func() *raftcmdpb.Command {
-		return NewCreateLogCommand(&raftcmdpb.CommandInput{
+	createTransaction := func() *raftcmdpb.Action {
+		return NewCreateLogAction(&raftcmdpb.CommandInput{
 			Command: &raftcmdpb.CommandInput_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{

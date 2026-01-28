@@ -26,7 +26,7 @@ type Bulker struct {
 	tracer      trace.Tracer
 }
 
-func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *servicepb.LedgerActionResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *LedgerActionResult, continueOnFailure, parallel bool) bool {
 
 	submit := func(fn func()) {
 		fn()
@@ -86,7 +86,7 @@ func (b *Bulker) run(ctx context.Context, bulk Bulk, result chan *servicepb.Ledg
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *servicepb.LedgerActionResult, bulkOptions BulkingOptions) error {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *LedgerActionResult, bulkOptions BulkingOptions) error {
 	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
 		attribute.Bool("atomic", bulkOptions.Atomic),
 		attribute.Bool("parallel", bulkOptions.Parallel),
@@ -113,7 +113,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *servicepb.Ledg
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerAction) (*commonpb.Log, error) {
+func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
 	// Set the ledger ID on the action before applying
 	elem.LedgerId = b.ledgerID
 	return b.ledger.Apply(ctx, elem)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3"
@@ -515,7 +516,7 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 		if !exists {
 			continue
 		}
-		future.Resolve(result.Result, result.Error)
+		future.Resolve(result.Logs, result.Error)
 	}
 
 	return nil
@@ -711,7 +712,7 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		logStreamer, err := node.logStreamerProvider.GetForPeer(leader)
 		if err != nil {
-			return 0, fmt.Errorf("getting log reader for leader %d: %w", leader, err)
+			return 0, fmt.Errorf("getting log streamer for leader %d: %w", leader, err)
 		}
 		return node.fsm.SynchronizeWithLeader(ctx, logStreamer)
 	})
@@ -784,9 +785,11 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 	})
 }
 
-// Apply proposes a command and waits for it to be applied, returning the applied index
+// Apply proposes actions and waits for them to be applied, returning the resulting logs
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node) Apply(ctx context.Context, cmd *raftcmdpb.Command) (any, error) {
+func (node *Node) Apply(ctx context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error) {
+	cmd := NewCommand(actions...)
+
 	future := newFuture()
 	start := time.Now()
 

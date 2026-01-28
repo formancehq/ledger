@@ -25,6 +25,7 @@ const (
 	LedgerService_GetAllLedgersInfo_FullMethodName = "/ledger.LedgerService/GetAllLedgersInfo"
 	LedgerService_GetLedgerByName_FullMethodName   = "/ledger.LedgerService/GetLedgerByName"
 	LedgerService_GetTransaction_FullMethodName    = "/ledger.LedgerService/GetTransaction"
+	LedgerService_StreamLedgerLogs_FullMethodName  = "/ledger.LedgerService/StreamLedgerLogs"
 	LedgerService_StreamLogs_FullMethodName        = "/ledger.LedgerService/StreamLogs"
 	LedgerService_Apply_FullMethodName             = "/ledger.LedgerService/Apply"
 )
@@ -45,7 +46,9 @@ type LedgerServiceClient interface {
 	GetLedgerByName(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error)
 	// GetTransaction retrieves a transaction by ID
 	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error)
-	// StreamLogs streams logs from a ledger, optionally starting from a log ID
+	// StreamLedgerLogs streams logs from a ledger, optionally starting from a log ID
+	StreamLedgerLogs(ctx context.Context, in *StreamLedgerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLedgerLogsResponse], error)
+	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
 	// Apply applies a ledger action (create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
@@ -109,9 +112,28 @@ func (c *ledgerServiceClient) GetTransaction(ctx context.Context, in *GetTransac
 	return out, nil
 }
 
+func (c *ledgerServiceClient) StreamLedgerLogs(ctx context.Context, in *StreamLedgerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLedgerLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[0], LedgerService_StreamLedgerLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamLedgerLogsRequest, StreamLedgerLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LedgerService_StreamLedgerLogsClient = grpc.ServerStreamingClient[StreamLedgerLogsResponse]
+
 func (c *ledgerServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[0], LedgerService_StreamLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[1], LedgerService_StreamLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +176,9 @@ type LedgerServiceServer interface {
 	GetLedgerByName(context.Context, *GetLedgerByNameRequest) (*commonpb.LedgerInfo, error)
 	// GetTransaction retrieves a transaction by ID
 	GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error)
-	// StreamLogs streams logs from a ledger, optionally starting from a log ID
+	// StreamLedgerLogs streams logs from a ledger, optionally starting from a log ID
+	StreamLedgerLogs(*StreamLedgerLogsRequest, grpc.ServerStreamingServer[StreamLedgerLogsResponse]) error
+	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
 	// Apply applies a ledger action (create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*commonpb.Log, error)
@@ -182,6 +206,9 @@ func (UnimplementedLedgerServiceServer) GetLedgerByName(context.Context, *GetLed
 }
 func (UnimplementedLedgerServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransaction not implemented")
+}
+func (UnimplementedLedgerServiceServer) StreamLedgerLogs(*StreamLedgerLogsRequest, grpc.ServerStreamingServer[StreamLedgerLogsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamLedgerLogs not implemented")
 }
 func (UnimplementedLedgerServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
@@ -300,6 +327,17 @@ func _LedgerService_GetTransaction_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_StreamLedgerLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamLedgerLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(LedgerServiceServer).StreamLedgerLogs(m, &grpc.GenericServerStream[StreamLedgerLogsRequest, StreamLedgerLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LedgerService_StreamLedgerLogsServer = grpc.ServerStreamingServer[StreamLedgerLogsResponse]
+
 func _LedgerService_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(StreamLogsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -362,6 +400,11 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamLedgerLogs",
+			Handler:       _LedgerService_StreamLedgerLogs_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "StreamLogs",
 			Handler:       _LedgerService_StreamLogs_Handler,

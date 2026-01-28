@@ -31,13 +31,25 @@ func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, fmt.Errorf("action is required")
 	}
 	impl.logger.WithFields(map[string]any{"ledger_id": req.Action.LedgerId}).Debugf("Apply request received")
-	return impl.ctrl.Apply(ctx, req.Action)
+	ledgerLog, err := impl.ctrl.Apply(ctx, req.Action)
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the LedgerLog in a Log with ApplyLog payload
+	return &commonpb.Log{
+		Payload: &commonpb.Log_Apply{
+			Apply: &commonpb.ApplyLog{
+				LedgerId: req.Action.LedgerId,
+				Log:      ledgerLog,
+			},
+		},
+	}, nil
 }
 
-func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
+func (impl *LedgerServiceServerImpl) StreamLedgerLogs(req *servicepb.StreamLedgerLogsRequest, stream servicepb.LedgerService_StreamLedgerLogsServer) error {
 	ctx := stream.Context()
 
-	cursor, err := impl.ctrl.GetAllLogs(ctx, req.LedgerId, req.FromId, req.ToId)
+	cursor, err := impl.ctrl.GetAllLedgerLogs(ctx, req.LedgerId, req.FromId, req.ToId)
 	if err != nil {
 		return err
 	}
@@ -54,7 +66,36 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest
 			return fmt.Errorf("reading log from store: %w", err)
 		}
 
-		// log is already *commonpb.Log
+		if err := stream.Send(&servicepb.StreamLedgerLogsResponse{
+			Log: log,
+		}); err != nil {
+			return fmt.Errorf("sending log: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
+	ctx := stream.Context()
+
+	cursor, err := impl.ctrl.GetAllLogs(ctx, req.FromSequence, req.ToSequence)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		log, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading log from store: %w", err)
+		}
+
 		if err := stream.Send(&servicepb.StreamLogsResponse{
 			Log: log,
 		}); err != nil {

@@ -12,10 +12,10 @@ import (
 type JsonBulkHandler struct {
 	bulkMaxSize  int
 	bulkElements []*servicepb.LedgerAction
-	receive      chan *servicepb.LedgerActionResult
+	receive      chan *LedgerActionResult
 }
 
-func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *servicepb.LedgerActionResult, bool) {
+func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan *LedgerActionResult, bool) {
 	// Parse JSON array of bulk elements
 	var rawElements []json.RawValue
 	if err := json.UnmarshalRead(r.Body, &rawElements); err != nil {
@@ -45,13 +45,13 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 	}
 	close(bulk)
 
-	h.receive = make(chan *servicepb.LedgerActionResult, len(h.bulkElements))
+	h.receive = make(chan *LedgerActionResult, len(h.bulkElements))
 
 	return bulk, h.receive, true
 }
 
 func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
-	results := make([]*servicepb.LedgerActionResult, 0, len(h.bulkElements))
+	results := make([]*LedgerActionResult, 0, len(h.bulkElements))
 	for element := range h.receive {
 		results = append(results, element)
 	}
@@ -85,31 +85,31 @@ func NewJSONBulkHandlerFactory(bulkMaxSize int) HandlerFactory {
 
 var _ HandlerFactory = (*jsonBulkHandlerFactory)(nil)
 
-func writeJSONResponse(w http.ResponseWriter, actions []string, results []*servicepb.LedgerActionResult, error error) {
+func writeJSONResponse(w http.ResponseWriter, actions []string, results []*LedgerActionResult, error error) {
 	for _, result := range results {
-		if HasError(result) {
+		if result.HasError() {
 			w.WriteHeader(http.StatusBadRequest)
 			break
 		}
 	}
 
-	slices.SortFunc(results, func(a, b *servicepb.LedgerActionResult) int {
-		return int(a.ElementId) - int(b.ElementId)
+	slices.SortFunc(results, func(a, b *LedgerActionResult) int {
+		return a.ElementID - b.ElementID
 	})
 
 	mappedResults := make([]APIResult, 0)
 	for _, result := range results {
 		var (
-			responseType = actions[result.ElementId]
+			responseType = actions[result.ElementID]
 			data         any
 		)
 
-		if HasError(result) {
+		if result.HasError() {
 			responseType = "ERROR"
 		}
 
-		// Extract data from oneof
-		if log := result.GetLog(); log != nil {
+		// Extract data from log
+		if log := result.Log; log != nil {
 			// For create transaction, return the transaction
 			if log.Data != nil {
 				if ct := log.Data.GetCreatedTransaction(); ct != nil {
@@ -123,7 +123,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []*servi
 			ErrorDescription: result.ErrorDescription,
 			Data:             data,
 			ResponseType:     responseType,
-			LogID:            result.LogId,
+			LogID:            result.LogID,
 		})
 	}
 

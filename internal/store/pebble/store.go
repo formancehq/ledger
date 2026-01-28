@@ -46,13 +46,15 @@ type Store struct {
 // Key prefixes for Pebble storage (3 bytes max)
 var (
 	keyPrefixLastAppliedIndex byte = 0x00
-	keyPrefixLog              byte = 0x01
-	keyPrefixBalanceDiff      byte = 0x02
-	keyPrefixAccountMetadata  byte = 0x03
-	keyPrefixIdempotency      byte = 0x04
-	keyPrefixTransactionID    byte = 0x05
-	keyPrefixRevertedTxID     byte = 0x06
-	keyPrefixLedgerInfo       byte = 0x07
+	// 0x01 was keyPrefixLog - now unused, logs are stored in Log
+	keyPrefixBalanceDiff     byte = 0x02
+	keyPrefixAccountMetadata byte = 0x03
+	keyPrefixIdempotency     byte = 0x04
+	keyPrefixTransactionID   byte = 0x05
+	keyPrefixRevertedTxID    byte = 0x06
+	keyPrefixLedgerInfo      byte = 0x07
+	keyPrefixLog             byte = 0x08 // [keyPrefixLog][sequence] -> Log
+	// 0x09 was keyPrefixLogIndex - now unused, logs are accessed via Log
 )
 
 // NewStore creates a new Store instance
@@ -180,7 +182,7 @@ func (s *Store) Close(ctx context.Context) error {
 	return nil
 }
 
-// logCursor implements store.Cursor[*ledgerpb.Log] for Pebble.
+// logCursor implements store.Cursor[*commonpb.Log] for Pebble.
 type logCursor struct {
 	iter *pebble.Iterator
 	s    *Store
@@ -219,26 +221,22 @@ func (c *logCursor) Close() error {
 	return nil
 }
 
-// GetAllLogs returns a cursor to iterate over all logs for a specific ledger.
-// Logs are returned in ascending order by id.
-// from: optional log id to start from (0 = from beginning).
-// to: optional log id to stop at (0 = until end, inclusive).
-func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
-	// Set up iterator bounds
-
+// GetAllLogs returns a cursor to iterate over all system logs.
+// Logs are returned in ascending order by sequence.
+// from: optional sequence to start from (0 = from beginning).
+// to: optional sequence to stop at (0 = until end, inclusive).
+func (s *Store) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
 	writeByte(buf, keyPrefixLog)
 	if from > 0 {
-		writeInt64(buf, int64(from))
+		writeUInt64(buf, from)
 	}
 	lowerBound := buf.Bytes()
 
 	buf = bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
 	writeByte(buf, keyPrefixLog)
 	if to > 0 {
-		writeInt64(buf, int64(to+1))
+		writeUInt64(buf, to+1)
 	} else {
 		if _, err := buf.Write([]byte{
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -265,25 +263,18 @@ func (s *Store) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to u
 	}, nil
 }
 
-// GetLogByID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
-	return s.GetLogWithID(ctx, ledger, id)
-}
-
-// GetLogWithID retrieves a log by its ID for a specific ledger.
-func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
-
+// GetLogBySequence retrieves a log by its sequence number.
+func (s *Store) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
 	writeByte(buf, keyPrefixLog)
-	writeInt64(buf, int64(id))
+	writeUInt64(buf, sequence)
 
 	value, closer, err := s.db.Get(buf.Bytes())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("getting log by id: %w", err)
+		return nil, fmt.Errorf("getting system log by sequence: %w", err)
 	}
 	defer func() {
 		_ = closer.Close()
@@ -292,10 +283,99 @@ func (s *Store) GetLogWithID(ctx context.Context, ledger uint32, id uint64) (*co
 	// Unmarshal protobuf Log
 	log := &commonpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
-		return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+		return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
 	return log, nil
+}
+
+// ledgerLogCursor implements store.Cursor[*commonpb.LedgerLog] for Pebble.
+// It iterates over all Logs and filters for ApplyLog payloads matching the ledger.
+type ledgerLogCursor struct {
+	iter   *pebble.Iterator
+	ledger uint32
+	from   uint64
+	to     uint64
+}
+
+func (c *ledgerLogCursor) Next(ctx context.Context) (*commonpb.LedgerLog, error) {
+	for c.iter.Valid() {
+		value, err := c.iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading log value: %w", err)
+		}
+
+		// Move to next before processing
+		c.iter.Next()
+
+		// Unmarshal Log
+		log := &commonpb.Log{}
+		if err := proto.Unmarshal(value, log); err != nil {
+			return nil, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+		}
+
+		// Skip if not an ApplyLog
+		applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+		if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
+			continue
+		}
+
+		// Filter by ledger
+		if applyLog.Apply.LedgerId != c.ledger {
+			continue
+		}
+
+		// Filter by log ID range
+		if c.from > 0 && applyLog.Apply.Log.Id < c.from {
+			continue
+		}
+		if c.to > 0 && applyLog.Apply.Log.Id > c.to {
+			continue
+		}
+
+		return applyLog.Apply.Log, nil
+	}
+
+	if err := c.iter.Error(); err != nil {
+		return nil, err
+	}
+	return nil, io.EOF
+}
+
+func (c *ledgerLogCursor) Close() error {
+	if c.iter != nil {
+		return c.iter.Close()
+	}
+	return nil
+}
+
+// GetAllLedgerLogs returns a cursor to iterate over all ledger logs for a specific ledger.
+// Scans all Logs and filters for ApplyLog payloads matching the ledger.
+// Logs are returned in sequence order (which may differ from log ID order).
+// from: optional log id to start from (0 = from beginning).
+// to: optional log id to stop at (0 = until end, inclusive).
+func (s *Store) GetAllLedgerLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
+	// Iterate over all Logs
+	lowerBound := []byte{keyPrefixLog}
+	upperBound := []byte{keyPrefixLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator: %w", err)
+	}
+
+	// Position iterator at first key
+	iter.First()
+
+	return &ledgerLogCursor{
+		iter:   iter,
+		ledger: ledger,
+		from:   from,
+		to:     to,
+	}, nil
 }
 
 // ============================================================================
@@ -420,11 +500,10 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts 
 	return result, nil
 }
 
-// GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log for its idempotency key for a specific ledger (implements store.Store)
-func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger uint32, idempotencyKey string) (uint64, error) {
+// GetSequenceForIdempotencyKey retrieves the sequence for an idempotency key (global) (implements store.Store)
+func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
 	writeByte(buf, keyPrefixIdempotency)
 	writeString(buf, idempotencyKey)
 
@@ -442,8 +521,8 @@ func (s *Store) GetLogIDForIdempotencyKey(ctx context.Context, ledger uint32, id
 	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
-// GetLogIDForTransactionID retrieves the log ID for a given transaction ID for a specific ledger (implements store.Store)
-func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
+// GetSequenceForTransactionID retrieves the sequence for a given transaction ID for a specific ledger (implements store.Store)
+func (s *Store) GetSequenceForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -461,13 +540,13 @@ func (s *Store) GetLogIDForTransactionID(ctx context.Context, ledger uint32, tra
 		_ = closer.Close()
 	}()
 
-	// Parse log ID from 8-byte big-endian value
+	// Parse sequence from 8-byte big-endian value
 	if len(value) != 8 {
-		return 0, fmt.Errorf("invalid log ID value length: expected 8 bytes, got %d", len(value))
+		return 0, fmt.Errorf("invalid sequence value length: expected 8 bytes, got %d", len(value))
 	}
-	logID := binary.BigEndian.Uint64(value)
+	sequence := binary.BigEndian.Uint64(value)
 
-	return logID, nil
+	return sequence, nil
 }
 
 // IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.Store)
@@ -562,25 +641,13 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	return binary.BigEndian.Uint64(get[:8]), nil
 }
 
-func (s *Store) DeleteLedger(_ context.Context, id uint32) error {
-	startBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(startBuf, id)
-
-	endBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(endBuf, id)
-	writeByte(endBuf, 0xFF)
-
-	return s.db.DeleteRange(startBuf.Bytes(), endBuf.Bytes(), pebble.NoSync)
-}
-
-func (s *Store) GetLastLogID(ctx context.Context, id uint32) (uint64, error) {
+// GetLastSequence returns the last sequence number for system logs.
+func (s *Store) GetLastSequence(ctx context.Context) (uint64, error) {
 	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, id)
 	writeByte(buf, keyPrefixLog)
 	lowerBound := buf.Bytes()
 
 	buf = bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, id)
 	writeByte(buf, keyPrefixLog)
 	if _, err := buf.Write([]byte{
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -602,22 +669,22 @@ func (s *Store) GetLastLogID(ctx context.Context, id uint32) (uint64, error) {
 
 	// Seek to the last key in the range
 	if !iter.Last() {
-		// No logs found for this ledger
+		// No system logs found
 		return 0, nil
 	}
 
-	// Parse the log ID from the value (the log protobuf contains the ID)
+	// Parse the sequence from the value (the system log protobuf contains the sequence)
 	value, err := iter.ValueAndErr()
 	if err != nil {
-		return 0, fmt.Errorf("reading log value: %w", err)
+		return 0, fmt.Errorf("reading system log value: %w", err)
 	}
 
 	log := &commonpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
-		return 0, fmt.Errorf("unmarshaling log from protobuf: %w", err)
+		return 0, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
-	return log.Id, nil
+	return log.Sequence, nil
 }
 
 // ListLedgers returns all registered ledgers.

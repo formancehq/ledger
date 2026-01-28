@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -44,7 +45,7 @@ func (lp *logProcessor) forgeAction(
 	ledgerID uint32,
 	idempotencyKey string,
 	input proto.Message,
-) (*raftcmdpb.Action, *commonpb.Log, error) {
+) (*raftcmdpb.Action, *commonpb.LedgerLog, error) {
 
 	if idempotencyKey != "" {
 		release, err := lp.keySetLocker.TryLockKeys(ctx, ledgerID, "ik/"+idempotencyKey)
@@ -53,23 +54,30 @@ func (lp *logProcessor) forgeAction(
 		}
 		defer release()
 
-		id, err := lp.store.GetLogIDForIdempotencyKey(ctx, ledgerID, idempotencyKey)
+		sequence, err := lp.store.GetSequenceForIdempotencyKey(ctx, idempotencyKey)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return nil, nil, err
 		}
 
-		if err == nil {
-			log, err := lp.store.GetLogByID(ctx, ledgerID, id)
+		if err == nil && sequence > 0 {
+			log, err := lp.store.GetLogBySequence(ctx, sequence)
 			if err != nil {
 				return nil, nil, err
 			}
 
-			if string(commonpb.ComputeIdempotencyHash(input)) != string(log.Idempotency.Hash) {
+			// Extract the ledger log from the log
+			applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+			if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
+				return nil, nil, fmt.Errorf("log %d does not contain an apply log", sequence)
+			}
+			ledgerLog := applyLog.Apply.Log
+
+			if log.Idempotency == nil || string(commonpb.ComputeIdempotencyHash(input)) != string(log.Idempotency.Hash) {
 				return nil, nil, ErrIdempotencyKeyConflict
 			}
 
-			// Return cached log (idempotent response)
-			return nil, log, nil
+			// Return cached ledger log (idempotent response)
+			return nil, ledgerLog, nil
 		}
 	}
 
@@ -105,8 +113,8 @@ func forgeLogAndApply(
 	ledgerID uint32,
 	idempotencyKey string,
 	input proto.Message,
-	apply func(ctx context.Context, action *raftcmdpb.Action) (*commonpb.Log, error),
-) (*commonpb.Log, error) {
+	apply func(ctx context.Context, action *raftcmdpb.Action) (*commonpb.LedgerLog, error),
+) (*commonpb.LedgerLog, error) {
 	action, cachedLog, err := lp.forgeAction(ctx, ledgerID, idempotencyKey, input)
 	if err != nil {
 		return nil, err

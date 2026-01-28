@@ -6,62 +6,38 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
-// NewLog creates a new Log from a LogPayload
-func NewLog(payload *LogPayload) *Log {
-	return &Log{
+// NewLedgerLog creates a new LedgerLog from a LogPayload
+func NewLedgerLog(payload *LogPayload) *LedgerLog {
+	return &LedgerLog{
 		Data: payload,
 	}
 }
 
 // WithDate sets the date of the log
-func (l *Log) WithDate(date time.Time) *Log {
+func (l *LedgerLog) WithDate(date time.Time) *LedgerLog {
 	if l == nil {
-		l = &Log{}
+		l = &LedgerLog{}
 	}
 	l.Date = NewTimestamp(date)
 	return l
 }
 
-// WithIdempotencyKey sets the idempotency key
-func (l *Log) WithIdempotency(key string, hash []byte) *Log {
-	if l == nil {
-		l = &Log{}
-	}
-	l.Idempotency = &Idempotency{
-		Key:  key,
-		Hash: hash,
-	}
-
-	return l
-}
-
 // WithID sets the ID of the log
-func (l *Log) WithID(id uint64) *Log {
+func (l *LedgerLog) WithID(id uint64) *LedgerLog {
 	if l == nil {
-		l = &Log{}
+		l = &LedgerLog{}
 	}
 	l.Id = id
 	return l
 }
 
-// WithLedgerID sets the ledger of the log
-func (l *Log) WithLedgerID(ledgerID uint32) *Log {
-	if l == nil {
-		l = &Log{}
-	}
-	l.LedgerId = ledgerID
-	return l
-}
-
-// UnmarshalJSON implements json.Unmarshaler for Log
-func (l *Log) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON implements json.Unmarshaler for LedgerLog
+func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 	type auxLog struct {
-		Type            LogType       `json:"type"`
-		Data            json.RawValue `json:"data"`
-		Date            *time.Time    `json:"date"`
-		IdempotencyKey  string        `json:"idempotencyKey"`
-		IdempotencyHash []byte        `json:"idempotencyHash"`
-		ID              *uint64       `json:"id"`
+		Type LogType       `json:"type"`
+		Data json.RawValue `json:"data"`
+		Date *time.Time    `json:"date"`
+		ID   *uint64       `json:"id"`
 	}
 	rawLog := auxLog{}
 	if err := json.Unmarshal(data, &rawLog); err != nil {
@@ -70,10 +46,6 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 
 	if rawLog.Date != nil {
 		l.Date = NewTimestamp(*rawLog.Date)
-	}
-	l.Idempotency = &Idempotency{
-		Key:  rawLog.IdempotencyKey,
-		Hash: rawLog.IdempotencyHash,
 	}
 	if rawLog.ID != nil {
 		l.Id = *rawLog.ID
@@ -115,22 +87,18 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler for Log
-func (l *Log) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for LedgerLog
+func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 	type auxLog struct {
-		Type            LogType     `json:"type"`
-		Data            *LogPayload `json:"data"`
-		Date            *time.Time  `json:"date,omitempty"`
-		IdempotencyKey  string      `json:"idempotencyKey,omitempty"`
-		IdempotencyHash []byte      `json:"idempotencyHash,omitempty"`
-		ID              *uint64     `json:"id,omitempty"`
+		Type LogType     `json:"type"`
+		Data *LogPayload `json:"data"`
+		Date *time.Time  `json:"date,omitempty"`
+		ID   *uint64     `json:"id,omitempty"`
 	}
 
 	aux := auxLog{
-		Type:            GetLogTypeFromLog(l),
-		Data:            l.Data,
-		IdempotencyKey:  l.Idempotency.Key,
-		IdempotencyHash: l.Idempotency.Hash,
+		Type: GetLogTypeFromLog(l),
+		Data: l.Data,
 	}
 
 	if l.Date != nil {

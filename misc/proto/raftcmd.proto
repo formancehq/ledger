@@ -19,6 +19,7 @@ message LedgerState {
 message State {
   map<uint32, LedgerState> ledgers = 1;
   uint32 next_ledger_id = 2;                // Next available ledger ID (max 65535)
+  uint64 next_sequence = 3;                 // Next global sequence number for SystemLog
 }
 
 // ============================================================================

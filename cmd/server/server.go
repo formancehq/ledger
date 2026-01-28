@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -16,6 +17,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/tracesampling"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
 	"gopkg.in/yaml.v3"
 )
@@ -154,6 +157,20 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		// Provide application module
 		application.Module(),
 	}
+
+	defer func() {
+		switch loggerProvider := global.GetLoggerProvider().(type) {
+		case *sdklog.LoggerProvider:
+			if err := loggerProvider.ForceFlush(context.Background()); err != nil {
+				logger.Errorf("Failed to flush logs: %v", err)
+			}
+			if err := loggerProvider.Shutdown(context.Background()); err != nil {
+				logger.Errorf("Failed to shutdown logs: %v", err)
+			}
+		default:
+			logger.Errorf("Unknown logger provider type: %T", loggerProvider)
+		}
+	}()
 
 	// Run the application (handles startup, signal handling, and graceful shutdown)
 	return service.NewWithLogger(logger, opts...).Run(cmd)

@@ -6,11 +6,10 @@ import (
 	"io"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
-	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ func registerLedger(ctx context.Context, t *testing.T, s store.Store, name strin
 	err := batch.RegisterLedger(ctx, &commonpb.LedgerInfo{
 		Id:        id,
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	})
 	require.NoError(t, err)
 	err = batch.Commit(ctx)
@@ -116,7 +115,8 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		testLogs := createTestLogs(testLedgerID)
 		appendLogs(ctx, t, s, 0, testLogs...)
 
-		cursor, err := s.GetAllLogs(ctx, testLedgerID, 0, 0)
+		// Test GetAllLogs (global logs by sequence)
+		cursor, err := s.GetAllLogs(ctx, 0, 0)
 		require.NoError(t, err)
 		require.NotNil(t, cursor)
 		t.Cleanup(func() { _ = cursor.Close() })
@@ -133,12 +133,13 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		require.Equal(t, len(testLogs), len(logs))
 
+		// Verify logs are in sequence order
 		for i := 0; i < len(logs)-1; i++ {
-			require.LessOrEqual(t, logs[i].Id, logs[i+1].Id)
+			require.LessOrEqual(t, logs[i].Sequence, logs[i+1].Sequence)
 		}
 	})
 
-	t.Run("GetLogByID", func(t *testing.T) {
+	t.Run("GetAllLedgerLogs", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
@@ -146,12 +147,44 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		testLogs := createTestLogs(testLedgerID)
 		appendLogs(ctx, t, s, 0, testLogs...)
 
-		log, err := s.GetLogByID(ctx, testLedgerID, 1)
+		// Test GetAllLedgerLogs (ledger-specific logs)
+		cursor, err := s.GetAllLedgerLogs(ctx, testLedgerID, 0, 0)
+		require.NoError(t, err)
+		require.NotNil(t, cursor)
+		t.Cleanup(func() { _ = cursor.Close() })
+
+		var ledgerLogs []*commonpb.LedgerLog
+		for {
+			log, err := cursor.Next(ctx)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			ledgerLogs = append(ledgerLogs, log)
+		}
+
+		require.Equal(t, len(testLogs), len(ledgerLogs))
+
+		// Verify logs are in ID order
+		for i := 0; i < len(ledgerLogs)-1; i++ {
+			require.LessOrEqual(t, ledgerLogs[i].Id, ledgerLogs[i+1].Id)
+		}
+	})
+
+	t.Run("GetLogBySequence", func(t *testing.T) {
+		t.Parallel()
+		s := createStore(t)
+
+		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
+		testLogs := createTestLogs(testLedgerID)
+		appendLogs(ctx, t, s, 0, testLogs...)
+
+		log, err := s.GetLogBySequence(ctx, 1)
 		require.NoError(t, err)
 		require.NotNil(t, log)
-		require.Equal(t, uint64(1), log.Id)
+		require.Equal(t, uint64(1), log.Sequence)
 
-		log, err = s.GetLogByID(ctx, testLedgerID, 999)
+		log, err = s.GetLogBySequence(ctx, 999)
 		require.NoError(t, err)
 		require.Nil(t, log)
 	})
@@ -202,7 +235,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		require.Empty(t, emptyMetadata)
 	})
 
-	t.Run("GetLogForIdempotencyKey", func(t *testing.T) {
+	t.Run("GetSequenceForIdempotencyKey", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
@@ -210,17 +243,17 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		testLogs := createTestLogs(testLedgerID)
 		appendLogs(ctx, t, s, 0, testLogs...)
 
-		logID, err := s.GetLogIDForIdempotencyKey(ctx, testLedgerID, "idempotency-key-1")
+		sequence, err := s.GetSequenceForIdempotencyKey(ctx, "idempotency-key-1")
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), logID)
+		require.Equal(t, uint64(1), sequence)
 
-		logID, err = s.GetLogIDForIdempotencyKey(ctx, testLedgerID, "non-existing-key")
+		sequence, err = s.GetSequenceForIdempotencyKey(ctx, "non-existing-key")
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), logID)
+		require.Equal(t, uint64(0), sequence)
 
-		logID, err = s.GetLogIDForIdempotencyKey(ctx, testLedgerID, "")
+		sequence, err = s.GetSequenceForIdempotencyKey(ctx, "")
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), logID)
+		require.Equal(t, uint64(0), sequence)
 	})
 
 	t.Run("AppendLogsEmpty", func(t *testing.T) {
@@ -230,194 +263,176 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		appendLogs(ctx, t, s, 0)
 	})
 
-	t.Run("GetLastLogID", func(t *testing.T) {
+	t.Run("GetLastSequence", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
 		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
 
 		// Test with no logs - should return 0
-		lastLogID, err := s.GetLastLogID(ctx, testLedgerID)
+		lastSequence, err := s.GetLastSequence(ctx)
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), lastLogID)
+		require.Equal(t, uint64(0), lastSequence)
 
-		// Insert logs and verify last ID
+		// Insert logs and verify last sequence
 		testLogs := createTestLogs(testLedgerID)
 		appendLogs(ctx, t, s, 0, testLogs...)
 
-		lastLogID, err = s.GetLastLogID(ctx, testLedgerID)
+		lastSequence, err = s.GetLastSequence(ctx)
 		require.NoError(t, err)
-		require.Equal(t, uint64(4), lastLogID) // Last log has ID 4
-
-		// Test with non-existent ledger
-		lastLogID, err = s.GetLastLogID(ctx, 999)
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), lastLogID)
+		require.Equal(t, uint64(4), lastSequence) // Last log has sequence 4
 	})
 
-	t.Run("GetLastAppliedIndex", func(t *testing.T) {
+	t.Run("ListLedgers", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
-		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
-
-		// Test initial state - should return 0
-		lastAppliedIndex, err := s.GetLastAppliedIndex()
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), lastAppliedIndex)
-
-		// Insert logs with a specific lastAppliedIndex
-		testLogs := createTestLogs(testLedgerID)
-		appendLogs(ctx, t, s, 42, testLogs...)
-
-		// Verify the lastAppliedIndex was stored
-		lastAppliedIndex, err = s.GetLastAppliedIndex()
-		require.NoError(t, err)
-		require.Equal(t, uint64(42), lastAppliedIndex)
-
-		// Update with just lastAppliedIndex (no logs)
-		appendLogs(ctx, t, s, 200)
-
-		lastAppliedIndex, err = s.GetLastAppliedIndex()
-		require.NoError(t, err)
-		require.Equal(t, uint64(200), lastAppliedIndex)
-	})
-
-	t.Run("ListLedgersAndGetByName", func(t *testing.T) {
-		t.Parallel()
-		s := createStore(t)
-
-		// Register ledgers
-		registerLedger(ctx, t, s, "ledger-1", 1)
-		registerLedger(ctx, t, s, "ledger-2", 2)
-
-		// List all ledgers
+		// Initially no ledgers
 		ledgers, err := s.ListLedgers(ctx)
 		require.NoError(t, err)
+		require.Empty(t, ledgers)
+
+		// Register first ledger
+		registerLedger(ctx, t, s, "ledger-1", 1)
+		ledgers, err = s.ListLedgers(ctx)
+		require.NoError(t, err)
+		require.Len(t, ledgers, 1)
+		require.Equal(t, "ledger-1", ledgers[0].Name)
+		require.Equal(t, uint32(1), ledgers[0].Id)
+
+		// Register second ledger
+		registerLedger(ctx, t, s, "ledger-2", 2)
+		ledgers, err = s.ListLedgers(ctx)
+		require.NoError(t, err)
 		require.Len(t, ledgers, 2)
-
-		// Get by name
-		ledger, err := s.GetLedgerByName(ctx, "ledger-1")
-		require.NoError(t, err)
-		require.NotNil(t, ledger)
-		require.Equal(t, uint32(1), ledger.Id)
-		require.Equal(t, "ledger-1", ledger.Name)
-
-		// Get non-existing ledger
-		ledger, err = s.GetLedgerByName(ctx, "non-existing")
-		require.NoError(t, err)
-		require.Nil(t, ledger)
 	})
 
-	t.Run("DeleteLedger", func(t *testing.T) {
+	t.Run("GetLedgerByName", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
-		// Insert logs for two ledgers
-		var ledger1ID uint32 = 1
-		var ledger2ID uint32 = 2
+		registerLedger(ctx, t, s, "my-ledger", 42)
 
-		registerLedger(ctx, t, s, "ledger-1", ledger1ID)
-		registerLedger(ctx, t, s, "ledger-2", ledger2ID)
-
-		logs1 := createTestLogs(ledger1ID)
-		logs2 := createTestLogs(ledger2ID)
-
-		appendLogs(ctx, t, s, 0, logs1...)
-		appendLogs(ctx, t, s, 0, logs2...)
-
-		// Delete ledger1 via batch
-		batch := s.NewBatch(0)
-		err := batch.DeleteLedger(ctx, ledger1ID)
+		ledger, err := s.GetLedgerByName(ctx, "my-ledger")
 		require.NoError(t, err)
-		err = batch.Commit(ctx)
-		require.NoError(t, err)
+		require.NotNil(t, ledger)
+		require.Equal(t, "my-ledger", ledger.Name)
+		require.Equal(t, uint32(42), ledger.Id)
 
-		// Verify ledger1 data is gone
-		lastLogID1, err := s.GetLastLogID(ctx, ledger1ID)
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), lastLogID1)
-
-		// Verify ledger2 data is still there
-		lastLogID2, err := s.GetLastLogID(ctx, ledger2ID)
-		require.NoError(t, err)
-		require.Equal(t, uint64(4), lastLogID2)
+		ledger, err = s.GetLedgerByName(ctx, "non-existing")
+		require.Error(t, err)
+		require.Nil(t, ledger)
 	})
 }
 
+// createTestLogs creates test logs wrapped in Log with ApplyLog payload
 func createTestLogs(ledgerID uint32) []*commonpb.Log {
-	now := libtime.New(time.Now())
+	now := time.Now()
 
 	logs := []*commonpb.Log{
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{
-					Transaction: commonpb.NewTransaction().
-						WithPostings(
-							commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
-						).
+		{
+			Sequence: 1,
+			Payload: &commonpb.Log_Apply{
+				Apply: &commonpb.ApplyLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
+						Payload: &commonpb.LogPayload_CreatedTransaction{
+							CreatedTransaction: &commonpb.CreatedTransaction{
+								Transaction: commonpb.NewTransaction().
+									WithPostings(
+										commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+									).
+									WithID(1).
+									WithTimestamp(now),
+								AccountMetadata: map[string]*commonpb.Metadata{
+									"bank": {Entries: metadata.Metadata{
+										"account_type": "asset",
+									}},
+								},
+							},
+						},
+					}).
 						WithID(1).
-						WithTimestamp(now),
-					AccountMetadata: map[string]*commonpb.Metadata{
-						"bank": {Entries: metadata.Metadata{
-							"account_type": "asset",
-						}},
-					},
+						WithDate(now),
 				},
 			},
-		}).
-			WithLedgerID(ledgerID).
-			WithID(1).
-			WithIdempotency("idempotency-key-1", []byte("hash-1")).
-			WithDate(now),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{
-					Transaction: commonpb.NewTransaction().
-						WithPostings(
-							commonpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
-						).
+			Idempotency: &commonpb.Idempotency{
+				Key:  "idempotency-key-1",
+				Hash: []byte("hash-1"),
+			},
+		},
+		{
+			Sequence: 2,
+			Payload: &commonpb.Log_Apply{
+				Apply: &commonpb.ApplyLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
+						Payload: &commonpb.LogPayload_CreatedTransaction{
+							CreatedTransaction: &commonpb.CreatedTransaction{
+								Transaction: commonpb.NewTransaction().
+									WithPostings(
+										commonpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
+									).
+									WithID(2).
+									WithTimestamp(now),
+							},
+						},
+					}).
 						WithID(2).
-						WithTimestamp(now),
+						WithDate(now.Add(time.Second)),
 				},
 			},
-		}).
-			WithLedgerID(ledgerID).
-			WithID(2).
-			WithIdempotency("idempotency-key-2", []byte("hash-2")).
-			WithDate(now.Add(time.Second)),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_SavedMetadata{
-				SavedMetadata: &commonpb.SavedMetadata{
-					Target: &commonpb.Target{
-						Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-							Addr: "bank",
-						}},
-					},
-					Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
-						"label": "Bank Account",
-					}},
+			Idempotency: &commonpb.Idempotency{
+				Key:  "idempotency-key-2",
+				Hash: []byte("hash-2"),
+			},
+		},
+		{
+			Sequence: 3,
+			Payload: &commonpb.Log_Apply{
+				Apply: &commonpb.ApplyLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
+						Payload: &commonpb.LogPayload_SavedMetadata{
+							SavedMetadata: &commonpb.SavedMetadata{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+										Addr: "bank",
+									}},
+								},
+								Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
+									"label": "Bank Account",
+								}},
+							},
+						},
+					}).
+						WithID(3).
+						WithDate(now.Add(2 * time.Second)),
 				},
 			},
-		}).
-			WithLedgerID(ledgerID).
-			WithID(3).
-			WithDate(now.Add(2 * time.Second)),
-		commonpb.NewLog(&commonpb.LogPayload{
-			Payload: &commonpb.LogPayload_DeletedMetadata{
-				DeletedMetadata: &commonpb.DeletedMetadata{
-					Target: &commonpb.Target{
-						Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-							Addr: "bank",
-						}},
-					},
-					Key: "old_key",
+		},
+		{
+			Sequence: 4,
+			Payload: &commonpb.Log_Apply{
+				Apply: &commonpb.ApplyLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
+						Payload: &commonpb.LogPayload_DeletedMetadata{
+							DeletedMetadata: &commonpb.DeletedMetadata{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+										Addr: "bank",
+									}},
+								},
+								Key: "old_key",
+							},
+						},
+					}).
+						WithID(4).
+						WithDate(now.Add(3 * time.Second)),
 				},
 			},
-		}).
-			WithLedgerID(ledgerID).
-			WithID(4).
-			WithDate(now.Add(3 * time.Second)),
+		},
 	}
 
 	return logs

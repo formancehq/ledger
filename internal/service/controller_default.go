@@ -20,7 +20,7 @@ import (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package service . LogFactory
 type Engine interface {
-	Apply(ctx context.Context, cmd *raftcmdpb.Command) (any, error)
+	Apply(ctx context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error)
 }
 
 // DefaultController is the default implementation of the Ledger interface
@@ -117,26 +117,33 @@ func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (map[strin
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
-	// Get the log ID for the transaction ID
-	logID, err := ctrl.store.GetLogIDForTransactionID(ctx, ledgerID, transactionID)
+	// Get the sequence for the transaction ID
+	sequence, err := ctrl.store.GetSequenceForTransactionID(ctx, ledgerID, transactionID)
 	if err != nil {
-		return nil, fmt.Errorf("getting log ID for transaction %d: %w", transactionID, err)
+		return nil, fmt.Errorf("getting sequence for transaction %d: %w", transactionID, err)
 	}
-	if logID == 0 {
+	if sequence == 0 {
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	// Get the log containing the transaction
-	log, err := ctrl.store.GetLogByID(ctx, ledgerID, logID)
+	// Get the system log containing the transaction
+	log, err := ctrl.store.GetLogBySequence(ctx, sequence)
 	if err != nil {
-		return nil, fmt.Errorf("getting log %d: %w", logID, err)
+		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
 	if log == nil {
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
+	// Extract the ledger log from the log
+	applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
+		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
+	}
+	ledgerLog := applyLog.Apply.Log
+
 	// Extract the transaction from the log payload
-	switch payload := log.Data.Payload.(type) {
+	switch payload := ledgerLog.Data.Payload.(type) {
 	case *commonpb.LogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
@@ -148,12 +155,16 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 		}
 		return payload.RevertedTransaction.RevertTransaction, nil
 	default:
-		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.Id)
 	}
 }
 
-func (ctrl *DefaultController) GetAllLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
-	return ctrl.store.GetAllLogs(ctx, ledgerID, from, to)
+func (ctrl *DefaultController) GetAllLedgerLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
+	return ctrl.store.GetAllLedgerLogs(ctx, ledgerID, from, to)
+}
+
+func (ctrl *DefaultController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+	return ctrl.store.GetAllLogs(ctx, from, to)
 }
 
 func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -169,23 +180,24 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 
 // CreateLedger creates a new ledger
 func (ctrl *DefaultController) CreateLedger(ctx context.Context, req *raftcmdpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
-	cmd := raft.NewCreateLedgerCommand(req)
+	action := raft.NewAction(raftcmdpb.ActionType_CreateLedger, req)
 
-	ret, err := ctrl.engine.Apply(ctx, cmd)
+	logs, err := ctrl.engine.Apply(ctx, action)
 	if err != nil {
 		return nil, fmt.Errorf("applying create ledger command: %w", err)
 	}
 
-	// Extract the ledger info from the result (first element of the results array)
-	results := ret.([]any)
-	return results[0].(*commonpb.LedgerInfo), nil
+	// Extract the ledger info from the CreateLedger log payload
+	return logs[0].GetCreateLedger().GetInfo(), nil
 }
 
 // DeleteLedger deletes a ledger
 func (ctrl *DefaultController) DeleteLedger(ctx context.Context, id uint32) error {
-	cmd := raft.NewDeleteLedgerCommand(id)
+	action := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
+		Id: id,
+	})
 
-	_, err := ctrl.engine.Apply(ctx, cmd)
+	_, err := ctrl.engine.Apply(ctx, action)
 	if err != nil {
 		return fmt.Errorf("applying delete ledger command: %w", err)
 	}
@@ -193,20 +205,19 @@ func (ctrl *DefaultController) DeleteLedger(ctx context.Context, id uint32) erro
 	return nil
 }
 
-// applyAction wraps an action in a command and applies it, returning the resulting log
-func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdpb.Action) (*commonpb.Log, error) {
-	cmd := raft.NewCommand(action)
-	ret, err := ctrl.engine.Apply(ctx, cmd)
+// applyAction applies an action and returns the resulting ledger log
+func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdpb.Action) (*commonpb.LedgerLog, error) {
+	logs, err := ctrl.engine.Apply(ctx, action)
 	if err != nil {
 		return nil, err
 	}
 
-	results := ret.([]any)
-	return results[0].(*commonpb.Log), nil
+	// Extract the ledger log from the ApplyLog payload
+	return logs[0].GetApply().GetLog(), nil
 }
 
 // Apply applies a ledger action and returns the resulting log
-func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
+func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is required")
 	}
@@ -446,27 +457,34 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 		return nil, fmt.Errorf("transaction %d is already reverted", input.TransactionId)
 	}
 
-	// Get the log ID for the transaction ID
-	logID, err := unitOfWork.GetLogIDForTransactionID(ctx, ledgerID, input.TransactionId)
+	// Get the sequence for the transaction ID
+	sequence, err := unitOfWork.GetSequenceForTransactionID(ctx, ledgerID, input.TransactionId)
 	if err != nil {
-		return nil, fmt.Errorf("getting log ID for transaction %d: %w", input.TransactionId, err)
+		return nil, fmt.Errorf("getting sequence for transaction %d: %w", input.TransactionId, err)
 	}
-	if logID == 0 {
+	if sequence == 0 {
 		return nil, fmt.Errorf("transaction %d not found", input.TransactionId)
 	}
 
 	// Get the log containing the original transaction
-	log, err := unitOfWork.GetLogByID(ctx, ledgerID, logID)
+	log, err := unitOfWork.GetLogBySequence(ctx, sequence)
 	if err != nil {
-		return nil, fmt.Errorf("getting log %d: %w", logID, err)
+		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
 	}
 	if log == nil {
-		return nil, fmt.Errorf("log %d not found", logID)
+		return nil, fmt.Errorf("log %d not found", sequence)
 	}
 
-	// Extract the original transaction from the log
+	// Extract the ledger log from the log
+	applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
+		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
+	}
+	ledgerLog := applyLog.Apply.Log
+
+	// Extract the original transaction from the ledger log
 	var originalTx *commonpb.Transaction
-	switch payload := log.Data.Payload.(type) {
+	switch payload := ledgerLog.Data.Payload.(type) {
 	case *commonpb.LogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
@@ -476,7 +494,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 		// Transaction already reverted (double-check)
 		return nil, fmt.Errorf("transaction %d is already a revert transaction", input.TransactionId)
 	default:
-		return nil, fmt.Errorf("log %d does not contain a transaction", logID)
+		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.Id)
 	}
 
 	// Create reverse transaction with swapped source/destination
@@ -629,7 +647,7 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 }
 
 // Import is not implemented yet
-func (ctrl *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.Log) error {
+func (ctrl *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.LedgerLog) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 

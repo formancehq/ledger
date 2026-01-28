@@ -44,6 +44,37 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 	}
 }
 
+// AppendLogs appends system logs to the batch.
+// Note: This only stores the raw log data. Payload-specific operations (RegisterLedger, DeleteLedger, etc.)
+// are handled by projectLog in the FSM before calling this method.
+func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+	if b.committed || b.tx == nil {
+		return fmt.Errorf("batch already committed or invalid")
+	}
+
+	for _, log := range logs {
+		// Store the system log
+		logBinary, err := proto.Marshal(log)
+		if err != nil {
+			return fmt.Errorf("marshaling system log to protobuf: %w", err)
+		}
+
+		stmt := b.tx.StmtContext(ctx, b.store.stmtInsertSystemLog)
+		if _, err := stmt.ExecContext(ctx, log.Sequence, logBinary); err != nil {
+			_ = stmt.Close()
+			return fmt.Errorf("inserting system log: %w", err)
+		}
+		_ = stmt.Close()
+
+		// Store idempotency key if present
+		if err := b.saveIdempotency(ctx, log); err != nil {
+			return fmt.Errorf("saving idempotency: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // RegisterLedger registers a new ledger in the store.
 func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
 	if b.committed || b.tx == nil {
@@ -77,52 +108,22 @@ func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) e
 	return nil
 }
 
-// AppendLogs appends logs to the batch.
-func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
-	if b.committed || b.tx == nil {
-		return fmt.Errorf("batch already committed or invalid")
+// saveIdempotency saves the idempotency key for a log if present.
+func (b *Batch) saveIdempotency(ctx context.Context, log *commonpb.Log) error {
+	if log.Idempotency == nil || log.Idempotency.Key == "" {
+		return nil
 	}
 
-	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertLog)
+	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertIdempotency)
 	defer func() { _ = stmt.Close() }()
 
-	for _, log := range logs {
-		if log.Data == nil {
-			return fmt.Errorf("log data is nil for id %d", log.Id)
-		}
-
-		dataBinary, err := proto.Marshal(log.Data)
-		if err != nil {
-			return fmt.Errorf("marshaling log payload to protobuf: %w", err)
-		}
-
-		var dateStr string
-		if log.Date != nil {
-			dateStr = log.Date.AsTime().Format(stdtime.RFC3339)
-		}
-
-		var idempotencyKey sql.NullString
-		var idempotencyHash sql.Null[[]byte]
-		if log.Idempotency != nil && log.Idempotency.Key != "" {
-			idempotencyKey = sql.NullString{String: log.Idempotency.Key, Valid: true}
-			idempotencyHash = sql.Null[[]byte]{V: log.Idempotency.Hash, Valid: true}
-		}
-
-		var id sql.NullInt64
-		if log.Id != 0 {
-			id = sql.NullInt64{Int64: int64(log.Id), Valid: true}
-		}
-
-		_, err = stmt.ExecContext(ctx, log.LedgerId, dataBinary,
-			sql.NullString{String: dateStr, Valid: dateStr != ""},
-			idempotencyKey, idempotencyHash, id)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				return fmt.Errorf("inserting log: %w", err)
-			}
+	_, err := stmt.ExecContext(ctx, log.Idempotency.Key, log.Sequence, log.Idempotency.Hash)
+	if err != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return fmt.Errorf("inserting idempotency key: %w", err)
 		}
 	}
 
@@ -130,7 +131,7 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -190,7 +191,7 @@ func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, accoun
 }
 
 // StoreTransactionID stores the log ID associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -198,15 +199,15 @@ func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transacti
 	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertTransactionID)
 	defer func() { _ = stmt.Close() }()
 
-	if _, err := stmt.ExecContext(ctx, ledger, transactionID, logID); err != nil {
+	if _, err := stmt.ExecContext(ctx, ledger, transactionID, sequence); err != nil {
 		return fmt.Errorf("storing transaction ID mapping: %w", err)
 	}
 
 	return nil
 }
 
-// StoreRevertedTransactionID stores the log ID associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+// StoreRevertedTransactionID stores the sequence associated to a transaction ID that has been reverted.
+func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed || b.tx == nil {
 		return fmt.Errorf("batch already committed or invalid")
 	}
@@ -214,7 +215,7 @@ func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, t
 	stmt := b.tx.StmtContext(ctx, b.store.stmtInsertRevertedTransactionID)
 	defer func() { _ = stmt.Close() }()
 
-	if _, err := stmt.ExecContext(ctx, ledger, transactionID, logID); err != nil {
+	if _, err := stmt.ExecContext(ctx, ledger, transactionID, sequence); err != nil {
 		return fmt.Errorf("storing reverted transaction ID: %w", err)
 	}
 
@@ -227,9 +228,8 @@ func (b *Batch) DeleteLedger(ctx context.Context, id uint32) error {
 		return fmt.Errorf("batch already committed or invalid")
 	}
 
-	// Delete from all tables that have ledger data (now keyed by ledger ID)
+	// Delete from all tables that have ledger data (keyed by ledger ID)
 	tables := []string{
-		"logs",
 		"balances",
 		"account_metadata",
 		"transaction_ids",

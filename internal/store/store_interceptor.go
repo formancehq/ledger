@@ -13,14 +13,14 @@ type BatchInterceptor struct {
 	delegate Batch
 	mu       sync.RWMutex
 
+	OnAppendLogs                 func(ctx context.Context, delegate Batch, logs []*commonpb.Log) error
 	OnRegisterLedger             func(ctx context.Context, delegate Batch, info *commonpb.LedgerInfo) error
 	OnDeleteLedger               func(ctx context.Context, delegate Batch, id uint32) error
-	OnAppendLogs                 func(ctx context.Context, delegate Batch, logs []*commonpb.Log) error
-	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error
+	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error
 	OnSaveAccountMetadata        func(ctx context.Context, delegate Batch, ledger uint32, account string, metadata *commonpb.Metadata) error
 	OnDeleteAccountMetadata      func(ctx context.Context, delegate Batch, ledger uint32, account string, keys []string) error
-	OnStoreTransactionID         func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, logID uint64) error
-	OnStoreRevertedTransactionID func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, logID uint64) error
+	OnStoreTransactionID         func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, sequence uint64) error
+	OnStoreRevertedTransactionID func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, sequence uint64) error
 	OnCancel                     func(ctx context.Context, delegate Batch) error
 	OnCommit                     func(ctx context.Context, delegate Batch) error
 }
@@ -34,6 +34,16 @@ func NewBatchInterceptor(delegate Batch) *BatchInterceptor {
 
 func (b *BatchInterceptor) Delegate() Batch {
 	return b.delegate
+}
+
+func (b *BatchInterceptor) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+	b.mu.RLock()
+	interceptor := b.OnAppendLogs
+	b.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(ctx, b.delegate, logs)
+	}
+	return b.delegate.AppendLogs(ctx, logs...)
 }
 
 func (b *BatchInterceptor) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
@@ -56,24 +66,14 @@ func (b *BatchInterceptor) DeleteLedger(ctx context.Context, id uint32) error {
 	return b.delegate.DeleteLedger(ctx, id)
 }
 
-func (b *BatchInterceptor) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
-	b.mu.RLock()
-	interceptor := b.OnAppendLogs
-	b.mu.RUnlock()
-	if interceptor != nil {
-		return interceptor(ctx, b.delegate, logs)
-	}
-	return b.delegate.AppendLogs(ctx, logs...)
-}
-
-func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, logID uint64) error {
+func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error {
 	b.mu.RLock()
 	interceptor := b.OnAppendBalanceDiff
 	b.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, b.delegate, ledger, account, asset, diff, logID)
+		return interceptor(ctx, b.delegate, ledger, account, asset, diff, sequence)
 	}
-	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff, logID)
+	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff, sequence)
 }
 
 func (b *BatchInterceptor) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, md *commonpb.Metadata) error {
@@ -96,24 +96,24 @@ func (b *BatchInterceptor) DeleteAccountMetadata(ctx context.Context, ledger uin
 	return b.delegate.DeleteAccountMetadata(ctx, ledger, account, keys)
 }
 
-func (b *BatchInterceptor) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+func (b *BatchInterceptor) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	b.mu.RLock()
 	interceptor := b.OnStoreTransactionID
 	b.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, b.delegate, ledger, transactionID, logID)
+		return interceptor(ctx, b.delegate, ledger, transactionID, sequence)
 	}
-	return b.delegate.StoreTransactionID(ctx, ledger, transactionID, logID)
+	return b.delegate.StoreTransactionID(ctx, ledger, transactionID, sequence)
 }
 
-func (b *BatchInterceptor) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, logID uint64) error {
+func (b *BatchInterceptor) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
 	b.mu.RLock()
 	interceptor := b.OnStoreRevertedTransactionID
 	b.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, b.delegate, ledger, transactionID, logID)
+		return interceptor(ctx, b.delegate, ledger, transactionID, sequence)
 	}
-	return b.delegate.StoreRevertedTransactionID(ctx, ledger, transactionID, logID)
+	return b.delegate.StoreRevertedTransactionID(ctx, ledger, transactionID, sequence)
 }
 
 func (b *BatchInterceptor) Cancel(ctx context.Context) error {
@@ -138,9 +138,9 @@ func (b *BatchInterceptor) Commit(ctx context.Context) error {
 
 func (b *BatchInterceptor) ClearInterceptors() {
 	b.mu.Lock()
+	b.OnAppendLogs = nil
 	b.OnRegisterLedger = nil
 	b.OnDeleteLedger = nil
-	b.OnAppendLogs = nil
 	b.OnAppendBalanceDiff = nil
 	b.OnSaveAccountMetadata = nil
 	b.OnDeleteAccountMetadata = nil
@@ -158,23 +158,26 @@ type StoreInterceptor struct {
 	delegate Store
 	mu       sync.RWMutex
 
-	// LogReader interceptors
-	OnGetAllLogs func(ctx context.Context, delegate Store, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error)
-	OnGetLogByID func(ctx context.Context, delegate Store, ledger uint32, id uint64) (*commonpb.Log, error)
+	// LogReader interceptors (global logs by sequence)
+	OnGetAllLogs       func(ctx context.Context, delegate Store, from, to uint64) (Cursor[*commonpb.Log], error)
+	OnGetLogBySequence func(ctx context.Context, delegate Store, sequence uint64) (*commonpb.Log, error)
+
+	// LedgerLogReader interceptors (ledger-specific logs)
+	OnGetAllLedgerLogs func(ctx context.Context, delegate Store, ledger uint32, from, to uint64) (Cursor[*commonpb.LedgerLog], error)
 
 	// Store interceptors
-	OnListLedgers               func(ctx context.Context, delegate Store) ([]*commonpb.LedgerInfo, error)
-	OnGetBalances               func(ctx context.Context, delegate Store, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
-	OnGetAccountMetadata        func(ctx context.Context, delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
-	OnGetLogIDForIdempotencyKey func(ctx context.Context, delegate Store, ledgerID uint32, idempotencyKey string) (uint64, error)
-	OnGetLogIDForTransactionID  func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (uint64, error)
-	OnIsTransactionReverted     func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (bool, error)
-	OnNewBatch                  func(delegate Store, lastAppliedIndex uint64) Batch
-	OnCreateSnapshot            func(ctx context.Context, delegate Store) error
-	OnGetLastAppliedIndex       func(delegate Store) (uint64, error)
-	OnGetLastLogID              func(ctx context.Context, delegate Store, ledgerID uint32) (uint64, error)
-	OnGetLedgerByName           func(ctx context.Context, delegate Store, name string) (*commonpb.LedgerInfo, error)
-	OnClose                     func(ctx context.Context, delegate Store) error
+	OnListLedgers                  func(ctx context.Context, delegate Store) ([]*commonpb.LedgerInfo, error)
+	OnGetBalances                  func(ctx context.Context, delegate Store, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
+	OnGetAccountMetadata           func(ctx context.Context, delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
+	OnGetSequenceForIdempotencyKey func(ctx context.Context, delegate Store, idempotencyKey string) (uint64, error)
+	OnGetSequenceForTransactionID  func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (uint64, error)
+	OnIsTransactionReverted        func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (bool, error)
+	OnNewBatch                     func(delegate Store, lastAppliedIndex uint64) Batch
+	OnCreateSnapshot               func(ctx context.Context, delegate Store) error
+	OnGetLastAppliedIndex          func(delegate Store) (uint64, error)
+	OnGetLastSequence              func(ctx context.Context, delegate Store) (uint64, error)
+	OnGetLedgerByName              func(ctx context.Context, delegate Store, name string) (*commonpb.LedgerInfo, error)
+	OnClose                        func(ctx context.Context, delegate Store) error
 
 	// BatchInterceptorFactory allows creating intercepted batches
 	BatchInterceptorFactory func(batch Batch) Batch
@@ -191,24 +194,34 @@ func (s *StoreInterceptor) Delegate() Store {
 	return s.delegate
 }
 
-func (s *StoreInterceptor) GetAllLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error) {
+func (s *StoreInterceptor) GetAllLogs(ctx context.Context, from, to uint64) (Cursor[*commonpb.Log], error) {
 	s.mu.RLock()
 	interceptor := s.OnGetAllLogs
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, s.delegate, ledger, from, to)
+		return interceptor(ctx, s.delegate, from, to)
 	}
-	return s.delegate.GetAllLogs(ctx, ledger, from, to)
+	return s.delegate.GetAllLogs(ctx, from, to)
 }
 
-func (s *StoreInterceptor) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*commonpb.Log, error) {
+func (s *StoreInterceptor) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	s.mu.RLock()
-	interceptor := s.OnGetLogByID
+	interceptor := s.OnGetLogBySequence
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, s.delegate, ledger, id)
+		return interceptor(ctx, s.delegate, sequence)
 	}
-	return s.delegate.GetLogByID(ctx, ledger, id)
+	return s.delegate.GetLogBySequence(ctx, sequence)
+}
+
+func (s *StoreInterceptor) GetAllLedgerLogs(ctx context.Context, ledger uint32, from, to uint64) (Cursor[*commonpb.LedgerLog], error) {
+	s.mu.RLock()
+	interceptor := s.OnGetAllLedgerLogs
+	s.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(ctx, s.delegate, ledger, from, to)
+	}
+	return s.delegate.GetAllLedgerLogs(ctx, ledger, from, to)
 }
 
 func (s *StoreInterceptor) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
@@ -241,24 +254,24 @@ func (s *StoreInterceptor) GetAccountMetadata(ctx context.Context, ledgerID uint
 	return s.delegate.GetAccountMetadata(ctx, ledgerID, accounts)
 }
 
-func (s *StoreInterceptor) GetLogIDForIdempotencyKey(ctx context.Context, ledgerID uint32, idempotencyKey string) (uint64, error) {
+func (s *StoreInterceptor) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
 	s.mu.RLock()
-	interceptor := s.OnGetLogIDForIdempotencyKey
+	interceptor := s.OnGetSequenceForIdempotencyKey
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, s.delegate, ledgerID, idempotencyKey)
+		return interceptor(ctx, s.delegate, idempotencyKey)
 	}
-	return s.delegate.GetLogIDForIdempotencyKey(ctx, ledgerID, idempotencyKey)
+	return s.delegate.GetSequenceForIdempotencyKey(ctx, idempotencyKey)
 }
 
-func (s *StoreInterceptor) GetLogIDForTransactionID(ctx context.Context, ledgerID uint32, transactionID uint64) (uint64, error) {
+func (s *StoreInterceptor) GetSequenceForTransactionID(ctx context.Context, ledgerID uint32, transactionID uint64) (uint64, error) {
 	s.mu.RLock()
-	interceptor := s.OnGetLogIDForTransactionID
+	interceptor := s.OnGetSequenceForTransactionID
 	s.mu.RUnlock()
 	if interceptor != nil {
 		return interceptor(ctx, s.delegate, ledgerID, transactionID)
 	}
-	return s.delegate.GetLogIDForTransactionID(ctx, ledgerID, transactionID)
+	return s.delegate.GetSequenceForTransactionID(ctx, ledgerID, transactionID)
 }
 
 func (s *StoreInterceptor) IsTransactionReverted(ctx context.Context, ledgerID uint32, transactionID uint64) (bool, error) {
@@ -312,14 +325,14 @@ func (s *StoreInterceptor) GetLastAppliedIndex() (uint64, error) {
 	return s.delegate.GetLastAppliedIndex()
 }
 
-func (s *StoreInterceptor) GetLastLogID(ctx context.Context, ledgerID uint32) (uint64, error) {
+func (s *StoreInterceptor) GetLastSequence(ctx context.Context) (uint64, error) {
 	s.mu.RLock()
-	interceptor := s.OnGetLastLogID
+	interceptor := s.OnGetLastSequence
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, s.delegate, ledgerID)
+		return interceptor(ctx, s.delegate)
 	}
-	return s.delegate.GetLastLogID(ctx, ledgerID)
+	return s.delegate.GetLastSequence(ctx)
 }
 
 func (s *StoreInterceptor) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -344,15 +357,15 @@ func (s *StoreInterceptor) Close(ctx context.Context) error {
 
 // Setter methods for Store interceptors
 
-func (s *StoreInterceptor) SetGetAllLogsInterceptor(fn func(ctx context.Context, delegate Store, ledger uint32, from, to uint64) (Cursor[*commonpb.Log], error)) {
+func (s *StoreInterceptor) SetGetAllLogsInterceptor(fn func(ctx context.Context, delegate Store, from, to uint64) (Cursor[*commonpb.Log], error)) {
 	s.mu.Lock()
 	s.OnGetAllLogs = fn
 	s.mu.Unlock()
 }
 
-func (s *StoreInterceptor) SetGetLogByIDInterceptor(fn func(ctx context.Context, delegate Store, ledger uint32, id uint64) (*commonpb.Log, error)) {
+func (s *StoreInterceptor) SetGetLogBySequenceInterceptor(fn func(ctx context.Context, delegate Store, sequence uint64) (*commonpb.Log, error)) {
 	s.mu.Lock()
-	s.OnGetLogByID = fn
+	s.OnGetLogBySequence = fn
 	s.mu.Unlock()
 }
 
@@ -402,17 +415,18 @@ func (s *StoreInterceptor) SetCloseInterceptor(fn func(ctx context.Context, dele
 func (s *StoreInterceptor) ClearInterceptors() {
 	s.mu.Lock()
 	s.OnGetAllLogs = nil
-	s.OnGetLogByID = nil
+	s.OnGetLogBySequence = nil
+	s.OnGetAllLedgerLogs = nil
 	s.OnListLedgers = nil
 	s.OnGetBalances = nil
 	s.OnGetAccountMetadata = nil
-	s.OnGetLogIDForIdempotencyKey = nil
-	s.OnGetLogIDForTransactionID = nil
+	s.OnGetSequenceForIdempotencyKey = nil
+	s.OnGetSequenceForTransactionID = nil
 	s.OnIsTransactionReverted = nil
 	s.OnNewBatch = nil
 	s.OnCreateSnapshot = nil
 	s.OnGetLastAppliedIndex = nil
-	s.OnGetLastLogID = nil
+	s.OnGetLastSequence = nil
 	s.OnGetLedgerByName = nil
 	s.OnClose = nil
 	s.BatchInterceptorFactory = nil

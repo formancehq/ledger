@@ -9,6 +9,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -37,16 +38,21 @@ func (m *MockEngine) EXPECT() *MockEngineMockRecorder {
 }
 
 // Apply mocks base method.
-func (m *MockEngine) Apply(ctx context.Context, cmd *raftcmdpb.Command) (any, error) {
+func (m *MockEngine) Apply(ctx context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Apply", ctx, cmd)
-	ret0, _ := ret[0].(any)
+	varargs := []any{ctx}
+	for _, a := range actions {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Apply", varargs...)
+	ret0, _ := ret[0].([]*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockEngineMockRecorder) Apply(ctx, cmd any) *gomock.Call {
+func (mr *MockEngineMockRecorder) Apply(ctx any, actions ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockEngine)(nil).Apply), ctx, cmd)
+	varargs := append([]any{ctx}, actions...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockEngine)(nil).Apply), varargs...)
 }

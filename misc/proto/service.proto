@@ -22,7 +22,9 @@ service LedgerService {
   rpc GetLedgerByName(GetLedgerByNameRequest) returns (common.LedgerInfo);
   // GetTransaction retrieves a transaction by ID
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
-  // StreamLogs streams logs from a ledger, optionally starting from a log ID
+  // StreamLedgerLogs streams logs from a ledger, optionally starting from a log ID
+  rpc StreamLedgerLogs(StreamLedgerLogsRequest) returns (stream StreamLedgerLogsResponse);
+  // StreamLogs streams logs, optionally starting from a sequence
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
   // Apply applies a ledger action (create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (common.Log);
@@ -37,10 +39,19 @@ message GetTransactionRequest {
   uint64 transaction_id = 2;
 }
 
-message StreamLogsRequest {
+message StreamLedgerLogsRequest {
   uint32 ledger_id = 1;
   uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
   uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
+}
+
+message StreamLedgerLogsResponse {
+  common.LedgerLog log = 1;
+}
+
+message StreamLogsRequest {
+  uint64 from_sequence = 1; // Optional: start streaming from this sequence (inclusive). If 0, streams from the beginning
+  uint64 to_sequence = 2;   // Optional: stop streaming at this sequence (inclusive). If 0, streams until the end
 }
 
 message StreamLogsResponse {
@@ -104,17 +115,4 @@ message LedgerAction {
     RevertTransactionPayload revert_transaction = 5;
     common.DeleteMetadataCommand delete_metadata = 6;
   }
-}
-
-// ============================================================================
-// Bulk Operations (HTTP only)
-// ============================================================================
-
-// LedgerActionResult represents the result of a single ledger action (for bulk HTTP)
-message LedgerActionResult {
-  int32 element_id = 1;
-  uint64 log_id = 2;
-  string error_code = 3;            // Empty if no error
-  string error_description = 4;     // Error description if error_code is set
-  optional common.Log log = 5;      // For successful operations that return a log
 }

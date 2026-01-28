@@ -46,12 +46,12 @@ func (s *unitOfWork) IsTransactionReverted(ctx context.Context, ledgerID uint32,
 	return s.Store.IsTransactionReverted(ctx, ledgerID, id)
 }
 
-func (s *unitOfWork) GetLogIDForTransactionID(ctx context.Context, ledgerID uint32, id uint64) (uint64, error) {
-	return s.Store.GetLogIDForTransactionID(ctx, ledgerID, id)
+func (s *unitOfWork) GetSequenceForTransactionID(ctx context.Context, ledgerID uint32, id uint64) (uint64, error) {
+	return s.Store.GetSequenceForTransactionID(ctx, ledgerID, id)
 }
 
-func (s *unitOfWork) GetLogByID(ctx context.Context, ledgerID uint32, id uint64) (*commonpb.Log, error) {
-	return s.Store.GetLogByID(ctx, ledgerID, id)
+func (s *unitOfWork) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	return s.Store.GetLogBySequence(ctx, sequence)
 }
 
 // numscriptStore wraps unitOfWork to implement numscript interfaces
