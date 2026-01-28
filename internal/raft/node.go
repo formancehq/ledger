@@ -686,6 +686,7 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
 
+	node.gatingTerminated = nil
 	node.status.Store(statusNormal)
 
 	// todo: measure time
@@ -694,7 +695,6 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 	}
 
 	node.logger.Infof("Unspooling operation terminated, resuming...")
-	node.gatingTerminated = nil
 
 	return nil
 }
@@ -722,7 +722,9 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 
 func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 
-	node.logger.Infof("Replaying spool")
+	node.logger.WithFields(map[string]any{
+		"fromIndex": fromIndex,
+	}).Infof("Replaying spool")
 
 	until, err := node.spool.End()
 	if err != nil {
