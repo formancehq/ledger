@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/protobuf/proto"
 )
@@ -93,7 +91,7 @@ func (lp *logProcessor[INPUT]) forgeLog(
 	}
 
 	// Build the command
-	cmd := newCreateLogCommand(input, ledgerID, idp)
+	cmd := raft.NewCreateLogCommand(input, ledgerID, idp)
 
 	ret, err := lp.engine.Apply(ctx, cmd)
 	if err != nil {
@@ -106,39 +104,4 @@ func (lp *logProcessor[INPUT]) forgeLog(
 	log := results[0].(*ledgerpb.Log)
 
 	return log, false, nil
-}
-
-// newCreateLogCommand creates a new CreateLog command
-func newCreateLogCommand(input *ledgerpb.CommandInput, ledgerID uint32, idempotency *ledgerpb.Idempotency) *ledgerpb.Command {
-	createLogCmd := &ledgerpb.CreateLogCommand{
-		Input:       input,
-		Idempotency: idempotency,
-		LedgerId:    ledgerID,
-	}
-
-	data, err := proto.Marshal(createLogCmd)
-	if err != nil {
-		panic(err)
-	}
-
-	action := &ledgerpb.Action{
-		ActionType: ledgerpb.ActionType_CreateLog,
-		Data:       data,
-	}
-
-	return &ledgerpb.Command{
-		Id:      generateRandomID(),
-		Actions: []*ledgerpb.Action{action},
-		Date:    ledgerpb.NewTimestamp(time.Now()),
-	}
-}
-
-// generateRandomID generates a random uint64 ID
-func generateRandomID() uint64 {
-	var b [8]byte
-	_, err := rand.Read(b[:])
-	if err != nil {
-		return uint64(time.Now().UnixNano())
-	}
-	return binary.BigEndian.Uint64(b[:])
 }

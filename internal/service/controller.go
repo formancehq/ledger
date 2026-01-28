@@ -33,9 +33,3 @@ type Parameters[INPUT proto.Message] struct {
 type ExportWriter interface {
 	Write(ctx context.Context, log *ledgerpb.Log) error
 }
-
-type ExportWriterFn func(ctx context.Context, log *ledgerpb.Log) error
-
-func (fn ExportWriterFn) Write(ctx context.Context, log *ledgerpb.Log) error {
-	return fn(ctx, log)
-}

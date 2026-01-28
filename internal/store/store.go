@@ -22,27 +22,6 @@ type LogReader interface {
 	GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error)
 }
 
-// LogReaderFn is a functional type that implements LogReader
-type LogReaderFn func(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error)
-
-func (fn LogReaderFn) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*ledgerpb.Log], error) {
-	return fn(ctx, ledger, from, to)
-}
-
-func (fn LogReaderFn) GetLogByID(ctx context.Context, ledger uint32, id uint64) (*ledgerpb.Log, error) {
-	if id == 0 {
-		return nil, nil
-	}
-	cursor, err := fn(ctx, ledger, id-1, id)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = cursor.Close()
-	}()
-	return cursor.Next(ctx)
-}
-
 // Batch allows atomic operations on the store.
 // All operations are buffered until Commit is called.
 // Cancel must be called if the batch is not committed to release resources.

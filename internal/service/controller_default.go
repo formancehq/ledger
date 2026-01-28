@@ -2,19 +2,16 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"math/big"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/ledgerpb"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/numscript"
-	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package service . LogFactory
@@ -101,7 +98,6 @@ func NewDefaultController(
 	return l
 }
 
-
 // GetAllLedgersInfo returns all ledgers
 func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (map[string]*ledgerpb.LedgerInfo, error) {
 	ledgers, err := ctrl.store.ListLedgers(ctx)
@@ -162,7 +158,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 
 // CreateLedger creates a new ledger
 func (ctrl *DefaultController) CreateLedger(ctx context.Context, req *ledgerpb.CreateLedgerCommand) (*ledgerpb.LedgerInfo, error) {
-	cmd := newCreateLedgerCommand(req)
+	cmd := raft.NewCreateLedgerCommand(req)
 
 	ret, err := ctrl.engine.Apply(ctx, cmd)
 	if err != nil {
@@ -176,7 +172,7 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, req *ledgerpb.C
 
 // DeleteLedger deletes a ledger
 func (ctrl *DefaultController) DeleteLedger(ctx context.Context, id uint32) error {
-	cmd := newDeleteLedgerCommand(id)
+	cmd := raft.NewDeleteLedgerCommand(id)
 
 	_, err := ctrl.engine.Apply(ctx, cmd)
 	if err != nil {
@@ -709,51 +705,3 @@ func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWor
 }
 
 var _ Controller = (*DefaultController)(nil)
-
-// newCreateLedgerCommand creates a new CreateLedger command
-func newCreateLedgerCommand(req *ledgerpb.CreateLedgerCommand) *ledgerpb.Command {
-	data, err := proto.Marshal(req)
-	if err != nil {
-		panic(err)
-	}
-
-	action := &ledgerpb.Action{
-		ActionType: ledgerpb.ActionType_CreateLedger,
-		Data:       data,
-	}
-
-	return &ledgerpb.Command{
-		Id:      generateCommandID(),
-		Actions: []*ledgerpb.Action{action},
-		Date:    ledgerpb.NewTimestamp(time.Now()),
-	}
-}
-
-// newDeleteLedgerCommand creates a new DeleteLedger command
-func newDeleteLedgerCommand(id uint32) *ledgerpb.Command {
-	data, err := proto.Marshal(&ledgerpb.DeleteLedgerCommand{Id: id})
-	if err != nil {
-		panic(err)
-	}
-
-	action := &ledgerpb.Action{
-		ActionType: ledgerpb.ActionType_DeleteLedger,
-		Data:       data,
-	}
-
-	return &ledgerpb.Command{
-		Id:      generateCommandID(),
-		Actions: []*ledgerpb.Action{action},
-		Date:    ledgerpb.NewTimestamp(time.Now()),
-	}
-}
-
-// generateCommandID generates a random uint64 ID for commands
-func generateCommandID() uint64 {
-	var b [8]byte
-	_, err := rand.Read(b[:])
-	if err != nil {
-		return uint64(time.Now().UnixNano())
-	}
-	return binary.BigEndian.Uint64(b[:])
-}

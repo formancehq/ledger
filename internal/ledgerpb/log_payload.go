@@ -9,11 +9,6 @@ type LogPayloadInterface interface {
 	Type() int32
 }
 
-// Memento interface represents an object that can provide a memento
-type Memento interface {
-	GetMemento() any
-}
-
 // Type returns the log type for CreatedTransaction
 func (ct *CreatedTransaction) Type() int32 {
 	return 1 // NewTransactionLogType
