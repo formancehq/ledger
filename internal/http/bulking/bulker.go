@@ -114,74 +114,9 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *servicepb.Ledg
 }
 
 func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerAction) (*commonpb.Log, error) {
-	switch data := elem.Data.(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
-		return b.ledger.CreateTransaction(ctx, b.ledgerID, service.Parameters[*servicepb.CreateTransactionRequestPayload]{
-			IdempotencyKey: elem.IdempotencyKey,
-			Input:          data.CreateTransaction,
-		})
-
-	case *servicepb.LedgerAction_AddMetadata:
-		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
-			return nil, fmt.Errorf("missing add metadata data or target")
-		}
-
-		switch t := data.AddMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
-			return b.ledger.SaveAccountMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
-				IdempotencyKey: elem.IdempotencyKey,
-				Input: &servicepb.SaveAccountMetadataRequestPayload{
-					Address:  t.Account.Addr,
-					Metadata: data.AddMetadata.Metadata,
-				},
-			})
-		case *commonpb.Target_Transaction:
-			return b.ledger.SaveTransactionMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.SaveTransactionMetadataRequestPayload]{
-				IdempotencyKey: elem.IdempotencyKey,
-				Input: &servicepb.SaveTransactionMetadataRequestPayload{
-					TransactionId: t.Transaction.Id,
-					Metadata:      data.AddMetadata.Metadata,
-				},
-			})
-		default:
-			return nil, fmt.Errorf("unsupported target type")
-		}
-
-	case *servicepb.LedgerAction_RevertTransaction:
-		return b.ledger.RevertTransaction(ctx, b.ledgerID, service.Parameters[*servicepb.RevertTransactionRequestPayload]{
-			IdempotencyKey: elem.IdempotencyKey,
-			Input:          data.RevertTransaction,
-		})
-
-	case *servicepb.LedgerAction_DeleteMetadata:
-		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
-			return nil, fmt.Errorf("missing delete metadata data or target")
-		}
-
-		switch t := data.DeleteMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
-			return b.ledger.DeleteAccountMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
-				IdempotencyKey: elem.IdempotencyKey,
-				Input: &servicepb.DeleteAccountMetadataRequestPayload{
-					Address: t.Account.Addr,
-					Key:     data.DeleteMetadata.Key,
-				},
-			})
-		case *commonpb.Target_Transaction:
-			return b.ledger.DeleteTransactionMetadata(ctx, b.ledgerID, service.Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
-				IdempotencyKey: elem.IdempotencyKey,
-				Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-					TransactionId: t.Transaction.Id,
-					Key:           data.DeleteMetadata.Key,
-				},
-			})
-		default:
-			return nil, fmt.Errorf("unsupported target type")
-		}
-
-	default:
-		return nil, fmt.Errorf("unsupported action type")
-	}
+	// Set the ledger ID on the action before applying
+	elem.LedgerId = b.ledgerID
+	return b.ledger.Apply(ctx, elem)
 }
 
 func NewBulker(ledgerCluster service.Controller, ledgerID uint32, options ...BulkerOption) *Bulker {

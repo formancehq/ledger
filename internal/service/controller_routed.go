@@ -76,14 +76,14 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) CreateTransaction(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.CreateTransactionRequestPayload]) (*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
-
-	return ctrl.CreateTransaction(ctx, ledger, parameters)
+	return ctrl.Apply(ctx, action)
 }
+
 func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*commonpb.Transaction, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
@@ -92,46 +92,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, tr
 
 	return ctrl.GetTransaction(ctx, ledger, transactionID)
 }
-func (b *RoutedController) RevertTransaction(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.RevertTransactionRequestPayload]) (*commonpb.Log, error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
 
-	return ctrl.RevertTransaction(ctx, ledger, parameters)
-}
-func (b *RoutedController) SaveTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.SaveTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return ctrl.SaveTransactionMetadata(ctx, ledger, parameters)
-}
-func (b *RoutedController) SaveAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.SaveAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return ctrl.SaveAccountMetadata(ctx, ledger, parameters)
-}
-func (b *RoutedController) DeleteTransactionMetadata(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return ctrl.DeleteTransactionMetadata(ctx, ledger, parameters)
-}
-func (b *RoutedController) DeleteAccountMetadata(ctx context.Context, ledger uint32, parameters Parameters[*servicepb.DeleteAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return ctrl.DeleteAccountMetadata(ctx, ledger, parameters)
-}
 func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.Log) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
@@ -140,6 +101,7 @@ func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream cha
 
 	return ctrl.Import(ctx, ledger, stream)
 }
+
 func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWriter) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
@@ -148,6 +110,7 @@ func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWr
 
 	return ctrl.Export(ctx, ledger, w)
 }
+
 func (b *RoutedController) GetAllLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {

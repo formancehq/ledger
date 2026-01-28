@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// LedgerGrpcClient implements Ledger by forwarding requests via gRPC to the leader
+// LedgerGrpcClient implements Controller by forwarding requests via gRPC to the leader
 type LedgerGrpcClient struct {
 	client servicepb.LedgerServiceClient
 }
@@ -24,20 +24,14 @@ func NewLedgerGrpcClient(client servicepb.LedgerServiceClient) *LedgerGrpcClient
 	}
 }
 
-// CreateTransaction forwards the request via gRPC to the leader
-func (g *LedgerGrpcClient) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.CreateTransactionRequestPayload]) (*commonpb.Log, error) {
-	// Call leader via gRPC
-	log, err := g.client.CreateTransaction(ctx, &servicepb.CreateTransactionRequest{
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-		Payload: parameters.Input,
+// Apply forwards the action via gRPC to the leader
+func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
+	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
+		Action: action,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
-
 	return log, nil
 }
 
@@ -46,77 +40,6 @@ func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, 
 		LedgerId:      ledgerID,
 		TransactionId: transactionID,
 	})
-}
-
-func (g *LedgerGrpcClient) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.RevertTransactionRequestPayload]) (*commonpb.Log, error) {
-	return g.client.RevertTransaction(ctx, &servicepb.RevertTransactionRequest{
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-		Payload: parameters.Input,
-	})
-}
-
-func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.SaveTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	log, err := g.client.SaveTransactionMetadata(ctx, &servicepb.SaveTransactionMetadataRequest{
-		Payload: parameters.Input,
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC call failed: %w", err)
-	}
-
-	return log, nil
-}
-
-func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.SaveAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	// Call leader via gRPC
-	log, err := g.client.SaveAccountMetadata(ctx, &servicepb.SaveAccountMetadataRequest{
-		Payload: parameters.Input,
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC call failed: %w", err)
-	}
-
-	return log, nil
-}
-
-func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	log, err := g.client.DeleteTransactionMetadata(ctx, &servicepb.DeleteTransactionMetadataRequest{
-		Payload: parameters.Input,
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC call failed: %w", err)
-	}
-
-	return log, nil
-}
-
-func (g *LedgerGrpcClient) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.DeleteAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	log, err := g.client.DeleteAccountMetadata(ctx, &servicepb.DeleteAccountMetadataRequest{
-		Payload: parameters.Input,
-		Parameters: &servicepb.Parameters{
-			LedgerId:       ledgerID,
-			IdempotencyKey: parameters.IdempotencyKey,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC call failed: %w", err)
-	}
-
-	return log, nil
 }
 
 func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.Log) error {
@@ -187,3 +110,5 @@ func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{Name: name})
 }
+
+var _ Controller = (*LedgerGrpcClient)(nil)

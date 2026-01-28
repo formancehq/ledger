@@ -29,12 +29,12 @@ type DefaultController struct {
 	engine Engine
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
-	createTransactionLp         *logProcessor[*servicepb.CreateTransactionRequestPayload]
-	saveTransactionMetadataLp   *logProcessor[*servicepb.SaveTransactionMetadataRequestPayload]
-	saveAccountMetadataLp       *logProcessor[*servicepb.SaveAccountMetadataRequestPayload]
-	deleteTransactionMetadataLp *logProcessor[*servicepb.DeleteTransactionMetadataRequestPayload]
-	deleteAccountMetadataLp     *logProcessor[*servicepb.DeleteAccountMetadataRequestPayload]
-	revertTransactionLp         *logProcessor[*servicepb.RevertTransactionRequestPayload]
+	createTransactionLp         *logProcessor[*servicepb.CreateTransactionPayload]
+	saveTransactionMetadataLp   *logProcessor[*commonpb.SaveMetadataCommand]
+	saveAccountMetadataLp       *logProcessor[*commonpb.SaveMetadataCommand]
+	deleteTransactionMetadataLp *logProcessor[*commonpb.DeleteMetadataCommand]
+	deleteAccountMetadataLp     *logProcessor[*commonpb.DeleteMetadataCommand]
+	revertTransactionLp         *logProcessor[*servicepb.RevertTransactionPayload]
 	store                       store.Store
 }
 
@@ -205,6 +205,12 @@ func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdp
 	return results[0].(*commonpb.Log), nil
 }
 
+// Parameters holds action parameters
+type Parameters[INPUT proto.Message] struct {
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+	Input          INPUT  `json:"-"`
+}
+
 // forgeLogAndApply forges an action and applies it, returning the resulting log
 func forgeLogAndApply[INPUT proto.Message](
 	ctx context.Context,
@@ -224,12 +230,74 @@ func forgeLogAndApply[INPUT proto.Message](
 	return apply(ctx, action)
 }
 
-// CreateTransaction creates a new transaction
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.CreateTransactionRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, parameters, ctrl.applyAction)
+// Apply applies a ledger action and returns the resulting log
+func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.Log, error) {
+	if action == nil {
+		return nil, fmt.Errorf("action is required")
+	}
+
+	ledgerID := action.LedgerId
+	idempotencyKey := action.IdempotencyKey
+
+	switch data := action.Data.(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
+		return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, Parameters[*servicepb.CreateTransactionPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input:          data.CreateTransaction,
+		}, ctrl.applyAction)
+
+	case *servicepb.LedgerAction_AddMetadata:
+		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
+			return nil, fmt.Errorf("missing add metadata data or target")
+		}
+
+		switch data.AddMetadata.Target.Target.(type) {
+		case *commonpb.Target_Account:
+			return forgeLogAndApply(ctx, ctrl.saveAccountMetadataLp, ledgerID, Parameters[*commonpb.SaveMetadataCommand]{
+				IdempotencyKey: idempotencyKey,
+				Input:          data.AddMetadata,
+			}, ctrl.applyAction)
+		case *commonpb.Target_Transaction:
+			return forgeLogAndApply(ctx, ctrl.saveTransactionMetadataLp, ledgerID, Parameters[*commonpb.SaveMetadataCommand]{
+				IdempotencyKey: idempotencyKey,
+				Input:          data.AddMetadata,
+			}, ctrl.applyAction)
+		default:
+			return nil, fmt.Errorf("unsupported target type for add metadata")
+		}
+
+	case *servicepb.LedgerAction_RevertTransaction:
+		return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, Parameters[*servicepb.RevertTransactionPayload]{
+			IdempotencyKey: idempotencyKey,
+			Input:          data.RevertTransaction,
+		}, ctrl.applyAction)
+
+	case *servicepb.LedgerAction_DeleteMetadata:
+		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
+			return nil, fmt.Errorf("missing delete metadata data or target")
+		}
+
+		switch data.DeleteMetadata.Target.Target.(type) {
+		case *commonpb.Target_Account:
+			return forgeLogAndApply(ctx, ctrl.deleteAccountMetadataLp, ledgerID, Parameters[*commonpb.DeleteMetadataCommand]{
+				IdempotencyKey: idempotencyKey,
+				Input:          data.DeleteMetadata,
+			}, ctrl.applyAction)
+		case *commonpb.Target_Transaction:
+			return forgeLogAndApply(ctx, ctrl.deleteTransactionMetadataLp, ledgerID, Parameters[*commonpb.DeleteMetadataCommand]{
+				IdempotencyKey: idempotencyKey,
+				Input:          data.DeleteMetadata,
+			}, ctrl.applyAction)
+		default:
+			return nil, fmt.Errorf("unsupported target type for delete metadata")
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported action type")
+	}
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.CreateTransactionRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.CreateTransactionPayload]) (*raftcmdpb.CommandInput, error) {
 	ctrl.logger.Debugf("Creating transaction")
 
 	input := parameters.Input
@@ -397,12 +465,7 @@ func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOf
 	return postings, txMetadata, accountMetadata, nil
 }
 
-// RevertTransaction reverts a transaction by creating a reverse transaction
-func (ctrl *DefaultController) RevertTransaction(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.RevertTransactionRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, parameters, ctrl.applyAction)
-}
-
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.RevertTransactionRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.RevertTransactionPayload]) (*raftcmdpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
@@ -522,16 +585,15 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	}, nil
 }
 
-// SaveTransactionMetadata saves metadata for a transaction
-func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.SaveTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.saveTransactionMetadataLp, ledgerID, parameters, ctrl.applyAction)
-}
-
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.SaveTransactionMetadataRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.SaveMetadataCommand]) (*raftcmdpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
-	if input.TransactionId == 0 {
+	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
+	if !ok {
+		return nil, fmt.Errorf("invalid target type for save transaction metadata")
+	}
+	if target.Transaction.Id == 0 {
 		return nil, fmt.Errorf("transaction id is required")
 	}
 	if input.Metadata == nil {
@@ -540,30 +602,20 @@ func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, stor
 
 	return &raftcmdpb.CommandInput{
 		Command: &raftcmdpb.CommandInput_SaveMetadata{
-			SaveMetadata: &commonpb.SaveMetadataCommand{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Transaction{
-						Transaction: &commonpb.TargetTransaction{
-							Id: input.TransactionId,
-						},
-					},
-				},
-				Metadata: input.Metadata,
-			},
+			SaveMetadata: input,
 		},
 	}, nil
 }
 
-// SaveAccountMetadata saves metadata for an account
-func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.SaveAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.saveAccountMetadataLp, ledgerID, parameters, ctrl.applyAction)
-}
-
-func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.SaveAccountMetadataRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.SaveMetadataCommand]) (*raftcmdpb.CommandInput, error) {
 	input := parameters.Input
 
 	// Validate input
-	if input.Address == "" {
+	target, ok := input.Target.Target.(*commonpb.Target_Account)
+	if !ok {
+		return nil, fmt.Errorf("invalid target type for save account metadata")
+	}
+	if target.Account.Addr == "" {
 		return nil, fmt.Errorf("account address is required")
 	}
 	if input.Metadata == nil {
@@ -572,29 +624,19 @@ func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *u
 
 	return &raftcmdpb.CommandInput{
 		Command: &raftcmdpb.CommandInput_SaveMetadata{
-			SaveMetadata: &commonpb.SaveMetadataCommand{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{
-						Account: &commonpb.TargetAccount{
-							Addr: input.Address,
-						},
-					},
-				},
-				Metadata: input.Metadata,
-			},
+			SaveMetadata: input,
 		},
 	}, nil
 }
 
-// DeleteTransactionMetadata deletes a metadata key from a transaction
-func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.deleteTransactionMetadataLp, ledgerID, parameters, ctrl.applyAction)
-}
-
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.DeleteMetadataCommand]) (*raftcmdpb.CommandInput, error) {
 	input := parameters.Input
 
-	if input.TransactionId == 0 {
+	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
+	if !ok {
+		return nil, fmt.Errorf("invalid target type for delete transaction metadata")
+	}
+	if target.Transaction.Id == 0 {
 		return nil, fmt.Errorf("transaction id is required")
 	}
 	if input.Key == "" {
@@ -603,29 +645,19 @@ func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, st
 
 	return &raftcmdpb.CommandInput{
 		Command: &raftcmdpb.CommandInput_DeleteMetadata{
-			DeleteMetadata: &commonpb.DeleteMetadataCommand{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Transaction{
-						Transaction: &commonpb.TargetTransaction{
-							Id: input.TransactionId,
-						},
-					},
-				},
-				Key: input.Key,
-			},
+			DeleteMetadata: input,
 		},
 	}, nil
 }
 
-// DeleteAccountMetadata deletes a metadata key from an account
-func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, ledgerID uint32, parameters Parameters[*servicepb.DeleteAccountMetadataRequestPayload]) (*commonpb.Log, error) {
-	return forgeLogAndApply(ctx, ctrl.deleteAccountMetadataLp, ledgerID, parameters, ctrl.applyAction)
-}
-
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*servicepb.DeleteAccountMetadataRequestPayload]) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, parameters Parameters[*commonpb.DeleteMetadataCommand]) (*raftcmdpb.CommandInput, error) {
 	input := parameters.Input
 
-	if input.Address == "" {
+	target, ok := input.Target.Target.(*commonpb.Target_Account)
+	if !ok {
+		return nil, fmt.Errorf("invalid target type for delete account metadata")
+	}
+	if target.Account.Addr == "" {
 		return nil, fmt.Errorf("account address is required")
 	}
 	if input.Key == "" {
@@ -634,16 +666,7 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 
 	return &raftcmdpb.CommandInput{
 		Command: &raftcmdpb.CommandInput_DeleteMetadata{
-			DeleteMetadata: &commonpb.DeleteMetadataCommand{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{
-						Account: &commonpb.TargetAccount{
-							Addr: input.Address,
-						},
-					},
-				},
-				Key: input.Key,
-			},
+			DeleteMetadata: input,
 		},
 	}, nil
 }
@@ -656,10 +679,6 @@ func (ctrl *DefaultController) Import(ctx context.Context, ledgerID uint32, stre
 // Export is not implemented yet
 func (ctrl *DefaultController) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
 	return fmt.Errorf("export is not implemented yet")
-}
-
-func (ctrl *DefaultController) ApplyLog(ctx context.Context, cmd *servicepb.LedgerAction) error {
-	return fmt.Errorf("apply log is not implemented yet")
 }
 
 // checkBalances verifies that all source accounts have sufficient funds for the given postings.

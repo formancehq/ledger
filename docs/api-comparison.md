@@ -347,3 +347,45 @@ This architecture impacts certain implementation decisions:
 - Bulk atomicity requires handling at the Raft level
 - Import must respect log sequence
 - Export can be done from any node (local read)
+
+---
+
+## gRPC API
+
+The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
+
+### LedgerService Methods
+
+| Method | Description | Status |
+|--------|-------------|--------|
+| `CreateLedger` | Create a new ledger | ✅ |
+| `DeleteLedger` | Delete a ledger | ✅ |
+| `GetAllLedgersInfo` | Get all ledgers info | ✅ |
+| `GetLedgerByName` | Get ledger by name | ✅ |
+| `GetTransaction` | Get transaction by ID | ✅ |
+| `StreamLogs` | Stream logs from a ledger | ✅ |
+| `Apply` | Apply a ledger action (write operations) | ✅ |
+
+### Apply Method
+
+The `Apply` method is the **single entry point for all ledger write operations**. It provides a unified way to apply any ledger action through a single gRPC call.
+
+**Benefits:**
+- Simplified API surface - single method for all write operations
+- Consistent behavior across all action types
+- Better for bulk operations executed in parallel
+- Simplified client logic
+- Efficient forwarding between Raft nodes
+
+**Request:** `ApplyRequest` containing a `LedgerAction` with:
+- `ledger_id`: Target ledger ID
+- `idempotency_key`: Optional idempotency key
+- One of:
+  - `create_transaction`: Create a new transaction
+  - `add_metadata`: Add metadata to an account or transaction
+  - `revert_transaction`: Revert a transaction
+  - `delete_metadata`: Delete metadata from an account or transaction
+
+**Response:** `common.Log` - The log entry created by the action
+
+**Note:** Individual RPC methods like `CreateTransaction`, `RevertTransaction`, `SaveAccountMetadata`, etc. have been consolidated into the `Apply` method for a cleaner API.

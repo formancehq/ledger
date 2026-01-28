@@ -20,98 +20,17 @@ service LedgerService {
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
   // GetLedgerInfo returns a ledger info by its name
   rpc GetLedgerByName(GetLedgerByNameRequest) returns (common.LedgerInfo);
-  // CreateTransaction creates a new transaction
-  rpc CreateTransaction(CreateTransactionRequest) returns (common.Log);
   // GetTransaction retrieves a transaction by ID
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
-  // RevertTransaction reverts a transaction
-  rpc RevertTransaction(RevertTransactionRequest) returns (common.Log);
-  // SaveAccountMetadata saves metadata for an account
-  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (common.Log);
-  // SaveTransactionMetadata saves metadata for a transaction
-  rpc SaveTransactionMetadata(SaveTransactionMetadataRequest) returns (common.Log);
-  // DeleteAccountMetadata deletes metadata for an account
-  rpc DeleteAccountMetadata(DeleteAccountMetadataRequest) returns (common.Log);
-  // DeleteTransactionMetadata deletes metadata for a transaction
-  rpc DeleteTransactionMetadata(DeleteTransactionMetadataRequest) returns (common.Log);
   // StreamLogs streams logs from a ledger, optionally starting from a log ID
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+  // Apply applies a ledger action (create transaction, revert, save/delete metadata)
+  rpc Apply(ApplyRequest) returns (common.Log);
 }
 
 // ============================================================================
 // gRPC Request/Response Messages
 // ============================================================================
-
-message Parameters {
-  uint32 ledger_id = 1;
-  string idempotency_key = 2;
-}
-
-message CreateTransactionRequestPayload {
-  repeated common.Posting postings = 1;
-  common.Script script = 2;
-  common.Timestamp timestamp = 3;
-  string reference = 4;
-  map<string, string> metadata = 5;
-  map<string, common.Metadata> account_metadata = 6;
-}
-
-message CreateTransactionRequest {
-  CreateTransactionRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
-
-message SaveAccountMetadataRequestPayload {
-  string address = 1;
-  common.Metadata metadata = 2;
-}
-
-message SaveAccountMetadataRequest {
-  SaveAccountMetadataRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
-
-message RevertTransactionRequestPayload {
-  uint64 transaction_id = 1;
-  bool force = 2;
-  bool at_effective_date = 3;
-  map<string, string> metadata = 4;
-}
-
-message RevertTransactionRequest {
-  RevertTransactionRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
-
-message SaveTransactionMetadataRequestPayload {
-  uint64 transaction_id = 1;
-  common.Metadata metadata = 2;
-}
-
-message SaveTransactionMetadataRequest {
-  SaveTransactionMetadataRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
-
-message DeleteAccountMetadataRequestPayload {
-  string address = 1;
-  string key = 2;
-}
-
-message DeleteAccountMetadataRequest {
-  DeleteAccountMetadataRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
-
-message DeleteTransactionMetadataRequestPayload {
-  uint64 transaction_id = 1;
-  string key = 2;
-}
-
-message DeleteTransactionMetadataRequest {
-  DeleteTransactionMetadataRequestPayload payload = 1;
-  Parameters parameters = 2;
-}
 
 message GetTransactionRequest {
   uint32 ledger_id = 1;
@@ -149,37 +68,53 @@ message GetLedgerByNameRequest {
   string name = 1;
 }
 
+message ApplyRequest {
+  LedgerAction action = 1;
+}
+
 // ============================================================================
-// Bulk Operations
+// Ledger Actions (used by Apply RPC)
 // ============================================================================
 
-// LedgerAction represents a single action in a bulk request
+// CreateTransactionPayload contains the data for creating a transaction
+message CreateTransactionPayload {
+  repeated common.Posting postings = 1;
+  common.Script script = 2;
+  common.Timestamp timestamp = 3;
+  string reference = 4;
+  map<string, string> metadata = 5;
+  map<string, common.Metadata> account_metadata = 6;
+}
+
+// RevertTransactionPayload contains the data for reverting a transaction
+message RevertTransactionPayload {
+  uint64 transaction_id = 1;
+  bool force = 2;
+  bool at_effective_date = 3;
+  map<string, string> metadata = 4;
+}
+
+// LedgerAction represents a single ledger action
 message LedgerAction {
   uint32 ledger_id = 1;
   string idempotency_key = 2;
   oneof data {
-    CreateTransactionRequestPayload create_transaction = 3;
+    CreateTransactionPayload create_transaction = 3;
     common.SaveMetadataCommand add_metadata = 4;
-    RevertTransactionRequestPayload revert_transaction = 5;
+    RevertTransactionPayload revert_transaction = 5;
     common.DeleteMetadataCommand delete_metadata = 6;
   }
 }
 
-// LedgerActionResult represents the result of a single ledger action
+// ============================================================================
+// Bulk Operations (HTTP only)
+// ============================================================================
+
+// LedgerActionResult represents the result of a single ledger action (for bulk HTTP)
 message LedgerActionResult {
   int32 element_id = 1;
   uint64 log_id = 2;
   string error_code = 3;            // Empty if no error
   string error_description = 4;     // Error description if error_code is set
   optional common.Log log = 5;      // For successful operations that return a log
-}
-
-// BulkRequest represents a bulk request containing multiple elements
-message BulkRequest {
-  repeated LedgerAction elements = 1;
-}
-
-// BulkResponse represents the response to a bulk request
-message BulkResponse {
-  repeated LedgerActionResult results = 1;
 }

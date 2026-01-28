@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -37,21 +37,28 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 		return
 	}
 
-	params := service.Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-			TransactionId: transactionID,
-			Key:           key,
-		},
-	}
-
 	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 		return
 	}
 
-	_, err = s.backend.DeleteTransactionMetadata(r.Context(), ledgerInfo.Id, params)
+	_, err = s.backend.Apply(r.Context(), &servicepb.LedgerAction{
+		LedgerId:       ledgerInfo.Id,
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		Data: &servicepb.LedgerAction_DeleteMetadata{
+			DeleteMetadata: &commonpb.DeleteMetadataCommand{
+				Target: &commonpb.Target{
+					Target: &commonpb.Target_Transaction{
+						Transaction: &commonpb.TargetTransaction{
+							Id: transactionID,
+						},
+					},
+				},
+				Key: key,
+			},
+		},
+	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

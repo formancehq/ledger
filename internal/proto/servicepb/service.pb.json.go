@@ -8,8 +8,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-// MarshalJSON implements json.Marshaler for CreateTransactionRequestPayload
-func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for CreateTransactionPayload
+func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		AccountMetadata map[string]*commonpb.Metadata `json:"accountMetadata,omitempty"`
 		Metadata        map[string]string             `json:"metadata,omitempty"`
@@ -27,8 +27,8 @@ func (x *CreateTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for RevertTransactionRequestPayload
-func (x *RevertTransactionRequestPayload) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for RevertTransactionPayload
+func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		TransactionId   uint64            `json:"transactionId,omitempty"`
 		Force           bool              `json:"force,omitempty"`
@@ -39,28 +39,6 @@ func (x *RevertTransactionRequestPayload) MarshalJSON() ([]byte, error) {
 		Force:           x.Force,
 		AtEffectiveDate: x.AtEffectiveDate,
 		Metadata:        x.Metadata,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for SaveTransactionMetadataRequestPayload
-func (x *SaveTransactionMetadataRequestPayload) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		TransactionId uint64            `json:"transactionId,omitempty"`
-		Metadata      map[string]string `json:"metadata,omitempty"`
-	}{
-		TransactionId: x.TransactionId,
-		Metadata:      x.Metadata.Entries,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for DeleteTransactionMetadataRequestPayload
-func (x *DeleteTransactionMetadataRequestPayload) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		TransactionId uint64 `json:"transactionId,omitempty"`
-		Key           string `json:"key,omitempty"`
-	}{
-		TransactionId: x.TransactionId,
-		Key:           x.Key,
 	})
 }
 
@@ -90,7 +68,7 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 	// Parse data based on action
 	switch raw.Action {
 	case LedgerActionTypeCreateTransaction:
-		req := &CreateTransactionRequestPayload{}
+		req := &CreateTransactionPayload{}
 		if err := json.Unmarshal(raw.Data, req); err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
@@ -104,7 +82,7 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 		x.Data = &LedgerAction_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
-		req, err := unmarshalRevertTransactionRequestPayload(raw.Data)
+		req, err := unmarshalRevertTransactionPayload(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
@@ -158,8 +136,8 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 	}, nil
 }
 
-// unmarshalRevertTransactionRequestPayload unmarshals JSON into RevertTransactionRequestPayload
-func unmarshalRevertTransactionRequestPayload(data json.RawValue) (*RevertTransactionRequestPayload, error) {
+// unmarshalRevertTransactionPayload unmarshals JSON into RevertTransactionPayload
+func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPayload, error) {
 	type rawReq struct {
 		ID              uint64            `json:"id"`
 		Force           bool              `json:"force"`
@@ -171,7 +149,7 @@ func unmarshalRevertTransactionRequestPayload(data json.RawValue) (*RevertTransa
 		return nil, err
 	}
 
-	return &RevertTransactionRequestPayload{
+	return &RevertTransactionPayload{
 		TransactionId:   raw.ID,
 		Force:           raw.Force,
 		AtEffectiveDate: raw.AtEffectiveDate,

@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,22 +32,28 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Build service.Parameters[*servicepb.SaveAccountMetadataRequest]
-	params := service.Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input: &servicepb.SaveAccountMetadataRequestPayload{
-			Address:  address,
-			Metadata: &commonpb.Metadata{Entries: inputMetadata},
-		},
-	}
-
 	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 		return
 	}
 
-	_, err = s.backend.SaveAccountMetadata(r.Context(), ledgerInfo.Id, params)
+	_, err = s.backend.Apply(r.Context(), &servicepb.LedgerAction{
+		LedgerId:       ledgerInfo.Id,
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		Data: &servicepb.LedgerAction_AddMetadata{
+			AddMetadata: &commonpb.SaveMetadataCommand{
+				Target: &commonpb.Target{
+					Target: &commonpb.Target_Account{
+						Account: &commonpb.TargetAccount{
+							Addr: address,
+						},
+					},
+				},
+				Metadata: &commonpb.Metadata{Entries: inputMetadata},
+			},
+		},
+	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "address": address, "error": err}).Errorf("Failed to save account metadata")
 		handleError(w, r, err)

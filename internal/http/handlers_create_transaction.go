@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,8 +19,8 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Decode request body into protobuf CreateTransactionRequest
-	req := &servicepb.CreateTransactionRequestPayload{}
+	// Decode request body into protobuf CreateTransactionPayload
+	req := &servicepb.CreateTransactionPayload{}
 	err := json.UnmarshalRead(r.Body, req)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
@@ -34,10 +33,13 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Call ledger service
-	log, err := s.backend.CreateTransaction(r.Context(), ledgerInfo.Id, service.Parameters[*servicepb.CreateTransactionRequestPayload]{
+	// Call ledger service via Apply
+	log, err := s.backend.Apply(r.Context(), &servicepb.LedgerAction{
+		LedgerId:       ledgerInfo.Id,
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input:          req,
+		Data: &servicepb.LedgerAction_CreateTransaction{
+			CreateTransaction: req,
+		},
 	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")

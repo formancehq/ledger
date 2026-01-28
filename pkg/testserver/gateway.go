@@ -341,28 +341,8 @@ type ledgerServiceGateway struct {
 	client servicepb.LedgerServiceClient
 }
 
-func (g *ledgerServiceGateway) CreateTransaction(ctx context.Context, req *servicepb.CreateTransactionRequest) (*commonpb.Log, error) {
-	return g.client.CreateTransaction(ctx, req)
-}
-
-func (g *ledgerServiceGateway) RevertTransaction(ctx context.Context, req *servicepb.RevertTransactionRequest) (*commonpb.Log, error) {
-	return g.client.RevertTransaction(ctx, req)
-}
-
-func (g *ledgerServiceGateway) SaveAccountMetadata(ctx context.Context, req *servicepb.SaveAccountMetadataRequest) (*commonpb.Log, error) {
-	return g.client.SaveAccountMetadata(ctx, req)
-}
-
-func (g *ledgerServiceGateway) SaveTransactionMetadata(ctx context.Context, req *servicepb.SaveTransactionMetadataRequest) (*commonpb.Log, error) {
-	return g.client.SaveTransactionMetadata(ctx, req)
-}
-
-func (g *ledgerServiceGateway) DeleteAccountMetadata(ctx context.Context, req *servicepb.DeleteAccountMetadataRequest) (*commonpb.Log, error) {
-	return g.client.DeleteAccountMetadata(ctx, req)
-}
-
-func (g *ledgerServiceGateway) DeleteTransactionMetadata(ctx context.Context, req *servicepb.DeleteTransactionMetadataRequest) (*commonpb.Log, error) {
-	return g.client.DeleteTransactionMetadata(ctx, req)
+func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*commonpb.Log, error) {
+	return g.client.Apply(ctx, req)
 }
 
 func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
@@ -377,12 +357,12 @@ func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *servi
 	return g.client.GetAllLedgersInfo(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetLedgerInfo(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
+func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedgerByName(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
-	return g.client.GetLedgerByName(ctx, req)
+func (g *ledgerServiceGateway) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
+	return g.client.GetTransaction(ctx, req)
 }
 
 func (g *ledgerServiceGateway) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {

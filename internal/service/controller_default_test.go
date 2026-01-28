@@ -36,10 +36,17 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 			"label":        "Test Account",
 		}
 
-		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
-			Input: &servicepb.SaveAccountMetadataRequestPayload{
-				Address:  "test-account",
-				Metadata: &commonpb.Metadata{Entries: md},
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: "test-account"},
+						},
+					},
+					Metadata: &commonpb.Metadata{Entries: md},
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -52,10 +59,17 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 
 		// Test empty address
 		md1 := metadata.Metadata{"key": "value"}
-		log, err := ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
-			Input: &servicepb.SaveAccountMetadataRequestPayload{
-				Address:  "",
-				Metadata: &commonpb.Metadata{Entries: md1},
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: ""},
+						},
+					},
+					Metadata: &commonpb.Metadata{Entries: md1},
+				},
 			},
 		})
 		require.Error(t, err)
@@ -63,10 +77,17 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 		require.Contains(t, err.Error(), "account address is required")
 
 		// Test empty metadata
-		log, err = ledgerService.SaveAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveAccountMetadataRequestPayload]{
-			Input: &servicepb.SaveAccountMetadataRequestPayload{
-				Address:  "test-account",
-				Metadata: nil,
+		log, err = ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: "test-account"},
+						},
+					},
+					Metadata: nil,
+				},
 			},
 		})
 		require.Error(t, err)
@@ -93,10 +114,17 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 			},
 		}
 
-		log, err := ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveTransactionMetadataRequestPayload]{
-			Input: &servicepb.SaveTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Metadata:      &md,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Metadata: &md,
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -110,20 +138,34 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		md := &commonpb.Metadata{
 			Entries: metadata.Metadata{"key": "value"},
 		}
-		log, err := ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveTransactionMetadataRequestPayload]{
-			Input: &servicepb.SaveTransactionMetadataRequestPayload{
-				TransactionId: 0,
-				Metadata:      md,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 0},
+						},
+					},
+					Metadata: md,
+				},
 			},
 		})
 		require.Error(t, err)
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "transaction id is required")
 
-		log, err = ledgerService.SaveTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.SaveTransactionMetadataRequestPayload]{
-			Input: &servicepb.SaveTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Metadata:      nil,
+		log, err = ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_AddMetadata{
+				AddMetadata: &commonpb.SaveMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Metadata: nil,
+				},
 			},
 		})
 		require.Error(t, err)
@@ -144,10 +186,17 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log, err := ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
-			Input: &servicepb.DeleteAccountMetadataRequestPayload{
-				Address: "test-account",
-				Key:     "key1",
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: "test-account"},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -158,20 +207,34 @@ func TestDefaultLedger_DeleteAccountMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
-			Input: &servicepb.DeleteAccountMetadataRequestPayload{
-				Address: "",
-				Key:     "key1",
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: ""},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.Error(t, err)
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "account address is required")
 
-		log, err = ledgerService.DeleteAccountMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteAccountMetadataRequestPayload]{
-			Input: &servicepb.DeleteAccountMetadataRequestPayload{
-				Address: "test-account",
-				Key:     "",
+		log, err = ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Account{
+							Account: &commonpb.TargetAccount{Addr: "test-account"},
+						},
+					},
+					Key: "",
+				},
 			},
 		})
 		require.Error(t, err)
@@ -192,10 +255,17 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
-			Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Key:           "key1",
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -214,11 +284,18 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log1, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
+		log1, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId:       testLedgerID,
 			IdempotencyKey: idempotencyKey,
-			Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Key:           "key1",
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -231,11 +308,18 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			GetLogByID(gomock.Any(), testLedgerID, log1.Id).
 			Return(log1, nil)
 
-		log2, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
+		log2, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId:       testLedgerID,
 			IdempotencyKey: idempotencyKey,
-			Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Key:           "key1",
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -247,20 +331,34 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
-			Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-				TransactionId: 0,
-				Key:           "key1",
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 0},
+						},
+					},
+					Key: "key1",
+				},
 			},
 		})
 		require.Error(t, err)
 		require.Nil(t, log)
 		require.Contains(t, err.Error(), "transaction id is required")
 
-		log, err = ledgerService.DeleteTransactionMetadata(ctx, testLedgerID, Parameters[*servicepb.DeleteTransactionMetadataRequestPayload]{
-			Input: &servicepb.DeleteTransactionMetadataRequestPayload{
-				TransactionId: 42,
-				Key:           "",
+		log, err = ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_DeleteMetadata{
+				DeleteMetadata: &commonpb.DeleteMetadataCommand{
+					Target: &commonpb.Target{
+						Target: &commonpb.Target_Transaction{
+							Transaction: &commonpb.TargetTransaction{Id: 42},
+						},
+					},
+					Key: "",
+				},
 			},
 		})
 		require.Error(t, err)
@@ -355,9 +453,12 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId: transactionID,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId: transactionID,
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -374,9 +475,12 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
 			Return(true, nil)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId: transactionID,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId: transactionID,
+				},
 			},
 		})
 		require.Error(t, err)
@@ -397,9 +501,12 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			GetLogIDForTransactionID(gomock.Any(), testLedgerID, transactionID).
 			Return(uint64(0), nil)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId: transactionID,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId: transactionID,
+				},
 			},
 		})
 		require.Error(t, err)
@@ -411,9 +518,12 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId: 0,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId: 0,
+				},
 			},
 		})
 		require.Error(t, err)
@@ -459,10 +569,13 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId: transactionID,
-				Force:         true,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId: transactionID,
+					Force:         true,
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -536,10 +649,13 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			}).
 			Times(1)
 
-		log, err := ledgerService.RevertTransaction(ctx, testLedgerID, Parameters[*servicepb.RevertTransactionRequestPayload]{
-			Input: &servicepb.RevertTransactionRequestPayload{
-				TransactionId:   transactionID,
-				AtEffectiveDate: true,
+		log, err := ledgerService.Apply(ctx, &servicepb.LedgerAction{
+			LedgerId: testLedgerID,
+			Data: &servicepb.LedgerAction_RevertTransaction{
+				RevertTransaction: &servicepb.RevertTransactionPayload{
+					TransactionId:   transactionID,
+					AtEffectiveDate: true,
+				},
 			},
 		})
 		require.NoError(t, err)

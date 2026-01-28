@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -43,7 +42,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build request payload
-	payload := &servicepb.RevertTransactionRequestPayload{
+	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: transactionID,
 	}
 
@@ -65,18 +64,19 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	params := service.Parameters[*servicepb.RevertTransactionRequestPayload]{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Input:          payload,
-	}
-
 	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 		return
 	}
 
-	log, err := s.backend.RevertTransaction(r.Context(), ledgerInfo.Id, params)
+	log, err := s.backend.Apply(r.Context(), &servicepb.LedgerAction{
+		LedgerId:       ledgerInfo.Id,
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		Data: &servicepb.LedgerAction_RevertTransaction{
+			RevertTransaction: payload,
+		},
+	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,
