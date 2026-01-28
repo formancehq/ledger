@@ -381,8 +381,7 @@ Content-Type: application/json
 
 **Query Parameters**:
 - `continueOnFailure=true`: Continue even if an error occurs
-- `atomic=true`: Execute atomically (all or nothing)
-- `parallel=true`: Execute in parallel
+- `atomic=true`: Execute atomically (all or nothing) - not yet supported
 
 ### Account Metadata
 

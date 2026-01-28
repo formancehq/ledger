@@ -620,8 +620,7 @@ sequenceDiagram
 ### Bulk Options
 
 - **continueOnFailure**: Continue even if an operation fails
-- **atomic**: All operations or nothing
-- **parallel**: Execute in parallel (not compatible with atomic)
+- **atomic**: All operations or nothing (not yet supported)
 
 ## Next Steps
 

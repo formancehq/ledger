@@ -551,12 +551,6 @@ paths:
             type: boolean
             default: false
           description: Execute all operations atomically (not yet supported)
-        - name: parallel
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute operations in parallel
       requestBody:
         required: true
         content:

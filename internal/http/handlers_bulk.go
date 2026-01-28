@@ -50,16 +50,10 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		bulking.BulkingOptions{
 			ContinueOnFailure: queryParamBool(r, "continueOnFailure"),
 			Atomic:            queryParamBool(r, "atomic"),
-			Parallel:          queryParamBool(r, "parallel"),
 		},
 	)
 	if err != nil {
-		switch {
-		case errors.Is(err, bulking.ErrAtomicParallelConflict):
-			writeErrorResponse(w, http.StatusPreconditionFailed, "VALIDATION", err)
-		default:
-			handleError(w, r, err)
-		}
+		handleError(w, r, err)
 		return
 	}
 

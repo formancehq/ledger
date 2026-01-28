@@ -26,7 +26,6 @@ This document compares the POC's API with the original Formance ledger API and d
 | Bulk ADD_METADATA | ✅ | ✅ | |
 | Bulk REVERT_TRANSACTION | ✅ | ✅ | |
 | Bulk DELETE_METADATA | ✅ | ✅ | |
-| Bulk parallel | ✅ | ✅ | |
 | Bulk atomic | ⚠️ | ✅ | Not implemented |
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
@@ -103,7 +102,6 @@ This document compares the POC's API with the original Formance ledger API and d
 - ✅ `DELETE_METADATA` (account and transaction)
 
 **Options:**
-- ✅ `parallel` - Parallel execution
 - ✅ `continueOnFailure` - Continue even on error
 - ⚠️ `atomic` - **Not implemented** (returns an error)
 
@@ -150,7 +148,6 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 **Implementation required:**
 - Wrap all operations in a database transaction
 - Rollback on failure
-- Not compatible with `parallel`
 
 ### 2. ❌ Log Import
 
