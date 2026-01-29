@@ -8,7 +8,6 @@ import (
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -32,22 +31,8 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 		middleware.Recoverer,
 	)
 
-	// Create bulker factory
-	bulkerFactory := bulking.NewDefaultBulkerFactory()
-
-	// Create bulk handler factories
-	bulkHandlerFactories := map[string]bulking.HandlerFactory{
-		// todo: set limit and add bulk streaming support
-		"application/json": bulking.NewJSONBulkHandlerFactory(0), // 0 = no limit
-	}
-
 	// Create server instance for handlers
-	server := &Server{
-		logger:               logger,
-		backend:              backend,
-		bulkerFactory:        bulkerFactory,
-		bulkHandlerFactories: bulkHandlerFactories,
-	}
+	server := NewServer(logger, backend, 0) // 0 = no bulk size limit
 
 	// Register routes function - can be called with different prefixes
 	registerRoutes := func(r chi.Router) {

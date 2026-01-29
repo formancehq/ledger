@@ -4,24 +4,23 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
 type Server struct {
-	logger               logging.Logger
-	backend              Backend
-	bulkerFactory        bulking.BulkerFactory
-	bulkHandlerFactories map[string]bulking.HandlerFactory
+	logger      logging.Logger
+	backend     Backend
+	bulkMaxSize int
 }
 
 // NewServer creates a new server instance (used by handlers)
-func NewServer(logger logging.Logger, backend Backend) *Server {
+func NewServer(logger logging.Logger, backend Backend, bulkMaxSize int) *Server {
 	return &Server{
-		logger:  logger,
-		backend: backend,
+		logger:      logger,
+		backend:     backend,
+		bulkMaxSize: bulkMaxSize,
 	}
 }
 
