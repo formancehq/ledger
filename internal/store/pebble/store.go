@@ -67,33 +67,28 @@ func NewStore(
 	// todo: make configurable
 	opts := &pebble.Options{
 		EventListener: NewMetricsListener(meter),
-		// 1) Absorber plus d'écritures avant flush => moins de SST, moins de compactions.
-		MemTableSize:                512 << 20, // 256MB (à ajuster selon RAM)
-		MemTableStopWritesThreshold: 4,         // défaut souvent 2; 4 réduit les write stalls
+		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
+		MemTableSize:                256 << 20, // 256MB (adjust based on available RAM)
+		MemTableStopWritesThreshold: 6,         // default is often 2; 4 reduces write stalls
 
-		// 2) Contrôler la pression L0 (source #1 de compactions/churn en write-heavy).
-		L0CompactionThreshold: 8,         // déclenche plus tôt les compactions L0->L1 (évite l'emballement)
-		L0StopWritesThreshold: 32,        // plus haut => moins de "stop-the-world writes" (au prix de plus de dette)
-		LBaseMaxBytes:         512 << 20, // 512MB base level (augmente si dataset gros)
+		// 2) Control L0 pressure (main source of compactions/churn in write-heavy workloads).
+		L0CompactionThreshold: 64,      // triggers L0->L1 compactions earlier (prevents runaway growth)
+		L0StopWritesThreshold: 256,     // higher => fewer "stop-the-world writes" (at cost of more debt)
+		LBaseMaxBytes:         2 << 30, // 2G base level (increase for larger datasets)
+		Cache:                 pebble.NewCache(1024 << 20),
 
-		// 3) Taille des tables: moins de petits fichiers => moins de compactions.
-		// (à calibrer; 64MB est un bon départ)
+		// 3) Table sizes: fewer small files => fewer compactions.
+		// (calibrate as needed; 256MB is a good starting point)
 		Levels: []pebble.LevelOptions{
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
-			{TargetFileSize: 64 << 20},
+			{TargetFileSize: 256 << 20},
 		},
 
-		// 4) Lisser l'IO lors des flush/compactions.
+		// 4) Smooth IO during flush/compactions.
 		BytesPerSync:    1 << 20, // 1MB
 		WALBytesPerSync: 1 << 20, // 1MB
 
-		// 5) Concurrence compaction: OK mais pas trop haut (sinon tu satures l’IO).
-		MaxConcurrentCompactions: func() int { return 2 }, // 2 ou 3 selon CPU/IO
+		// 5) Compaction concurrency: OK but not too high (otherwise you saturate IO).
+		MaxConcurrentCompactions: func() int { return 2 }, // 2 or 3 depending on CPU/IO
 	}
 
 	var (

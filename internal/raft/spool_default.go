@@ -33,7 +33,7 @@ type DefaultSpool struct {
 	mu  sync.Mutex
 	cfg DefaultSpoolConfig
 
-	// writer courant
+	// current writer
 	segID uint64
 	f     *os.File
 	w     *bufio.Writer
@@ -45,12 +45,12 @@ type DefaultSpool struct {
 	pendingN     int
 	pendingSince time.Time
 
-	// ---- cache de lecture (RAM only) ----
-	// Position de départ pour le prochain ReplayUntil
+	// ---- read cache (RAM only) ----
+	// Starting position for the next ReplayUntil
 	rInit        bool
 	rSegID       uint64
 	rOffset      int64
-	rLastApplied uint64 // dernier lastApplied vu lors d'un replay
+	rLastApplied uint64 // last lastApplied seen during a replay
 }
 
 // --------------------
@@ -104,7 +104,7 @@ func NewDefaultSpool(cfg DefaultSpoolConfig) (*DefaultSpool, error) {
 		return nil, err
 	}
 
-	// init cache lecture: si segments existent, partir du premier segment.
+	// init read cache: if segments exist, start from the first segment.
 	if len(ids) > 0 {
 		s.rInit = true
 		s.rSegID = ids[0]
@@ -208,14 +208,14 @@ func (s *DefaultSpool) End() (*Position, error) {
 }
 
 // --------------------
-// Replay borné + cache lecture RAM
+// Bounded replay + RAM read cache
 // --------------------
 
-// ReplayUntil rejoue les records entre la position cachee (RAM) et la borne 'end' (watermark).
-// Il applique seulement les entries dont Index > lastApplied.
-// Le cache avance au fur et a mesure, donc un appel suivant ne reparsera pas ce qui a deja ete lu.
+// ReplayUntil replays records between the cached position (RAM) and the 'end' bound (watermark).
+// It applies only entries whose Index > lastApplied.
+// The cache advances as it goes, so a subsequent call won't re-parse what was already read.
 //
-// IMPORTANT: si lastApplied diminue (rewind), on reset le cache au debut pour etre safe.
+// IMPORTANT: if lastApplied decreases (rewind), we reset the cache to the beginning for safety.
 func (s *DefaultSpool) ReplayUntil(
 	ctx context.Context,
 	end Position,
@@ -231,12 +231,12 @@ func (s *DefaultSpool) ReplayUntil(
 		return nil
 	}
 
-	// Charger point de départ depuis cache (RAM) + gestion rewind
+	// Load starting point from cache (RAM) + handle rewind
 	startSeg, startOff := func() (uint64, int64) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		// Si rewind (ou premier usage), repartir au debut.
+		// If rewind (or first use), restart from the beginning.
 		if !s.rInit || lastApplied < s.rLastApplied {
 			s.rInit = true
 			s.rSegID = ids[0]
@@ -244,24 +244,24 @@ func (s *DefaultSpool) ReplayUntil(
 		}
 		s.rLastApplied = lastApplied
 
-		// Si cache au-dela de la borne end, rien a faire.
+		// If cache is beyond the end bound, nothing to do.
 		if s.rSegID > end.SegID || (s.rSegID == end.SegID && s.rOffset >= end.Offset) {
 			return s.rSegID, s.rOffset
 		}
 		return s.rSegID, s.rOffset
 	}()
 
-	// Si start est deja au-dela de end, stop.
+	// If start is already beyond end, stop.
 	if startSeg > end.SegID || (startSeg == end.SegID && startOff >= end.Offset) {
 		return nil
 	}
 
-	// Trouver l'index du segment de depart dans ids
+	// Find the index of the starting segment in ids
 	startIdx := 0
 	for startIdx < len(ids) && ids[startIdx] < startSeg {
 		startIdx++
 	}
-	// Si le cache pointe sur un seg supprime (prune), on repart au prochain existant.
+	// If the cache points to a deleted segment (pruned), restart from the next existing one.
 	if startIdx >= len(ids) {
 		return nil
 	}
@@ -274,7 +274,7 @@ func (s *DefaultSpool) ReplayUntil(
 		s.mu.Unlock()
 	}
 
-	// Boucler segments
+	// Loop through segments
 	for i := startIdx; i < len(ids); i++ {
 		segID := ids[i]
 		if segID > end.SegID {
@@ -287,15 +287,15 @@ func (s *DefaultSpool) ReplayUntil(
 			return err
 		}
 
-		// Limite byte-level pour le segment final
+		// Byte-level limit for the final segment
 		var limit int64 = -1
 		if segID == end.SegID {
 			limit = end.Offset
 		}
 
-		// Optimisation: si on est au début du segment (offset=0), on peut skipper le segment
-		// entier via trailer si maxIndex <= lastApplied.
-		// (Si offset>0, on ne sait pas si on est deja "apres" les entries utiles, donc on lit.)
+		// Optimization: if we're at the beginning of the segment (offset=0), we can skip the entire
+		// segment via trailer if maxIndex <= lastApplied.
+		// (If offset>0, we don't know if we're already "past" the useful entries, so we read.)
 		curOff := int64(0)
 		if segID == startSeg {
 			curOff = startOff
@@ -305,13 +305,13 @@ func (s *DefaultSpool) ReplayUntil(
 			_, maxI, ok := readTrailer(f)
 			if ok && maxI <= lastApplied {
 				_ = f.Close()
-				// avancer le cache au segment suivant
+				// advance the cache to the next segment
 				s.advanceReadCache(segID, 0, true, ids, i)
 				continue
 			}
 		}
 
-		// Se positionner au bon offset
+		// Seek to the correct offset
 		if _, err := f.Seek(curOff, io.SeekStart); err != nil {
 			_ = f.Close()
 			return err
@@ -342,31 +342,31 @@ func (s *DefaultSpool) ReplayUntil(
 
 			nextOff := curOff + int64(n)
 
-			// Respect strict de la borne end sur le segment final
+			// Strict respect of the end bound on the final segment
 			if limit >= 0 && nextOff > limit {
-				// On s'arrete avant d'appliquer ce record partiel/hors-borne
+				// Stop before applying this partial/out-of-bounds record
 				break
 			}
 
-			// Apply (si necessaire)
+			// Apply (if necessary)
 			if e.Index > lastApplied {
 				if err := applyFn(e); err != nil {
 					_ = f.Close()
 					return err
 				}
-				// NOTE: on ne met pas a jour lastApplied ici: c'est ton FSM qui
-				// le persiste. Ici, on l'utilise seulement comme filtre d'entree.
+				// NOTE: we don't update lastApplied here: the FSM persists it.
+				// Here, we only use it as an input filter.
 			}
 
-			// Avancer cache de lecture apres succes (apply ou skip)
+			// Advance read cache after success (apply or skip)
 			curOff = nextOff
 			s.setReadCache(segID, curOff, lastApplied)
 		}
 
 		_ = f.Close()
 
-		// Si on a termine ce segment (ou qu'on s'est arrete avant end sur seg final), avancer.
-		// Si seg final et curOff >= limit, on stop.
+		// If we finished this segment (or stopped before end on the final segment), advance.
+		// If final segment and curOff >= limit, stop.
 		if limit >= 0 && curOff >= limit {
 			return nil
 		}
@@ -378,7 +378,7 @@ func (s *DefaultSpool) ReplayUntil(
 	return nil
 }
 
-// ResetReadCache force le prochain ReplayUntil a repartir du debut (utile en debug / tests).
+// ResetReadCache forces the next ReplayUntil to restart from the beginning (useful for debug/tests).
 func (s *DefaultSpool) ResetReadCache() error {
 	ids, err := listSegments(s.cfg.Dir)
 	if err != nil {
@@ -401,7 +401,7 @@ func (s *DefaultSpool) ResetReadCache() error {
 	return nil
 }
 
-// Prune supprime les segments dont maxIndex <= lastApplied (optionnel).
+// Prune removes segments whose maxIndex <= lastApplied (optional).
 func (s *DefaultSpool) Prune(lastApplied uint64) error {
 	ids, err := listSegments(s.cfg.Dir)
 	if err != nil {
@@ -423,7 +423,7 @@ func (s *DefaultSpool) Prune(lastApplied uint64) error {
 }
 
 // --------------------
-// Helpers cache lecture
+// Read cache helpers
 // --------------------
 
 func (s *DefaultSpool) setReadCache(segID uint64, off int64, lastApplied uint64) {
@@ -450,7 +450,7 @@ func (s *DefaultSpool) advanceReadCache(curSeg uint64, curOff int64, moveNext bo
 		s.rSegID = ids[idx+1]
 		s.rOffset = 0
 	} else {
-		// Dernier segment: rester dessus a la fin (prochain replay reprendra ici)
+		// Last segment: stay on it at the end (next replay will resume here)
 		s.rSegID = curSeg
 		s.rOffset = curOff
 	}

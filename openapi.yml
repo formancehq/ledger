@@ -243,6 +243,48 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/accounts/{address}:
+    get:
+      summary: Get an account
+      description: Retrieves account information including metadata for a specific account address
+      operationId: getAccount
+      tags:
+        - Accounts
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Account address
+      responses:
+        '200':
+          description: Account retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccountResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
@@ -933,6 +975,28 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TransactionResponse'
+
+    GetAccountResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Account'
+
+    Account:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          description: Account address
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Account metadata
 
     TransactionResponse:
       type: object

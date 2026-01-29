@@ -34,7 +34,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Accounts (Read)** |
-| Get account | ❌ | ✅ | Not implemented |
+| Get account | ✅ | ✅ | |
 | List accounts | ❌ | ✅ | Not implemented |
 | Get account balances | ❌ | ✅ | Not implemented |
 | Get account volumes | ❌ | ✅ | Not implemented |
@@ -298,7 +298,7 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
 | `GET /{ledgerName}/transactions` | ❌ | ✅ | List transactions |
 | `GET /{ledgerName}/accounts` | ❌ | ✅ | List accounts |
-| `GET /{ledgerName}/accounts/{address}` | ❌ | ✅ | Get an account |
+| `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /{ledgerName}/logs` | ❌ | ✅ | List logs |

@@ -85,6 +85,7 @@ func main() {
 
 ### [Accounts](docs/sdks/accounts/README.md)
 
+* [GetAccount](docs/sdks/accounts/README.md#getaccount) - Get an account
 * [SaveAccountMetadata](docs/sdks/accounts/README.md#saveaccountmetadata) - Save account metadata
 * [DeleteAccountMetadata](docs/sdks/accounts/README.md#deleteaccountmetadata) - Delete account metadata
 

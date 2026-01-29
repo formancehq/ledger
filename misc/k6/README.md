@@ -35,6 +35,7 @@ Tests are configured via environment variables. The default configuration is in 
 - `VUS`: Number of virtual users (default: `10`)
 - `MAX_VUS`: Maximum number of virtual users (default: `100`)
 - `BULK_SIZE`: Number of transactions per bulk request for `any_unbounded_to_any.js` (default: `1`)
+- `BULK_ATOMIC`: Enable atomic mode for bulk operations - all operations succeed or all fail together (default: `false`)
 
 When using the Helm chart, ledger creation happens in a pre-install Job and cleanup happens in a Job that waits for the TestRun to finish.
 

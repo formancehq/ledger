@@ -15,6 +15,7 @@ type Controller interface {
 
 	// Read operations
 	GetTransaction(ctx context.Context, id uint32, transactionID uint64) (*commonpb.Transaction, error)
+	GetAccount(ctx context.Context, id uint32, address string) (*commonpb.Account, error)
 	GetAllLedgerLogs(ctx context.Context, id uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error)
 	GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error)
 

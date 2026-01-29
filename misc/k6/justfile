@@ -8,6 +8,7 @@ k6-create-archive SCRIPT:
     SCRIPT_PATH="./scripts/${SCRIPT_NAME}"
     ARCHIVE_NAME="${SCRIPT_NAME%.js}.tar"
     ARCHIVE_PATH="./archives/${ARCHIVE_NAME}"
+    rm -f $ARCHIVE_PATH
     
     # Check if script exists
     if [ ! -f "${SCRIPT_PATH}" ]; then

@@ -41,6 +41,11 @@ func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, 
 	})
 }
 
+func (g *LedgerGrpcClient) GetAccount(ctx context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
+	// GetAccount reads from local store via RoutedController, this method should not be called
+	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
+}
+
 func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.LedgerLog) error {
 	return fmt.Errorf("import is not implemented yet")
 }

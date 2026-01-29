@@ -20,7 +20,13 @@ export function getRequestOptions(config) {
  * Returns the HTTP response object
  */
 export function bulkOperation(config, ledgerName, elements) {
-  const url = `${config.ledgerUrl}/${ledgerName}/_bulk`;
+  let url = `${config.ledgerUrl}/${ledgerName}/_bulk`;
+  
+  // Add atomic query parameter if enabled
+  if (config.bulk && config.bulk.atomic) {
+    url += '?atomic=true';
+  }
+  
   const options = getRequestOptions(config);
   
   const response = http.post(url, JSON.stringify(elements), options);

@@ -160,6 +160,27 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 	}
 }
 
+func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
+	// Get account metadata
+	metadataMap, err := ctrl.store.GetAccountMetadata(ctx, ledgerID, []string{address})
+	if err != nil {
+		return nil, fmt.Errorf("getting account metadata: %w", err)
+	}
+
+	// Build the account response
+	account := &commonpb.Account{
+		Address:  address,
+		Metadata: make(map[string]string),
+	}
+
+	// Add metadata if it exists
+	if md, exists := metadataMap[address]; exists {
+		account.Metadata = md
+	}
+
+	return account, nil
+}
+
 func (ctrl *DefaultController) GetAllLedgerLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
 	return ctrl.store.GetAllLedgerLogs(ctx, ledgerID, from, to)
 }

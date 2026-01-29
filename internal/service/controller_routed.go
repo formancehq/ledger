@@ -76,6 +76,11 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, tr
 	return ctrl.GetTransaction(ctx, ledger, transactionID)
 }
 
+func (b *RoutedController) GetAccount(ctx context.Context, ledger uint32, address string) (*commonpb.Account, error) {
+	// Read from local store - data is replicated via Raft
+	return b.localController.GetAccount(ctx, ledger, address)
+}
+
 func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.LedgerLog) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {

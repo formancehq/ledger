@@ -51,10 +51,8 @@ func init() {
 
 	// Initialize sub-commands
 	initLedgers()
-	initTransactions()
 
 	// Add commands to root
 	rootCmd.AddCommand(clusterStateCmd)
 	rootCmd.AddCommand(ledgersCmd)
-	rootCmd.AddCommand(transactionsCmd)
 }

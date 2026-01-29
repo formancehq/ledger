@@ -17,6 +17,12 @@ export const config = {
   // Maximum number of VUs
   maxVUs: parseInt(__ENV.MAX_VUS || '100'),
   
+  // Bulk operation configuration
+  bulk: {
+    // Atomic mode: all operations succeed or all fail together
+    atomic: __ENV.BULK_ATOMIC === 'true',
+  },
+  
   // HTTP client configuration
   http: {
     timeout: '30s',
