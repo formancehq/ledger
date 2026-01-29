@@ -20,6 +20,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/internal/resources"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -695,7 +696,7 @@ func TestRunQuery(t *testing.T) {
 		},
 	}, bunpaginate.QueryDefaultPageSize)
 	require.NoError(t, err)
-	require.Equal(t, "accounts", resource)
+	require.Equal(t, resources.ResourceKindAccount, *resource)
 	require.Equal(t, &bunpaginate.Cursor[any]{
 		Data: []any{},
 	}, ret)

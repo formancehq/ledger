@@ -16,15 +16,6 @@ import (
 	storage "github.com/formancehq/ledger/internal/storage/common"
 )
 
-type RenderedResponse struct {
-	any
-	Resource resources.ResourceKind `json:"resource,omitempty"`
-}
-
-// func renderResponse(json.Raw) {
-
-// }
-
 func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		common.WithBody(w, r, func(payload storage.RunQuery) {
@@ -44,8 +35,6 @@ func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
 		})
 	}
 }
@@ -78,6 +67,9 @@ func getJsonResponse(r *http.Request, w http.ResponseWriter, resource resources.
 			return err
 		}
 		fields["resource"] = resource
+
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(fields); err != nil {
 			return err
 		}

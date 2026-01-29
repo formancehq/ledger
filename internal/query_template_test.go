@@ -15,80 +15,146 @@ func TestQueryResolution(t *testing.T) {
 
 	t.Parallel()
 
-	varDeclarations := map[string]VarSpec{
-		"iban":            {},
-		"minimum_balance": {},
-		"metadata_field":  {},
+	type testCase struct {
+		name            string
+		resource        resources.ResourceKind
+		varDeclarations map[string]VarSpec
+		source          string
+		vars            map[string]any
+		expectedError   string
+		expectedFilter  string
 	}
 
-	src := `{
-	"$and": [
-		{"$match": {
-			"address": "banks:<iban>:"
-		}},
-		{"$or": [
-			{"$gt": {
-				"balance[COIN]": "<minimum_balance>"
-			}},
-			{"$exists": {
-				"metadata": "<metadata_field>"
-			}}
-		]}
-	]
-}`
+	for _, tc := range []testCase{
+		{
+			name:     "simple int substitution",
+			resource: resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{
+				"minimum_balance": {},
+			},
+			source: `{
+				"$gt": {
+					"balance[COIN]": "<minimum_balance>"
+				}
+			}`,
+			vars: map[string]any{
+				"minimum_balance": json.Number("42"),
+			},
+			expectedFilter: `{
+				"$gt": {
+					"balance[COIN]": 42
+				}
+			}`,
+		},
+		{
+			name:     "complex",
+			resource: resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{
+				"iban":            {},
+				"minimum_balance": {},
+				"metadata_field": {
+					Default: "qux",
+				},
+			},
+			source: `{
+				"$and": [
+					{"$match": {
+						"address": "banks:<iban>:"
+					}},
+					{"$or": [
+						{"$gt": {
+							"balance[COIN]": "<minimum_balance>"
+						}},
+						{"$exists": {
+							"metadata": "<metadata_field>"
+						}}
+					]}
+				]
+			}`,
+			vars: map[string]any{
+				"iban":            "foo",
+				"minimum_balance": json.Number("1000"),
+			},
+			expectedFilter: `{
+				"$and": [
+					{"$match": {
+						"address": "banks:foo:"
+					}},
+					{"$or": [
+						{"$gt": {
+							"balance[COIN]": 1000
+						}},
+						{"$exists": {
+							"metadata": "qux"
+						}}
+					]}
+				]
+			}`,
+		},
+		{
+			name:     "different types",
+			resource: resources.ResourceKindTransaction,
+			varDeclarations: map[string]VarSpec{
+				"my_bool":   {},
+				"my_int":    {},
+				"my_string": {},
+				"my_date":   {},
+			},
+			source: `{
+				"$and": [
+					{"$match": {"reverted": "<my_bool>"}},
+					{"$match": {"account": "prefix:<my_string>:suffix"}},
+					{"$match": {"timestamp": "<my_date>"}},
+					{"$match": {"id": "<my_int>"}}
+				]
+			}`,
+			vars: map[string]any{
+				"my_bool":   false,
+				"my_int":    json.Number("1234"),
+				"my_string": "foobarbazqux",
+				"my_date":   "2023-01-01T01:01:01Z",
+			},
+			expectedFilter: `{
+				"$and": [
+					{"$match": {"reverted": false}},
+					{"$match": {"account": "prefix:foobarbazqux:suffix"}},
+					{"$match": {"timestamp": "2023-01-01T01:01:01Z"}},
+					{"$match": {"id": 1234}}
+				]
+			}`,
+		},
+		{
+			name:            "invalid substitution syntax",
+			resource:        resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{"minimum_balance": {}},
+			source: `{"$gt": {
+				"balance[COIN]": "<minimum_balance>000"
+			}}`,
+			vars:          map[string]any{"minimum_balance": json.Number("42")},
+			expectedError: "string or a plain value",
+		},
+		{
+			// should be elsewhere
+			name:            "invalid field access syntax",
+			resource:        resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{"minimum_balance": {}},
+			source: `{"$gt": {
+				"balance[COIN][THING]": "<minimum_balance>"
+			}}`,
+			vars:          map[string]any{"minimum_balance": json.Number("42")},
+			expectedError: "invalid field name",
+		},
+	} {
+		resolved, err := ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
 
-	vars := map[string]any{
-		"iban":            "foo",
-		"minimum_balance": json.Number("1000"),
-		"metadata_field":  "qux",
-	}
+		if tc.expectedError == "" {
+			require.NoError(t, err, tc.name)
 
-	expected, err := query.ParseJSON(`{
-	"$and": [
-		{"$match": {
-			"address": "banks:foo:"
-		}},
-		{"$or": [
-			{"$gt": {
-				"balance[COIN]": 1000
-			}},
-			{"$exists": {
-				"metadata": "qux"
-			}}
-		]}
-	]
-}`)
-	require.NoError(t, err)
-
-	resolved, err := ResolveFilterTemplate(resources.ResourceKindAccount, json.RawMessage(src), varDeclarations, vars)
-	require.NoError(t, err)
-
-	require.Equal(t, expected, resolved)
-}
-
-func TestQueryResolveInt(t *testing.T) {
-	t.Parallel()
-
-	src := `{
-		"$gt": {
-			"balance[COIN]": "<minimum_balance>"
+			expected, err := query.ParseJSON(tc.expectedFilter)
+			require.NoError(t, err, tc.name)
+			require.Equal(t, expected, resolved, tc.name)
+		} else {
+			require.ErrorContains(t, err, tc.expectedError, tc.name)
 		}
-	}`
-
-	vars := map[string]any{
-		"minimum_balance": json.Number("1000"),
 	}
-
-	expected, err := query.ParseJSON(`{
-		"$gt": {
-			"balance[COIN]": 1000
-		}
-	}`)
-	require.NoError(t, err)
-
-	resolved, err := ResolveFilterTemplate(resources.ResourceKindAccount, json.RawMessage(src), map[string]VarSpec{}, vars)
-	require.NoError(t, err)
-
-	require.Equal(t, expected, resolved)
-
 }

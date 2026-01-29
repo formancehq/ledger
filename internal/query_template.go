@@ -180,7 +180,7 @@ func resolveFilterTemplate(schema resources.EntitySchema, m any, vars map[string
 }
 
 func resolveFilter(schema resources.EntitySchema, key string, value string, vars map[string]any) (any, error) {
-	key, _, err := parse(key)
+	key, _, err := parseAccess(key)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func resolveFilter(schema resources.EntitySchema, key string, value string, vars
 	valueType := field.Type.ValueType()
 	switch valueType.(type) {
 	case resources.TypeString:
-		return replaceVariables(value, vars), nil
+		return resources.ReplaceVariables(value, vars)
 	case resources.TypeBoolean:
 		value, err := extractVariable[bool](value, vars)
 		if err != nil {
@@ -239,45 +239,13 @@ func extractVariable[T any](s string, vars map[string]any) (*T, error) {
 	}
 }
 
-func replaceVariables(s string, vars map[string]any) string {
-	// todo: reject weird nested cases "foo<ba<baz>r>"
-	for k, v := range vars {
-		s = strings.ReplaceAll(s, fmt.Sprintf("<%s>", k), fmt.Sprintf("%s", v))
+var accessRegex = regexp.MustCompile(`^([a-z_]+)(?:\[([a-zA-Z0-9_/]+)\])?$`)
+
+func parseAccess(input string) (string, string, error) {
+	fmt.Printf("%s\n", input)
+	m := accessRegex.FindStringSubmatch(input)
+	if m == nil {
+		return "", "", errors.New("invalid field name")
 	}
-	return s
-}
-
-func parse(input string) (string, []string, error) {
-	var base string
-	var keys []string
-
-	i := 0
-	for i < len(input) && input[i] != '[' {
-		i++
-	}
-	base = input[:i]
-
-	for i < len(input) {
-		if input[i] != '[' {
-			return "", nil, errors.New("unexpected character")
-		}
-		i++ // skip '['
-
-		start := i
-		for i < len(input) && input[i] != ']' {
-			if input[i] == '[' {
-				return "", nil, errors.New("nested '['")
-			}
-			i++
-		}
-
-		if i >= len(input) {
-			return "", nil, errors.New("missing ']'")
-		}
-
-		keys = append(keys, input[start:i])
-		i++ // skip ']'
-	}
-
-	return base, keys, nil
+	return m[1], m[2], nil
 }
