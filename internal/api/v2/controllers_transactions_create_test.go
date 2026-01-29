@@ -409,8 +409,6 @@ func TestTransactionCreate(t *testing.T) {
 						},
 					})
 
-					
-
 				if tc.returnError == nil {
 					expect.Return(&ledger.Log{}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
