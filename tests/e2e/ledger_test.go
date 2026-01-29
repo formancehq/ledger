@@ -12,10 +12,9 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,10 +35,10 @@ var _ = Describe("Ledger", func() {
 	getLeaderID := func() uint64 {
 		var leaderID uint64
 		Eventually(func(g Gomega) uint64 {
-			state, err := servers[0].client.Cluster.GetClusterState(ctx)
+			state, err := servers[0].client.GetClusterState(ctx, &servicepb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 
-			leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
+			leaderID = uint64(state.Leader)
 			return leaderID
 		}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).NotTo(BeZero())
 		return leaderID
@@ -89,22 +88,28 @@ var _ = Describe("Ledger", func() {
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
+			// Create gRPC client
+			grpcClient, grpcConn, err := newGRPCClient(grpcPortBase + i)
+			Expect(err).To(Succeed())
+			DeferCleanup(func() {
+				_ = grpcConn.Close()
+			})
+
 			servers = append(servers, serviceWithClient{
-				service: server,
-				client: client.New(
-					client.WithServerURL(fmt.Sprintf("http://localhost:%d", httpPortBase+i)),
-				),
-				walDir:  walTmpDir,
-				dataDir: dataTmpDir,
+				service:  server,
+				client:   grpcClient,
+				grpcConn: grpcConn,
+				walDir:   walTmpDir,
+				dataDir:  dataTmpDir,
+				grpcPort: grpcPortBase + i,
 			})
 		}
 
 		Eventually(func(g Gomega) bool {
-			state, err := servers[0].client.Cluster.GetClusterState(ctx)
+			state, err := servers[0].client.GetClusterState(ctx, &servicepb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 
-			return state.ClusterStateResponse.Data.Leader != nil &&
-				*state.ClusterStateResponse.Data.Leader != 0
+			return state.Leader != 0
 		}).Within(5 * time.Second).To(BeTrue())
 	})
 
@@ -128,20 +133,16 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
-			_, err = servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "test-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "test-account", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -153,31 +154,25 @@ var _ = Describe("Ledger", func() {
 				"label":        "Test Account",
 			}
 
-			resp, err := servers[leaderID-1].client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
-				LedgerName:  ledgerName,
-				Address:     "test-account",
-				RequestBody: metadata,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should merge metadata with existing account metadata", func() {
-			_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "merge-account",
-						Amount:      big.NewInt(50),
-						Asset:       "USD",
-					}},
-					AccountMetadata: map[string]map[string]string{
-						"merge-account": {
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "merge-account", big.NewInt(50), "USD"),
+					}, nil, map[string]*commonpb.Metadata{
+						"merge-account": {Entries: map[string]string{
 							"key1": "value1",
 							"key2": "value2",
-						},
-					},
+						}},
+					}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -187,13 +182,12 @@ var _ = Describe("Ledger", func() {
 				"key2": "updated_value2",
 			}
 
-			resp, err := servers[leaderID-1].client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
-				LedgerName:  ledgerName,
-				Address:     "merge-account",
-				RequestBody: metadata,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "merge-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should delete account metadata successfully", func() {
@@ -201,21 +195,18 @@ var _ = Describe("Ledger", func() {
 				"to_delete": "value",
 			}
 
-			resp, err := servers[leaderID-1].client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
-				LedgerName:  ledgerName,
-				Address:     "test-account",
-				RequestBody: metadata,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
-			deleteResp, err := servers[leaderID-1].client.Accounts.DeleteAccountMetadata(ctx, operations.DeleteAccountMetadataRequest{
-				LedgerName: ledgerName,
-				Address:    "test-account",
-				Key:        "to_delete",
+			deleteResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{deleteAccountMetadataAction(ledgerName, "test-account", "to_delete")},
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
+			Expect(deleteResp.Logs).To(HaveLen(1))
 		})
 	})
 
@@ -228,132 +219,66 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
-			_, err = servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "bulk-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bulk-account", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save account metadata via bulk endpoint", func() {
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeAccount,
-						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]string{
-							"account_type": "asset",
-							"label":        "Bulk Account",
-						},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{
+						"account_type": "asset",
+						"label":        "Bulk Account",
 					}),
 				},
-			}
-
-			resp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.BulkResponse).NotTo(BeNil())
-			Expect(resp.BulkResponse.Data).To(HaveLen(1))
-			Expect(resp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should handle multiple metadata operations in bulk", func() {
-			_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "bulk-account-2",
-						Amount:      big.NewInt(50),
-						Asset:       "USD",
-					}},
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bulk-account-2", big.NewInt(50), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeAccount,
-						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]string{
-							"key1": "value1",
-						},
-					}),
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"key1": "value1"}),
+					saveAccountMetadataAction(ledgerName, "bulk-account-2", map[string]string{"key2": "value2"}),
 				},
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeAccount,
-						TargetID:   components.CreateTargetIDStr("bulk-account-2"),
-						Metadata: map[string]string{
-							"key2": "value2",
-						},
-					}),
-				},
-			}
-
-			resp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.BulkResponse).NotTo(BeNil())
-			Expect(resp.BulkResponse.Data).To(HaveLen(2))
-			Expect(resp.BulkResponse.Data[0].LogID).NotTo(BeNil())
-			Expect(resp.BulkResponse.Data[1].LogID).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(2))
 		})
 
 		It("Should delete account metadata via bulk endpoint", func() {
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeAccount,
-						TargetID:   components.CreateTargetIDStr("bulk-account"),
-						Metadata: map[string]string{
-							"to_delete": "value",
-						},
-					}),
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"to_delete": "value"}),
+					deleteAccountMetadataAction(ledgerName, "bulk-account", "to_delete"),
 				},
-				{
-					Action: components.ActionDeleteMetadata,
-					Data: components.CreateBulkElementDataDeleteMetadataRequest(components.DeleteMetadataRequest{
-						TargetType: components.DeleteMetadataRequestTargetTypeAccount,
-						TargetID:   components.CreateDeleteMetadataRequestTargetIDStr("bulk-account"),
-						Key:        "to_delete",
-					}),
-				},
-			}
-
-			resp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.BulkResponse).NotTo(BeNil())
-			Expect(resp.BulkResponse.Data).To(HaveLen(2))
-			Expect(resp.BulkResponse.Data[0].LogID).NotTo(BeNil())
-			Expect(resp.BulkResponse.Data[1].LogID).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(2))
 		})
 	})
 
@@ -369,45 +294,41 @@ var _ = Describe("Ledger", func() {
 		})
 
 		It("Should create a ledger successfully", func() {
-			resp, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed(), "Failed to create ledger")
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateLedgerResponse()).NotTo(BeNil())
-			Expect(resp.GetCreateLedgerResponse().Data.Name).To(Equal(ledgerName))
+			Expect(resp.Logs).To(HaveLen(1))
 
-			ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-				LedgerName: ledgerName,
+			ledger, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+				Name: ledgerName,
 			})
 			Expect(err).To(Succeed())
-			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
 		It("Should create a transaction on the ledger", func() {
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed(), "Failed to create transaction on ledger")
 			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should create multiple transactions successfully", func() {
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -423,53 +344,43 @@ var _ = Describe("Ledger", func() {
 			}
 
 			for i, tx := range transactions {
-				resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: ledgerName,
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      tx.source,
-							Destination: tx.destination,
-							Amount:      tx.amount,
-							Asset:       tx.asset,
-						}},
+				resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting(tx.source, tx.destination, tx.amount, tx.asset),
+						}, nil, nil),
 					},
 				})
 				Expect(err).To(Succeed(), "Failed to create transaction %d", i+1)
 				Expect(resp).NotTo(BeNil())
-				Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+				Expect(resp.Logs).To(HaveLen(1))
 			}
 		})
 
 		It("Should create transactions with metadata", func() {
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-with-metadata",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
-					Metadata: map[string]string{
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-with-metadata", big.NewInt(100), "USD"),
+					}, map[string]string{
 						"description": "Test transaction",
 						"category":    "test",
-					},
-					AccountMetadata: map[string]map[string]string{
-						"account-with-metadata": {
+					}, map[string]*commonpb.Metadata{
+						"account-with-metadata": {Entries: map[string]string{
 							"account_type": "asset",
 							"label":        "Account with Metadata",
-						},
-					},
+						}},
+					}),
 				},
 			})
 			Expect(err).To(Succeed(), "Failed to create transaction with metadata")
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 		})
 	})
 
@@ -482,110 +393,101 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should get a transaction by ID", func() {
 			// Create a transaction first
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
-					Metadata: map[string]string{
-						"description": "Test transaction",
-					},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, map[string]string{"description": "Test transaction"}, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
-			Expect(createResp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(createResp.Logs).To(HaveLen(1))
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			// Extract transaction ID from the log
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			Expect(applyLog).NotTo(BeNil())
+			createdTx := applyLog.Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			transactionID := createdTx.Transaction.Id
 			Expect(transactionID).NotTo(BeZero())
 
 			// Get the transaction
-			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
-				LedgerName:    ledgerName,
-				TransactionID: transactionID,
+			getResp, err := servers[leaderID-1].client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+				Ledger:        &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
+				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
 			Expect(getResp).NotTo(BeNil())
-			Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
-			Expect(getResp.GetGetTransactionResponse().Data.ID).To(Equal(transactionID))
-			Expect(getResp.GetGetTransactionResponse().Data.Postings).To(HaveLen(1))
-			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Source).To(Equal("world"))
-			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Destination).To(Equal("account-1"))
-			Expect(getResp.GetGetTransactionResponse().Data.Postings[0].Asset).To(Equal("USD"))
+			Expect(getResp.Id).To(Equal(transactionID))
+			Expect(getResp.Postings).To(HaveLen(1))
+			Expect(getResp.Postings[0].Source).To(Equal("world"))
+			Expect(getResp.Postings[0].Destination).To(Equal("account-1"))
+			Expect(getResp.Postings[0].Asset).To(Equal("USD"))
 		})
 
-		It("Should return 404 for non-existent transaction", func() {
-			nonExistentTransactionID := int64(99999)
+		It("Should return error for non-existent transaction", func() {
+			nonExistentTransactionID := uint64(99999)
 
-			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
-				LedgerName:    ledgerName,
-				TransactionID: nonExistentTransactionID,
+			_, err := servers[leaderID-1].client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+				Ledger:        &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
+				TransactionId: nonExistentTransactionID,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(getResp).To(BeNil())
 		})
 
 		It("Should get a reverted transaction and show reverted status", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-revert",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-revert", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction
-			_, err = servers[leaderID-1].client.Transactions.RevertTransaction(ctx, operations.RevertTransactionRequest{
-				LedgerName:    ledgerName,
-				TransactionID: transactionID,
+			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Get the reverted transaction - it should show as reverted
-			getResp, err := servers[leaderID-1].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
-				LedgerName:    ledgerName,
-				TransactionID: transactionID,
+			getResp, err := servers[leaderID-1].client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+				Ledger:        &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
+				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
 			Expect(getResp).NotTo(BeNil())
-			Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
-			// Note: The reverted status depends on how the transaction is stored after revert
+			Expect(getResp.Reverted).To(BeTrue())
 		})
 
 		It("Should read transaction from any node (follower read)", func() {
 			// Create a transaction on the leader
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-follower-read",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-follower-read", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Find a follower node
 			followerIdx := -1
@@ -599,14 +501,13 @@ var _ = Describe("Ledger", func() {
 
 			// Eventually the transaction should be readable from the follower
 			Eventually(func(g Gomega) {
-				getResp, err := servers[followerIdx].client.Transactions.GetTransaction(ctx, operations.GetTransactionRequest{
-					LedgerName:    ledgerName,
-					TransactionID: transactionID,
+				getResp, err := servers[followerIdx].client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+					Ledger:        &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
+					TransactionId: transactionID,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(getResp).NotTo(BeNil())
-				g.Expect(getResp.GetGetTransactionResponse()).NotTo(BeNil())
-				g.Expect(getResp.GetGetTransactionResponse().Data.ID).To(Equal(transactionID))
+				g.Expect(getResp.Id).To(Equal(transactionID))
 			}).Within(5 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -620,29 +521,27 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata successfully", func() {
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "transaction-metadata-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 
-			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := resp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 			Expect(transactionID).NotTo(BeZero())
 
 			metadata := map[string]string{
@@ -650,44 +549,37 @@ var _ = Describe("Ledger", func() {
 				"source": "support",
 			}
 
-			saveResp, err := servers[leaderID-1].client.Transactions.SaveTransactionMetadata(ctx, operations.SaveTransactionMetadataRequest{
-				LedgerName:    ledgerName,
-				TransactionID: transactionID,
-				RequestBody:   metadata,
+			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{saveTransactionMetadataAction(ledgerName, transactionID, metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
+			Expect(saveResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should delete transaction metadata successfully", func() {
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "transaction-metadata-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
-					Metadata: map[string]string{
-						"to_delete": "value",
-					},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
+					}, map[string]string{"to_delete": "value"}, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 
-			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := resp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 			Expect(transactionID).NotTo(BeZero())
 
-			deleteResp, err := servers[leaderID-1].client.Transactions.DeleteTransactionMetadata(ctx, operations.DeleteTransactionMetadataRequest{
-				LedgerName:    ledgerName,
-				TransactionID: transactionID,
-				Key:           "to_delete",
+			deleteResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{deleteTransactionMetadataAction(ledgerName, transactionID, "to_delete")},
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
+			Expect(deleteResp.Logs).To(HaveLen(1))
 		})
 	})
 
@@ -700,104 +592,66 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata via bulk endpoint", func() {
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "transaction-bulk-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 
-			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := resp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeTransaction,
-						TargetID:   components.CreateTargetIDInteger(transactionID),
-						Metadata: map[string]string{
-							"category": "bulk",
-							"reason":   "reconciliation",
-						},
+			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					saveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+						"category": "bulk",
+						"reason":   "reconciliation",
 					}),
 				},
-			}
-
-			saveResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
-			Expect(saveResp.BulkResponse).NotTo(BeNil())
-			Expect(saveResp.BulkResponse.Data).To(HaveLen(1))
-			Expect(saveResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(saveResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should delete transaction metadata via bulk endpoint", func() {
-			resp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "transaction-bulk-account",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
-			Expect(resp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
 
-			transactionID := resp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := resp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionAddMetadata,
-					Data: components.CreateBulkElementDataAddMetadataRequest(components.AddMetadataRequest{
-						TargetType: components.TargetTypeTransaction,
-						TargetID:   components.CreateTargetIDInteger(transactionID),
-						Metadata: map[string]string{
-							"to_delete": "value",
-						},
-					}),
+			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					saveTransactionMetadataAction(ledgerName, transactionID, map[string]string{"to_delete": "value"}),
+					deleteTransactionMetadataAction(ledgerName, transactionID, "to_delete"),
 				},
-				{
-					Action: components.ActionDeleteMetadata,
-					Data: components.CreateBulkElementDataDeleteMetadataRequest(components.DeleteMetadataRequest{
-						TargetType: components.DeleteMetadataRequestTargetTypeTransaction,
-						TargetID:   components.CreateDeleteMetadataRequestTargetIDInteger(transactionID),
-						Key:        "to_delete",
-					}),
-				},
-			}
-
-			saveResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
-			Expect(saveResp.BulkResponse).NotTo(BeNil())
-			Expect(saveResp.BulkResponse.Data).To(HaveLen(2))
-			Expect(saveResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
-			Expect(saveResp.BulkResponse.Data[1].LogID).NotTo(BeNil())
+			Expect(saveResp.Logs).To(HaveLen(2))
 		})
 	})
 
@@ -810,70 +664,54 @@ var _ = Describe("Ledger", func() {
 		BeforeEach(func() {
 			leaderID = getLeaderID()
 
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should revert a transaction successfully", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
-			Expect(createResp.GetCreateTransactionResponse()).NotTo(BeNil())
+			Expect(createResp.Logs).To(HaveLen(1))
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 			Expect(transactionID).NotTo(BeZero())
 
-			// Revert the transaction via bulk endpoint
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID: transactionID,
-					}),
-				},
-			}
-
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			// Revert the transaction
+			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
-			Expect(revertResp.BulkResponse).NotTo(BeNil())
-			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
-			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(revertResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should revert a transaction with metadata", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction with metadata
 			revertMetadata := map[string]string{
@@ -881,224 +719,133 @@ var _ = Describe("Ledger", func() {
 				"source": "support",
 			}
 
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID:       transactionID,
-						Metadata: revertMetadata,
-					}),
-				},
-			}
-
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, revertMetadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
-			Expect(revertResp.BulkResponse).NotTo(BeNil())
-			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
-			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(revertResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should revert a transaction with force flag", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction with force flag
-			force := true
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID:    transactionID,
-						Force: &force,
-					}),
-				},
-			}
-
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, true, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
-			Expect(revertResp.BulkResponse).NotTo(BeNil())
-			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
-			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(revertResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should revert a transaction with atEffectiveDate flag", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction with atEffectiveDate flag
-			atEffectiveDate := true
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID:              transactionID,
-						AtEffectiveDate: &atEffectiveDate,
-					}),
-				},
-			}
-
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, true, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
-			Expect(revertResp.BulkResponse).NotTo(BeNil())
-			Expect(revertResp.BulkResponse.Data).To(HaveLen(1))
-			Expect(revertResp.BulkResponse.Data[0].LogID).NotTo(BeNil())
+			Expect(revertResp.Logs).To(HaveLen(1))
 		})
 
 		It("Should fail to revert a non-existent transaction", func() {
-			nonExistentTransactionID := int64(99999)
+			nonExistentTransactionID := uint64(99999)
 
-			bulkElements := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID: nonExistentTransactionID,
-					}),
-				},
-			}
-
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)},
 			})
-			Expect(err).NotTo(Succeed())
-			Expect(revertResp).To(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Should fail to revert an already reverted transaction", func() {
 			// Create a transaction
-			createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-				LedgerName: ledgerName,
-				CreateTransactionRequest: components.CreateTransactionRequest{
-					Postings: []components.PostingRequest{{
-						Source:      "world",
-						Destination: "account-1",
-						Amount:      big.NewInt(100),
-						Asset:       "USD",
-					}},
+			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp).NotTo(BeNil())
 
-			transactionID := createResp.GetCreateTransactionResponse().GetData().Transaction.ID
+			log := createResp.Logs[0]
+			applyLog := log.Payload.GetApply()
+			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction first time
-			bulkElements1 := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID: transactionID,
-					}),
-				},
-			}
-
-			revertResp1, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements1,
+			revertResp1, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp1).NotTo(BeNil())
 
 			// Try to revert the same transaction again
-			bulkElements2 := []components.BulkElement{
-				{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID: transactionID,
-					}),
-				},
-			}
-
-			revertResp2, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements2,
+			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
-			Expect(err).NotTo(Succeed())
-			Expect(revertResp2).To(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Should revert multiple transactions in bulk", func() {
 			// Create multiple transactions
-			var transactionIDs []int64
+			var transactionIDs []uint64
 			for i := 0; i < 3; i++ {
-				createResp, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: ledgerName,
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      "world",
-							Destination: fmt.Sprintf("account-%d", i+1),
-							Amount:      big.NewInt(100 * int64(i+1)),
-							Asset:       "USD",
-						}},
+				createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", fmt.Sprintf("account-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+						}, nil, nil),
 					},
 				})
 				Expect(err).To(Succeed())
 				Expect(createResp).NotTo(BeNil())
-				transactionIDs = append(transactionIDs, createResp.GetCreateTransactionResponse().GetData().Transaction.ID)
+				log := createResp.Logs[0]
+				applyLog := log.Payload.GetApply()
+				transactionIDs = append(transactionIDs, applyLog.Log.Data.GetCreatedTransaction().Transaction.Id)
 			}
 
 			// Revert all transactions in bulk
-			bulkElements := make([]components.BulkElement, len(transactionIDs))
+			actions := make([]*servicepb.Action, len(transactionIDs))
 			for i, txID := range transactionIDs {
-				bulkElements[i] = components.BulkElement{
-					Action: components.ActionRevertTransaction,
-					Data: components.CreateBulkElementDataRevertTransactionRequest(components.RevertTransactionRequest{
-						ID: txID,
-					}),
-				}
+				actions[i] = revertTransactionAction(ledgerName, txID, false, false, nil)
 			}
 
-			revertResp, err := servers[leaderID-1].client.Transactions.BulkOperations(ctx, operations.BulkOperationsRequest{
-				LedgerName:  ledgerName,
-				RequestBody: bulkElements,
+			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: actions,
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
-			Expect(revertResp.BulkResponse).NotTo(BeNil())
-			Expect(revertResp.BulkResponse.Data).To(HaveLen(len(transactionIDs)))
-			for _, data := range revertResp.BulkResponse.Data {
-				Expect(data.LogID).NotTo(BeNil())
-			}
+			Expect(revertResp.Logs).To(HaveLen(len(transactionIDs)))
 		})
 	})
 })

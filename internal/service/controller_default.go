@@ -94,7 +94,14 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
 		}
-		return payload.CreatedTransaction.Transaction, nil
+		tx := payload.CreatedTransaction.Transaction
+		// Check if the transaction has been reverted
+		reverted, err := ctrl.store.IsTransactionReverted(ctx, ledgerID, transactionID)
+		if err != nil {
+			return nil, fmt.Errorf("checking if transaction %d is reverted: %w", transactionID, err)
+		}
+		tx.Reverted = reverted
+		return tx, nil
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
@@ -795,11 +802,21 @@ func (ctrl *DefaultController) createLedger(_ context.Context, _ *unitOfWork, in
 	}}, nil
 }
 
-func (ctrl *DefaultController) deleteLedger(_ context.Context, _ *unitOfWork, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+func (ctrl *DefaultController) deleteLedger(ctx context.Context, uow *unitOfWork, in proto.Message) (*raftcmdpb.AnyCommand, error) {
 	input := in.(*servicepb.DeleteLedgerRequest)
 
 	if input.Id == 0 {
 		return nil, fmt.Errorf("ledger ID is required")
+	}
+
+	_, err := uow.LockKeys(ctx, fmt.Sprintf("%d/ledgers", input.Id))
+	if err != nil {
+		return nil, fmt.Errorf("locking ledger %d: %w", input.Id, err)
+	}
+
+	_, err = ctrl.store.GetLedgerByID(ctx, input.Id)
+	if err != nil {
+		return nil, fmt.Errorf("ledger %d does not exist: %w", input.Id, err)
 	}
 
 	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_DeleteLedger{

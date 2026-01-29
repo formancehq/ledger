@@ -245,9 +245,6 @@ just test-e2e
 # Generate protobuf code
 just generate-proto
 
-# Generate SDK from OpenAPI
-just generate-sdk
-
 # Clean build artifacts
 just clean
 ```

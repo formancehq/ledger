@@ -6,7 +6,6 @@ FROM compiler AS builder
 WORKDIR /build
 RUN apk add --no-cache git make
 COPY go.mod go.sum ./
-COPY pkg/client/go.* pkg/client/
 RUN go mod download
 ENV GOEXPERIMENT=jsonv2
 ENV CGO_ENABLED=1

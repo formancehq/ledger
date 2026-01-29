@@ -55,7 +55,6 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
 			// Register known routes (specific routes first)
 			r.Get("/health", server.handleHealth)
-			r.Get("/cluster/state", server.handleClusterState)
 
 			r.Post("/{ledgerName}", server.handleCreateLedger)                                                            // POST /{ledgerName}
 			r.Get("/{ledgerName}", server.handleGetLedger)                                                                // GET /{ledgerName}
@@ -65,12 +64,11 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 			r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)                   // POST /{ledgerName}/transactions/{transactionId}/revert
 			r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)           // POST /{ledgerName}/transactions/{transactionId}/metadata
 			r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata) // DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
-			r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)                                             // GET /{ledgerName}/accounts/{address}
+			r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)                                            // GET /{ledgerName}/accounts/{address}
 			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)                         // POST /{ledgerName}/accounts/{address}/metadata
 			r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)               // DELETE /{ledgerName}/accounts/{address}/metadata/{key}
 			r.Post("/{ledgerName}/bulk", server.handleBulk)                                                               // POST /{ledgerName}/bulk
 			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                                              // For compat
-			r.Get("/{ledgerName}/sanity-check", server.handleSanityCheck)                                                 // GET /{ledgerName}/sanity-check
 			r.Get("/", server.handleListAllLedgers)                                                                       // GET / - must be last
 		})
 	}

@@ -7,7 +7,9 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/grpc"
@@ -18,13 +20,15 @@ type LedgerServiceServerImpl struct {
 	logger logging.Logger
 	ctrl   service.Controller
 	store  store.Store
+	node   *raft.Node
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s store.Store) servicepb.LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s store.Store, node *raft.Node) servicepb.LedgerServiceServer {
 	return &LedgerServiceServerImpl{
 		logger: logger,
 		ctrl:   ctrl,
 		store:  s,
+		node:   node,
 	}
 }
 
@@ -173,6 +177,10 @@ func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *ser
 		Available: true,
 		Metrics:   metrics,
 	}, nil
+}
+
+func (impl *LedgerServiceServerImpl) GetClusterState(ctx context.Context, _ *servicepb.GetClusterStateRequest) (*raftcmdpb.ClusterState, error) {
+	return impl.node.GetClusterState(ctx)
 }
 
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer servicepb.LedgerServiceServer) {

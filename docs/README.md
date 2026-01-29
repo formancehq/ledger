@@ -103,7 +103,6 @@ This architecture simplifies operations while maintaining strong consistency gua
 | **fx (Uber)** | Dependency injection and lifecycle management |
 | **OpenTelemetry** | Observability: traces, metrics, and logs |
 | **Pyroscope** | Continuous profiling: CPU, memory, goroutines |
-| **Speakeasy** | SDK generation from OpenAPI specification |
 
 ## Storage Architecture
 

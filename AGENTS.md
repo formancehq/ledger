@@ -38,15 +38,6 @@ The `docs/api-comparison.md` file tracks feature parity between this POC and the
 3. **Update Read Features table** - If it's a read endpoint, update the comparison table
 4. **Remove from Missing Features** - If the feature was previously listed as missing, remove or update it
 
-## OpenAPI and SDK Regeneration
-
-**CRITICAL**: After any change to `openapi.yml`, you MUST regenerate the SDK immediately.
-
-Run:
-```bash
-just generate-sdk
-```
-
 ## Mock Generation
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, you MUST regenerate the mocks immediately.
@@ -735,36 +726,28 @@ require.Eventually(t, func() bool {
 }, 5*time.Second, 100*time.Millisecond, "condition should be met")
 ```
 
-### Using the SDK in Tests
+### Using gRPC in Tests
 
-**CRITICAL**: Always use the generated SDK client (`pkg/client`) in tests instead of making manual HTTP requests.
+**CRITICAL**: Always use the gRPC client (`servicepb.LedgerServiceClient`) in integration tests.
 
 **Rules**:
-- **Never use `http.NewRequest` or `http.DefaultClient` directly in tests** - Always use the SDK client methods
-- **If a method doesn't exist in the SDK**, it means the OpenAPI specification is incomplete and needs to be updated
-- **After updating OpenAPI**, regenerate the SDK using `just generate-sdk` before writing tests
-- **SDK methods are type-safe** and provide better error handling than manual HTTP calls
-- **SDK usage ensures consistency** between tests and actual client usage
+- **Use the gRPC client methods** for all ledger operations
+- **Use helper functions** defined in `tests/e2e/helpers.go` for common operations (e.g., `createLedgerAction`, `createTransactionAction`)
+- **gRPC methods are type-safe** and provide better error handling
 
 **Example**:
 ```go
-// ✅ Good: Using SDK
-resp, err := client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
-    LedgerName:  ledgerName,
-    Address:     "account-1",
-    RequestBody: map[string]string{"key": "value"},
+// ✅ Good: Using gRPC client
+resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+    Actions: []*servicepb.Action{
+        createLedgerAction("ledger1", nil),
+    },
 })
 
-// ❌ Bad: Manual HTTP request
-req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
-resp, err := http.DefaultClient.Do(req)
+// For read operations
+ledger, err := client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+    Name: "ledger1",
+})
 ```
-
-**Benefits**:
-- **Type safety**: Compile-time checking of request/response types
-- **Consistency**: Tests use the same client as external users
-- **Maintainability**: Changes to API automatically reflected in tests after SDK regeneration
-- **Error handling**: SDK provides structured error types
-- **Documentation**: SDK methods are self-documenting
 
 - I would like you to respect the concepts of DRY (Don't Repeat Yourself).

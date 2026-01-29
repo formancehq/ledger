@@ -754,6 +754,46 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 	return info, nil
 }
 
+// GetLedgerByID retrieves a ledger by its ID.
+func (s *Store) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, name, metadata, created_at FROM ledgers WHERE id = ?`, id)
+
+	var ledgerID uint32
+	var ledgerName string
+	var metadataJSON sql.NullString
+	var createdAtStr sql.NullString
+
+	if err := row.Scan(&ledgerID, &ledgerName, &metadataJSON, &createdAtStr); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, store.ErrNotFound
+		}
+		return nil, fmt.Errorf("querying ledger by id: %w", err)
+	}
+
+	info := &commonpb.LedgerInfo{
+		Id:   ledgerID,
+		Name: ledgerName,
+	}
+
+	if metadataJSON.Valid && metadataJSON.String != "" {
+		var meta map[string]string
+		if err := json.Unmarshal([]byte(metadataJSON.String), &meta); err != nil {
+			return nil, fmt.Errorf("unmarshaling ledger metadata: %w", err)
+		}
+		info.Metadata = meta
+	}
+
+	if createdAtStr.Valid {
+		createdAt, err := stdtime.Parse(stdtime.RFC3339, createdAtStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("parsing created_at: %w", err)
+		}
+		info.CreatedAt = commonpb.NewTimestamp(time.New(createdAt))
+	}
+
+	return info, nil
+}
+
 // ListLedgers returns all registered ledgers.
 func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
 	rows, err := s.stmtListLedgers.QueryContext(ctx)

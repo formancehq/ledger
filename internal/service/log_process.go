@@ -31,7 +31,7 @@ func checkIdempotency(
 		return nil, errors.Join(ErrIdempotencyKeyConflict, err)
 	}
 
-	sequence, err := uow.Store.GetSequenceForIdempotencyKey(ctx, idempotencyKey)
+	sequence, err := uow.GetSequenceForIdempotencyKey(ctx, idempotencyKey)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, nil

@@ -2,15 +2,12 @@ module github.com/formancehq/ledger-v3-poc
 
 go 1.25.3
 
-replace github.com/formancehq/ledger/pkg/client => github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b
-
 require (
 	github.com/XSAM/otelsql v0.41.0
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble v1.1.3
 	github.com/formancehq/go-libs/v3 v3.6.0
 	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
-	github.com/formancehq/ledger-v3-poc/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/formancehq/numscript v0.0.20
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/grafana/pyroscope-go v1.2.7
@@ -94,7 +91,6 @@ require (
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
-	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/getsentry/sentry-go v0.35.1 // indirect
@@ -209,5 +205,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/formancehq/ledger-v3-poc/pkg/client => ./pkg/client

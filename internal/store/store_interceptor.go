@@ -356,6 +356,10 @@ func (s *StoreInterceptor) GetLedgerByName(ctx context.Context, name string) (*c
 	return s.delegate.GetLedgerByName(ctx, name)
 }
 
+func (s *StoreInterceptor) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+	return s.delegate.GetLedgerByID(ctx, id)
+}
+
 func (s *StoreInterceptor) Close(ctx context.Context) error {
 	s.mu.RLock()
 	interceptor := s.OnClose

@@ -119,9 +119,9 @@ func Module() fx.Option {
 
 			return grpcserver.NewServer(grpcPort, logger, cfg.Debug), nil
 		},
-			func(logger logging.Logger, ctrl service.Controller, s store.Store) servicepb.LedgerServiceServer {
-				return NewLedgerServiceServer(logger, ctrl, s)
-			},
+		func(logger logging.Logger, ctrl service.Controller, s store.Store, node *raft.Node) servicepb.LedgerServiceServer {
+			return NewLedgerServiceServer(logger, ctrl, s, node)
+		},
 			httphandler.NewServer,
 			httphandler.NewHandler,
 			func(node *raft.Node, ctrl service.Controller) httphandler.Backend {

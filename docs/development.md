@@ -91,7 +91,6 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 1. **Create the handler** in `internal/http/handlers_*.go`
 2. **Register the route** in `internal/http/handler.go`
 3. **Add to OpenAPI** in `openapi.yml`
-4. **Regenerate the SDK** (if necessary) using `just generate-sdk`
 
 ### Example: Adding an FSM Command
 
@@ -149,12 +148,7 @@ Use `just generate-proto` to regenerate Go code from `.proto` files. The generat
 
 1. Modify `openapi.yml`
 2. Validate the YAML
-3. Regenerate the SDK: `just generate-sdk`
-4. Update the tests if necessary
-
-### Retry Configuration
-
-The retry configuration is defined in `openapi.yml` under `x-speakeasy-retries` with backoff strategy and configurable intervals.
+3. Update the tests if necessary
 
 ## Design Principles
 
@@ -196,7 +190,7 @@ When a node receives a write request but is not the leader:
 
 ### Justfile
 
-The project uses `just` for common commands. See the `justfile` for available commands including `build`, `test`, `docker-up`, `generate-proto`, and `generate-sdk`.
+The project uses `just` for common commands. See the `justfile` for available commands including `build`, `test`, `docker-up`, and `generate-proto`.
 
 ### Nix
 

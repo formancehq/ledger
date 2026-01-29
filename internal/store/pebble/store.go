@@ -820,6 +820,23 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 	return nil, store.ErrNotFound
 }
 
+// GetLedgerByID retrieves a ledger by its ID.
+func (s *Store) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+	// Iterate over all ledgers to find by ID
+	ledgers, err := s.ListLedgers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ledger := range ledgers {
+		if ledger.Id == id {
+			return ledger, nil
+		}
+	}
+
+	return nil, store.ErrNotFound
+}
+
 func writeLedgerPrefix(buf *bytes.Buffer, ledgerID uint32) {
 	writeUInt32(buf, ledgerID)
 }

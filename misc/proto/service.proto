@@ -5,6 +5,7 @@ package ledger;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb";
 
 import "common.proto";
+import "raftcmd.proto";
 
 // ============================================================================
 // gRPC Service
@@ -28,6 +29,8 @@ service LedgerService {
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   // GetStoreMetrics returns metrics from the local store (Pebble only)
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
+  // GetClusterState returns the current state of the Raft cluster
+  rpc GetClusterState(GetClusterStateRequest) returns (raft.ClusterState);
 }
 
 // ============================================================================
@@ -83,6 +86,8 @@ message GetAllLedgersResponse {
 message GetLedgerByNameRequest {
   string name = 1;
 }
+
+message GetClusterStateRequest {}
 
 message ApplyRequest {
   repeated Action actions = 1;

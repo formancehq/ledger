@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: generate generate-proto generate-sdk tidy lint
+pre-commit: generate generate-proto tidy lint
 pc: pre-commit
 
 lint:
@@ -45,19 +45,6 @@ generate:
     rm $(find ./internal -name '*_generated_test.go') || true
     rm $(find ./internal -name '*_generated.go') || true
     go generate ./...
-
-# Generate SDK from OpenAPI specification using Speakeasy
-generate-sdk:
-    @echo "Generating SDK from openapi.yml using Speakeasy..."
-    @nix develop --command speakeasy generate sdk \
-        --lang go \
-        --schema openapi.yml \
-        --out ./pkg/client
-    @echo "SDK generated in ./pkg/client"
-
-# Clean generated SDK
-clean-sdk:
-    rm -rf pkg/client
 
 # Generate gRPC code from protobuf files
 generate-proto:

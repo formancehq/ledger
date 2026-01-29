@@ -870,7 +870,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState,
 	}
 
 	// Build nodes list from progress
-	nodes := make([]raftcmdpb.NodeInfo, 0)
+	nodes := make([]*raftcmdpb.NodeInfo, 0)
 	for id := range status.Progress {
 		suffrage := "Voter"
 
@@ -882,15 +882,15 @@ func (node *Node) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState,
 		//	address = rawNode.transport.GetPeerAddress(id)
 		//}
 
-		nodes = append(nodes, raftcmdpb.NodeInfo{
-			ID:       uint(id),
+		nodes = append(nodes, &raftcmdpb.NodeInfo{
+			Id:       uint32(id),
 			Address:  address,
 			Suffrage: suffrage,
 		})
 	}
 
 	// Build progress information map
-	progress := make(map[uint64]raftcmdpb.ProgressInfo)
+	progress := make(map[uint64]*raftcmdpb.ProgressInfo)
 	for id, prog := range status.Progress {
 		// Convert StateType to string
 		stateStr := "Unknown"
@@ -903,7 +903,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState,
 			stateStr = "Snapshot"
 		}
 
-		progress[id] = raftcmdpb.ProgressInfo{
+		progress[id] = &raftcmdpb.ProgressInfo{
 			Match:           prog.Match,
 			Next:            prog.Next,
 			State:           stateStr,
@@ -940,9 +940,9 @@ func (node *Node) GetClusterState(ctx context.Context) (*raftcmdpb.ClusterState,
 
 	return &raftcmdpb.ClusterState{
 		State:      stateStr,
-		Leader:     uint(leaderID),
+		Leader:     uint32(leaderID),
 		Nodes:      nodes,
-		LocalNode:  uint(node.config.NodeID),
+		LocalNode:  uint32(node.config.NodeID),
 		RaftStatus: raftStatus,
 		InnerState: node.fsm.GetState(),
 	}, nil

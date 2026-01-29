@@ -12,10 +12,9 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,7 +25,11 @@ var _ = Describe("Ledger Deletion", func() {
 		ctx     context.Context
 		servers []serviceWithClient
 	)
-	const countInstances = 3
+	const (
+		countInstances = 3
+		httpPortBase   = 9200
+		grpcPortBase   = 8200
+	)
 
 	BeforeEach(func() {
 		ctx = logging.TestingContext()
@@ -45,10 +48,10 @@ var _ = Describe("Ledger Deletion", func() {
 					testservice.DebugInstrumentation(debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(i+1),
-					testserver.WithHTTPPort(9200+i),
+					testserver.WithHTTPPort(httpPortBase+i),
 					testserver.WithWalDir(walTmpDir),
 					testserver.WithDataDir(dataTmpDir),
-					testserver.WithGRPCPort(8200+i),
+					testserver.WithGRPCPort(grpcPortBase+i),
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 					testserver.WithRaftTickInterval(10*time.Millisecond),
@@ -62,7 +65,7 @@ var _ = Describe("Ledger Deletion", func() {
 							}
 							ret = append(ret, raft.Peer{
 								ID:      uint64(j + 1),
-								Address: fmt.Sprintf("127.0.0.1:%d", 8200+j),
+								Address: fmt.Sprintf("127.0.0.1:%d", grpcPortBase+j),
 							})
 						}
 
@@ -72,23 +75,29 @@ var _ = Describe("Ledger Deletion", func() {
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
+			// Create gRPC client
+			grpcClient, grpcConn, err := newGRPCClient(grpcPortBase + i)
+			Expect(err).To(Succeed())
+			DeferCleanup(func() {
+				_ = grpcConn.Close()
+			})
+
 			servers = append(servers, serviceWithClient{
-				service: server,
-				client: client.New(
-					client.WithServerURL(fmt.Sprintf("http://localhost:%d", 9200+i)),
-				),
-				walDir:  walTmpDir,
-				dataDir: dataTmpDir,
+				service:  server,
+				client:   grpcClient,
+				grpcConn: grpcConn,
+				walDir:   walTmpDir,
+				dataDir:  dataTmpDir,
+				grpcPort: grpcPortBase + i,
 			})
 		}
 
 		// Wait for leader election
 		Eventually(func(g Gomega) bool {
-			state, err := servers[0].client.Cluster.GetClusterState(ctx)
+			state, err := servers[0].client.GetClusterState(ctx, &servicepb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 
-			return state.ClusterStateResponse.Data.Leader != nil &&
-				*state.ClusterStateResponse.Data.Leader != 0
+			return state.Leader != 0
 		}).Within(5 * time.Second).To(BeTrue())
 	})
 
@@ -107,82 +116,82 @@ var _ = Describe("Ledger Deletion", func() {
 		var (
 			leaderID   uint64
 			ledgerName = "test-ledger-to-delete"
+			ledgerID   uint32
 		)
 
 		BeforeEach(func() {
 			// Get leader ID
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[0].client.Cluster.GetClusterState(ctx)
+				state, err := servers[0].client.GetClusterState(ctx, &servicepb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 
-				leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
+				leaderID = uint64(state.Leader)
 				return leaderID
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).NotTo(BeZero())
 
 			// Create a ledger
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			// Extract ledger ID from the response
+			log := resp.Logs[0]
+			createLog := log.Payload.GetCreateLedger()
+			Expect(createLog).NotTo(BeNil())
+			ledgerID = createLog.Info.Id
 
 			// Verify the ledger exists
-			ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-				LedgerName: ledgerName,
+			ledger, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+				Name: ledgerName,
 			})
 			Expect(err).To(Succeed())
-			Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
 		It("Should successfully delete the ledger (hard delete)", func() {
 			// Delete the ledger
-			resp, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
-				LedgerName: ledgerName,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Verify the ledger is completely removed (hard delete)
 			Eventually(func(g Gomega) bool {
-				_, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-					LedgerName: ledgerName,
+				_, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+					Name: ledgerName,
 				})
-
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
 			// Verify the ledger is not in the list of all ledgers
-			ledgers, err := servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx)
+			ledgers, err := servers[leaderID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 			Expect(err).To(Succeed())
-			for _, ledger := range ledgers.ListAllLedgersResponse.Data {
-				Expect(ledger.Name).NotTo(Equal(ledgerName))
+			for name := range ledgers.Ledgers {
+				Expect(name).NotTo(Equal(ledgerName))
 			}
 
 			// Verify the ledger cannot be retrieved (hard delete)
-			_, err = servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-				LedgerName: ledgerName,
+			_, err = servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+				Name: ledgerName,
 			})
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 
 			// Verify the ledger does not appear in the list
-			ledgers, err = servers[leaderID-1].client.Ledgers.ListAllLedgers(ctx)
+			ledgers, err = servers[leaderID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 			Expect(err).To(Succeed())
-			found := false
-			for _, ledger := range ledgers.ListAllLedgersResponse.Data {
-				if ledger.Name == ledgerName {
-					found = true
-					break
-				}
-			}
+			_, found := ledgers.Ledgers[ledgerName]
 			Expect(found).To(BeFalse())
 		})
 
-		It("Should return 404 when trying to delete a non-existent ledger", func() {
+		It("Should return error when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
-			_, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
-				LedgerName: "non-existent-ledger",
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{deleteLedgerAction(99999)},
 			})
-			Expect(err).NotTo(BeNil())
-			// The error should indicate 404 Not Found
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
@@ -190,35 +199,39 @@ var _ = Describe("Ledger Deletion", func() {
 		var (
 			leaderID   uint64
 			ledgerName = "ledger-with-transactions"
+			ledgerID   uint32
 		)
 
 		BeforeEach(func() {
 			// Get leader ID
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[0].client.Cluster.GetClusterState(ctx)
+				state, err := servers[0].client.GetClusterState(ctx, &servicepb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 
-				leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
+				leaderID = uint64(state.Leader)
 				return leaderID
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).NotTo(BeZero())
 
 			// Create a ledger
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			// Extract ledger ID
+			log := resp.Logs[0]
+			createLog := log.Payload.GetCreateLedger()
+			Expect(createLog).NotTo(BeNil())
+			ledgerID = createLog.Info.Id
 
 			// Create some transactions
 			for i := 0; i < 5; i++ {
-				_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: ledgerName,
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      "world",
-							Destination: fmt.Sprintf("account-%d", i),
-							Amount:      big.NewInt(100 * int64(i+1)),
-							Asset:       "USD",
-						}},
+				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
+						}, nil, nil),
 					},
 				})
 				Expect(err).To(Succeed())
@@ -227,16 +240,16 @@ var _ = Describe("Ledger Deletion", func() {
 
 		It("Should successfully delete the ledger even with transactions", func() {
 			// Delete the ledger (should succeed even with transactions)
-			resp, err := servers[leaderID-1].client.Ledgers.DeleteLedger(ctx, operations.DeleteLedgerRequest{
-				LedgerName: ledgerName,
+			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Verify the ledger no longer exists
 			Eventually(func(g Gomega) bool {
-				_, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-					LedgerName: ledgerName,
+				_, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+					Name: ledgerName,
 				})
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())

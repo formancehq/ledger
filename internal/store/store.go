@@ -75,6 +75,7 @@ type Store interface {
 	LedgerLogReader
 	// ListLedgers lists all ledgers
 	ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
+	GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error)
 	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account

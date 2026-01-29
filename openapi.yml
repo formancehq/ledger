@@ -11,17 +11,6 @@ servers:
   - url: http://localhost:9000
     description: Local development server
 
-x-speakeasy-retries:
-  strategy: backoff
-  backoff:
-    initialInterval: 500 # 500 milliseconds
-    maxInterval: 60000 # 60 seconds
-    maxElapsedTime: 3600000 # 1 hour
-    exponent: 1.5
-  statusCodes:
-    - 503 # Service Unavailable (no leader)
-  retryConnectionErrors: true
-
 paths:
   /:
     get:
@@ -530,43 +519,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /{ledgerName}/sanity-check:
-    get:
-      summary: Run sanity check on local storage
-      description: |
-        Verifies the validity of the local node storage for a specific ledger.
-        This endpoint checks only the local storage without forwarding requests to the leader,
-        making it useful for diagnosing node-specific storage issues.
-      operationId: sanityCheck
-      tags:
-        - Ledgers
-      parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to check
-      responses:
-        '200':
-          description: Sanity check completed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SanityCheckResponse'
-        '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -628,37 +580,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
-  /cluster/state:
-    get:
-      summary: Get cluster state
-      description: Returns the current state of the Raft cluster, including the list of nodes and the current leader
-      operationId: getClusterState
-      tags:
-        - Cluster
-      responses:
-        '200':
-          description: Cluster state retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ClusterStateResponse'
-        '405':
-          description: Method not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-
 
 components:
   responses:
@@ -1087,44 +1008,6 @@ components:
         asset:
           type: string
 
-    ClusterStateResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - state
-            - localNode
-            - innerState
-          properties:
-            state:
-              type: string
-              enum: [Leader, Follower, Candidate, PreCandidate, Unknown]
-              description: Current state of the local node
-            leader:
-              type: integer
-              format: int64
-              minimum: 0
-              description: ID of the current leader (0 if no leader)
-            localNode:
-              type: integer
-              format: int64
-              minimum: 0
-              description: ID of the local node
-            nodes:
-              type: array
-              items:
-                $ref: '#/components/schemas/NodeInfo'
-              description: List of all nodes in the cluster
-            raftStatus:
-              $ref: '#/components/schemas/RaftStatus'
-              description: Complete Raft status information
-            innerState:
-              $ref: '#/components/schemas/SystemState'
-              description: State contained in the FSM
-
     LedgerClusterStateResponse:
       type: object
       required:
@@ -1332,27 +1215,6 @@ components:
         isPaused:
           type: boolean
           description: Whether this node is paused
-
-    SanityCheckResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          $ref: '#/components/schemas/SanityCheckResult'
-
-    SanityCheckResult:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          description: Status of the sanity check (ok, error, not_implemented)
-          enum:
-            - ok
-            - error
-            - not_implemented
 
     ErrorResponse:
       type: object

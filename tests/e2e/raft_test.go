@@ -12,10 +12,9 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -99,13 +98,20 @@ var _ = Describe("Simple cluster", func() {
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
+			// Create gRPC client
+			grpcClient, grpcConn, err := newGRPCClient(nodeGRPCBasePort + i)
+			Expect(err).To(Succeed())
+			DeferCleanup(func() {
+				_ = grpcConn.Close()
+			})
+
 			servers = append(servers, &serviceWithClient{
-				service: server,
-				client: client.New(
-					client.WithServerURL(fmt.Sprintf("http://localhost:%d", nodeHTTPBasePort+i)),
-				),
-				walDir:  walTmpDir,
-				dataDir: dataTmpDir,
+				service:  server,
+				client:   grpcClient,
+				grpcConn: grpcConn,
+				walDir:   walTmpDir,
+				dataDir:  dataTmpDir,
+				grpcPort: nodeGRPCBasePort + i,
 			})
 		}
 		Eventually(servers[0]).To(HaveALeader(&leaderID))
@@ -150,16 +156,15 @@ var _ = Describe("Simple cluster", func() {
 	})
 	Context("When creating a new ledger", func() {
 		BeforeEach(func() {
-			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: "ledger0",
+			_, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction("ledger0", nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 		It("should succeed", func() {})
 		Context("Then deleting the ledger", func() {
 			BeforeEach(func() {
-				// Note: DeleteLedger endpoint needs to be added to the SDK
-				// For now, we'll skip this test or implement it when the endpoint is available
+				// Note: DeleteLedger is now implemented via gRPC Apply
 			})
 			It("Should succeed", func() {})
 		})
@@ -174,8 +179,8 @@ var _ = Describe("Simple cluster", func() {
 			Eventually(servers[0]).To(HaveALeader(nil), "Timed out waiting for leader election")
 
 			// Create ledger
-			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -183,15 +188,11 @@ var _ = Describe("Simple cluster", func() {
 		It("should successfully create transactions through each node", func() {
 			// Create a transaction through each node
 			for i := range countInstances {
-				_, err := servers[i].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: ledgerName,
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      "world",
-							Destination: fmt.Sprintf("node-%d", i+1),
-							Amount:      big.NewInt(100 * int64(i+1)),
-							Asset:       "USD",
-						}},
+				_, err := servers[i].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+						}, nil, nil),
 					},
 				})
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
@@ -220,22 +221,18 @@ var _ = Describe("Simple cluster", func() {
 			Eventually(servers[leaderID-1]).To(HaveALeader(nil))
 
 			// Create a ledger
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: "ledger1",
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction("ledger1", nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create some transactions
 			for i := 0; i < 5; i++ {
-				_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: "ledger1",
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      "world",
-							Destination: "bank",
-							Amount:      big.NewInt(100),
-							Asset:       "USD",
-						}},
+				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{
+						createTransactionAction("ledger1", []*commonpb.Posting{
+							newPosting("world", "bank", big.NewInt(100), "USD"),
+						}, nil, nil),
 					},
 				})
 				Expect(err).To(Succeed())
@@ -248,8 +245,8 @@ var _ = Describe("Simple cluster", func() {
 			BeforeEach(func() {
 				ledgerName = "ledger2"
 				// Create a ledger while follower is down
-				_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-					LedgerName: ledgerName,
+				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 				})
 				Expect(err).To(Succeed())
 			})
@@ -264,23 +261,19 @@ var _ = Describe("Simple cluster", func() {
 					Eventually(servers[followerID-1]).To(BeFollower())
 					Eventually(func(g Gomega) bool {
 						// Then verify the follower can see the ledger created while it was down
-						ledgers, err := servers[followerID-1].client.Ledgers.ListAllLedgers(ctx)
+						ledgers, err := servers[followerID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 						g.Expect(err).To(Succeed())
 
-						for _, ledger := range ledgers.ListAllLedgersResponse.Data {
-							if ledger.Name == ledgerName {
-								return true
-							}
-						}
-						return false
+						_, found := ledgers.Ledgers[ledgerName]
+						return found
 					}).To(BeTrue())
 
 					// Verify the follower can access the ledger details
-					ledger, err := servers[followerID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-						LedgerName: ledgerName,
+					ledger, err := servers[followerID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+						Name: ledgerName,
 					})
 					Expect(err).To(Succeed())
-					Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+					Expect(ledger.Name).To(Equal(ledgerName))
 				})
 			})
 
@@ -291,15 +284,11 @@ var _ = Describe("Simple cluster", func() {
 					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 					GinkgoLogr.Info("Creating transactions")
 					for i := 0; i < countTransactions; i++ {
-						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-							LedgerName: ledgerName,
-							CreateTransactionRequest: components.CreateTransactionRequest{
-								Postings: []components.PostingRequest{{
-									Source:      "world",
-									Destination: "bank",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								}},
+						_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+							Actions: []*servicepb.Action{
+								createTransactionAction(ledgerName, []*commonpb.Posting{
+									newPosting("world", "bank", big.NewInt(100), "USD"),
+								}, nil, nil),
 							},
 						})
 						Expect(err).To(Succeed())
@@ -350,8 +339,8 @@ var _ = Describe("Simple cluster", func() {
 		BeforeEach(func() {
 			ledgerName = "ledger2"
 			// Create a ledger while follower is down
-			_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-				LedgerName: ledgerName,
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -379,15 +368,11 @@ var _ = Describe("Simple cluster", func() {
 					// Create enough transactions to trigger a snapshot
 					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 					for i := 0; i < countTransactions; i++ {
-						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-							LedgerName: ledgerName,
-							CreateTransactionRequest: components.CreateTransactionRequest{
-								Postings: []components.PostingRequest{{
-									Source:      "world",
-									Destination: "bank",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								}},
+						_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+							Actions: []*servicepb.Action{
+								createTransactionAction(ledgerName, []*commonpb.Posting{
+									newPosting("world", "bank", big.NewInt(100), "USD"),
+								}, nil, nil),
 							},
 						})
 						Expect(err).To(Succeed())
@@ -401,15 +386,11 @@ var _ = Describe("Simple cluster", func() {
 						// Create enough transactions to trigger a snapshot
 						// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 						for i := 0; i < countTransactions; i++ {
-							_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-								LedgerName: ledgerName,
-								CreateTransactionRequest: components.CreateTransactionRequest{
-									Postings: []components.PostingRequest{{
-										Source:      "world",
-										Destination: "bank",
-										Amount:      big.NewInt(100),
-										Asset:       "USD",
-									}},
+							_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+								Actions: []*servicepb.Action{
+									createTransactionAction(ledgerName, []*commonpb.Posting{
+										newPosting("world", "bank", big.NewInt(100), "USD"),
+									}, nil, nil),
 								},
 							})
 							Expect(err).To(Succeed())
