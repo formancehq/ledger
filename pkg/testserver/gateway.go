@@ -346,11 +346,31 @@ func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRe
 }
 
 func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
-	return g.client.CreateLedger(ctx, req)
+	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
+		Action: &servicepb.Action{
+			Type: &servicepb.Action_CreateLedger{
+				CreateLedger: req,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return log.GetCreateLedger().GetInfo(), nil
 }
 
 func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
-	return g.client.DeleteLedger(ctx, req)
+	_, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
+		Action: &servicepb.Action{
+			Type: &servicepb.Action_DeleteLedger{
+				DeleteLedger: req,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &servicepb.DeleteLedgerResponse{}, nil
 }
 
 func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *servicepb.GetAllLedgersRequest) (*servicepb.GetAllLedgersResponse, error) {

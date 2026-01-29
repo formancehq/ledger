@@ -532,7 +532,7 @@ func (x *GetLedgerByNameRequest) GetName() string {
 
 type ApplyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Action        *LedgerAction          `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`
+	Action        *Action                `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -567,12 +567,110 @@ func (*ApplyRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *ApplyRequest) GetAction() *LedgerAction {
+func (x *ApplyRequest) GetAction() *Action {
 	if x != nil {
 		return x.Action
 	}
 	return nil
 }
+
+type Action struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Type:
+	//
+	//	*Action_Apply
+	//	*Action_CreateLedger
+	//	*Action_DeleteLedger
+	Type          isAction_Type `protobuf_oneof:"type"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Action) Reset() {
+	*x = Action{}
+	mi := &file_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Action) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Action) ProtoMessage() {}
+
+func (x *Action) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Action.ProtoReflect.Descriptor instead.
+func (*Action) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *Action) GetType() isAction_Type {
+	if x != nil {
+		return x.Type
+	}
+	return nil
+}
+
+func (x *Action) GetApply() *LedgerApplyAction {
+	if x != nil {
+		if x, ok := x.Type.(*Action_Apply); ok {
+			return x.Apply
+		}
+	}
+	return nil
+}
+
+func (x *Action) GetCreateLedger() *CreateLedgerRequest {
+	if x != nil {
+		if x, ok := x.Type.(*Action_CreateLedger); ok {
+			return x.CreateLedger
+		}
+	}
+	return nil
+}
+
+func (x *Action) GetDeleteLedger() *DeleteLedgerRequest {
+	if x != nil {
+		if x, ok := x.Type.(*Action_DeleteLedger); ok {
+			return x.DeleteLedger
+		}
+	}
+	return nil
+}
+
+type isAction_Type interface {
+	isAction_Type()
+}
+
+type Action_Apply struct {
+	Apply *LedgerApplyAction `protobuf:"bytes,1,opt,name=apply,proto3,oneof"`
+}
+
+type Action_CreateLedger struct {
+	CreateLedger *CreateLedgerRequest `protobuf:"bytes,2,opt,name=create_ledger,json=createLedger,proto3,oneof"`
+}
+
+type Action_DeleteLedger struct {
+	DeleteLedger *DeleteLedgerRequest `protobuf:"bytes,3,opt,name=delete_ledger,json=deleteLedger,proto3,oneof"`
+}
+
+func (*Action_Apply) isAction_Type() {}
+
+func (*Action_CreateLedger) isAction_Type() {}
+
+func (*Action_DeleteLedger) isAction_Type() {}
 
 // CreateTransactionPayload contains the data for creating a transaction
 type CreateTransactionPayload struct {
@@ -589,7 +687,7 @@ type CreateTransactionPayload struct {
 
 func (x *CreateTransactionPayload) Reset() {
 	*x = CreateTransactionPayload{}
-	mi := &file_service_proto_msgTypes[12]
+	mi := &file_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -601,7 +699,7 @@ func (x *CreateTransactionPayload) String() string {
 func (*CreateTransactionPayload) ProtoMessage() {}
 
 func (x *CreateTransactionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[12]
+	mi := &file_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,7 +712,7 @@ func (x *CreateTransactionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionPayload.ProtoReflect.Descriptor instead.
 func (*CreateTransactionPayload) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{12}
+	return file_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateTransactionPayload) GetPostings() []*commonpb.Posting {
@@ -672,7 +770,7 @@ type RevertTransactionPayload struct {
 
 func (x *RevertTransactionPayload) Reset() {
 	*x = RevertTransactionPayload{}
-	mi := &file_service_proto_msgTypes[13]
+	mi := &file_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -684,7 +782,7 @@ func (x *RevertTransactionPayload) String() string {
 func (*RevertTransactionPayload) ProtoMessage() {}
 
 func (x *RevertTransactionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[13]
+	mi := &file_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +795,7 @@ func (x *RevertTransactionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertTransactionPayload.ProtoReflect.Descriptor instead.
 func (*RevertTransactionPayload) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{13}
+	return file_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RevertTransactionPayload) GetTransactionId() uint64 {
@@ -729,36 +827,36 @@ func (x *RevertTransactionPayload) GetMetadata() map[string]string {
 }
 
 // LedgerAction represents a single ledger action
-type LedgerAction struct {
+type LedgerApplyAction struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	LedgerId       uint32                 `protobuf:"varint,1,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
 	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	// Types that are valid to be assigned to Data:
 	//
-	//	*LedgerAction_CreateTransaction
-	//	*LedgerAction_AddMetadata
-	//	*LedgerAction_RevertTransaction
-	//	*LedgerAction_DeleteMetadata
-	Data          isLedgerAction_Data `protobuf_oneof:"data"`
+	//	*LedgerApplyAction_CreateTransaction
+	//	*LedgerApplyAction_AddMetadata
+	//	*LedgerApplyAction_RevertTransaction
+	//	*LedgerApplyAction_DeleteMetadata
+	Data          isLedgerApplyAction_Data `protobuf_oneof:"data"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LedgerAction) Reset() {
-	*x = LedgerAction{}
-	mi := &file_service_proto_msgTypes[14]
+func (x *LedgerApplyAction) Reset() {
+	*x = LedgerApplyAction{}
+	mi := &file_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LedgerAction) String() string {
+func (x *LedgerApplyAction) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LedgerAction) ProtoMessage() {}
+func (*LedgerApplyAction) ProtoMessage() {}
 
-func (x *LedgerAction) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[14]
+func (x *LedgerApplyAction) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,95 +867,95 @@ func (x *LedgerAction) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LedgerAction.ProtoReflect.Descriptor instead.
-func (*LedgerAction) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{14}
+// Deprecated: Use LedgerApplyAction.ProtoReflect.Descriptor instead.
+func (*LedgerApplyAction) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *LedgerAction) GetLedgerId() uint32 {
+func (x *LedgerApplyAction) GetLedgerId() uint32 {
 	if x != nil {
 		return x.LedgerId
 	}
 	return 0
 }
 
-func (x *LedgerAction) GetIdempotencyKey() string {
+func (x *LedgerApplyAction) GetIdempotencyKey() string {
 	if x != nil {
 		return x.IdempotencyKey
 	}
 	return ""
 }
 
-func (x *LedgerAction) GetData() isLedgerAction_Data {
+func (x *LedgerApplyAction) GetData() isLedgerApplyAction_Data {
 	if x != nil {
 		return x.Data
 	}
 	return nil
 }
 
-func (x *LedgerAction) GetCreateTransaction() *CreateTransactionPayload {
+func (x *LedgerApplyAction) GetCreateTransaction() *CreateTransactionPayload {
 	if x != nil {
-		if x, ok := x.Data.(*LedgerAction_CreateTransaction); ok {
+		if x, ok := x.Data.(*LedgerApplyAction_CreateTransaction); ok {
 			return x.CreateTransaction
 		}
 	}
 	return nil
 }
 
-func (x *LedgerAction) GetAddMetadata() *commonpb.SaveMetadataCommand {
+func (x *LedgerApplyAction) GetAddMetadata() *commonpb.SaveMetadataCommand {
 	if x != nil {
-		if x, ok := x.Data.(*LedgerAction_AddMetadata); ok {
+		if x, ok := x.Data.(*LedgerApplyAction_AddMetadata); ok {
 			return x.AddMetadata
 		}
 	}
 	return nil
 }
 
-func (x *LedgerAction) GetRevertTransaction() *RevertTransactionPayload {
+func (x *LedgerApplyAction) GetRevertTransaction() *RevertTransactionPayload {
 	if x != nil {
-		if x, ok := x.Data.(*LedgerAction_RevertTransaction); ok {
+		if x, ok := x.Data.(*LedgerApplyAction_RevertTransaction); ok {
 			return x.RevertTransaction
 		}
 	}
 	return nil
 }
 
-func (x *LedgerAction) GetDeleteMetadata() *commonpb.DeleteMetadataCommand {
+func (x *LedgerApplyAction) GetDeleteMetadata() *commonpb.DeleteMetadataCommand {
 	if x != nil {
-		if x, ok := x.Data.(*LedgerAction_DeleteMetadata); ok {
+		if x, ok := x.Data.(*LedgerApplyAction_DeleteMetadata); ok {
 			return x.DeleteMetadata
 		}
 	}
 	return nil
 }
 
-type isLedgerAction_Data interface {
-	isLedgerAction_Data()
+type isLedgerApplyAction_Data interface {
+	isLedgerApplyAction_Data()
 }
 
-type LedgerAction_CreateTransaction struct {
+type LedgerApplyAction_CreateTransaction struct {
 	CreateTransaction *CreateTransactionPayload `protobuf:"bytes,3,opt,name=create_transaction,json=createTransaction,proto3,oneof"`
 }
 
-type LedgerAction_AddMetadata struct {
+type LedgerApplyAction_AddMetadata struct {
 	AddMetadata *commonpb.SaveMetadataCommand `protobuf:"bytes,4,opt,name=add_metadata,json=addMetadata,proto3,oneof"`
 }
 
-type LedgerAction_RevertTransaction struct {
+type LedgerApplyAction_RevertTransaction struct {
 	RevertTransaction *RevertTransactionPayload `protobuf:"bytes,5,opt,name=revert_transaction,json=revertTransaction,proto3,oneof"`
 }
 
-type LedgerAction_DeleteMetadata struct {
+type LedgerApplyAction_DeleteMetadata struct {
 	DeleteMetadata *commonpb.DeleteMetadataCommand `protobuf:"bytes,6,opt,name=delete_metadata,json=deleteMetadata,proto3,oneof"`
 }
 
-func (*LedgerAction_CreateTransaction) isLedgerAction_Data() {}
+func (*LedgerApplyAction_CreateTransaction) isLedgerApplyAction_Data() {}
 
-func (*LedgerAction_AddMetadata) isLedgerAction_Data() {}
+func (*LedgerApplyAction_AddMetadata) isLedgerApplyAction_Data() {}
 
-func (*LedgerAction_RevertTransaction) isLedgerAction_Data() {}
+func (*LedgerApplyAction_RevertTransaction) isLedgerApplyAction_Data() {}
 
-func (*LedgerAction_DeleteMetadata) isLedgerAction_Data() {}
+func (*LedgerApplyAction_DeleteMetadata) isLedgerApplyAction_Data() {}
 
 var File_service_proto protoreflect.FileDescriptor
 
@@ -895,9 +993,14 @@ const file_service_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
 	"\x05value\x18\x02 \x01(\v2\x12.common.LedgerInfoR\x05value:\x028\x01\",\n" +
 	"\x16GetLedgerByNameRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"<\n" +
-	"\fApplyRequest\x12,\n" +
-	"\x06action\x18\x01 \x01(\v2\x14.ledger.LedgerActionR\x06action\"\xff\x03\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"6\n" +
+	"\fApplyRequest\x12&\n" +
+	"\x06action\x18\x01 \x01(\v2\x0e.ledger.ActionR\x06action\"\xcb\x01\n" +
+	"\x06Action\x121\n" +
+	"\x05apply\x18\x01 \x01(\v2\x19.ledger.LedgerApplyActionH\x00R\x05apply\x12B\n" +
+	"\rcreate_ledger\x18\x02 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
+	"\rdelete_ledger\x18\x03 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedgerB\x06\n" +
+	"\x04type\"\xff\x03\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -918,18 +1021,16 @@ const file_service_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8e\x03\n" +
-	"\fLedgerAction\x12\x1b\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x93\x03\n" +
+	"\x11LedgerApplyAction\x12\x1b\n" +
 	"\tledger_id\x18\x01 \x01(\rR\bledgerId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12Q\n" +
 	"\x12create_transaction\x18\x03 \x01(\v2 .ledger.CreateTransactionPayloadH\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x04 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12Q\n" +
 	"\x12revert_transaction\x18\x05 \x01(\v2 .ledger.RevertTransactionPayloadH\x00R\x11revertTransaction\x12H\n" +
 	"\x0fdelete_metadata\x18\x06 \x01(\v2\x1d.common.DeleteMetadataCommandH\x00R\x0edeleteMetadataB\x06\n" +
-	"\x04data2\xc6\x04\n" +
-	"\rLedgerService\x12?\n" +
-	"\fCreateLedger\x12\x1b.ledger.CreateLedgerRequest\x1a\x12.common.LedgerInfo\x12I\n" +
-	"\fDeleteLedger\x12\x1b.ledger.DeleteLedgerRequest\x1a\x1c.ledger.DeleteLedgerResponse\x12P\n" +
+	"\x04data2\xba\x03\n" +
+	"\rLedgerService\x12P\n" +
 	"\x11GetAllLedgersInfo\x12\x1c.ledger.GetAllLedgersRequest\x1a\x1d.ledger.GetAllLedgersResponse\x12E\n" +
 	"\x0fGetLedgerByName\x12\x1e.ledger.GetLedgerByNameRequest\x1a\x12.common.LedgerInfo\x12D\n" +
 	"\x0eGetTransaction\x12\x1d.ledger.GetTransactionRequest\x1a\x13.common.Transaction\x12W\n" +
@@ -950,7 +1051,7 @@ func file_service_proto_rawDescGZIP() []byte {
 	return file_service_proto_rawDescData
 }
 
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_service_proto_goTypes = []any{
 	(*GetTransactionRequest)(nil),          // 0: ledger.GetTransactionRequest
 	(*StreamLedgerLogsRequest)(nil),        // 1: ledger.StreamLedgerLogsRequest
@@ -964,64 +1065,64 @@ var file_service_proto_goTypes = []any{
 	(*GetAllLedgersResponse)(nil),          // 9: ledger.GetAllLedgersResponse
 	(*GetLedgerByNameRequest)(nil),         // 10: ledger.GetLedgerByNameRequest
 	(*ApplyRequest)(nil),                   // 11: ledger.ApplyRequest
-	(*CreateTransactionPayload)(nil),       // 12: ledger.CreateTransactionPayload
-	(*RevertTransactionPayload)(nil),       // 13: ledger.RevertTransactionPayload
-	(*LedgerAction)(nil),                   // 14: ledger.LedgerAction
-	nil,                                    // 15: ledger.CreateLedgerRequest.MetadataEntry
-	nil,                                    // 16: ledger.GetAllLedgersResponse.LedgersEntry
-	nil,                                    // 17: ledger.CreateTransactionPayload.MetadataEntry
-	nil,                                    // 18: ledger.CreateTransactionPayload.AccountMetadataEntry
-	nil,                                    // 19: ledger.RevertTransactionPayload.MetadataEntry
-	(*commonpb.LedgerLog)(nil),             // 20: common.LedgerLog
-	(*commonpb.Log)(nil),                   // 21: common.Log
-	(*commonpb.Posting)(nil),               // 22: common.Posting
-	(*commonpb.Script)(nil),                // 23: common.Script
-	(*commonpb.Timestamp)(nil),             // 24: common.Timestamp
-	(*commonpb.SaveMetadataCommand)(nil),   // 25: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil), // 26: common.DeleteMetadataCommand
-	(*commonpb.LedgerInfo)(nil),            // 27: common.LedgerInfo
-	(*commonpb.Metadata)(nil),              // 28: common.Metadata
-	(*commonpb.Transaction)(nil),           // 29: common.Transaction
+	(*Action)(nil),                         // 12: ledger.Action
+	(*CreateTransactionPayload)(nil),       // 13: ledger.CreateTransactionPayload
+	(*RevertTransactionPayload)(nil),       // 14: ledger.RevertTransactionPayload
+	(*LedgerApplyAction)(nil),              // 15: ledger.LedgerApplyAction
+	nil,                                    // 16: ledger.CreateLedgerRequest.MetadataEntry
+	nil,                                    // 17: ledger.GetAllLedgersResponse.LedgersEntry
+	nil,                                    // 18: ledger.CreateTransactionPayload.MetadataEntry
+	nil,                                    // 19: ledger.CreateTransactionPayload.AccountMetadataEntry
+	nil,                                    // 20: ledger.RevertTransactionPayload.MetadataEntry
+	(*commonpb.LedgerLog)(nil),             // 21: common.LedgerLog
+	(*commonpb.Log)(nil),                   // 22: common.Log
+	(*commonpb.Posting)(nil),               // 23: common.Posting
+	(*commonpb.Script)(nil),                // 24: common.Script
+	(*commonpb.Timestamp)(nil),             // 25: common.Timestamp
+	(*commonpb.SaveMetadataCommand)(nil),   // 26: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil), // 27: common.DeleteMetadataCommand
+	(*commonpb.LedgerInfo)(nil),            // 28: common.LedgerInfo
+	(*commonpb.Metadata)(nil),              // 29: common.Metadata
+	(*commonpb.Transaction)(nil),           // 30: common.Transaction
 }
 var file_service_proto_depIdxs = []int32{
-	20, // 0: ledger.StreamLedgerLogsResponse.log:type_name -> common.LedgerLog
-	21, // 1: ledger.StreamLogsResponse.log:type_name -> common.Log
-	15, // 2: ledger.CreateLedgerRequest.metadata:type_name -> ledger.CreateLedgerRequest.MetadataEntry
-	16, // 3: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
-	14, // 4: ledger.ApplyRequest.action:type_name -> ledger.LedgerAction
-	22, // 5: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	23, // 6: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	24, // 7: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	17, // 8: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
-	18, // 9: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	19, // 10: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
-	12, // 11: ledger.LedgerAction.create_transaction:type_name -> ledger.CreateTransactionPayload
-	25, // 12: ledger.LedgerAction.add_metadata:type_name -> common.SaveMetadataCommand
-	13, // 13: ledger.LedgerAction.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	26, // 14: ledger.LedgerAction.delete_metadata:type_name -> common.DeleteMetadataCommand
-	27, // 15: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> common.LedgerInfo
-	28, // 16: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.Metadata
-	5,  // 17: ledger.LedgerService.CreateLedger:input_type -> ledger.CreateLedgerRequest
-	6,  // 18: ledger.LedgerService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
-	8,  // 19: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
-	10, // 20: ledger.LedgerService.GetLedgerByName:input_type -> ledger.GetLedgerByNameRequest
-	0,  // 21: ledger.LedgerService.GetTransaction:input_type -> ledger.GetTransactionRequest
-	1,  // 22: ledger.LedgerService.StreamLedgerLogs:input_type -> ledger.StreamLedgerLogsRequest
-	3,  // 23: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
-	11, // 24: ledger.LedgerService.Apply:input_type -> ledger.ApplyRequest
-	27, // 25: ledger.LedgerService.CreateLedger:output_type -> common.LedgerInfo
-	7,  // 26: ledger.LedgerService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
-	9,  // 27: ledger.LedgerService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
-	27, // 28: ledger.LedgerService.GetLedgerByName:output_type -> common.LedgerInfo
-	29, // 29: ledger.LedgerService.GetTransaction:output_type -> common.Transaction
-	2,  // 30: ledger.LedgerService.StreamLedgerLogs:output_type -> ledger.StreamLedgerLogsResponse
-	4,  // 31: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
-	21, // 32: ledger.LedgerService.Apply:output_type -> common.Log
-	25, // [25:33] is the sub-list for method output_type
-	17, // [17:25] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	21, // 0: ledger.StreamLedgerLogsResponse.log:type_name -> common.LedgerLog
+	22, // 1: ledger.StreamLogsResponse.log:type_name -> common.Log
+	16, // 2: ledger.CreateLedgerRequest.metadata:type_name -> ledger.CreateLedgerRequest.MetadataEntry
+	17, // 3: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.GetAllLedgersResponse.LedgersEntry
+	12, // 4: ledger.ApplyRequest.action:type_name -> ledger.Action
+	15, // 5: ledger.Action.apply:type_name -> ledger.LedgerApplyAction
+	5,  // 6: ledger.Action.create_ledger:type_name -> ledger.CreateLedgerRequest
+	6,  // 7: ledger.Action.delete_ledger:type_name -> ledger.DeleteLedgerRequest
+	23, // 8: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	24, // 9: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	25, // 10: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	18, // 11: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
+	19, // 12: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	20, // 13: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
+	13, // 14: ledger.LedgerApplyAction.create_transaction:type_name -> ledger.CreateTransactionPayload
+	26, // 15: ledger.LedgerApplyAction.add_metadata:type_name -> common.SaveMetadataCommand
+	14, // 16: ledger.LedgerApplyAction.revert_transaction:type_name -> ledger.RevertTransactionPayload
+	27, // 17: ledger.LedgerApplyAction.delete_metadata:type_name -> common.DeleteMetadataCommand
+	28, // 18: ledger.GetAllLedgersResponse.LedgersEntry.value:type_name -> common.LedgerInfo
+	29, // 19: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.Metadata
+	8,  // 20: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	10, // 21: ledger.LedgerService.GetLedgerByName:input_type -> ledger.GetLedgerByNameRequest
+	0,  // 22: ledger.LedgerService.GetTransaction:input_type -> ledger.GetTransactionRequest
+	1,  // 23: ledger.LedgerService.StreamLedgerLogs:input_type -> ledger.StreamLedgerLogsRequest
+	3,  // 24: ledger.LedgerService.StreamLogs:input_type -> ledger.StreamLogsRequest
+	11, // 25: ledger.LedgerService.Apply:input_type -> ledger.ApplyRequest
+	9,  // 26: ledger.LedgerService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
+	28, // 27: ledger.LedgerService.GetLedgerByName:output_type -> common.LedgerInfo
+	30, // 28: ledger.LedgerService.GetTransaction:output_type -> common.Transaction
+	2,  // 29: ledger.LedgerService.StreamLedgerLogs:output_type -> ledger.StreamLedgerLogsResponse
+	4,  // 30: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
+	22, // 31: ledger.LedgerService.Apply:output_type -> common.Log
+	26, // [26:32] is the sub-list for method output_type
+	20, // [20:26] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_service_proto_init() }
@@ -1029,11 +1130,16 @@ func file_service_proto_init() {
 	if File_service_proto != nil {
 		return
 	}
-	file_service_proto_msgTypes[14].OneofWrappers = []any{
-		(*LedgerAction_CreateTransaction)(nil),
-		(*LedgerAction_AddMetadata)(nil),
-		(*LedgerAction_RevertTransaction)(nil),
-		(*LedgerAction_DeleteMetadata)(nil),
+	file_service_proto_msgTypes[12].OneofWrappers = []any{
+		(*Action_Apply)(nil),
+		(*Action_CreateLedger)(nil),
+		(*Action_DeleteLedger)(nil),
+	}
+	file_service_proto_msgTypes[15].OneofWrappers = []any{
+		(*LedgerApplyAction_CreateTransaction)(nil),
+		(*LedgerApplyAction_AddMetadata)(nil),
+		(*LedgerApplyAction_RevertTransaction)(nil),
+		(*LedgerApplyAction_DeleteMetadata)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1041,7 +1147,7 @@ func file_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_proto_rawDesc), len(file_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -5,8 +5,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// Bulk is a channel of protobuf LedgerAction
-type Bulk chan *servicepb.LedgerAction
+// Bulk is a channel of protobuf LedgerApplyAction
+type Bulk chan *servicepb.LedgerApplyAction
 
 // LedgerActionResult represents the result of a single ledger action
 type LedgerActionResult struct {

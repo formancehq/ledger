@@ -3,12 +3,11 @@ package http
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger
@@ -19,33 +18,33 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Body == nil {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("request body is required"))
-		return
+	// Parse optional metadata from request body
+	var metadata map[string]string
+	if r.Body != nil && r.ContentLength > 0 {
+		var body struct {
+			Metadata map[string]string `json:"metadata"`
+		}
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+			return
+		}
+		metadata = body.Metadata
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unable to read request body: %w", err))
-		return
-	}
-
-	req := &raftcmdpb.CreateLedgerCommand{}
-	unmarshalOptions := protojson.UnmarshalOptions{DiscardUnknown: true}
-	if err := unmarshalOptions.Unmarshal(body, req); err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-		return
-	}
-
-	req.Name = ledgerName
-
-	// Create ledger via cluster
-	ledgerInfo, err := s.backend.CreateLedger(r.Context(), req)
+	// Create ledger via Apply
+	log, err := s.backend.Apply(r.Context(), &servicepb.Action{
+		Type: &servicepb.Action_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{
+				Name:     ledgerName,
+				Metadata: metadata,
+			},
+		},
+	})
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
 	// Return the ledger info wrapped in BaseResponse
-	writeCreated(w, ledgerInfo)
+	writeCreated(w, log.GetCreateLedger().GetInfo())
 }

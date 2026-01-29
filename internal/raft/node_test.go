@@ -388,6 +388,13 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("node %d not found", nodeID)
 	}
 
+	// Try to stop the old node first (with a short timeout since it might have already crashed)
+	if clusterNode.Node != nil {
+		stopCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		_ = clusterNode.Node.Stop(stopCtx)
+		cancel()
+	}
+
 	// Close current resources
 	if clusterNode.Store != nil {
 		_ = clusterNode.Store.Close(ctx)

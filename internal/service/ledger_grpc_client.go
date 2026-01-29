@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/grpc/codes"
@@ -25,15 +24,14 @@ func NewLedgerGrpcClient(client servicepb.LedgerServiceClient) *LedgerGrpcClient
 }
 
 // Apply forwards the action via gRPC to the leader
-func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
+func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
 	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
 		Action: action,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
-	// Extract the LedgerLog from the ApplyLog payload
-	return log.GetApply().GetLog(), nil
+	return log, nil
 }
 
 func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
@@ -90,18 +88,6 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint6
 	return store.NewGRPCStreamCursor(stream, func(res *servicepb.StreamLogsResponse) (*commonpb.Log, error) {
 		return res.Log, nil
 	}), nil
-}
-
-func (g *LedgerGrpcClient) CreateLedger(ctx context.Context, request *raftcmdpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
-	return g.client.CreateLedger(ctx, &servicepb.CreateLedgerRequest{
-		Name:     request.Name,
-		Metadata: request.Metadata,
-	})
-}
-
-func (g *LedgerGrpcClient) DeleteLedger(ctx context.Context, id uint32) error {
-	_, err := g.client.DeleteLedger(ctx, &servicepb.DeleteLedgerRequest{Id: id})
-	return err
 }
 
 func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {

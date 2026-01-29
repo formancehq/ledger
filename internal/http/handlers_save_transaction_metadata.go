@@ -44,19 +44,23 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	_, err = s.backend.Apply(r.Context(), &servicepb.LedgerAction{
-		LedgerId:       ledgerInfo.Id,
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Data: &servicepb.LedgerAction_AddMetadata{
-			AddMetadata: &commonpb.SaveMetadataCommand{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Transaction{
-						Transaction: &commonpb.TargetTransaction{
-							Id: transactionID,
+	_, err = s.backend.Apply(r.Context(), &servicepb.Action{
+		Type: &servicepb.Action_Apply{
+			Apply: &servicepb.LedgerApplyAction{
+				LedgerId:       ledgerInfo.Id,
+				IdempotencyKey: r.Header.Get("Idempotency-Key"),
+				Data: &servicepb.LedgerApplyAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Id: transactionID,
+								},
+							},
 						},
+						Metadata: &commonpb.Metadata{Entries: inputMetadata},
 					},
 				},
-				Metadata: &commonpb.Metadata{Entries: inputMetadata},
 			},
 		},
 	})

@@ -70,11 +70,15 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	log, err := s.backend.Apply(r.Context(), &servicepb.LedgerAction{
-		LedgerId:       ledgerInfo.Id,
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Data: &servicepb.LedgerAction_RevertTransaction{
-			RevertTransaction: payload,
+	log, err := s.backend.Apply(r.Context(), &servicepb.Action{
+		Type: &servicepb.Action_Apply{
+			Apply: &servicepb.LedgerApplyAction{
+				LedgerId:       ledgerInfo.Id,
+				IdempotencyKey: r.Header.Get("Idempotency-Key"),
+				Data: &servicepb.LedgerApplyAction_RevertTransaction{
+					RevertTransaction: payload,
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -88,6 +92,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the revert transaction response
-	revertedPayload := log.Data.Payload.(*commonpb.LogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
+	ledgerLog := log.GetApply().GetLog()
+	revertedPayload := ledgerLog.Data.Payload.(*commonpb.LogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
 	writeCreated(w, revertedPayload)
 }

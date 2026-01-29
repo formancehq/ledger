@@ -34,11 +34,15 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Call ledger service via Apply
-	log, err := s.backend.Apply(r.Context(), &servicepb.LedgerAction{
-		LedgerId:       ledgerInfo.Id,
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Data: &servicepb.LedgerAction_CreateTransaction{
-			CreateTransaction: req,
+	log, err := s.backend.Apply(r.Context(), &servicepb.Action{
+		Type: &servicepb.Action_Apply{
+			Apply: &servicepb.LedgerApplyAction{
+				LedgerId:       ledgerInfo.Id,
+				IdempotencyKey: r.Header.Get("Idempotency-Key"),
+				Data: &servicepb.LedgerApplyAction_CreateTransaction{
+					CreateTransaction: req,
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -48,5 +52,6 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the service response directly - JSON encoding will handle it
-	writeCreated(w, log.Data.Payload.(*commonpb.LogPayload_CreatedTransaction).CreatedTransaction)
+	ledgerLog := log.GetApply().GetLog()
+	writeCreated(w, ledgerLog.Data.Payload.(*commonpb.LogPayload_CreatedTransaction).CreatedTransaction)
 }

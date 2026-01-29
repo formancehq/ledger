@@ -11,7 +11,7 @@ import (
 
 type JsonBulkHandler struct {
 	bulkMaxSize  int
-	bulkElements []*servicepb.LedgerAction
+	bulkElements []*servicepb.LedgerApplyAction
 	receive      chan *LedgerActionResult
 }
 
@@ -29,9 +29,9 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 	}
 
 	// Parse each element using protobuf types
-	h.bulkElements = make([]*servicepb.LedgerAction, 0, len(rawElements))
+	h.bulkElements = make([]*servicepb.LedgerApplyAction, 0, len(rawElements))
 	for i, rawElem := range rawElements {
-		elem := &servicepb.LedgerAction{}
+		elem := &servicepb.LedgerApplyAction{}
 		if err := json.Unmarshal(rawElem, elem); err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", fmt.Errorf("error parsing element %d: %w", i, err))
 			return nil, nil, false
@@ -58,7 +58,7 @@ func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 
 	actions := make([]string, len(h.bulkElements))
 	for i, element := range h.bulkElements {
-		actions[i] = servicepb.GetLedgerActionType(element)
+		actions[i] = servicepb.GetLedgerApplyActionType(element)
 	}
 	writeJSONResponse(w, actions, results, nil)
 }

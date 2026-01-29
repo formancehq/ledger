@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
@@ -31,14 +30,6 @@ func (b *RoutedController) getCtrl() (Controller, error) {
 	return NewLedgerGrpcClient(servicepb.NewLedgerServiceClient(grpcConn)), nil
 }
 
-func (b *RoutedController) CreateLedger(ctx context.Context, req *raftcmdpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
-	clusterLeader, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-	return clusterLeader.CreateLedger(ctx, req)
-}
-
 func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	ledgerInfo, err := b.localController.GetLedgerByName(ctx, name)
 	if err != nil && !errors.Is(err, &commonpb.NotFoundError{}) {
@@ -56,14 +47,6 @@ func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*c
 	return clusterLeader.GetLedgerByName(ctx, name)
 }
 
-func (b *RoutedController) DeleteLedger(ctx context.Context, id uint32) error {
-	clusterLeader, err := b.getCtrl()
-	if err != nil {
-		return err
-	}
-	return clusterLeader.DeleteLedger(ctx, id)
-}
-
 func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
@@ -76,7 +59,7 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
+func (b *RoutedController) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err

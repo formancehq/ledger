@@ -50,8 +50,8 @@ const (
 	LedgerActionTypeDeleteMetadata    = "DELETE_METADATA"
 )
 
-// UnmarshalJSON implements json.Unmarshaler for LedgerAction
-func (x *LedgerAction) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON implements json.Unmarshaler for LedgerApplyAction
+func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
 	// First pass: parse action and idempotency key
 	type rawElement struct {
 		Action         string        `json:"action"`
@@ -72,28 +72,28 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(raw.Data, req); err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
-		x.Data = &LedgerAction_CreateTransaction{CreateTransaction: req}
+		x.Data = &LedgerApplyAction_CreateTransaction{CreateTransaction: req}
 
 	case LedgerActionTypeAddMetadata:
 		req, err := unmarshalSaveMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing add metadata data: %w", err)
 		}
-		x.Data = &LedgerAction_AddMetadata{AddMetadata: req}
+		x.Data = &LedgerApplyAction_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
 		req, err := unmarshalRevertTransactionPayload(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
-		x.Data = &LedgerAction_RevertTransaction{RevertTransaction: req}
+		x.Data = &LedgerApplyAction_RevertTransaction{RevertTransaction: req}
 
 	case LedgerActionTypeDeleteMetadata:
 		req, err := unmarshalDeleteMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing delete metadata data: %w", err)
 		}
-		x.Data = &LedgerAction_DeleteMetadata{DeleteMetadata: req}
+		x.Data = &LedgerApplyAction_DeleteMetadata{DeleteMetadata: req}
 
 	default:
 		return fmt.Errorf("unsupported action: %s", raw.Action)
@@ -102,16 +102,16 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GetLedgerActionType returns the action type string based on the oneof data
-func GetLedgerActionType(action *LedgerAction) string {
+// GetLedgerApplyActionType returns the action type string based on the oneof data
+func GetLedgerApplyActionType(action *LedgerApplyAction) string {
 	switch action.Data.(type) {
-	case *LedgerAction_CreateTransaction:
+	case *LedgerApplyAction_CreateTransaction:
 		return LedgerActionTypeCreateTransaction
-	case *LedgerAction_AddMetadata:
+	case *LedgerApplyAction_AddMetadata:
 		return LedgerActionTypeAddMetadata
-	case *LedgerAction_RevertTransaction:
+	case *LedgerApplyAction_RevertTransaction:
 		return LedgerActionTypeRevertTransaction
-	case *LedgerAction_DeleteMetadata:
+	case *LedgerApplyAction_DeleteMetadata:
 		return LedgerActionTypeDeleteMetadata
 	default:
 		return ""

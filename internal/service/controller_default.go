@@ -178,33 +178,6 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	return ledgerInfo, nil
 }
 
-// CreateLedger creates a new ledger
-func (ctrl *DefaultController) CreateLedger(ctx context.Context, req *raftcmdpb.CreateLedgerCommand) (*commonpb.LedgerInfo, error) {
-	action := raft.NewAction(raftcmdpb.ActionType_CreateLedger, req)
-
-	logs, err := ctrl.engine.Apply(ctx, action)
-	if err != nil {
-		return nil, fmt.Errorf("applying create ledger command: %w", err)
-	}
-
-	// Extract the ledger info from the CreateLedger log payload
-	return logs[0].GetCreateLedger().GetInfo(), nil
-}
-
-// DeleteLedger deletes a ledger
-func (ctrl *DefaultController) DeleteLedger(ctx context.Context, id uint32) error {
-	action := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
-		Id: id,
-	})
-
-	_, err := ctrl.engine.Apply(ctx, action)
-	if err != nil {
-		return fmt.Errorf("applying delete ledger command: %w", err)
-	}
-
-	return nil
-}
-
 // applyAction applies an action and returns the resulting ledger log
 func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdpb.Action) (*commonpb.LedgerLog, error) {
 	logs, err := ctrl.engine.Apply(ctx, action)
@@ -216,8 +189,55 @@ func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdp
 	return logs[0].GetApply().GetLog(), nil
 }
 
-// Apply applies a ledger action and returns the resulting log
-func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.LedgerAction) (*commonpb.LedgerLog, error) {
+// Apply applies an action and returns the resulting log
+func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
+	if action == nil {
+		return nil, fmt.Errorf("action is required")
+	}
+
+	switch actionType := action.Type.(type) {
+	case *servicepb.Action_Apply:
+		ledgerLog, err := ctrl.applyLedgerAction(ctx, actionType.Apply)
+		if err != nil {
+			return nil, err
+		}
+		return &commonpb.Log{
+			Payload: &commonpb.Log_Apply{
+				Apply: &commonpb.ApplyLog{
+					LedgerId: actionType.Apply.LedgerId,
+					Log:      ledgerLog,
+				},
+			},
+		}, nil
+
+	case *servicepb.Action_CreateLedger:
+		action := raft.NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
+			Name:     actionType.CreateLedger.Name,
+			Metadata: actionType.CreateLedger.Metadata,
+		})
+		logs, err := ctrl.engine.Apply(ctx, action)
+		if err != nil {
+			return nil, fmt.Errorf("applying create ledger command: %w", err)
+		}
+		return logs[0], nil
+
+	case *servicepb.Action_DeleteLedger:
+		action := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
+			Id: actionType.DeleteLedger.Id,
+		})
+		logs, err := ctrl.engine.Apply(ctx, action)
+		if err != nil {
+			return nil, fmt.Errorf("applying delete ledger command: %w", err)
+		}
+		return logs[0], nil
+
+	default:
+		return nil, fmt.Errorf("unsupported action type")
+	}
+}
+
+// applyLedgerAction applies a ledger action and returns the resulting ledger log
+func (ctrl *DefaultController) applyLedgerAction(ctx context.Context, action *servicepb.LedgerApplyAction) (*commonpb.LedgerLog, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is required")
 	}
@@ -226,10 +246,10 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 	idempotencyKey := action.IdempotencyKey
 
 	switch data := action.Data.(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
+	case *servicepb.LedgerApplyAction_CreateTransaction:
 		return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, idempotencyKey, data.CreateTransaction, ctrl.applyAction)
 
-	case *servicepb.LedgerAction_AddMetadata:
+	case *servicepb.LedgerApplyAction_AddMetadata:
 		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
 			return nil, fmt.Errorf("missing add metadata data or target")
 		}
@@ -243,10 +263,10 @@ func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Ledg
 			return nil, fmt.Errorf("unsupported target type for add metadata")
 		}
 
-	case *servicepb.LedgerAction_RevertTransaction:
+	case *servicepb.LedgerApplyAction_RevertTransaction:
 		return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, idempotencyKey, data.RevertTransaction, ctrl.applyAction)
 
-	case *servicepb.LedgerAction_DeleteMetadata:
+	case *servicepb.LedgerApplyAction_DeleteMetadata:
 		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
 			return nil, fmt.Errorf("missing delete metadata data or target")
 		}

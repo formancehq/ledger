@@ -20,8 +20,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_CreateLedger_FullMethodName      = "/ledger.LedgerService/CreateLedger"
-	LedgerService_DeleteLedger_FullMethodName      = "/ledger.LedgerService/DeleteLedger"
 	LedgerService_GetAllLedgersInfo_FullMethodName = "/ledger.LedgerService/GetAllLedgersInfo"
 	LedgerService_GetLedgerByName_FullMethodName   = "/ledger.LedgerService/GetLedgerByName"
 	LedgerService_GetTransaction_FullMethodName    = "/ledger.LedgerService/GetTransaction"
@@ -36,10 +34,6 @@ const (
 //
 // LedgerService provides ledger operations
 type LedgerServiceClient interface {
-	// CreateLedger creates a new ledger
-	CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error)
-	// DeleteLedger deletes a ledger
-	DeleteLedger(ctx context.Context, in *DeleteLedgerRequest, opts ...grpc.CallOption) (*DeleteLedgerResponse, error)
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error)
 	// GetLedgerInfo returns a ledger info by its name
@@ -50,7 +44,7 @@ type LedgerServiceClient interface {
 	StreamLedgerLogs(ctx context.Context, in *StreamLedgerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLedgerLogsResponse], error)
 	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
-	// Apply applies a ledger action (create transaction, revert, save/delete metadata)
+	// Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
 }
 
@@ -60,26 +54,6 @@ type ledgerServiceClient struct {
 
 func NewLedgerServiceClient(cc grpc.ClientConnInterface) LedgerServiceClient {
 	return &ledgerServiceClient{cc}
-}
-
-func (c *ledgerServiceClient) CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(commonpb.LedgerInfo)
-	err := c.cc.Invoke(ctx, LedgerService_CreateLedger_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *ledgerServiceClient) DeleteLedger(ctx context.Context, in *DeleteLedgerRequest, opts ...grpc.CallOption) (*DeleteLedgerResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteLedgerResponse)
-	err := c.cc.Invoke(ctx, LedgerService_DeleteLedger_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *ledgerServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error) {
@@ -166,10 +140,6 @@ func (c *ledgerServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts 
 //
 // LedgerService provides ledger operations
 type LedgerServiceServer interface {
-	// CreateLedger creates a new ledger
-	CreateLedger(context.Context, *CreateLedgerRequest) (*commonpb.LedgerInfo, error)
-	// DeleteLedger deletes a ledger
-	DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error)
 	// GetAllLedgersInfo returns all ledgers info in the cluster
 	GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error)
 	// GetLedgerInfo returns a ledger info by its name
@@ -180,7 +150,7 @@ type LedgerServiceServer interface {
 	StreamLedgerLogs(*StreamLedgerLogsRequest, grpc.ServerStreamingServer[StreamLedgerLogsResponse]) error
 	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
-	// Apply applies a ledger action (create transaction, revert, save/delete metadata)
+	// Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*commonpb.Log, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
@@ -192,12 +162,6 @@ type LedgerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLedgerServiceServer struct{}
 
-func (UnimplementedLedgerServiceServer) CreateLedger(context.Context, *CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateLedger not implemented")
-}
-func (UnimplementedLedgerServiceServer) DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteLedger not implemented")
-}
 func (UnimplementedLedgerServiceServer) GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
 }
@@ -235,42 +199,6 @@ func RegisterLedgerServiceServer(s grpc.ServiceRegistrar, srv LedgerServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&LedgerService_ServiceDesc, srv)
-}
-
-func _LedgerService_CreateLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateLedgerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LedgerServiceServer).CreateLedger(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LedgerService_CreateLedger_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).CreateLedger(ctx, req.(*CreateLedgerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _LedgerService_DeleteLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteLedgerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LedgerServiceServer).DeleteLedger(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LedgerService_DeleteLedger_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).DeleteLedger(ctx, req.(*DeleteLedgerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _LedgerService_GetAllLedgersInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -374,14 +302,6 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "ledger.LedgerService",
 	HandlerType: (*LedgerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "CreateLedger",
-			Handler:    _LedgerService_CreateLedger_Handler,
-		},
-		{
-			MethodName: "DeleteLedger",
-			Handler:    _LedgerService_DeleteLedger_Handler,
-		},
 		{
 			MethodName: "GetAllLedgersInfo",
 			Handler:    _LedgerService_GetAllLedgersInfo_Handler,

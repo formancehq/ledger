@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,7 +22,13 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.backend.DeleteLedger(r.Context(), ledgerInfo.Id)
+	_, err = s.backend.Apply(r.Context(), &servicepb.Action{
+		Type: &servicepb.Action_DeleteLedger{
+			DeleteLedger: &servicepb.DeleteLedgerRequest{
+				Id: ledgerInfo.Id,
+			},
+		},
+	})
 	if err != nil {
 		handleError(w, r, err)
 		return

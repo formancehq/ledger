@@ -12,10 +12,6 @@ import "common.proto";
 
 // LedgerService provides ledger operations
 service LedgerService {
-  // CreateLedger creates a new ledger
-  rpc CreateLedger(CreateLedgerRequest) returns (common.LedgerInfo);
-  // DeleteLedger deletes a ledger
-  rpc DeleteLedger(DeleteLedgerRequest) returns (DeleteLedgerResponse);
   // GetAllLedgersInfo returns all ledgers info in the cluster
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
   // GetLedgerInfo returns a ledger info by its name
@@ -26,7 +22,7 @@ service LedgerService {
   rpc StreamLedgerLogs(StreamLedgerLogsRequest) returns (stream StreamLedgerLogsResponse);
   // StreamLogs streams logs, optionally starting from a sequence
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
-  // Apply applies a ledger action (create transaction, revert, save/delete metadata)
+  // Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (common.Log);
 }
 
@@ -80,7 +76,15 @@ message GetLedgerByNameRequest {
 }
 
 message ApplyRequest {
-  LedgerAction action = 1;
+  Action action = 1;
+}
+
+message Action {
+  oneof type {
+    LedgerApplyAction apply = 1;
+    CreateLedgerRequest create_ledger = 2;
+    DeleteLedgerRequest delete_ledger = 3;
+  }
 }
 
 // ============================================================================
@@ -106,7 +110,7 @@ message RevertTransactionPayload {
 }
 
 // LedgerAction represents a single ledger action
-message LedgerAction {
+message LedgerApplyAction {
   uint32 ledger_id = 1;
   string idempotency_key = 2;
   oneof data {
