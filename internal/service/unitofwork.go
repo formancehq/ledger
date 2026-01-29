@@ -16,8 +16,8 @@ type unitOfWork struct {
 	releases []func()
 }
 
-func (s *unitOfWork) LockKeys(ctx context.Context, ledgerID uint32, keys ...string) (func(), error) {
-	release, err := s.KeySetLocker.LockKeys(ctx, ledgerID, keys...)
+func (s *unitOfWork) LockKeys(ctx context.Context, keys ...string) (func(), error) {
+	release, err := s.KeySetLocker.LockKeys(ctx, keys...)
 	if err != nil {
 		return nil, err
 	}
@@ -26,8 +26,8 @@ func (s *unitOfWork) LockKeys(ctx context.Context, ledgerID uint32, keys ...stri
 	return release, nil
 }
 
-func (s *unitOfWork) TryLockKeys(ctx context.Context, ledgerID uint32, keys ...string) (func(), error) {
-	release, err := s.KeySetLocker.TryLockKeys(ctx, ledgerID, keys...)
+func (s *unitOfWork) TryLockKeys(ctx context.Context, keys ...string) (func(), error) {
+	release, err := s.KeySetLocker.TryLockKeys(ctx, keys...)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +68,8 @@ func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQue
 		balanceQuery[account] = assets
 	}
 
-	lockKeys := makeBalanceLockKeys(balanceQuery)
-	_, err := s.LockKeys(ctx, s.ledgerID, lockKeys...)
+	lockKeys := makeBalanceLockKeys(s.ledgerID, balanceQuery)
+	_, err := s.LockKeys(ctx, lockKeys...)
 	if err != nil {
 		return nil, err
 	}
@@ -121,11 +121,11 @@ func (s *numscriptStore) GetAccountsMetadata(ctx context.Context, q numscript.Me
 	return result, nil
 }
 
-func makeBalanceLockKeys(balanceQuery map[string][]string) []string {
+func makeBalanceLockKeys(ledgerID uint32, balanceQuery map[string][]string) []string {
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
 		for _, asset := range assets {
-			lockKeys = append(lockKeys, fmt.Sprintf("%s:%s", account, asset))
+			lockKeys = append(lockKeys, fmt.Sprintf("%d/%s:%s", ledgerID, account, asset))
 		}
 	}
 	return lockKeys

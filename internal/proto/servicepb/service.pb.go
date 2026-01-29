@@ -671,7 +671,8 @@ func (x *ApplyResponse) GetLogs() []*commonpb.Log {
 }
 
 type Action struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	// Types that are valid to be assigned to Type:
 	//
 	//	*Action_Apply
@@ -710,6 +711,13 @@ func (x *Action) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Action.ProtoReflect.Descriptor instead.
 func (*Action) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Action) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
 }
 
 func (x *Action) GetType() isAction_Type {
@@ -751,15 +759,15 @@ type isAction_Type interface {
 }
 
 type Action_Apply struct {
-	Apply *LedgerApplyAction `protobuf:"bytes,1,opt,name=apply,proto3,oneof"`
+	Apply *LedgerApplyAction `protobuf:"bytes,2,opt,name=apply,proto3,oneof"`
 }
 
 type Action_CreateLedger struct {
-	CreateLedger *CreateLedgerRequest `protobuf:"bytes,2,opt,name=create_ledger,json=createLedger,proto3,oneof"`
+	CreateLedger *CreateLedgerRequest `protobuf:"bytes,3,opt,name=create_ledger,json=createLedger,proto3,oneof"`
 }
 
 type Action_DeleteLedger struct {
-	DeleteLedger *DeleteLedgerRequest `protobuf:"bytes,3,opt,name=delete_ledger,json=deleteLedger,proto3,oneof"`
+	DeleteLedger *DeleteLedgerRequest `protobuf:"bytes,4,opt,name=delete_ledger,json=deleteLedger,proto3,oneof"`
 }
 
 func (*Action_Apply) isAction_Type() {}
@@ -1006,9 +1014,8 @@ func (*LedgerNameOrId_Id) isLedgerNameOrId_Type() {}
 
 // LedgerAction represents a single ledger action
 type LedgerApplyAction struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Ledger         *LedgerNameOrId        `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Ledger *LedgerNameOrId        `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// Types that are valid to be assigned to Data:
 	//
 	//	*LedgerApplyAction_CreateTransaction
@@ -1055,13 +1062,6 @@ func (x *LedgerApplyAction) GetLedger() *LedgerNameOrId {
 		return x.Ledger
 	}
 	return nil
-}
-
-func (x *LedgerApplyAction) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
 }
 
 func (x *LedgerApplyAction) GetData() isLedgerApplyAction_Data {
@@ -1112,19 +1112,19 @@ type isLedgerApplyAction_Data interface {
 }
 
 type LedgerApplyAction_CreateTransaction struct {
-	CreateTransaction *CreateTransactionPayload `protobuf:"bytes,3,opt,name=create_transaction,json=createTransaction,proto3,oneof"`
+	CreateTransaction *CreateTransactionPayload `protobuf:"bytes,2,opt,name=create_transaction,json=createTransaction,proto3,oneof"`
 }
 
 type LedgerApplyAction_AddMetadata struct {
-	AddMetadata *commonpb.SaveMetadataCommand `protobuf:"bytes,4,opt,name=add_metadata,json=addMetadata,proto3,oneof"`
+	AddMetadata *commonpb.SaveMetadataCommand `protobuf:"bytes,3,opt,name=add_metadata,json=addMetadata,proto3,oneof"`
 }
 
 type LedgerApplyAction_RevertTransaction struct {
-	RevertTransaction *RevertTransactionPayload `protobuf:"bytes,5,opt,name=revert_transaction,json=revertTransaction,proto3,oneof"`
+	RevertTransaction *RevertTransactionPayload `protobuf:"bytes,4,opt,name=revert_transaction,json=revertTransaction,proto3,oneof"`
 }
 
 type LedgerApplyAction_DeleteMetadata struct {
-	DeleteMetadata *commonpb.DeleteMetadataCommand `protobuf:"bytes,6,opt,name=delete_metadata,json=deleteMetadata,proto3,oneof"`
+	DeleteMetadata *commonpb.DeleteMetadataCommand `protobuf:"bytes,5,opt,name=delete_metadata,json=deleteMetadata,proto3,oneof"`
 }
 
 func (*LedgerApplyAction_CreateTransaction) isLedgerApplyAction_Data() {}
@@ -2217,11 +2217,12 @@ const file_service_proto_rawDesc = "" +
 	"\fApplyRequest\x12(\n" +
 	"\aactions\x18\x01 \x03(\v2\x0e.ledger.ActionR\aactions\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
-	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xcb\x01\n" +
-	"\x06Action\x121\n" +
-	"\x05apply\x18\x01 \x01(\v2\x19.ledger.LedgerApplyActionH\x00R\x05apply\x12B\n" +
-	"\rcreate_ledger\x18\x02 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
-	"\rdelete_ledger\x18\x03 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedgerB\x06\n" +
+	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xf4\x01\n" +
+	"\x06Action\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x121\n" +
+	"\x05apply\x18\x02 \x01(\v2\x19.ledger.LedgerApplyActionH\x00R\x05apply\x12B\n" +
+	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
+	"\rdelete_ledger\x18\x04 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedgerB\x06\n" +
 	"\x04type\"\xff\x03\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
@@ -2247,14 +2248,13 @@ const file_service_proto_rawDesc = "" +
 	"\x0eLedgerNameOrId\x12\x14\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x12\x10\n" +
 	"\x02id\x18\x02 \x01(\rH\x00R\x02idB\x06\n" +
-	"\x04Type\"\xa6\x03\n" +
+	"\x04Type\"\xfd\x02\n" +
 	"\x11LedgerApplyAction\x12.\n" +
-	"\x06ledger\x18\x01 \x01(\v2\x16.ledger.LedgerNameOrIdR\x06ledger\x12'\n" +
-	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12Q\n" +
-	"\x12create_transaction\x18\x03 \x01(\v2 .ledger.CreateTransactionPayloadH\x00R\x11createTransaction\x12@\n" +
-	"\fadd_metadata\x18\x04 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12Q\n" +
-	"\x12revert_transaction\x18\x05 \x01(\v2 .ledger.RevertTransactionPayloadH\x00R\x11revertTransaction\x12H\n" +
-	"\x0fdelete_metadata\x18\x06 \x01(\v2\x1d.common.DeleteMetadataCommandH\x00R\x0edeleteMetadataB\x06\n" +
+	"\x06ledger\x18\x01 \x01(\v2\x16.ledger.LedgerNameOrIdR\x06ledger\x12Q\n" +
+	"\x12create_transaction\x18\x02 \x01(\v2 .ledger.CreateTransactionPayloadH\x00R\x11createTransaction\x12@\n" +
+	"\fadd_metadata\x18\x03 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12Q\n" +
+	"\x12revert_transaction\x18\x04 \x01(\v2 .ledger.RevertTransactionPayloadH\x00R\x11revertTransaction\x12H\n" +
+	"\x0fdelete_metadata\x18\x05 \x01(\v2\x1d.common.DeleteMetadataCommandH\x00R\x0edeleteMetadataB\x06\n" +
 	"\x04data\"\x18\n" +
 	"\x16GetStoreMetricsRequest\"h\n" +
 	"\x17GetStoreMetricsResponse\x12\x1c\n" +

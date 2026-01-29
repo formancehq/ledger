@@ -796,7 +796,7 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 // Apply proposes actions and waits for them to be applied, returning the resulting logs
 // This is similar to hashicorp/raft's Apply() method
 func (node *Node) Apply(ctx context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error) {
-	cmd := NewCommand(actions...)
+	cmd := NewCommandBatch(actions...)
 
 	future := newFuture()
 	start := time.Now()

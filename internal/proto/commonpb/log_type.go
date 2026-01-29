@@ -63,19 +63,19 @@ func LogTypeFromString(logType string) LogType {
 }
 
 
-// GetLogType extracts the log type from a LogPayload
-func GetLogType(payload *LogPayload) LogType {
+// GetLogType extracts the log type from a LedgerLogPayload
+func GetLogType(payload *LedgerLogPayload) LogType {
 	if payload == nil {
 		return 0
 	}
 	switch payload.Payload.(type) {
-	case *LogPayload_CreatedTransaction:
+	case *LedgerLogPayload_CreatedTransaction:
 		return NewTransactionLogType
-	case *LogPayload_RevertedTransaction:
+	case *LedgerLogPayload_RevertedTransaction:
 		return RevertedTransactionLogType
-	case *LogPayload_SavedMetadata:
+	case *LedgerLogPayload_SavedMetadata:
 		return SetMetadataLogType
-	case *LogPayload_DeletedMetadata:
+	case *LedgerLogPayload_DeletedMetadata:
 		return DeleteMetadataLogType
 	default:
 		return 0

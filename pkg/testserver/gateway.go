@@ -361,7 +361,7 @@ func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.
 	if len(resp.Logs) == 0 {
 		return nil, fmt.Errorf("no logs returned")
 	}
-	return resp.Logs[0].GetCreateLedger().GetInfo(), nil
+	return resp.Logs[0].Payload.GetCreateLedger().GetInfo(), nil
 }
 
 func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {

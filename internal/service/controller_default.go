@@ -28,15 +28,10 @@ type DefaultController struct {
 	logger logging.Logger
 	engine Engine
 	// todo: use a LRU cache with limits
-	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
-	ledgerIDCache               sync.Map // Cache for ledger name to ID: map[string]uint32
-	createTransactionLp         *logProcessor
-	saveTransactionMetadataLp   *logProcessor
-	saveAccountMetadataLp       *logProcessor
-	deleteTransactionMetadataLp *logProcessor
-	deleteAccountMetadataLp     *logProcessor
-	revertTransactionLp         *logProcessor
-	store                       store.Store
+	scriptCache   sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
+	ledgerIDCache sync.Map // Cache for ledger name to ID: map[string]uint32
+	store         store.Store
+	keySetLocker  KeySetLocker
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -45,62 +40,12 @@ func NewDefaultController(
 	store store.Store,
 	logger logging.Logger,
 ) *DefaultController {
-	l := &DefaultController{
-		logger: logger,
-		engine: engine,
-		store:  store,
+	return &DefaultController{
+		logger:       logger,
+		engine:       engine,
+		store:        store,
+		keySetLocker: NewDefaultKeySetLocker(),
 	}
-	keySetLocker := NewDefaultKeySetLocker()
-	l.createTransactionLp = newLogProcessor(
-		"CreateTransaction",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.createTransaction,
-	)
-	l.saveTransactionMetadataLp = newLogProcessor(
-		"SaveTransactionMetadata",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.saveTransactionMetadata,
-	)
-	l.saveAccountMetadataLp = newLogProcessor(
-		"SaveAccountMetadata",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.saveAccountMetadata,
-	)
-	l.deleteTransactionMetadataLp = newLogProcessor(
-		"DeleteTransactionMetadata",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.deleteTransactionMetadata,
-	)
-	l.deleteAccountMetadataLp = newLogProcessor(
-		"DeleteAccountMetadata",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.deleteAccountMetadata,
-	)
-	l.revertTransactionLp = newLogProcessor(
-		"RevertTransaction",
-		store,
-		engine,
-		keySetLocker,
-		logger,
-		l.revertTransaction,
-	)
-
-	return l
 }
 
 // GetAllLedgersInfo returns all ledgers
@@ -137,7 +82,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 	}
 
 	// Extract the ledger log from the log
-	applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
 		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
 	}
@@ -145,12 +90,12 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 
 	// Extract the transaction from the log payload
 	switch payload := ledgerLog.Data.Payload.(type) {
-	case *commonpb.LogPayload_CreatedTransaction:
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
 		}
 		return payload.CreatedTransaction.Transaction, nil
-	case *commonpb.LogPayload_RevertedTransaction:
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
 		}
@@ -207,37 +152,70 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	return ledgerInfo, nil
 }
 
-// applyAction applies an action and returns the resulting ledger log
-// forgedAction holds the result of forging a servicepb.Action
-type forgedAction struct {
-	// index is the original position in the input slice
-	index int
-	// raftAction is the raft action to apply (nil if cached)
-	raftAction *raftcmdpb.Action
-	// cachedLog is the cached log from idempotency (nil if needs raft apply)
-	cachedLog *commonpb.Log
-	// ledgerId is set for LedgerApplyAction to wrap the result
-	ledgerID uint32
-}
-
 // Apply applies a list of actions and returns the resulting logs
 func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
 	if len(actions) == 0 {
 		return nil, fmt.Errorf("at least one action is required")
 	}
 
-	// First pass: forge all actions (check idempotency, build raft actions)
+	// forgedAction holds the result of forging a servicepb.Action
+	type forgedAction struct {
+		raftAction *raftcmdpb.Action // raft action to apply (nil if cached)
+		cachedLog  *commonpb.Log     // cached log from idempotency (nil if needs raft apply)
+	}
+
+	// Create a single unit of work for all actions
+	uow := &unitOfWork{
+		KeySetLocker: ctrl.keySetLocker,
+		Store:        ctrl.store,
+	}
+	defer uow.ReleaseLocks()
+
+	// First pass: resolve all actions and check idempotency
 	forged := make([]*forgedAction, len(actions))
 	var raftActions []*raftcmdpb.Action
 	for i, action := range actions {
-		fa, err := ctrl.forgeAction(ctx, i, action)
+		input, err := ctrl.resolveActionInput(action)
 		if err != nil {
-			return nil, fmt.Errorf("forging action %d: %w", i, err)
+			return nil, fmt.Errorf("resolving action input %d: %w", i, err)
 		}
-		forged[i] = fa
-		if fa.raftAction != nil {
-			raftActions = append(raftActions, fa.raftAction)
+
+		// Check idempotency
+		cachedLog, err := checkIdempotency(ctx, uow, action.IdempotencyKey, input)
+		if err != nil {
+			return nil, fmt.Errorf("checking idempotency for action %d: %w", i, err)
 		}
+		if cachedLog != nil {
+			forged[i] = &forgedAction{
+				cachedLog: cachedLog,
+			}
+			continue
+		}
+
+		builder, err := ctrl.resolveActionBuilder(action)
+		if err != nil {
+			return nil, fmt.Errorf("resolving action builder %d: %w", i, err)
+		}
+
+		// Build the action
+		cmd, err := builder(ctx, uow, input)
+		if err != nil {
+			return nil, fmt.Errorf("building action %d: %w", i, err)
+		}
+		actionData := &raftcmdpb.ActionData{
+			Command: cmd,
+		}
+		if action.IdempotencyKey != "" {
+			actionData.Idempotency = &commonpb.Idempotency{
+				Key:  action.IdempotencyKey,
+				Hash: commonpb.ComputeIdempotencyHash(input),
+			}
+		}
+		raftAction := raft.NewActionFromData(actionData)
+		forged[i] = &forgedAction{
+			raftAction: raftAction,
+		}
+		raftActions = append(raftActions, raftAction)
 	}
 
 	// Second pass: batch apply all raft actions
@@ -257,79 +235,117 @@ func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.
 		if fa.cachedLog != nil {
 			logs[i] = fa.cachedLog
 		} else {
-			log := raftLogs[raftLogIndex]
+			logs[i] = raftLogs[raftLogIndex]
 			raftLogIndex++
-			// Wrap ledger logs in ApplyLog
-			if fa.ledgerID > 0 {
-				logs[i] = &commonpb.Log{
-					Payload: &commonpb.Log_Apply{
-						Apply: &commonpb.ApplyLog{
-							LedgerId: fa.ledgerID,
-							Log:      log.GetApply().GetLog(),
-						},
-					},
-				}
-			} else {
-				logs[i] = log
-			}
 		}
 	}
 	return logs, nil
 }
 
-// forgeAction converts a servicepb.Action to a forgedAction
-func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, action *servicepb.Action) (*forgedAction, error) {
+// resolveActionInput resolves action input data (ledgerID and input proto.Message).
+func (ctrl *DefaultController) resolveActionInput(action *servicepb.Action) (proto.Message, error) {
+	switch actionType := action.Type.(type) {
+	case *servicepb.Action_Apply:
+		switch data := actionType.Apply.Data.(type) {
+		case *servicepb.LedgerApplyAction_CreateTransaction:
+			return data.CreateTransaction, nil
+
+		case *servicepb.LedgerApplyAction_AddMetadata:
+			if data.AddMetadata == nil || data.AddMetadata.Target == nil {
+				return nil, fmt.Errorf("missing add metadata data or target")
+			}
+			return data.AddMetadata, nil
+
+		case *servicepb.LedgerApplyAction_RevertTransaction:
+			return data.RevertTransaction, nil
+
+		case *servicepb.LedgerApplyAction_DeleteMetadata:
+			if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
+				return nil, fmt.Errorf("missing delete metadata data or target")
+			}
+			return data.DeleteMetadata, nil
+
+		default:
+			return nil, fmt.Errorf("unsupported action type")
+		}
+
+	case *servicepb.Action_CreateLedger:
+		return actionType.CreateLedger, nil
+
+	case *servicepb.Action_DeleteLedger:
+		return actionType.DeleteLedger, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported action type")
+	}
+}
+
+// resolveActionBuilder resolves the builder function for an action.
+func (ctrl *DefaultController) resolveActionBuilder(action *servicepb.Action) (ForgeActionBuilder, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is required")
 	}
 
 	switch actionType := action.Type.(type) {
 	case *servicepb.Action_Apply:
-		ledgerID, err := ctrl.resolveLedgerID(ctx, actionType.Apply.GetLedger())
+		id, err := ctrl.resolveLedgerID(context.Background(), actionType.Apply.Ledger)
 		if err != nil {
 			return nil, err
 		}
-		raftAction, cachedLog, err := ctrl.forgeLedgerAction(ctx, ledgerID, actionType.Apply)
-		if err != nil {
-			return nil, err
-		}
-		if cachedLog != nil {
-			return &forgedAction{
-				index: index,
-				cachedLog: &commonpb.Log{
-					Payload: &commonpb.Log_Apply{
-						Apply: &commonpb.ApplyLog{
-							LedgerId: ledgerID,
-							Log:      cachedLog,
-						},
-					},
-				},
-			}, nil
-		}
-		return &forgedAction{
-			index:      index,
-			raftAction: raftAction,
-			ledgerID:   ledgerID,
-		}, nil
 
+		switch data := actionType.Apply.Data.(type) {
+		case *servicepb.LedgerApplyAction_CreateTransaction:
+			return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+				return ctrl.createTransaction(ctx, uow, id, input)
+			}, nil
+
+		case *servicepb.LedgerApplyAction_AddMetadata:
+			if data.AddMetadata == nil || data.AddMetadata.Target == nil {
+				return nil, fmt.Errorf("missing add metadata data or target")
+			}
+			switch data.AddMetadata.Target.Target.(type) {
+			case *commonpb.Target_Account:
+				return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+					return ctrl.saveAccountMetadata(ctx, uow, id, input)
+				}, nil
+			case *commonpb.Target_Transaction:
+				return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+					return ctrl.saveTransactionMetadata(ctx, uow, id, input)
+				}, nil
+			default:
+				return nil, fmt.Errorf("unsupported target type for add metadata")
+			}
+
+		case *servicepb.LedgerApplyAction_RevertTransaction:
+			return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+				return ctrl.revertTransaction(ctx, uow, id, input)
+			}, nil
+
+		case *servicepb.LedgerApplyAction_DeleteMetadata:
+			if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
+				return nil, fmt.Errorf("missing delete metadata data or target")
+			}
+			switch data.DeleteMetadata.Target.Target.(type) {
+			case *commonpb.Target_Account:
+				return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+					return ctrl.deleteAccountMetadata(ctx, uow, id, input)
+				}, nil
+			case *commonpb.Target_Transaction:
+				return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
+					return ctrl.deleteTransactionMetadata(ctx, uow, id, input)
+				}, nil
+			default:
+				return nil, fmt.Errorf("unsupported target type for delete metadata")
+			}
+
+		default:
+			return nil, fmt.Errorf("unsupported action type")
+		}
 	case *servicepb.Action_CreateLedger:
-		raftAction := raft.NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
-			Name:     actionType.CreateLedger.Name,
-			Metadata: actionType.CreateLedger.Metadata,
-		})
-		return &forgedAction{
-			index:      index,
-			raftAction: raftAction,
-		}, nil
+		return ctrl.createLedger, nil
 
 	case *servicepb.Action_DeleteLedger:
-		raftAction := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
-			Id: actionType.DeleteLedger.Id,
-		})
-		return &forgedAction{
-			index:      index,
-			raftAction: raftAction,
-		}, nil
+		return ctrl.deleteLedger, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported action type")
@@ -365,58 +381,10 @@ func (ctrl *DefaultController) resolveLedgerID(ctx context.Context, ledger *serv
 	}
 }
 
-// forgeLedgerAction forges a ledger action and returns either a raft action or a cached log
-func (ctrl *DefaultController) forgeLedgerAction(ctx context.Context, ledgerID uint32, action *servicepb.LedgerApplyAction) (*raftcmdpb.Action, *commonpb.LedgerLog, error) {
-	if action == nil {
-		return nil, nil, fmt.Errorf("action is required")
-	}
-
-	idempotencyKey := action.IdempotencyKey
-
-	switch data := action.Data.(type) {
-	case *servicepb.LedgerApplyAction_CreateTransaction:
-		return ctrl.createTransactionLp.forgeAction(ctx, ledgerID, idempotencyKey, data.CreateTransaction)
-
-	case *servicepb.LedgerApplyAction_AddMetadata:
-		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
-			return nil, nil, fmt.Errorf("missing add metadata data or target")
-		}
-
-		switch data.AddMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
-			return ctrl.saveAccountMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.AddMetadata)
-		case *commonpb.Target_Transaction:
-			return ctrl.saveTransactionMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.AddMetadata)
-		default:
-			return nil, nil, fmt.Errorf("unsupported target type for add metadata")
-		}
-
-	case *servicepb.LedgerApplyAction_RevertTransaction:
-		return ctrl.revertTransactionLp.forgeAction(ctx, ledgerID, idempotencyKey, data.RevertTransaction)
-
-	case *servicepb.LedgerApplyAction_DeleteMetadata:
-		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
-			return nil, nil, fmt.Errorf("missing delete metadata data or target")
-		}
-
-		switch data.DeleteMetadata.Target.Target.(type) {
-		case *commonpb.Target_Account:
-			return ctrl.deleteAccountMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.DeleteMetadata)
-		case *commonpb.Target_Transaction:
-			return ctrl.deleteTransactionMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.DeleteMetadata)
-		default:
-			return nil, nil, fmt.Errorf("unsupported target type for delete metadata")
-		}
-
-	default:
-		return nil, nil, fmt.Errorf("unsupported action type")
-	}
-}
-
-func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
 	ctrl.logger.Debugf("Creating transaction")
 
-	input := msg.(*servicepb.CreateTransactionPayload)
+	input := in.(*servicepb.CreateTransactionPayload)
 
 	// Validate that we have either postings or script, but not both
 	hasScript := input.Script != nil && input.Script.Plain != ""
@@ -430,7 +398,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 	}
 
 	if input.Reference != "" {
-		_, err := unitOfWork.LockKeys(ctx, ledgerID, fmt.Sprintf("tx/references/%s", input.Reference))
+		_, err := unitOfWork.LockKeys(ctx, fmt.Sprintf("%d/tx/references/%s", ledgerID, input.Reference))
 		if err != nil {
 			return nil, fmt.Errorf("locking reference %s: %w", input.Reference, err)
 		}
@@ -505,17 +473,20 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 		}
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_AppendTransaction{
-			AppendTransaction: &raftcmdpb.AppendTransactionCommand{
-				AccountMetadata: accountMetadataProto,
-				Metadata:        finalMetadata,
-				Timestamp:       input.Timestamp,
-				Reference:       input.Reference,
-				Postings:        postings,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
+				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
+					AccountMetadata: accountMetadataProto,
+					Metadata:        finalMetadata,
+					Timestamp:       input.Timestamp,
+					Reference:       input.Reference,
+					Postings:        postings,
+				},
 			},
 		},
-	}, nil
+	}}, nil
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
@@ -581,8 +552,8 @@ func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOf
 	return postings, txMetadata, accountMetadata, nil
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
-	input := msg.(*servicepb.RevertTransactionPayload)
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*servicepb.RevertTransactionPayload)
 
 	// Validate input
 	if input.TransactionId == 0 {
@@ -590,8 +561,8 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	}
 
 	// Lock the transaction ID to prevent concurrent revert operations
-	lockKey := fmt.Sprintf("tx/revert/%d", input.TransactionId)
-	_, err := unitOfWork.LockKeys(ctx, ledgerID, lockKey)
+	lockKey := fmt.Sprintf("%d/tx/revert/%d", ledgerID, input.TransactionId)
+	_, err := unitOfWork.LockKeys(ctx, lockKey)
 	if err != nil {
 		return nil, fmt.Errorf("locking transaction %d: %w", input.TransactionId, err)
 	}
@@ -624,7 +595,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	}
 
 	// Extract the ledger log from the log
-	applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
 		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
 	}
@@ -633,12 +604,12 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	// Extract the original transaction from the ledger log
 	var originalTx *commonpb.Transaction
 	switch payload := ledgerLog.Data.Payload.(type) {
-	case *commonpb.LogPayload_CreatedTransaction:
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
 		}
 		originalTx = payload.CreatedTransaction.Transaction
-	case *commonpb.LogPayload_RevertedTransaction:
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		// Transaction already reverted (double-check)
 		return nil, fmt.Errorf("transaction %d is already a revert transaction", input.TransactionId)
 	default:
@@ -698,18 +669,21 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 		Reference: originalTx.Reference,
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_RevertTransaction{
-			RevertTransaction: &raftcmdpb.RevertTransactionCommand{
-				TransactionId:     input.TransactionId,
-				RevertTransaction: revertTx,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_RevertTransaction{
+				RevertTransaction: &raftcmdpb.RevertTransactionCommand{
+					TransactionId:     input.TransactionId,
+					RevertTransaction: revertTx,
+				},
 			},
 		},
-	}, nil
+	}}, nil
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
-	input := msg.(*commonpb.SaveMetadataCommand)
+func (ctrl *DefaultController) saveTransactionMetadata(_ context.Context, _ *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*commonpb.SaveMetadataCommand)
 
 	// Validate input
 	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
@@ -723,15 +697,18 @@ func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, stor
 		return nil, fmt.Errorf("metadata is required")
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_SaveMetadata{
-			SaveMetadata: input,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_SaveMetadata{
+				SaveMetadata: input,
+			},
 		},
-	}, nil
+	}}, nil
 }
 
-func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
-	input := msg.(*commonpb.SaveMetadataCommand)
+func (ctrl *DefaultController) saveAccountMetadata(_ context.Context, _ *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*commonpb.SaveMetadataCommand)
 
 	// Validate input
 	target, ok := input.Target.Target.(*commonpb.Target_Account)
@@ -745,15 +722,18 @@ func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store *u
 		return nil, fmt.Errorf("metadata is required")
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_SaveMetadata{
-			SaveMetadata: input,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_SaveMetadata{
+				SaveMetadata: input,
+			},
 		},
-	}, nil
+	}}, nil
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
-	input := msg.(*commonpb.DeleteMetadataCommand)
+func (ctrl *DefaultController) deleteTransactionMetadata(_ context.Context, _ *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*commonpb.DeleteMetadataCommand)
 
 	target, ok := input.Target.Target.(*commonpb.Target_Transaction)
 	if !ok {
@@ -766,15 +746,18 @@ func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, st
 		return nil, fmt.Errorf("metadata key is required")
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_DeleteMetadata{
-			DeleteMetadata: input,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_DeleteMetadata{
+				DeleteMetadata: input,
+			},
 		},
-	}, nil
+	}}, nil
 }
 
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store *unitOfWork, ledgerID uint32, msg proto.Message) (*raftcmdpb.CommandInput, error) {
-	input := msg.(*commonpb.DeleteMetadataCommand)
+func (ctrl *DefaultController) deleteAccountMetadata(_ context.Context, _ *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*commonpb.DeleteMetadataCommand)
 
 	target, ok := input.Target.Target.(*commonpb.Target_Account)
 	if !ok {
@@ -787,11 +770,43 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 		return nil, fmt.Errorf("metadata key is required")
 	}
 
-	return &raftcmdpb.CommandInput{
-		Command: &raftcmdpb.CommandInput_DeleteMetadata{
-			DeleteMetadata: input,
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedgerLog{
+		CreateLedgerLog: &raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerID,
+			Command: &raftcmdpb.CreateLedgerLogCommand_DeleteMetadata{
+				DeleteMetadata: input,
+			},
 		},
-	}, nil
+	}}, nil
+}
+
+func (ctrl *DefaultController) createLedger(_ context.Context, _ *unitOfWork, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*servicepb.CreateLedgerRequest)
+
+	if input.Name == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedger{
+		CreateLedger: &raftcmdpb.CreateLedgerCommand{
+			Name:     input.Name,
+			Metadata: input.Metadata,
+		},
+	}}, nil
+}
+
+func (ctrl *DefaultController) deleteLedger(_ context.Context, _ *unitOfWork, in proto.Message) (*raftcmdpb.AnyCommand, error) {
+	input := in.(*servicepb.DeleteLedgerRequest)
+
+	if input.Id == 0 {
+		return nil, fmt.Errorf("ledger ID is required")
+	}
+
+	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_DeleteLedger{
+		DeleteLedger: &raftcmdpb.DeleteLedgerCommand{
+			Id: input.Id,
+		},
+	}}, nil
 }
 
 // Import is not implemented yet
@@ -853,8 +868,8 @@ func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWor
 	}
 
 	// Lock balance keys
-	lockKeys := makeBalanceLockKeys(balanceQueryList)
-	_, err := uow.LockKeys(ctx, ledgerID, lockKeys...)
+	lockKeys := makeBalanceLockKeys(ledgerID, balanceQueryList)
+	_, err := uow.LockKeys(ctx, lockKeys...)
 	if err != nil {
 		return err
 	}

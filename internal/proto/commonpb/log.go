@@ -6,8 +6,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 )
 
-// NewLedgerLog creates a new LedgerLog from a LogPayload
-func NewLedgerLog(payload *LogPayload) *LedgerLog {
+// NewLedgerLog creates a new LedgerLog from a LedgerLogPayload
+func NewLedgerLog(payload *LedgerLogPayload) *LedgerLog {
 	return &LedgerLog{
 		Data: payload,
 	}
@@ -51,7 +51,7 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 		l.Id = *rawLog.ID
 	}
 
-	// Parse LogPayload from JSON using the type from rawLog
+	// Parse LedgerLogPayload from JSON using the type from rawLog
 	if len(rawLog.Data) > 0 {
 		payload, err := HydrateLog(rawLog.Type, rawLog.Data)
 		if err != nil {
@@ -59,26 +59,26 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 		}
 		switch p := payload.(type) {
 		case *CreatedTransaction:
-			l.Data = &LogPayload{
-				Payload: &LogPayload_CreatedTransaction{
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_CreatedTransaction{
 					CreatedTransaction: p,
 				},
 			}
 		case *RevertedTransaction:
-			l.Data = &LogPayload{
-				Payload: &LogPayload_RevertedTransaction{
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_RevertedTransaction{
 					RevertedTransaction: p,
 				},
 			}
 		case *SavedMetadata:
-			l.Data = &LogPayload{
-				Payload: &LogPayload_SavedMetadata{
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_SavedMetadata{
 					SavedMetadata: p,
 				},
 			}
 		case *DeletedMetadata:
-			l.Data = &LogPayload{
-				Payload: &LogPayload_DeletedMetadata{
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_DeletedMetadata{
 					DeletedMetadata: p,
 				},
 			}
@@ -91,7 +91,7 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 	type auxLog struct {
 		Type LogType     `json:"type"`
-		Data *LogPayload `json:"data"`
+		Data *LedgerLogPayload `json:"data"`
 		Date *time.Time  `json:"date,omitempty"`
 		ID   *uint64     `json:"id,omitempty"`
 	}

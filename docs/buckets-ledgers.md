@@ -358,21 +358,40 @@ Account metadata is stored in the Store and can be:
 
 ## Idempotence
 
+### System-Level Idempotency
+
+Ledger v3 implements **system-level idempotency**, a key architectural difference from v2:
+
+| Aspect | v2 | v3 |
+|--------|----|----|
+| **Scope** | Per-ledger | System-wide |
+| **Key namespace** | `(ledger, key)` | `key` only |
+| **Operations covered** | Transactions only | All operations (ledger CRUD, transactions, metadata) |
+| **Cross-ledger** | Same key allowed in different ledgers | Unique across entire system |
+
 ### Idempotency Key
 
-The system supports idempotency keys to avoid duplicate transactions:
+The system supports idempotency keys to avoid duplicate operations:
 
-- The key is provided in the `Idempotency-Key` header
-- If a transaction with the same key already exists, it is returned without creating a new transaction
+- The key is provided in the `Idempotency-Key` header or in the action payload
+- If an operation with the same key already exists, the cached result is returned
+- **All operation types** are covered: ledger creation, ledger deletion, transactions, metadata changes
 - Verification is done at the controller level before proposing to Raft
 
 ### Storage
 
 Idempotency keys are stored in the Store:
-- Keyed by `(ledger, idempotency_key)` 
-- Stored directly in the logs table (for SQLite) or with dedicated prefix (for Pebble)
-- Use `GetLogIDForIdempotencyKey()` to retrieve the associated log ID
+- Keyed by `idempotency_key` (system-wide, no ledger prefix)
+- Linked to the **global sequence number** of the resulting log
+- Use `GetSequenceForIdempotencyKey()` to retrieve the associated sequence
 - Persisted alongside runtime state
+
+### Benefits of System-Level Idempotency
+
+1. **Simpler client implementation**: No need to track which ledger an idempotency key was used with
+2. **Cross-ledger atomicity**: Bulk operations spanning multiple ledgers can use a single idempotency key
+3. **Consistent behavior**: All operations behave the same way regarding idempotency
+4. **Stronger guarantees**: Prevents accidental reuse of keys across ledgers
 
 ## Performance and Optimizations
 

@@ -184,28 +184,71 @@ results := fsm.ApplyEntries(ctx, commands...)
 
 ### Concept
 
-Idempotency keys allow avoiding duplicate transactions in case of retry.
+Idempotency keys allow avoiding duplicate operations in case of retry. In Ledger v3, idempotency is managed at the **system level**, meaning the same idempotency key applies across all ledgers and all operation types (ledger creation, deletion, and ledger log operations).
+
+### System-Level Idempotency
+
+Unlike v2 where idempotency was per-ledger, v3 implements **global idempotency**:
+
+- **Single namespace**: Idempotency keys are unique across the entire system
+- **All operations covered**: Ledger creation, ledger deletion, transactions, metadata operations
+- **Cross-ledger safety**: The same idempotency key cannot be used for operations on different ledgers
+
+This approach simplifies client implementations and provides stronger guarantees for distributed systems.
 
 ### Storage
 
 Idempotency keys are stored:
 - **In the Store**: For fast access and persistence
-- **Per ledger**: Keyed by `(ledger, idempotency_key)`
+- **System-wide**: Keyed by `idempotency_key` (no ledger prefix)
+- **Linked to global sequence**: Points to the global log sequence number
 
 ### Verification
 
 Verification is done before proposing commands:
 
-1. **Check in Store**: Query `GetLogIDForIdempotencyKey()`
-2. **If found**: Return existing log without creating a new one
-3. **If not found**: Proceed with command proposal
+1. **Lock idempotency key**: Acquire distributed lock on `ik/{idempotency_key}`
+2. **Check in Store**: Query `GetSequenceForIdempotencyKey()`
+3. **If found**: Retrieve log by sequence, verify hash matches, return cached log
+4. **If not found**: Proceed with command proposal
 
 ### Format
 
 ```go
-type IdempotencyEntry struct {
-    LogID         uint64
-    IdempotencyHash []byte
+type Idempotency struct {
+    Key  string  // The idempotency key
+    Hash []byte  // Hash of the input for verification
+}
+```
+
+### Example Flow
+
+```go
+// All action types go through the same idempotency check
+func forgeAction(ctx context.Context, s store.Store, keySetLocker KeySetLocker, 
+                 in *ForgeActionInput, builder ForgeActionBuilder) (*Action, *Log, error) {
+    if in.IdempotencyKey != "" {
+        // 1. Acquire system-level lock
+        release, err := keySetLocker.TryLockKeys(ctx, "ik/"+in.IdempotencyKey)
+        if err != nil {
+            return nil, nil, ErrIdempotencyKeyConflict
+        }
+        defer release()
+
+        // 2. Check if already processed
+        sequence, err := s.GetSequenceForIdempotencyKey(ctx, in.IdempotencyKey)
+        if err == nil && sequence > 0 {
+            log, _ := s.GetLogBySequence(ctx, sequence)
+            // 3. Verify hash and return cached response
+            if hashMatches(log.Idempotency.Hash, in.Input) {
+                return nil, log, nil
+            }
+            return nil, nil, ErrIdempotencyKeyConflict
+        }
+    }
+    // 4. Build and apply new action
+    cmd, err := builder(ctx, uow, in)
+    // ...
 }
 ```
 

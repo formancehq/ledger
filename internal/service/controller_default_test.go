@@ -20,7 +20,12 @@ import (
 
 // applyAction wraps a LedgerApplyAction in an Action for testing
 func applyAction(action *servicepb.LedgerApplyAction) *servicepb.Action {
+	return applyActionWithIdempotency(action, "")
+}
+
+func applyActionWithIdempotency(action *servicepb.LedgerApplyAction, idempotencyKey string) *servicepb.Action {
 	return &servicepb.Action{
+		IdempotencyKey: idempotencyKey,
 		Type: &servicepb.Action_Apply{
 			Apply: action,
 		},
@@ -301,16 +306,15 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		logs1, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
-			Ledger:         servicepb.LedgerID(testLedgerID),
-			IdempotencyKey: idempotencyKey,
+		logs1, err := ledgerService.Apply(ctx, applyActionWithIdempotency(&servicepb.LedgerApplyAction{
+			Ledger: servicepb.LedgerID(testLedgerID),
 			Data: &servicepb.LedgerApplyAction_DeleteMetadata{
 				DeleteMetadata: deleteMetadataCmd,
 			},
-		}))
+		}, idempotencyKey))
 		require.NoError(t, err)
 		require.Len(t, logs1, 1)
-		ledgerLog1 := logs1[0].GetApply().GetLog()
+		ledgerLog1 := logs1[0].Payload.GetApply().GetLog()
 
 		runtimeStore.EXPECT().
 			GetSequenceForIdempotencyKey(gomock.Any(), idempotencyKey).
@@ -319,16 +323,15 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			GetLogBySequence(gomock.Any(), ledgerLog1.Id).
 			Return(wrapLedgerLogInLogWithIdempotency(ledgerLog1.Id, testLedgerID, ledgerLog1, idempotencyKey, deleteMetadataCmd), nil)
 
-		logs2, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
-			Ledger:         servicepb.LedgerID(testLedgerID),
-			IdempotencyKey: idempotencyKey,
+		logs2, err := ledgerService.Apply(ctx, applyActionWithIdempotency(&servicepb.LedgerApplyAction{
+			Ledger: servicepb.LedgerID(testLedgerID),
 			Data: &servicepb.LedgerApplyAction_DeleteMetadata{
 				DeleteMetadata: deleteMetadataCmd,
 			},
-		}))
+		}, idempotencyKey))
 		require.NoError(t, err)
 		require.Len(t, logs2, 1)
-		ledgerLog2 := logs2[0].GetApply().GetLog()
+		ledgerLog2 := logs2[0].Payload.GetApply().GetLog()
 		require.Equal(t, ledgerLog1.Id, ledgerLog2.Id)
 	})
 
@@ -391,17 +394,17 @@ func expectApplyWithSequentialIDs(engine *MockEngine, times int) {
 		DoAndReturn(func(_ context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error) {
 			counter++
 			// Return []*commonpb.Log with an ApplyLog payload containing the LedgerLog
-			return []*commonpb.Log{{
-				Sequence: counter,
-				Payload: &commonpb.Log_Apply{
-					Apply: &commonpb.ApplyLog{
-						LedgerId: 1, // testLedgerID
-						Log: &commonpb.LedgerLog{
-							Id: counter,
-						},
+		return []*commonpb.Log{{
+			Sequence: counter,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerId: 1, // testLedgerID
+					Log: &commonpb.LedgerLog{
+						Id: counter,
 					},
 				},
-			}}, nil
+			}},
+		}}, nil
 		}).
 		Times(times)
 }
@@ -410,12 +413,12 @@ func expectApplyWithSequentialIDs(engine *MockEngine, times int) {
 func wrapLedgerLogInLog(sequence uint64, ledgerID uint32, ledgerLog *commonpb.LedgerLog) *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.Log_Apply{
-			Apply: &commonpb.ApplyLog{
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
 				LedgerId: ledgerID,
 				Log:      ledgerLog,
 			},
-		},
+		}},
 	}
 }
 
@@ -423,12 +426,12 @@ func wrapLedgerLogInLog(sequence uint64, ledgerID uint32, ledgerLog *commonpb.Le
 func wrapLedgerLogInLogWithIdempotency(sequence uint64, ledgerID uint32, ledgerLog *commonpb.LedgerLog, idempotencyKey string, input proto.Message) *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.Log_Apply{
-			Apply: &commonpb.ApplyLog{
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
 				LedgerId: ledgerID,
 				Log:      ledgerLog,
 			},
-		},
+		}},
 		Idempotency: &commonpb.Idempotency{
 			Key:  idempotencyKey,
 			Hash: commonpb.ComputeIdempotencyHash(input),
@@ -458,8 +461,8 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		}
 		originalLog := &commonpb.LedgerLog{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
+			Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 					CreatedTransaction: &commonpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
@@ -581,8 +584,8 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		}
 		originalLog := &commonpb.LedgerLog{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
+			Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 					CreatedTransaction: &commonpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
@@ -634,8 +637,8 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		}
 		originalLog := &commonpb.LedgerLog{
 			Id: logID,
-			Data: &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
+			Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 					CreatedTransaction: &commonpb.CreatedTransaction{
 						Transaction: originalTx,
 					},
@@ -666,28 +669,28 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		engine.EXPECT().
 			Apply(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, actions ...*raftcmdpb.Action) ([]*commonpb.Log, error) {
-				return []*commonpb.Log{{
-					Sequence: revertLogID,
-					Payload: &commonpb.Log_Apply{
-						Apply: &commonpb.ApplyLog{
-							LedgerId: 1, // testLedgerID
-							Log: &commonpb.LedgerLog{
-								Id: revertLogID,
-								Data: &commonpb.LogPayload{
-									Payload: &commonpb.LogPayload_RevertedTransaction{
-										RevertedTransaction: &commonpb.RevertedTransaction{
-											RevertedTransactionId: originalTx.Id,
-											RevertTransaction: &commonpb.Transaction{
-												Id:        2,
-												Timestamp: originalTimestamp,
-											},
+			return []*commonpb.Log{{
+				Sequence: revertLogID,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerId: 1, // testLedgerID
+						Log: &commonpb.LedgerLog{
+							Id: revertLogID,
+							Data: &commonpb.LedgerLogPayload{
+								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+									RevertedTransaction: &commonpb.RevertedTransaction{
+										RevertedTransactionId: originalTx.Id,
+										RevertTransaction: &commonpb.Transaction{
+											Id:        2,
+											Timestamp: originalTimestamp,
 										},
 									},
 								},
 							},
 						},
 					},
-				}}, nil
+				}},
+			}}, nil
 			}).
 			Times(1)
 
@@ -704,7 +707,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		require.Len(t, logs, 1)
 
 		// Verify that the revert transaction command contains the original timestamp
-		ledgerLog := logs[0].GetApply().GetLog()
+		ledgerLog := logs[0].Payload.GetApply().GetLog()
 		require.NotNil(t, ledgerLog.Data)
 		require.NotNil(t, ledgerLog.Data.Payload)
 	})

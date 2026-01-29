@@ -323,9 +323,9 @@ The `KeySetLocker` provides key-based locking for concurrent access to various r
 - **No caching**: Always reads from the underlying database store
 
 **Locked resources**:
-- **Balances**: Keys like `ledger:account:asset` - ensures consistent balance reads during transaction validation
-- **References**: Keys like `tx/references/{reference}` - prevents duplicate transaction references
-- **Idempotency keys**: Keys like `tx/ik/{idempotency_key}` - ensures idempotent transaction creation
+- **Balances**: Keys like `{ledgerId}/balances/{account}/{asset}` - ensures consistent balance reads during transaction validation
+- **References**: Keys like `{ledgerId}/tx/references/{reference}` - prevents duplicate transaction references
+- **Idempotency keys**: Keys like `ik/{idempotency_key}` - system-level idempotency (no ledger prefix)
 
 **Note**: This is NOT a cache. It only provides locking - data is always read from the database.
 

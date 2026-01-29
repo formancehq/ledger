@@ -494,7 +494,7 @@ func createLedger(ctx context.Context, node *Node, name string) (*commonpb.Ledge
 		return nil, err
 	}
 
-	return logs[0].GetCreateLedger().GetInfo(), nil
+	return logs[0].Payload.GetCreateLedger().GetInfo(), nil
 }
 
 func TestClusterBasic(t *testing.T) {
@@ -528,8 +528,9 @@ func TestClusterBasic(t *testing.T) {
 
 	// Create a transaction
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -539,7 +540,7 @@ func TestClusterBasic(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	// Apply a few transactions
@@ -591,8 +592,9 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: 1,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -602,7 +604,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 					}},
 				},
 			},
-		}, 1, nil)
+		})
 	}
 
 	// Should not trigger any snapshotting at this point (7 transactions + 1 CreateLedger = 8 entries)
@@ -714,8 +716,9 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	})
 
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -725,7 +728,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	// Apply enough transactions to trigger multiple snapshots and WAL compaction
@@ -849,8 +852,9 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	cluster.DisconnectNode(follower.ID)
 
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -860,7 +864,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	// Apply transactions to trigger snapshot while follower is disconnected
@@ -1042,8 +1046,9 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	cluster.DisconnectNode(follower.ID)
 
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -1053,7 +1058,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	// Apply transactions to trigger snapshot while follower is disconnected
@@ -1264,8 +1269,9 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	// Verify the restarted follower can still receive replication
 	// Create another transaction on the leader
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -1275,7 +1281,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	_, err = leader.Node.Apply(ctx, createTransaction())
@@ -1331,8 +1337,9 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
 
 	createTransaction := func() *raftcmdpb.Action {
-		return NewCreateLogAction(&raftcmdpb.CommandInput{
-			Command: &raftcmdpb.CommandInput_AppendTransaction{
+		return NewCreateLedgerLogAction(&raftcmdpb.CreateLedgerLogCommand{
+			LedgerId: ledgerInfo.Id,
+			Command: &raftcmdpb.CreateLedgerLogCommand_AppendTransaction{
 				AppendTransaction: &raftcmdpb.AppendTransactionCommand{
 					Postings: []*commonpb.Posting{{
 						Source:      "world",
@@ -1342,7 +1349,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 					}},
 				},
 			},
-		}, ledgerInfo.Id, nil)
+		})
 	}
 
 	// Apply some transactions but not enough to trigger snapshot yet

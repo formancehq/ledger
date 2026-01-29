@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"sync"
 )
@@ -12,9 +11,10 @@ var ErrLockUnavailable = errors.New("lock unavailable")
 
 // todo: add deadlocks detection
 // KeySetLocker provides key-based locking for concurrent access.
+// The caller is responsible for including any necessary prefixes (e.g., ledgerID) in the keys.
 type KeySetLocker interface {
-	LockKeys(ctx context.Context, ledgerID uint32, keys ...string) (func(), error)
-	TryLockKeys(ctx context.Context, ledgerID uint32, keys ...string) (func(), error)
+	LockKeys(ctx context.Context, keys ...string) (func(), error)
+	TryLockKeys(ctx context.Context, keys ...string) (func(), error)
 }
 
 // DefaultKeySetLocker is a default implementation of KeySetLocker.
@@ -38,42 +38,40 @@ func NewDefaultKeySetLocker() *DefaultKeySetLocker {
 }
 
 // LockKeys locks the requested keys and returns a release function.
-func (s *DefaultKeySetLocker) LockKeys(_ context.Context, ledgerID uint32, keys ...string) (func(), error) {
+func (s *DefaultKeySetLocker) LockKeys(_ context.Context, keys ...string) (func(), error) {
 	if len(keys) == 0 {
 		return func() {}, nil
 	}
 
-	// Prepend ledgerID to keys for isolation between ledgers
-	prefixedKeys := prependLedgerID(ledgerID, keys...)
-
 	// Sort lock keys to avoid deadlocks (always lock in the same order).
-	sort.Strings(prefixedKeys)
+	sortedKeys := make([]string, len(keys))
+	copy(sortedKeys, keys)
+	sort.Strings(sortedKeys)
 
 	// Lock all requested keys.
-	for _, lockKey := range prefixedKeys {
+	for _, lockKey := range sortedKeys {
 		entry := s.getOrCreateLock(lockKey)
 		entry.mutex.Lock()
 	}
 
 	return func() {
-		s.releaseLocks(prefixedKeys)
+		s.releaseLocks(sortedKeys)
 	}, nil
 }
 
 // TryLockKeys attempts to lock all keys immediately. It returns ErrLockUnavailable if any lock cannot be acquired.
-func (s *DefaultKeySetLocker) TryLockKeys(_ context.Context, ledgerID uint32, keys ...string) (func(), error) {
+func (s *DefaultKeySetLocker) TryLockKeys(_ context.Context, keys ...string) (func(), error) {
 	if len(keys) == 0 {
 		return func() {}, nil
 	}
 
-	// Prepend ledgerID to keys for isolation between ledgers
-	prefixedKeys := prependLedgerID(ledgerID, keys...)
-
 	// Sort lock keys to avoid deadlocks (always lock in the same order).
-	sort.Strings(prefixedKeys)
+	sortedKeys := make([]string, len(keys))
+	copy(sortedKeys, keys)
+	sort.Strings(sortedKeys)
 
-	lockedKeys := make([]string, 0, len(prefixedKeys))
-	for _, lockKey := range prefixedKeys {
+	lockedKeys := make([]string, 0, len(sortedKeys))
+	for _, lockKey := range sortedKeys {
 		entry := s.getOrCreateLock(lockKey)
 		if !entry.mutex.TryLock() {
 			s.decrementLockRef(lockKey)
@@ -131,13 +129,4 @@ func (s *DefaultKeySetLocker) decrementLockRef(lockKey string) {
 	if lock.refCount <= 0 {
 		delete(s.locks, lockKey)
 	}
-}
-
-// prependLedgerID adds the ledger ID prefix to each key for isolation between ledgers.
-func prependLedgerID(ledgerID uint32, keys ...string) []string {
-	result := make([]string, len(keys))
-	for i, key := range keys {
-		result[i] = fmt.Sprintf("%d/%s", ledgerID, key)
-	}
-	return result
 }

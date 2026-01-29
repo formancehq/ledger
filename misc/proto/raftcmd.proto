@@ -39,19 +39,14 @@ message RevertTransactionCommand {
   common.Transaction revert_transaction = 2;
 }
 
-message CommandInput {
+message CreateLedgerLogCommand {
+  uint32 ledger_id = 1;
   oneof command {
-    AppendTransactionCommand append_transaction = 1;
-    common.SaveMetadataCommand save_metadata = 2;
-    common.DeleteMetadataCommand delete_metadata = 3;
-    RevertTransactionCommand revert_transaction = 4;
+    AppendTransactionCommand append_transaction = 2;
+    common.SaveMetadataCommand save_metadata = 3;
+    common.DeleteMetadataCommand delete_metadata = 4;
+    RevertTransactionCommand revert_transaction = 5;
   }
-}
-
-message CreateLogCommand {
-  common.Idempotency idempotency = 1;
-  CommandInput input = 2;
-  uint32 ledger_id = 3;
 }
 
 message CreateLedgerCommand {
@@ -63,6 +58,19 @@ message DeleteLedgerCommand {
   uint32 id = 1;
 }
 
+message AnyCommand {
+  oneof command {
+    CreateLedgerCommand create_ledger = 1;
+    DeleteLedgerCommand delete_ledger = 2;
+    CreateLedgerLogCommand create_ledger_log = 3;
+  }
+}
+
+message ActionData {
+  common.Idempotency idempotency = 1;
+  AnyCommand command = 2;
+}
+
 // ============================================================================
 // Raft Command Wrapper
 // ============================================================================
@@ -70,7 +78,7 @@ message DeleteLedgerCommand {
 enum ActionType {
   CreateLedger = 0;
   DeleteLedger = 1;
-  CreateLog = 2;
+  CreateLedgerLog = 2;
 }
 
 message Action {
@@ -78,10 +86,10 @@ message Action {
   bytes data = 2;
 }
 
-// Command represents a command to be executed in the FSM (protobuf serialization format)
-// A command can contain multiple actions that will be executed atomically
-message Command {
-  uint64 id = 1;                    // Random command ID
+// CommandBatch represents a batch of commands to be executed in the FSM (protobuf serialization format)
+// A batch can contain multiple actions that will be executed atomically
+message CommandBatch {
+  uint64 id = 1;                    // Random batch ID
   repeated Action actions = 2;      // List of actions to execute atomically
   common.Timestamp date = 3;        // Creation date in UTC
 }

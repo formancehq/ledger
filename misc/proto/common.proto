@@ -161,12 +161,16 @@ message IdempotencyEntry {
 
 message Log {
   uint64 sequence = 1;
-  oneof payload {
-    CreateLedgerLog create_ledger = 2;
-    DeleteLedgerLog delete_ledger = 3;
-    ApplyLog apply = 4;
+  LogPayload payload = 2;
+  Idempotency idempotency = 3;
+}
+
+message LogPayload {
+  oneof type {
+    CreateLedgerLog create_ledger = 1;
+    DeleteLedgerLog delete_ledger = 2;
+    ApplyLedgerLog apply = 3;
   }
-  Idempotency idempotency = 5;
 }
 
 message CreateLedgerLog {
@@ -177,18 +181,18 @@ message DeleteLedgerLog {
   uint32 ledger_id = 1;
 }
 
-message ApplyLog {
+message ApplyLedgerLog {
   uint32 ledger_id = 1;
   LedgerLog log = 2;
 }
 
 message LedgerLog {
-  LogPayload data = 1;
+  LedgerLogPayload data = 1;
   Timestamp date = 2;
   uint64 id = 3;
 }
 
-message LogPayload {
+message LedgerLogPayload {
   oneof payload {
     CreatedTransaction created_transaction = 1;
     RevertedTransaction reverted_transaction = 2;

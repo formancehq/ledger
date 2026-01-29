@@ -398,7 +398,7 @@ func (c *ledgerLogCursor) Next(ctx context.Context) (*commonpb.LedgerLog, error)
 		}
 
 		// Only process ApplyLog payloads
-		applyLog := log.GetApply()
+		applyLog := log.Payload.GetApply()
 		if applyLog == nil || applyLog.Log == nil {
 			continue
 		}

@@ -63,8 +63,14 @@ func LedgerName(name string) *LedgerNameOrId {
 	}
 }
 
-// UnmarshalJSON implements json.Unmarshaler for LedgerApplyAction
-func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
+// BulkElement represents a bulk element with idempotency key
+type BulkElement struct {
+	Action         *LedgerApplyAction
+	IdempotencyKey string
+}
+
+// UnmarshalJSON implements json.Unmarshaler for BulkElement
+func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	// First pass: parse action and idempotency key
 	type rawElement struct {
 		Action         string        `json:"action"`
@@ -77,6 +83,56 @@ func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
 	}
 
 	x.IdempotencyKey = raw.IdempotencyKey
+	x.Action = &LedgerApplyAction{}
+
+	// Parse data based on action
+	switch raw.Action {
+	case LedgerActionTypeCreateTransaction:
+		req := &CreateTransactionPayload{}
+		if err := json.Unmarshal(raw.Data, req); err != nil {
+			return fmt.Errorf("error parsing create transaction data: %w", err)
+		}
+		x.Action.Data = &LedgerApplyAction_CreateTransaction{CreateTransaction: req}
+
+	case LedgerActionTypeAddMetadata:
+		req, err := unmarshalSaveMetadataCommand(raw.Data)
+		if err != nil {
+			return fmt.Errorf("error parsing add metadata data: %w", err)
+		}
+		x.Action.Data = &LedgerApplyAction_AddMetadata{AddMetadata: req}
+
+	case LedgerActionTypeRevertTransaction:
+		req, err := unmarshalRevertTransactionPayload(raw.Data)
+		if err != nil {
+			return fmt.Errorf("error parsing revert transaction data: %w", err)
+		}
+		x.Action.Data = &LedgerApplyAction_RevertTransaction{RevertTransaction: req}
+
+	case LedgerActionTypeDeleteMetadata:
+		req, err := unmarshalDeleteMetadataCommand(raw.Data)
+		if err != nil {
+			return fmt.Errorf("error parsing delete metadata data: %w", err)
+		}
+		x.Action.Data = &LedgerApplyAction_DeleteMetadata{DeleteMetadata: req}
+
+	default:
+		return fmt.Errorf("unsupported action: %s", raw.Action)
+	}
+
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler for LedgerApplyAction
+func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
+	// First pass: parse action
+	type rawElement struct {
+		Action string        `json:"action"`
+		Data   json.RawValue `json:"data"`
+	}
+	var raw rawElement
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("error parsing element: %w", err)
+	}
 
 	// Parse data based on action
 	switch raw.Action {

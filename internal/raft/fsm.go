@@ -114,12 +114,14 @@ func (fsm *FSM) handleCreateLedger(action *raftcmdpb.Action, cmdDate *commonpb.T
 
 	return &commonpb.Log{
 		Sequence: fsm.getNextSequence(),
-		Payload: &commonpb.Log_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{
-					Id:        ledgerID,
-					Name:      createCmd.Name,
-					CreatedAt: commonpb.NewTimestamp(time.Now()),
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerLog{
+					Info: &commonpb.LedgerInfo{
+						Id:        ledgerID,
+						Name:      createCmd.Name,
+						CreatedAt: commonpb.NewTimestamp(time.Now()),
+					},
 				},
 			},
 		},
@@ -144,9 +146,11 @@ func (fsm *FSM) handleDeleteLedger(action *raftcmdpb.Action) (*commonpb.Log, err
 
 	return &commonpb.Log{
 		Sequence: fsm.getNextSequence(),
-		Payload: &commonpb.Log_DeleteLedger{
-			DeleteLedger: &commonpb.DeleteLedgerLog{
-				LedgerId: deleteCmd.Id,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteLedger{
+				DeleteLedger: &commonpb.DeleteLedgerLog{
+					LedgerId: deleteCmd.Id,
+				},
 			},
 		},
 	}, nil
@@ -173,22 +177,22 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 		}
 		return fsm.handleDeleteLedger(action)
 
-	case raftcmdpb.ActionType_CreateLog:
-		var createCmd raftcmdpb.CreateLogCommand
+	case raftcmdpb.ActionType_CreateLedgerLog:
+		var createCmd raftcmdpb.CreateLedgerLogCommand
 		if err := UnmarshalCommandData(action.Data, &createCmd); err != nil {
 			fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 			return nil, err
 		}
 
-		var logPayload *commonpb.LogPayload
-		switch cmd := createCmd.Input.Command.(type) {
-		case *raftcmdpb.CommandInput_AppendTransaction:
+		var logPayload *commonpb.LedgerLogPayload
+		switch cmd := createCmd.Command.(type) {
+		case *raftcmdpb.CreateLedgerLogCommand_AppendTransaction:
 			timestamp := cmd.AppendTransaction.Timestamp
 			if timestamp == nil || timestamp.Data == 0 {
 				timestamp = cmdDate
 			}
-			logPayload = &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_CreatedTransaction{
+			logPayload = &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 					CreatedTransaction: &commonpb.CreatedTransaction{
 						Transaction: &commonpb.Transaction{
 							Postings:   cmd.AppendTransaction.Postings,
@@ -203,25 +207,25 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 					},
 				},
 			}
-		case *raftcmdpb.CommandInput_SaveMetadata:
-			logPayload = &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_SavedMetadata{
+		case *raftcmdpb.CreateLedgerLogCommand_SaveMetadata:
+			logPayload = &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 					SavedMetadata: &commonpb.SavedMetadata{
 						Target:   cmd.SaveMetadata.Target,
 						Metadata: cmd.SaveMetadata.Metadata,
 					},
 				},
 			}
-		case *raftcmdpb.CommandInput_DeleteMetadata:
-			logPayload = &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_DeletedMetadata{
+		case *raftcmdpb.CreateLedgerLogCommand_DeleteMetadata:
+			logPayload = &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 					DeletedMetadata: &commonpb.DeletedMetadata{
 						Target: cmd.DeleteMetadata.Target,
 						Key:    cmd.DeleteMetadata.Key,
 					},
 				},
 			}
-		case *raftcmdpb.CommandInput_RevertTransaction: // todo: should not need to read the original data
+		case *raftcmdpb.CreateLedgerLogCommand_RevertTransaction: // todo: should not need to read the original data
 			// Use the revert transaction provided in the command
 			revertTx := cmd.RevertTransaction.RevertTransaction
 
@@ -235,8 +239,8 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 			revertTx.InsertedAt = cmdDate
 			revertTx.UpdatedAt = cmdDate
 
-			logPayload = &commonpb.LogPayload{
-				Payload: &commonpb.LogPayload_RevertedTransaction{
+			logPayload = &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 					RevertedTransaction: &commonpb.RevertedTransaction{
 						RevertedTransactionId: cmd.RevertTransaction.TransactionId,
 						RevertTransaction:     revertTx,
@@ -249,13 +253,15 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 
 		return &commonpb.Log{
 			Sequence: fsm.getNextSequence(),
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
-					LedgerId: createCmd.LedgerId,
-					Log: &commonpb.LedgerLog{
-						Id:   fsm.state.Ledgers[createCmd.LedgerId].GetNextLogID(),
-						Date: cmdDate,
-						Data: logPayload,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerId: createCmd.LedgerId,
+						Log: &commonpb.LedgerLog{
+							Id:   fsm.state.Ledgers[createCmd.LedgerId].GetNextLogID(),
+							Date: cmdDate,
+							Data: logPayload,
+						},
 					},
 				},
 			},
@@ -277,7 +283,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 	defer func() {
 		_ = batch.Cancel(ctx)
 	}()
-	cmd := &raftcmdpb.Command{}
+	cmd := &raftcmdpb.CommandBatch{}
 
 	ret := make([]ApplyResult, 0, len(entries))
 	for _, entry := range entries {
@@ -316,7 +322,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 }
 
 // applyEntry processes all actions in a command atomically
-func (fsm *FSM) applyEntry(ctx context.Context, batch store.Batch, cmd *raftcmdpb.Command) (*ApplyResult, error) {
+func (fsm *FSM) applyEntry(ctx context.Context, batch store.Batch, cmd *raftcmdpb.CommandBatch) (*ApplyResult, error) {
 	var logs []*commonpb.Log
 
 	for _, action := range cmd.Actions {
@@ -404,15 +410,15 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb.Log) error {
 
 	switch {
-	case log.GetApply() != nil:
-		ledgerLog := log.GetApply().Log
+	case log.Payload.GetApply() != nil:
+		ledgerLog := log.Payload.GetApply().Log
 
 		projectTransaction := func(ctx context.Context, batch store.Batch, tx *commonpb.Transaction) error {
 			for _, posting := range tx.Postings {
-				if err := batch.AppendBalanceDiff(ctx, log.GetApply().LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), ledgerLog.Id); err != nil {
+				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), ledgerLog.Id); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
-				if err := batch.AppendBalanceDiff(ctx, log.GetApply().LedgerId, posting.Destination, posting.Asset, posting.Amount, ledgerLog.Id); err != nil {
+				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Destination, posting.Asset, posting.Amount, ledgerLog.Id); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
 			}
@@ -421,40 +427,40 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb
 		}
 
 		switch payload := ledgerLog.Data.Payload.(type) {
-		case *commonpb.LogPayload_CreatedTransaction:
+		case *commonpb.LedgerLogPayload_CreatedTransaction:
 			if err := projectTransaction(ctx, batch, payload.CreatedTransaction.Transaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
 			}
 			// Store the global sequence for transaction ID lookup
-			if err := batch.StoreTransactionID(ctx, log.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, log.Sequence); err != nil {
+			if err := batch.StoreTransactionID(ctx, log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, log.Sequence); err != nil {
 				return err
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
 				for account, metadata := range payload.CreatedTransaction.AccountMetadata {
-					err := batch.SaveAccountMetadata(ctx, log.GetApply().LedgerId, account, metadata)
+					err := batch.SaveAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account, metadata)
 					if err != nil {
 						return err
 					}
 				}
 			}
 
-		case *commonpb.LogPayload_RevertedTransaction:
+		case *commonpb.LedgerLogPayload_RevertedTransaction:
 			if err := projectTransaction(ctx, batch, payload.RevertedTransaction.RevertTransaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
 			}
 			// Store the global sequence for reverted transaction lookup
-			if err := batch.StoreRevertedTransactionID(ctx, log.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Sequence); err != nil {
+			if err := batch.StoreRevertedTransactionID(ctx, log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Sequence); err != nil {
 				return err
 			}
-		case *commonpb.LogPayload_SavedMetadata:
+		case *commonpb.LedgerLogPayload_SavedMetadata:
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.SaveAccountMetadata(ctx, log.GetApply().LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
+				if err := batch.SaveAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
 					return err
 				}
 			}
-		case *commonpb.LogPayload_DeletedMetadata:
+		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.DeleteAccountMetadata(ctx, log.GetApply().LedgerId, account.Addr, []string{
+				if err := batch.DeleteAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account.Addr, []string{
 					payload.DeletedMetadata.Key,
 				}); err != nil {
 					return err
@@ -465,10 +471,10 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb
 		}
 
 		return nil
-	case log.GetCreateLedger() != nil:
-		return batch.RegisterLedger(ctx, log.GetCreateLedger().GetInfo())
-	case log.GetDeleteLedger() != nil:
-		return batch.DeleteLedger(ctx, log.GetDeleteLedger().GetLedgerId())
+	case log.Payload.GetCreateLedger() != nil:
+		return batch.RegisterLedger(ctx, log.Payload.GetCreateLedger().GetInfo())
+	case log.Payload.GetDeleteLedger() != nil:
+		return batch.DeleteLedger(ctx, log.Payload.GetDeleteLedger().GetLedgerId())
 	default:
 		return fmt.Errorf("unhandled log type: %T", log)
 	}

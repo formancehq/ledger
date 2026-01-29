@@ -332,11 +332,11 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 	logs := []*commonpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_CreatedTransaction{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
 								Transaction: commonpb.NewTransaction().
 									WithPostings(
@@ -355,7 +355,7 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 						WithID(1).
 						WithDate(now),
 				},
-			},
+			}},
 			Idempotency: &commonpb.Idempotency{
 				Key:  "idempotency-key-1",
 				Hash: []byte("hash-1"),
@@ -363,11 +363,11 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 		},
 		{
 			Sequence: 2,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_CreatedTransaction{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
 								Transaction: commonpb.NewTransaction().
 									WithPostings(
@@ -381,7 +381,7 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 						WithID(2).
 						WithDate(now.Add(time.Second)),
 				},
-			},
+			}},
 			Idempotency: &commonpb.Idempotency{
 				Key:  "idempotency-key-2",
 				Hash: []byte("hash-2"),
@@ -389,11 +389,11 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 		},
 		{
 			Sequence: 3,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_SavedMetadata{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 							SavedMetadata: &commonpb.SavedMetadata{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
@@ -409,15 +409,15 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 						WithID(3).
 						WithDate(now.Add(2 * time.Second)),
 				},
-			},
+			}},
 		},
 		{
 			Sequence: 4,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_DeletedMetadata{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 							DeletedMetadata: &commonpb.DeletedMetadata{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
@@ -431,7 +431,7 @@ func createTestLogs(ledgerID uint32) []*commonpb.Log {
 						WithID(4).
 						WithDate(now.Add(3 * time.Second)),
 				},
-			},
+			}},
 		},
 	}
 

@@ -379,11 +379,11 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 	logs := []*commonpb.Log{
 		{
 			Sequence: startSequence,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_CreatedTransaction{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
 								Transaction: commonpb.NewTransaction().
 									WithPostings(
@@ -401,20 +401,20 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 					}).
 						WithID(1).
 						WithDate(now),
-				},
 			},
-			Idempotency: &commonpb.Idempotency{
-				Key:  "idempotency-key-1",
+		}},
+		Idempotency: &commonpb.Idempotency{
+			Key:  "idempotency-key-1",
 				Hash: []byte("hash-1"),
 			},
 		},
 		{
 			Sequence: startSequence + 1,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_CreatedTransaction{
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
 								Transaction: commonpb.NewTransaction().
 									WithPostings(
@@ -427,60 +427,60 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 					}).
 						WithID(2).
 						WithDate(now.Add(time.Second)),
-				},
 			},
-			Idempotency: &commonpb.Idempotency{
-				Key:  "idempotency-key-2",
+		}},
+		Idempotency: &commonpb.Idempotency{
+			Key:  "idempotency-key-2",
 				Hash: []byte("hash-2"),
 			},
 		},
-		{
-			Sequence: startSequence + 2,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
-					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_SavedMetadata{
-							SavedMetadata: &commonpb.SavedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-										Addr: "bank",
-									}},
-								},
-								Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
-									"label": "Bank Account",
+	{
+		Sequence: startSequence + 2,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerId: ledgerID,
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_SavedMetadata{
+						SavedMetadata: &commonpb.SavedMetadata{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+									Addr: "bank",
 								}},
 							},
+							Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
+								"label": "Bank Account",
+							}},
 						},
-					}).
-						WithID(3).
-						WithDate(now.Add(2 * time.Second)),
-				},
+					},
+				}).
+					WithID(3).
+					WithDate(now.Add(2 * time.Second)),
 			},
-		},
-		{
-			Sequence: startSequence + 3,
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
-					LedgerId: ledgerID,
-					Log: commonpb.NewLedgerLog(&commonpb.LogPayload{
-						Payload: &commonpb.LogPayload_DeletedMetadata{
-							DeletedMetadata: &commonpb.DeletedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-										Addr: "bank",
-									}},
-								},
-								Key: "old_key",
+		}},
+	},
+	{
+		Sequence: startSequence + 3,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerId: ledgerID,
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
+						DeletedMetadata: &commonpb.DeletedMetadata{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+									Addr: "bank",
+								}},
 							},
+							Key: "old_key",
 						},
-					}).
-						WithID(4).
-						WithDate(now.Add(3 * time.Second)),
-				},
+					},
+				}).
+					WithID(4).
+					WithDate(now.Add(3 * time.Second)),
 			},
-		},
-	}
+		}},
+	},
+}
 
 	return logs
 }

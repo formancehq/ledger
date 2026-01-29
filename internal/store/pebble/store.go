@@ -313,7 +313,7 @@ func (c *ledgerLogCursor) Next(ctx context.Context) (*commonpb.LedgerLog, error)
 		}
 
 		// Skip if not an ApplyLog
-		applyLog, ok := log.Payload.(*commonpb.Log_Apply)
+		applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 		if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
 			continue
 		}

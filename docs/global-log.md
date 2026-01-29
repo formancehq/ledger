@@ -20,12 +20,16 @@ The global log captures all system-wide events in a single ordered sequence:
 ```protobuf
 message Log {
   uint64 sequence = 1;                    // Global sequence number (system-wide)
-  oneof payload {
-    CreateLedgerLog create_ledger = 2;    // Ledger creation
-    DeleteLedgerLog delete_ledger = 3;    // Ledger deletion
-    ApplyLog apply = 4;                   // Ledger-level log entry
+  LogPayload payload = 2;                 // Payload containing the log data
+  Idempotency idempotency = 3;            // Idempotency information
+}
+
+message LogPayload {
+  oneof type {
+    CreateLedgerLog create_ledger = 1;    // Ledger creation
+    DeleteLedgerLog delete_ledger = 2;    // Ledger deletion
+    ApplyLedgerLog apply = 3;                   // Ledger-level log entry
   }
-  Idempotency idempotency = 5;
 }
 ```
 
@@ -37,12 +41,12 @@ Each ledger maintains its own log with entries specific to that ledger:
 
 ```protobuf
 message LedgerLog {
-  LogPayload data = 1;                    // Log payload (transaction, metadata, etc.)
+  LedgerLogPayload data = 1;                    // Log payload (transaction, metadata, etc.)
   Timestamp date = 2;                     // Log date
   uint64 id = 3;                          // Per-ledger log ID
 }
 
-message LogPayload {
+message LedgerLogPayload {
   oneof payload {
     CreatedTransaction created_transaction = 1;
     RevertedTransaction reverted_transaction = 2;
@@ -56,10 +60,10 @@ The `id` is scoped to the ledger and represents the chronological order of opera
 
 ### Relationship
 
-The `ApplyLog` message links the two levels:
+The `ApplyLedgerLog` message links the two levels:
 
 ```protobuf
-message ApplyLog {
+message ApplyLedgerLog {
   uint32 ledger_id = 1;                   // Target ledger
   LedgerLog log = 2;                      // Ledger-level log entry
 }

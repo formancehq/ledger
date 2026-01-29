@@ -46,5 +46,5 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return the ledger info wrapped in BaseResponse
-	writeCreated(w, logs[0].GetCreateLedger().GetInfo())
+	writeCreated(w, logs[0].Payload.GetCreateLedger().GetInfo())
 }

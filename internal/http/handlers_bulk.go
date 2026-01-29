@@ -34,9 +34,9 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse each element
-	elements := make([]*servicepb.LedgerApplyAction, 0, len(rawElements))
+	elements := make([]*servicepb.BulkElement, 0, len(rawElements))
 	for i, rawElem := range rawElements {
-		elem := &servicepb.LedgerApplyAction{}
+		elem := &servicepb.BulkElement{}
 		if err := json.Unmarshal(rawElem, elem); err != nil {
 			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
 				fmt.Errorf("error parsing element %d: %w", i, err))
@@ -69,7 +69,7 @@ type bulkResult struct {
 }
 
 // runBulk processes a list of bulk elements and returns the results
-func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*servicepb.LedgerApplyAction, opts bulkOptions) []bulkResult {
+func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*servicepb.BulkElement, opts bulkOptions) []bulkResult {
 	if len(elements) == 0 {
 		return nil
 	}
@@ -77,10 +77,11 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 	// Build actions slice
 	actions := make([]*servicepb.Action, len(elements))
 	for i, elem := range elements {
-		elem.Ledger = servicepb.LedgerName(ledgerName)
+		elem.Action.Ledger = servicepb.LedgerName(ledgerName)
 		actions[i] = &servicepb.Action{
+			IdempotencyKey: elem.IdempotencyKey,
 			Type: &servicepb.Action_Apply{
-				Apply: elem,
+				Apply: elem.Action,
 			},
 		}
 	}
@@ -105,7 +106,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, actions []*servicepb.Action)
 	}
 
 	for i, log := range logs {
-		results[i] = bulkResult{log: log.GetApply().GetLog()}
+		results[i] = bulkResult{log: log.Payload.GetApply().GetLog()}
 	}
 	return results
 }
@@ -128,19 +129,19 @@ func (s *Server) runBulkSequential(ctx context.Context, actions []*servicepb.Act
 			continue
 		}
 
-		results[i] = bulkResult{log: logs[0].GetApply().GetLog()}
+		results[i] = bulkResult{log: logs[0].Payload.GetApply().GetLog()}
 	}
 
 	return results
 }
 
 // writeBulkResponse writes the bulk response
-func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.LedgerApplyAction, results []bulkResult) {
+func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult) {
 	hasError := false
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
-		responseType := servicepb.GetLedgerApplyActionType(elements[i])
+		responseType := servicepb.GetLedgerApplyActionType(elements[i].Action)
 		var data any
 
 		if result.err != nil {

@@ -93,10 +93,11 @@ message ApplyResponse {
 }
 
 message Action {
+  string idempotency_key = 1;
   oneof type {
-    LedgerApplyAction apply = 1;
-    CreateLedgerRequest create_ledger = 2;
-    DeleteLedgerRequest delete_ledger = 3;
+    LedgerApplyAction apply = 2;
+    CreateLedgerRequest create_ledger = 3;
+    DeleteLedgerRequest delete_ledger = 4;
   }
 }
 
@@ -132,12 +133,11 @@ message LedgerNameOrId {
 // LedgerAction represents a single ledger action
 message LedgerApplyAction {
   LedgerNameOrId ledger = 1;
-  string idempotency_key = 2;
   oneof data {
-    CreateTransactionPayload create_transaction = 3;
-    common.SaveMetadataCommand add_metadata = 4;
-    RevertTransactionPayload revert_transaction = 5;
-    common.DeleteMetadataCommand delete_metadata = 6;
+    CreateTransactionPayload create_transaction = 2;
+    common.SaveMetadataCommand add_metadata = 3;
+    RevertTransactionPayload revert_transaction = 4;
+    common.DeleteMetadataCommand delete_metadata = 5;
   }
 }
 

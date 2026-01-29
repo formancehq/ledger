@@ -2,7 +2,7 @@ package commonpb
 
 import "google.golang.org/protobuf/proto"
 
-// LogPayloadInterface represents a log payload that can be converted to protobuf LogPayload
+// LogPayloadInterface represents a log payload that can be converted to protobuf LedgerLogPayload
 // Type() returns the log type as int32 (matching protobuf Log.Type field)
 type LogPayloadInterface interface {
 	proto.Message

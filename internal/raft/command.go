@@ -34,9 +34,9 @@ func NewAction(actionType raftcmdpb.ActionType, msg proto.Message) *raftcmdpb.Ac
 	}
 }
 
-// NewCommand creates a new Command with the given actions
-func NewCommand(actions ...*raftcmdpb.Action) *raftcmdpb.Command {
-	return &raftcmdpb.Command{
+// NewCommandBatch creates a new CommandBatch with the given actions
+func NewCommandBatch(actions ...*raftcmdpb.Action) *raftcmdpb.CommandBatch {
+	return &raftcmdpb.CommandBatch{
 		Id:      GenerateRandomID(),
 		Actions: actions,
 		Date:    commonpb.NewTimestamp(time.Now()),
@@ -45,17 +45,17 @@ func NewCommand(actions ...*raftcmdpb.Action) *raftcmdpb.Command {
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateLedgerCommand(cmd *raftcmdpb.CreateLedgerCommand) *raftcmdpb.Command {
+func NewCreateLedgerCommand(cmd *raftcmdpb.CreateLedgerCommand) *raftcmdpb.CommandBatch {
 	action := NewAction(raftcmdpb.ActionType_CreateLedger, cmd)
-	return NewCommand(action)
+	return NewCommandBatch(action)
 }
 
 // NewDeleteLedgerCommand creates a new DeleteLedgerCommand
-func NewDeleteLedgerCommand(id uint32) *raftcmdpb.Command {
+func NewDeleteLedgerCommand(id uint32) *raftcmdpb.CommandBatch {
 	action := NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
 		Id: id,
 	})
-	return NewCommand(action)
+	return NewCommandBatch(action)
 }
 
 // UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
@@ -65,23 +65,36 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 		return proto.Unmarshal(data, cmd)
 	case *raftcmdpb.DeleteLedgerCommand:
 		return proto.Unmarshal(data, cmd)
-	case *raftcmdpb.CreateLogCommand:
+	case *raftcmdpb.CreateLedgerLogCommand:
 		return proto.Unmarshal(data, cmd)
 	default:
 		return proto.Unmarshal(data, v.(proto.Message))
 	}
 }
 
-// NewCreateLogAction creates a new action for creating a log
-func NewCreateLogAction(input *raftcmdpb.CommandInput, ledgerID uint32, idempotency *commonpb.Idempotency) *raftcmdpb.Action {
-	return NewAction(raftcmdpb.ActionType_CreateLog, &raftcmdpb.CreateLogCommand{
-		Input:       input,
-		Idempotency: idempotency,
-		LedgerId:    ledgerID,
-	})
+// NewCreateLedgerLogAction creates a new action for creating a ledger log
+func NewCreateLedgerLogAction(cmd *raftcmdpb.CreateLedgerLogCommand) *raftcmdpb.Action {
+	return NewAction(raftcmdpb.ActionType_CreateLedgerLog, cmd)
 }
 
-// NewCreateLogCommand creates a new command with a single CreateLog action
-func NewCreateLogCommand(input *raftcmdpb.CommandInput, ledgerID uint32, idempotency *commonpb.Idempotency) *raftcmdpb.Command {
-	return NewCommand(NewCreateLogAction(input, ledgerID, idempotency))
+// NewCreateLedgerLogCommandWrapper creates a new command with a single CreateLedgerLog action
+func NewCreateLedgerLogCommandWrapper(cmd *raftcmdpb.CreateLedgerLogCommand) *raftcmdpb.CommandBatch {
+	return NewCommandBatch(NewCreateLedgerLogAction(cmd))
+}
+
+// NewActionFromData creates a new action from ActionData
+func NewActionFromData(data *raftcmdpb.ActionData) *raftcmdpb.Action {
+	if data.Command == nil {
+		panic("command is nil")
+	}
+	switch c := data.Command.Command.(type) {
+	case *raftcmdpb.AnyCommand_CreateLedger:
+		return NewAction(raftcmdpb.ActionType_CreateLedger, c.CreateLedger)
+	case *raftcmdpb.AnyCommand_DeleteLedger:
+		return NewAction(raftcmdpb.ActionType_DeleteLedger, c.DeleteLedger)
+	case *raftcmdpb.AnyCommand_CreateLedgerLog:
+		return NewAction(raftcmdpb.ActionType_CreateLedgerLog, c.CreateLedgerLog)
+	default:
+		panic("unknown command type")
+	}
 }
