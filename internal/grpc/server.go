@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/stats"
 )
 
@@ -18,7 +20,7 @@ type Server struct {
 	port     int
 }
 
-func NewServer(port int, logger logging.Logger) *Server {
+func NewServer(port int, logger logging.Logger, debug bool) *Server {
 	opts := []grpc.ServerOption{
 		// todo: make configurable (performance cost)
 		grpc.StatsHandler(otelgrpc.NewServerHandler(
@@ -34,10 +36,34 @@ func NewServer(port int, logger logging.Logger) *Server {
 		grpc.MaxSendMsgSize(64 * 1024 * 1024),
 	}
 
+	// Add logging interceptor in debug mode
+	if debug {
+		opts = append(opts, grpc.ChainUnaryInterceptor(
+			func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+				logger.WithFields(map[string]any{
+					"method": info.FullMethod,
+				}).Debug("gRPC request received")
+				resp, err := handler(ctx, req)
+				if err != nil {
+					logger.WithFields(map[string]any{
+						"method": info.FullMethod,
+						"error":  err.Error(),
+					}).Debug("gRPC request failed")
+				}
+				return resp, err
+			},
+		))
+	}
+
+	server := grpc.NewServer(opts...)
+
+	// Enable gRPC reflection for debugging tools like grpcurl
+	reflection.Register(server)
+
 	return &Server{
 		port:   port,
 		logger: logger,
-		server: grpc.NewServer(opts...),
+		server: server,
 	}
 }
 

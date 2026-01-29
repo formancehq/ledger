@@ -21,7 +21,7 @@ generation:
     oAuth2PasswordEnabled: false
   sdkHooksConfigAccess: true
 go:
-  version: 0.12.25
+  version: 0.12.29
   additionalDependencies: {}
   allowUnknownFieldsInWeakUnions: false
   baseErrorName: FormanceError

@@ -1,84 +1,72 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"text/tabwriter"
+	"time"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
-	"github.com/pterm/pterm"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 )
 
-var (
-	getLedgerName string
-)
+// newLedgersGetCommand creates the ledgers get command.
+func newLedgersGetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get a ledger by name",
+		Long:  "Get detailed information about a ledger by its name via gRPC",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runLedgersGet,
+	}
 
-var ledgersGetCmd = &cobra.Command{
-	Use:          "get",
-	Short:        "Get a ledger",
-	Long:         "Retrieves a ledger by its name.",
-	RunE:         runGetLedger,
-	SilenceUsage: true,
+	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmd.Flags().Duration("timeout", defaultTimeout, "Request timeout")
+
+	return cmd
 }
 
-func init() {
-	ledgersGetCmd.Flags().StringVar(&getLedgerName, "name", "", "Ledger name (required)")
-	if err := ledgersGetCmd.MarkFlagRequired("name"); err != nil {
-		panic(err)
-	}
-	if err := ledgersGetCmd.RegisterFlagCompletionFunc("name", completeLedgerNames()); err != nil {
-		panic(err)
-	}
-}
+func runLedgersGet(cmd *cobra.Command, args []string) error {
+	ledgerName := args[0]
 
-func runGetLedger(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
-	// Validate required flags
-	if getLedgerName == "" {
-		return fmt.Errorf("ledger name is required (use --name)")
-	}
-
-	// Create SDK instance with custom server URL
-	sdk := newSDKClient()
-
-	// Get ledger request
-	req := operations.GetLedgerRequest{
-		LedgerName: getLedgerName,
-	}
-
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledger...")
-
-	// Call the get ledger endpoint
-	res, err := sdk.Ledgers.GetLedger(ctx, req)
+	client, conn, err := getClient(cmd)
 	if err != nil {
-		spinner.Fail("Failed to get ledger: " + err.Error())
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := getContext(cmd)
+	defer cancel()
+
+	ledger, err := client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
+		Name: ledgerName,
+	})
+	if err != nil {
 		return fmt.Errorf("failed to get ledger: %w", err)
 	}
 
-	spinner.Success("Ledger retrieved successfully")
-
-	// Extract response data
-	ledgerResponse := res.GetGetLedgerResponse()
-	if ledgerResponse == nil {
-		return fmt.Errorf("no ledger data in response")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(ledger)
 	}
 
-	data := ledgerResponse.Data
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(w, "ID:\t%d\n", ledger.Id)
+	_, _ = fmt.Fprintf(w, "Name:\t%s\n", ledger.Name)
 
-	// Create info panel
-	panelData := ""
-	panelData += fmt.Sprintf("Name: %s\n", data.Name)
-	panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
-	if len(data.Metadata) > 0 {
-		panelData += "\nMetadata:\n"
-		for k, v := range data.Metadata {
-			panelData += fmt.Sprintf("  %s: %s\n", k, v)
+	if ledger.CreatedAt != nil {
+		_, _ = fmt.Fprintf(w, "Created At:\t%s\n", ledger.CreatedAt.AsTime().Format(time.RFC3339))
+	}
+
+	if len(ledger.Metadata) > 0 {
+		_, _ = fmt.Fprintf(w, "\nMetadata:\n")
+		for key, value := range ledger.Metadata {
+			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", key, value)
 		}
 	}
 
-	pterm.DefaultHeader.WithFullWidth().Println("Ledger Information")
-	pterm.Println()
-	pterm.DefaultBox.WithTitle("Ledger Details").WithBoxStyle(pterm.NewStyle(pterm.FgLightGreen)).Println(panelData)
-
-	return nil
+	return w.Flush()
 }

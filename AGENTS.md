@@ -80,30 +80,35 @@ This convention ensures consistency across the API and matches common JavaScript
 
 ## File Structure
 
-The client commands and HTTP handlers are organized into separate files to improve maintainability and code readability.
+The client CLI and HTTP handlers are organized into separate files to improve maintainability and code readability.
 
-### Ledger Commands
+### Client CLI (`cmd/client/`)
 
-Ledger management commands are separated into individual files:
+The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 
-- **`ledgers.go`** : Main file that defines the parent `ledgers` command and initializes all sub-commands
-- **`ledgers_create.go`** : `ledgers create` command to create a new ledger
-- **`ledgers_list.go`** : `ledgers list` command to list all ledgers
-- **`ledgers_get.go`** : `ledgers get` command to retrieve a specific ledger
-- **`ledgers_raft_state.go`** : `ledgers raft-state` command to retrieve ledger Raft cluster state
-- **`ledgers_delete.go`** : `ledgers delete` command to delete a ledger
+**Entry point:**
+- **`main.go`** : Main entry point, creates the root command and initializes all sub-commands
 
-### Cluster Commands
+**Ledger commands:**
+- **`ledgers.go`** : Parent command for ledger operations
+- **`ledgers_list.go`** : `ledgers list` command to list all ledgers via gRPC
+- **`ledgers_get.go`** : `ledgers get` command to retrieve a specific ledger via gRPC
 
-Raft cluster-related commands are separated into individual files:
+**Store commands:**
+- **`store.go`** : Parent command for store operations
+- **`store_metrics.go`** : `store metrics` command to retrieve Pebble storage metrics via gRPC
 
-- **`cluster.go`** : Raft cluster-related commands (`snapshot`, `cluster-state`)
+**Shared files:**
+- **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
-### Shared Files
+**Building the client:**
+```bash
+# Using just
+just build-client
 
-- **`main.go`** : Main entry point, defines `rootCmd` and initializes all commands
-- **`common.go`** : Shared functions (SDK client creation, debug HTTP client)
-- **`completions.go`** : Shell completion support
+# Or directly
+go build -o ledgerctl ./cmd/client
+```
 
 ### Build Directory
 
@@ -141,6 +146,25 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 5. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
 6. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
 7. **No type aliases** : Never use type aliases (e.g., `type X = Y`). Always use the original type directly. This improves code clarity and avoids confusion about which type is actually being used.
+8. **Never ignore errors** : Always handle errors explicitly. Use `_` to discard an error only when there is genuinely nothing to do with it, but never silently ignore errors.
+
+   **Example**:
+   ```go
+   // ✅ Good: Error is handled
+   data, err := json.Marshal(obj)
+   if err != nil {
+       return fmt.Errorf("failed to marshal: %w", err)
+   }
+
+   // ✅ Good: Error is explicitly discarded with comment when appropriate
+   _ = file.Close() // Best effort cleanup, error doesn't affect outcome
+
+   // ❌ Bad: Error silently ignored
+   data, _ := json.Marshal(obj) // What if marshaling fails?
+
+   // ❌ Bad: Error not checked at all
+   json.Marshal(obj)
+   ```
 
    **Example**:
    ```go

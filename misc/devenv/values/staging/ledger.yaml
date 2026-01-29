@@ -86,6 +86,18 @@ ingress:
           pathType: Prefix
   perPod:
     enabled: true
+ingressGrpc:
+  enabled: true
+  className: traefik
+  hosts:
+    - host: grpc-ledger-exp.staging.formance.cloud
+      paths:
+        - path: /
+          pathType: Prefix
+  targetGroupBinding:
+    enabled: true
+    targetGroupARN: "arn:aws:elasticloadbalancing:eu-west-1:955332203423:targetgroup/geoffrey-ledger-v3-grpc/e549d74021a8e711"
+    targetType: ip
 persistence:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
@@ -93,10 +105,10 @@ replicaCount: 3
 resources:
   limits:
     cpu: 8000m
-    memory: 2048Mi
+    memory: 4096Mi
   requests:
     cpu: 8000m
-    memory: 2048Mi
+    memory: 4096Mi
 service:
   grpcPort: 8888
   httpPort: 9000

@@ -53,12 +53,6 @@ grafana.ini:
   snapshots:
     external_enabled: false
 ingress:
-  annotations:
-    cert-manager.io/cluster-issuer: zerossl
-    nginx.ingress.kubernetes.io/proxy-body-size: 10m
-    nginx.ingress.kubernetes.io/proxy-buffer-size: 4m
-    nginx.ingress.kubernetes.io/proxy-buffers-number: "8"
-    nginx.ingress.kubernetes.io/proxy-busy-buffers-size: 4m
   enabled: true
   hosts:
     - grafana-ledger-exp.staging.formance.cloud

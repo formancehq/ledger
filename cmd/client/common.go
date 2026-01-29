@@ -1,119 +1,81 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
+	"crypto/tls"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
+	"strings"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-var (
-	serverURL string
-	debugMode bool
-)
+const defaultTimeout = 10 * time.Second
 
-// debugHTTPClient wraps an HTTP client to log requests and responses when debug mode is enabled
-type debugHTTPClient struct {
-	client http.Client
-	debug  bool
-}
+// getClient creates a gRPC client connection and returns the client.
+// The caller is responsible for closing the connection.
+func getClient(cmd *cobra.Command) (servicepb.LedgerServiceClient, *grpc.ClientConn, error) {
+	serverAddr, _ := cmd.Flags().GetString("server")
+	insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-func (c *debugHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	if c.debug {
-		// Log request
-		fmt.Fprintf(os.Stderr, "\n=== HTTP Request ===\n")
-		fmt.Fprintf(os.Stderr, "%s %s\n", req.Method, req.URL.String())
-
-		// Log headers
-		fmt.Fprintf(os.Stderr, "Headers:\n")
-		for key, values := range req.Header {
-			for _, value := range values {
-				fmt.Fprintf(os.Stderr, "  %s: %s\n", key, value)
-			}
-		}
-
-		// Log body if present
-		if req.Body != nil {
-			bodyBytes, err := io.ReadAll(req.Body)
-			if err == nil {
-				req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-				if len(bodyBytes) > 0 {
-					fmt.Fprintf(os.Stderr, "Body:\n")
-					var prettyJSON bytes.Buffer
-					if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
-						fmt.Fprintf(os.Stderr, "%s\n", prettyJSON.String())
-					} else {
-						fmt.Fprintf(os.Stderr, "%s\n", string(bodyBytes))
-					}
-				}
-			}
-		}
-		fmt.Fprintf(os.Stderr, "===================\n\n")
+	var creds credentials.TransportCredentials
+	if insecureMode {
+		creds = insecure.NewCredentials()
+	} else {
+		// Use TLS by default (for port 443 or any secure endpoint)
+		creds = credentials.NewTLS(&tls.Config{
+			MinVersion: tls.VersionTLS12,
+		})
 	}
 
-	// Execute request
-	resp, err := c.client.Do(req)
+	// If connecting to port 443, ensure we don't include the port in the address
+	// as some gRPC implementations may have issues with explicit :443
+	if strings.HasSuffix(serverAddr, ":443") {
+		serverAddr = strings.TrimSuffix(serverAddr, ":443") + ":443"
+	}
+
+	conn, err := grpc.NewClient(serverAddr,
+		grpc.WithTransportCredentials(creds),
+	)
 	if err != nil {
-		if c.debug {
-			fmt.Fprintf(os.Stderr, "=== HTTP Error ===\n")
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			fmt.Fprintf(os.Stderr, "==================\n\n")
-		}
-		return nil, err
+		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
 
-	if c.debug {
-		// Log response
-		fmt.Fprintf(os.Stderr, "=== HTTP Response ===\n")
-		fmt.Fprintf(os.Stderr, "Status: %s\n", resp.Status)
-
-		// Log headers
-		fmt.Fprintf(os.Stderr, "Headers:\n")
-		for key, values := range resp.Header {
-			for _, value := range values {
-				fmt.Fprintf(os.Stderr, "  %s: %s\n", key, value)
-			}
-		}
-
-		// Log body
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err == nil {
-			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			if len(bodyBytes) > 0 {
-				fmt.Fprintf(os.Stderr, "Body:\n")
-				var prettyJSON bytes.Buffer
-				if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
-					fmt.Fprintf(os.Stderr, "%s\n", prettyJSON.String())
-				} else {
-					fmt.Fprintf(os.Stderr, "%s\n", string(bodyBytes))
-				}
-			}
-		}
-		fmt.Fprintf(os.Stderr, "====================\n\n")
-	}
-
-	return resp, nil
+	return servicepb.NewLedgerServiceClient(conn), conn, nil
 }
 
-// newSDKClient creates a new SDK client with optional debug HTTP client
-func newSDKClient() *client.Formance {
-	opts := []client.SDKOption{
-		client.WithServerURL(serverURL),
+// getContext returns a context with the configured timeout.
+func getContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	if timeout == 0 {
+		timeout = defaultTimeout
 	}
-
-	if debugMode {
-		debugClient := &debugHTTPClient{
-			client: http.Client{Timeout: 60 * time.Second},
-			debug:  true,
-		}
-		opts = append(opts, client.WithClient(debugClient))
-	}
-
-	return client.New(opts...)
+	return context.WithTimeout(cmd.Context(), timeout)
 }
 
+// formatBytes formats a byte count as a human-readable string.
+func formatBytes(bytes uint64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}

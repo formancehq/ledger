@@ -4,15 +4,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var ledgersCmd = &cobra.Command{
-	Use:          "ledgers",
-	Short:        "Manage ledgers",
-	Long:         "Commands for managing ledgers",
-	SilenceUsage: true,
-}
+// newLedgersCommand creates the ledgers parent command.
+func newLedgersCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ledgers",
+		Short: "Manage ledgers",
+		Long:  "Commands for managing ledgers via gRPC",
+	}
 
-func initLedgers() {
-	ledgersCmd.AddCommand(ledgersCreateCmd)
-	ledgersCmd.AddCommand(ledgersListCmd)
-	ledgersCmd.AddCommand(ledgersGetCmd)
+	cmd.AddCommand(newLedgersListCommand())
+	cmd.AddCommand(newLedgersGetCommand())
+
+	return cmd
 }

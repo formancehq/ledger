@@ -1,0 +1,24 @@
+{{- if and .Values.ingressGrpc.enabled (eq .Values.ingressGrpc.className "traefik") }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "ledger-v3-poc.fullname" . }}-grpc
+  labels:
+    {{- include "ledger-v3-poc.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    {{- range .Values.ingressGrpc.hosts }}
+    - match: Host(`{{ .host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "ledger-v3-poc.fullname" $ }}-grpc
+          port: {{ $.Values.service.grpcPort }}
+          scheme: h2c
+    {{- end }}
+  {{- if .Values.ingressGrpc.tls }}
+  tls:
+    secretName: {{ (index .Values.ingressGrpc.tls 0).secretName }}
+  {{- end }}
+{{- end }}

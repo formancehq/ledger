@@ -24,6 +24,8 @@ service LedgerService {
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
+  // GetStoreMetrics returns metrics from the local store (Pebble only)
+  rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
 }
 
 // ============================================================================
@@ -130,4 +132,120 @@ message LedgerApplyAction {
     RevertTransactionPayload revert_transaction = 5;
     common.DeleteMetadataCommand delete_metadata = 6;
   }
+}
+
+// ============================================================================
+// Store Metrics Messages
+// ============================================================================
+
+message GetStoreMetricsRequest {}
+
+message GetStoreMetricsResponse {
+  // available indicates if metrics are available (false for non-Pebble stores)
+  bool available = 1;
+  // metrics contains the Pebble metrics (only set if available is true)
+  PebbleMetrics metrics = 2;
+}
+
+// PebbleMetrics contains metrics from the Pebble storage engine
+message PebbleMetrics {
+  BlockCacheMetrics block_cache = 1;
+  CompactMetrics compact = 2;
+  FlushMetrics flush = 3;
+  MemTableMetrics mem_table = 4;
+  SnapshotsMetrics snapshots = 5;
+  TableMetrics table = 6;
+  TableCacheMetrics table_cache = 7;
+  WALMetrics wal = 8;
+  KeysMetrics keys = 9;
+  repeated LevelMetrics levels = 10;
+  uint64 disk_space_usage = 11;
+}
+
+message BlockCacheMetrics {
+  int64 size = 1;
+  int64 count = 2;
+  int64 hits = 3;
+  int64 misses = 4;
+}
+
+message CompactMetrics {
+  int64 count = 1;
+  int64 default_count = 2;
+  int64 delete_only_count = 3;
+  int64 elision_only_count = 4;
+  int64 move_count = 5;
+  int64 read_count = 6;
+  int64 rewrite_count = 7;
+  int64 multi_level_count = 8;
+  uint64 estimated_debt = 9;
+  int64 in_progress_bytes = 10;
+  int64 num_in_progress = 11;
+  int32 marked_files = 12;
+}
+
+message FlushMetrics {
+  int64 count = 1;
+  int64 num_in_progress = 2;
+  uint64 as_ingest_count = 3;
+  uint64 as_ingest_table_count = 4;
+  uint64 as_ingest_bytes = 5;
+}
+
+message MemTableMetrics {
+  uint64 size = 1;
+  int64 count = 2;
+  uint64 zombie_size = 3;
+  int64 zombie_count = 4;
+}
+
+message SnapshotsMetrics {
+  int32 count = 1;
+  uint64 earliest_seq_num = 2;
+  uint64 pinned_keys = 3;
+  uint64 pinned_size = 4;
+}
+
+message TableMetrics {
+  uint64 zombie_size = 1;
+  int64 zombie_count = 2;
+  uint64 backing_table_count = 3;
+  uint64 backing_table_size = 4;
+}
+
+message TableCacheMetrics {
+  int64 size = 1;
+  int64 count = 2;
+  int64 hits = 3;
+  int64 misses = 4;
+}
+
+message WALMetrics {
+  int64 files = 1;
+  int64 obsolete_files = 2;
+  uint64 size = 3;
+  uint64 bytes_in = 4;
+  uint64 bytes_written = 5;
+}
+
+message KeysMetrics {
+  uint64 range_key_sets_count = 1;
+  uint64 tombstone_count = 2;
+}
+
+message LevelMetrics {
+  int32 level = 1;
+  int64 num_files = 2;
+  int64 size = 3;
+  double score = 4;
+  uint64 bytes_in = 5;
+  uint64 bytes_ingested = 6;
+  uint64 bytes_moved = 7;
+  uint64 bytes_read = 8;
+  uint64 bytes_compacted = 9;
+  uint64 bytes_flushed = 10;
+  uint64 tables_compacted = 11;
+  uint64 tables_flushed = 12;
+  uint64 tables_ingested = 13;
+  uint64 tables_moved = 14;
 }

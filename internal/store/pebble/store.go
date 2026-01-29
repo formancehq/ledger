@@ -109,7 +109,7 @@ func NewStore(
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
 
-		db, err = pebble.Open(liveDir, &pebble.Options{})
+		db, err = pebble.Open(liveDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("opening pebble database: %w", err)
 		}
@@ -747,12 +747,6 @@ func writeUInt32(buf *bytes.Buffer, value uint32) {
 }
 
 func writeUInt64(buf *bytes.Buffer, value uint64) {
-	if err := binary.Write(buf, binary.BigEndian, value); err != nil {
-		panic(err)
-	}
-}
-
-func writeInt64(buf *bytes.Buffer, value int64) {
 	if err := binary.Write(buf, binary.BigEndian, value); err != nil {
 		panic(err)
 	}

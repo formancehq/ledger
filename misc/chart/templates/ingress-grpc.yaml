@@ -1,0 +1,47 @@
+{{- if and .Values.ingressGrpc.enabled (ne .Values.ingressGrpc.className "traefik") -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ledger-v3-poc.fullname" . }}-grpc
+  labels:
+    {{- include "ledger-v3-poc.labels" . | nindent 4 }}
+  {{- $hasAnnotations := or (eq .Values.ingressGrpc.className "nginx") .Values.ingressGrpc.annotations }}
+  {{- if $hasAnnotations }}
+  annotations:
+    {{- if eq .Values.ingressGrpc.className "nginx" }}
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    {{- end }}
+    {{- with .Values.ingressGrpc.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- if .Values.ingressGrpc.className }}
+  ingressClassName: {{ .Values.ingressGrpc.className }}
+  {{- end }}
+  {{- if .Values.ingressGrpc.tls }}
+  tls:
+    {{- range .Values.ingressGrpc.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingressGrpc.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "ledger-v3-poc.fullname" $ }}-grpc
+                port:
+                  number: {{ $.Values.service.grpcPort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

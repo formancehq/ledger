@@ -15,6 +15,9 @@ RUN go install github.com/mattn/go-sqlite3
 COPY main.go .
 COPY internal internal
 COPY cmd cmd
+# Build client binary
+RUN go build -o ledgerctl ./cmd/client
+# Build server binary
 RUN go build -o ledger-v3-poc .
 
 FROM alpine:latest
@@ -22,5 +25,6 @@ RUN apk --no-cache add ca-certificates tzdata
 ENV TZ=UTC
 WORKDIR /app
 COPY --from=builder /build/ledger-v3-poc .
+COPY --from=builder /build/ledgerctl .
 ENTRYPOINT ["./ledger-v3-poc"]
 

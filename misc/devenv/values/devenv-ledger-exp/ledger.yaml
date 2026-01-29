@@ -88,6 +88,14 @@ ingress:
           pathType: Prefix
   perPod:
     enabled: true
+ingressGrpc:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: grpc.ledger-exp.v2.formance.dev
+      paths:
+        - path: /
+          pathType: Prefix
 persistence:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete

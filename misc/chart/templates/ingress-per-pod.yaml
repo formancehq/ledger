@@ -16,6 +16,10 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ $.Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
   selector:
     {{- include "ledger-v3-poc.selectorLabels" $ | nindent 4 }}
     statefulset.kubernetes.io/pod-name: {{ printf "%s-%d" (include "ledger-v3-poc.fullname" $) $index }}

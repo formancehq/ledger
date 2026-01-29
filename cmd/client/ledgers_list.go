@@ -1,61 +1,78 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"text/tabwriter"
+	"time"
 
-	"github.com/pterm/pterm"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 )
 
-var ledgersListCmd = &cobra.Command{
-	Use:          "list",
-	Aliases:      []string{"ls", "l"},
-	Short:        "List all ledgers",
-	Long:         "Returns a list of all ledgers.",
-	RunE:         runListLedgers,
-	SilenceUsage: true,
+// newLedgersListCommand creates the ledgers list command.
+func newLedgersListCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all ledgers",
+		Long:  "List all ledgers in the cluster via gRPC",
+		RunE:  runLedgersList,
+	}
+
+	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmd.Flags().Duration("timeout", defaultTimeout, "Request timeout")
+
+	return cmd
 }
 
-func runListLedgers(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
-	// Create SDK instance with custom server URL
-	sdk := newSDKClient()
-
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledgers...")
-
-	// Call the list all ledgers endpoint
-	res, err := sdk.Ledgers.ListAllLedgers(ctx)
+func runLedgersList(cmd *cobra.Command, _ []string) error {
+	client, conn, err := getClient(cmd)
 	if err != nil {
-		spinner.Fail("Failed to list ledgers: " + err.Error())
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := getContext(cmd)
+	defer cancel()
+
+	resp, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	if err != nil {
 		return fmt.Errorf("failed to list ledgers: %w", err)
 	}
-	spinner.Success("Ledgers retrieved successfully")
 
-	// Extract response data
-	ledgersResponse := res.GetListAllLedgersResponse()
-	if ledgersResponse == nil || ledgersResponse.Data == nil {
-		pterm.Info.Println("No ledgers found")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(resp.Ledgers)
+	}
+
+	// Sort ledgers by name for consistent output
+	names := make([]string, 0, len(resp.Ledgers))
+	for name := range resp.Ledgers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	if len(names) == 0 {
+		fmt.Println("No ledgers found.")
 		return nil
 	}
 
-	ledgers := ledgersResponse.Data
-	if len(ledgers) == 0 {
-		pterm.Info.Println("No ledgers found")
-		return nil
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(w, "ID\tNAME\tCREATED AT\n")
+	_, _ = fmt.Fprintf(w, "--\t----\t----------\n")
+
+	for _, name := range names {
+		ledger := resp.Ledgers[name]
+		createdAt := "N/A"
+		if ledger.CreatedAt != nil {
+			createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
+		}
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\n", ledger.Id, ledger.Name, createdAt)
 	}
 
-	// Create table data
-	tableData := pterm.TableData{
-		{"Name", "Created At"},
-	}
-
-	for _, ledger := range ledgers {
-		name := ledger.Name
-		createdAt := ledger.CreatedAt.Format("2006-01-02 15:04:05")
-		tableData = append(tableData, []string{name, createdAt})
-	}
-
-	pterm.DefaultSection.Println("All Ledgers")
-	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	return w.Flush()
 }

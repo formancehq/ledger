@@ -1,37 +1,34 @@
 set dotenv-load
 
-pre-commit: generate generate-proto generate-sdk tidy lint lint-client
+pre-commit: generate generate-proto generate-sdk tidy lint
 pc: pre-commit
 
 lint:
     GOEXPERIMENT=jsonv2 golangci-lint run --fix --build-tags it,local --timeout 5m
 
-lint-client:
-    GOEXPERIMENT=jsonv2 golangci-lint run --fix --build-tags it,local --timeout 5m ./cmd/client/...
-
 tidy:
     go mod tidy
 
-# Build the application
+# Build the server application
 build:
-    GOEXPERIMENT=jsonv2 go build -o server ./cmd/server
+    GOEXPERIMENT=jsonv2 go build -o ledger-v3-poc .
 
 # Build the client application
 build-client:
-    GOEXPERIMENT=jsonv2 go build -o client ./cmd/client
+    GOEXPERIMENT=jsonv2 go build -o ledgerctl ./cmd/client
 
 # Run the application locally (single node)
 run:
     GOEXPERIMENT=jsonv2 go run . run --node-id 1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
 
 # Run the client application
-run-client:
-    GOEXPERIMENT=jsonv2 go run ./cmd/client
+run-client *ARGS:
+    GOEXPERIMENT=jsonv2 go run ./cmd/client {{ARGS}}
 
 install-client:
-    go build -o $GOPATH/bin/ledger-poc-client ./cmd/client
+    go build -o $GOPATH/bin/ledgerctl ./cmd/client
     #todo: make optional or configurable or whatever
-    ledger-poc-client completion zsh > ~/.oh-my-zsh/custom/completions/_ledger-poc-client
+    ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
 # Run tests
 test:
@@ -39,7 +36,7 @@ test:
 
 # Clean build artifacts
 clean:
-    rm -rf client server
+    rm -rf ledgerctl ledger-v3-poc
 
 clean-benchmarks-data:
     rm -rf build

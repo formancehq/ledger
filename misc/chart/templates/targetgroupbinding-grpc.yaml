@@ -1,0 +1,24 @@
+{{- if and .Values.ingressGrpc.enabled .Values.ingressGrpc.targetGroupBinding .Values.ingressGrpc.targetGroupBinding.enabled }}
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ include "ledger-v3-poc.fullname" . }}-grpc
+  labels:
+    {{- include "ledger-v3-poc.labels" . | nindent 4 }}
+  annotations:
+    # Force recreation on changes due to immutable fields (ipAddressType, vpcID)
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  serviceRef:
+    name: {{ include "ledger-v3-poc.fullname" . }}-grpc
+    port: {{ .Values.service.grpcPort }}
+  targetGroupARN: {{ .Values.ingressGrpc.targetGroupBinding.targetGroupARN }}
+  {{- if .Values.ingressGrpc.targetGroupBinding.targetType }}
+  targetType: {{ .Values.ingressGrpc.targetGroupBinding.targetType }}
+  {{- end }}
+  {{- if .Values.ingressGrpc.targetGroupBinding.networking }}
+  networking:
+    {{- toYaml .Values.ingressGrpc.targetGroupBinding.networking | nindent 4 }}
+  {{- end }}
+{{- end }}

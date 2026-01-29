@@ -119,43 +119,43 @@ spec:
         {{- if .Values.config.pebble }}
         {{- if .Values.config.pebble.memTableSize }}
         - name: PEBBLE_MEMTABLE_SIZE
-          value: {{ .Values.config.pebble.memTableSize | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.memTableSize | quote }}
         {{- end }}
         {{- if .Values.config.pebble.memTableStopWritesThreshold }}
         - name: PEBBLE_MEMTABLE_STOP_WRITES_THRESHOLD
-          value: {{ .Values.config.pebble.memTableStopWritesThreshold | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.memTableStopWritesThreshold | quote }}
         {{- end }}
         {{- if .Values.config.pebble.l0CompactionThreshold }}
         - name: PEBBLE_L0_COMPACTION_THRESHOLD
-          value: {{ .Values.config.pebble.l0CompactionThreshold | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.l0CompactionThreshold | quote }}
         {{- end }}
         {{- if .Values.config.pebble.l0StopWritesThreshold }}
         - name: PEBBLE_L0_STOP_WRITES_THRESHOLD
-          value: {{ .Values.config.pebble.l0StopWritesThreshold | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.l0StopWritesThreshold | quote }}
         {{- end }}
         {{- if .Values.config.pebble.lBaseMaxBytes }}
         - name: PEBBLE_LBASE_MAX_BYTES
-          value: {{ .Values.config.pebble.lBaseMaxBytes | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.lBaseMaxBytes | quote }}
         {{- end }}
         {{- if .Values.config.pebble.cacheSize }}
         - name: PEBBLE_CACHE_SIZE
-          value: {{ .Values.config.pebble.cacheSize | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.cacheSize | quote }}
         {{- end }}
         {{- if .Values.config.pebble.targetFileSize }}
         - name: PEBBLE_TARGET_FILE_SIZE
-          value: {{ .Values.config.pebble.targetFileSize | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.targetFileSize | quote }}
         {{- end }}
         {{- if .Values.config.pebble.bytesPerSync }}
         - name: PEBBLE_BYTES_PER_SYNC
-          value: {{ .Values.config.pebble.bytesPerSync | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.bytesPerSync | quote }}
         {{- end }}
         {{- if .Values.config.pebble.walBytesPerSync }}
         - name: PEBBLE_WAL_BYTES_PER_SYNC
-          value: {{ .Values.config.pebble.walBytesPerSync | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.walBytesPerSync | quote }}
         {{- end }}
         {{- if .Values.config.pebble.maxConcurrentCompactions }}
         - name: PEBBLE_MAX_CONCURRENT_COMPACTIONS
-          value: {{ .Values.config.pebble.maxConcurrentCompactions | quote }}
+          value: {{ include "stringOrNumber" .Values.config.pebble.maxConcurrentCompactions | quote }}
         {{- end }}
         {{- if .Values.config.pebble.walMinSyncInterval }}
         - name: PEBBLE_WAL_MIN_SYNC_INTERVAL

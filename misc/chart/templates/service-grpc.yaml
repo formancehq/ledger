@@ -1,0 +1,24 @@
+{{- if .Values.ingressGrpc.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ledger-v3-poc.fullname" . }}-grpc
+  labels:
+    {{- include "ledger-v3-poc.labels" . | nindent 4 }}
+  annotations:
+    {{- if eq .Values.ingressGrpc.className "traefik" }}
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
+    {{- end }}
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "ledger-v3-poc.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -176,9 +176,9 @@ func main() {
 					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
-			Tags: pulumi.StringArray{
-				pulumi.Sprintf("%s/formancehq/ledger-exp:%s", registry, buildVersion),
-			},
+		Tags: pulumi.StringArray{
+			pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
+		},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build Docker image: %w", err)
@@ -219,9 +219,9 @@ func main() {
 					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
-			Tags: pulumi.StringArray{
-				pulumi.Sprintf("%s/formancehq/benchmark-operator:%s", registry, imageTag),
-			},
+		Tags: pulumi.StringArray{
+			pulumi.Sprintf("%s/formancehq/benchmark-operator:latest", registry),
+		},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build benchmark operator image: %w", err)
@@ -527,7 +527,7 @@ func main() {
 		}
 		ledgerValues["image"] = map[string]any{
 			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
-			"tag":        pulumi.Sprintf("%s@%s", buildVersion, dockerImage.Digest),
+			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
 		}
 		
 		// Add build version to Pyroscope tags for profile comparison
@@ -603,7 +603,7 @@ func main() {
 			}
 
 			imageConfiguration["repository"] = pulumi.Sprintf("%s/formancehq/benchmark-operator", pullRegistry)
-			imageConfiguration["tag"] = pulumi.Sprintf("%s@%s", imageTag, benchmarkOperatorImage.Digest)
+			imageConfiguration["tag"] = pulumi.Sprintf("latest@%s", benchmarkOperatorImage.Digest)
 
 			benchmarkChartPath := filepath.Join("..", "benchmark-operator", "chart")
 
@@ -626,7 +626,6 @@ func main() {
 
 		// Export outputs
 		ctx.Export("namespace", namespace.Metadata.Name())
-		ctx.Export("buildVersion", pulumi.String(buildVersion))
 		ctx.Export("dockerImage", dockerImage.Tags.Index(pulumi.Int(0)))
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)

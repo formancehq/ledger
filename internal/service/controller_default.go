@@ -852,7 +852,7 @@ func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWor
 		return err
 	}
 
-	balances, err := uow.Store.GetBalances(ctx, ledgerID, balanceQueryList)
+	balances, err := uow.GetBalances(ctx, ledgerID, balanceQueryList)
 	if err != nil {
 		return err
 	}

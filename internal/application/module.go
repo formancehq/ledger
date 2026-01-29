@@ -107,19 +107,21 @@ func Module() fx.Option {
 			func(cfg Config) raft.TransportConfig {
 				return cfg.TransportConfig
 			},
-			func(cfg raft.NodeConfig, logger logging.Logger) (*grpcserver.Server, error) {
-				_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
-				if err != nil {
-					return nil, fmt.Errorf("invalid bind address format: %w", err)
-				}
-				grpcPort, err := strconv.Atoi(raftPort)
-				if err != nil {
-					return nil, fmt.Errorf("invalid port in bind address: %w", err)
-				}
+		func(cfg Config, logger logging.Logger) (*grpcserver.Server, error) {
+			_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid bind address format: %w", err)
+			}
+			grpcPort, err := strconv.Atoi(raftPort)
+			if err != nil {
+				return nil, fmt.Errorf("invalid port in bind address: %w", err)
+			}
 
-				return grpcserver.NewServer(grpcPort, logger), nil
+			return grpcserver.NewServer(grpcPort, logger, cfg.Debug), nil
+		},
+			func(logger logging.Logger, ctrl service.Controller, s store.Store) servicepb.LedgerServiceServer {
+				return NewLedgerServiceServer(logger, ctrl, s)
 			},
-			NewLedgerServiceServer,
 			httphandler.NewServer,
 			httphandler.NewHandler,
 			func(node *raft.Node, ctrl service.Controller) httphandler.Backend {

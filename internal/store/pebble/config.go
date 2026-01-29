@@ -70,7 +70,7 @@ type Config struct {
 // These defaults are tuned for write-heavy workloads.
 func DefaultConfig() Config {
 	return Config{
-		MemTableSize:                256 << 20,  // 256MB
+		MemTableSize:                256 << 20, // 256MB
 		MemTableStopWritesThreshold: 6,
 		L0CompactionThreshold:       64,
 		L0StopWritesThreshold:       256,

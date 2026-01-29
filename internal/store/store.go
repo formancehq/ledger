@@ -7,6 +7,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
+// MetricsProvider is an optional interface for stores that provide metrics.
+// Stores that don't support metrics (e.g., SQLite) don't need to implement this.
+type MetricsProvider interface {
+	// GetMetrics returns store-specific metrics as proto message.
+	GetMetrics() any
+}
+
 type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs (global logs by sequence)
 	// from: optional sequence to start from (0 = from beginning)

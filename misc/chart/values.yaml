@@ -176,7 +176,7 @@ headlessService:
   enabled: true
   annotations: {}
 
-# Ingress configuration
+# Ingress configuration (HTTP)
 ingress:
   enabled: false
   className: ""  # Ingress class name (e.g., "nginx", "traefik")
@@ -202,6 +202,41 @@ ingress:
   perPod:
     enabled: false
     annotations: {}
+
+# gRPC Ingress configuration
+# Note: gRPC requires HTTP/2 support. For nginx ingress, backend-protocol annotation is auto-added.
+# For Traefik, an IngressRoute CRD is used instead of standard Ingress for better gRPC support.
+ingressGrpc:
+  enabled: false
+  className: ""  # Ingress class name (e.g., "nginx", "traefik")
+  annotations: {}
+    # For nginx (auto-added when className is "nginx"):
+    # nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+  hosts:
+    - host: grpc.ledger-v3-poc.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: ledger-v3-poc-grpc-tls
+    #   hosts:
+    #     - grpc.ledger-v3-poc.local
+  # AWS TargetGroupBinding configuration (requires AWS Load Balancer Controller)
+  targetGroupBinding:
+    enabled: false
+    # ARN of the target group to bind to
+    targetGroupARN: ""
+    # Target type: "instance" or "ip" (default: ip)
+    targetType: ip
+    # Optional networking configuration
+    # networking:
+    #   ingress:
+    #     - from:
+    #         - securityGroup:
+    #             groupID: sg-xxxxxxxxx
+    #       ports:
+    #         - protocol: TCP
+    #           port: 8888
 
 # Persistence configuration
 persistence:

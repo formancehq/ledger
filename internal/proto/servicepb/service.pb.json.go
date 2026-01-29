@@ -2,7 +2,6 @@ package servicepb
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -187,35 +186,4 @@ func unmarshalDeleteMetadataCommand(data json.RawValue) (*commonpb.DeleteMetadat
 		Target: commonpb.ParseTarget(raw.TargetType, raw.TargetID),
 		Key:    raw.Key,
 	}, nil
-}
-
-// parseTarget parses targetType and targetId into a Target message
-// Deprecated: use commonpb.ParseTarget instead
-func parseTarget(targetType string, targetID json.RawValue) *commonpb.Target {
-	if len(targetID) == 0 {
-		return nil
-	}
-
-	switch strings.ToUpper(targetType) {
-	case commonpb.MetaTargetTypeAccount:
-		var addr string
-		if err := json.Unmarshal(targetID, &addr); err == nil {
-			return &commonpb.Target{
-				Target: &commonpb.Target_Account{
-					Account: &commonpb.TargetAccount{Addr: addr},
-				},
-			}
-		}
-	case commonpb.MetaTargetTypeTransaction:
-		var id uint64
-		if err := json.Unmarshal(targetID, &id); err == nil {
-			return &commonpb.Target{
-				Target: &commonpb.Target_Transaction{
-					Transaction: &commonpb.TargetTransaction{Id: id},
-				},
-			}
-		}
-	}
-
-	return nil
 }
