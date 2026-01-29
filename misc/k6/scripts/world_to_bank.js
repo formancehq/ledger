@@ -9,7 +9,7 @@ import { bulkOperation } from './shared/utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
-const transactionLatency = new Trend('transaction_latency', true);
+const bulkLatency = new Trend('bulk_latency', true);
 
 export const options = buildOptions(config);
 
@@ -39,7 +39,7 @@ export default function () {
   const response = bulkOperation(config, ledgerName, [element]);
   const latency = Date.now() - startTime;
   
-  transactionLatency.add(latency);
+  bulkLatency.add(latency);
   
   const success = check(response, {
     'transaction created successfully': (r) => r.status === 200,

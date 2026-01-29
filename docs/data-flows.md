@@ -590,37 +590,63 @@ If the leader is not available:
 
 ### Overview
 
-Bulk operations allow sending multiple operations in a single request.
+Bulk operations allow sending multiple operations in a single request. Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers.
 
-### Bulk Flow
+> **📋 Related**: See [Global Log Architecture](./global-log.md) for details on how the global log enables cross-ledger atomic operations.
+
+### Sequential Bulk Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant BulkHandler
-    participant Bulker
     participant RaftNode
     participant FSM
     
-    Client->>BulkHandler: POST /{ledger}/_bulk (stream)
+    Client->>BulkHandler: POST /{ledger}/_bulk
     BulkHandler->>BulkHandler: Parse Elements
     
     loop for each element
-        BulkHandler->>Bulker: Send Element
-        Bulker->>RaftNode: Process Element
-        RaftNode->>FSM: Apply Command
+        BulkHandler->>RaftNode: Apply(action)
+        RaftNode->>FSM: Raft Command (single action)
         FSM-->>RaftNode: Result
-        RaftNode-->>Bulker: Result
-        Bulker-->>BulkHandler: Result
+        RaftNode-->>BulkHandler: Log
     end
     
-    BulkHandler-->>Client: Stream Results
+    BulkHandler-->>Client: Results
+```
+
+### Atomic Bulk Flow
+
+When `atomic=true`, all operations are sent as a single Raft command:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant BulkHandler
+    participant RaftNode
+    participant FSM
+    
+    Client->>BulkHandler: POST /{ledger}/_bulk?atomic=true
+    BulkHandler->>BulkHandler: Parse All Elements
+    BulkHandler->>RaftNode: Apply(action1, action2, ..., actionN)
+    Note over RaftNode,FSM: Single Raft Command with N actions
+    RaftNode->>FSM: Raft Command (all actions)
+    alt All succeed
+        FSM-->>RaftNode: N Logs (consecutive sequences)
+        RaftNode-->>BulkHandler: Success
+        BulkHandler-->>Client: All Results (success)
+    else Any fails
+        FSM-->>RaftNode: Error
+        RaftNode-->>BulkHandler: Error
+        BulkHandler-->>Client: All Results (error)
+    end
 ```
 
 ### Bulk Options
 
-- **continueOnFailure**: Continue even if an operation fails
-- **atomic**: All operations or nothing (not yet supported)
+- **continueOnFailure**: Continue even if an operation fails (sequential mode only)
+- **atomic**: All operations or nothing - supported and enables cross-ledger atomicity
 
 ## Next Steps
 

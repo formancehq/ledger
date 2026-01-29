@@ -157,7 +157,7 @@ done
 
 Each test outputs:
 
-- **Transaction latency**: Custom metric tracking transaction processing time
+- **Bulk latency**: Custom metric tracking bulk operation processing time
 - **Error rate**: Percentage of failed requests
 - **HTTP request duration**: Standard k6 metric for HTTP request latency
 - **Requests per second**: Throughput metric
@@ -168,7 +168,7 @@ Tests include default thresholds:
 
 - Error rate < 10%
 - 95th percentile HTTP request duration < 500ms
-- 95th percentile transaction latency < 500ms
+- 95th percentile bulk latency < 500ms
 
 You can override thresholds in the test files or via k6 options.
 
@@ -179,7 +179,7 @@ You can override thresholds in the test files or via k6 options.
 - **Cloud execution**: k6 can run tests in the cloud via k6 Cloud
 - **JavaScript ecosystem**: Easier to extend with JavaScript libraries
 - **CI/CD integration**: Better integration with CI/CD pipelines
-- **Custom metrics**: Track transaction latency and error rates
+- **Custom metrics**: Track bulk latency and error rates
 
 ## Kubernetes Deployment
 

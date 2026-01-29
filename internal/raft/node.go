@@ -100,7 +100,7 @@ func NewNode(
 
 	cfg.SetDefaults()
 
-	fsm, err := newFSM(logger, store, transport)
+	fsm, err := newFSM(logger, store, transport, meter)
 	if err != nil {
 		return nil, fmt.Errorf("creating FSM: %w", err)
 	}

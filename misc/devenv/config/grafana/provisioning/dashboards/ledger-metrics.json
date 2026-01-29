@@ -39,7 +39,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Number of log entries (transactions) applied per second per node. This metric represents the actual throughput of the system - how many transactions are being committed to the ledger.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check Pebble write stalls)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#raft-consensus-metrics",
+      "description": "Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check Pebble write stalls)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#fsm-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -121,14 +121,14 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.batch_size{service.node_id=~\"$node\", scope.name!=\"raft.system\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.fsm.logs_appended{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Transactions per Second",
+      "title": "Logs per Second",
       "type": "timeseries"
     },
     {

@@ -54,6 +54,12 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 
 ## Raft Consensus Metrics
 
+### FSM Metrics
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `raft.fsm.logs_appended` | Counter | 1 | Total number of logs appended to the store. Use `rate()` to get logs per second. This is the primary throughput metric. |
+
 ### Node Metrics
 
 | Metric | Type | Unit | Description |
@@ -297,7 +303,7 @@ Located at `misc/devenv/config/grafana/provisioning/dashboards/ledger-metrics.js
 The dashboard is organized into the following sections:
 
 **System Section**:
-- Transactions per Second
+- Logs per Second
 - Ping Latency
 - HTTP Requests Count
 - Memory Utilization

@@ -3,7 +3,7 @@ export function buildOptions(config) {
     thresholds: {
       errors: ['rate<0.1'],
       http_req_duration: ['p(95)<500'],
-      transaction_latency: ['p(95)<500'],
+      bulk_latency: ['p(95)<500'],
     },
     stages: [
       { duration: '30s', target: config.vus },

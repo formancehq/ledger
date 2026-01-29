@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -24,13 +25,26 @@ type FSM struct {
 
 	storeLastAppliedIndex uint64
 	snapshotIndex         uint64
+
+	// Metrics
+	logsAppendedCounter metric.Int64Counter
 }
 
-func newFSM(logger logging.Logger, store store.Store, transport Transport) (*FSM, error) {
+func newFSM(logger logging.Logger, store store.Store, transport Transport, meter metric.Meter) (*FSM, error) {
 	lastAppliedIndex, err := store.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
 	}
+
+	logsAppendedCounter, err := meter.Int64Counter(
+		"raft.fsm.logs_appended",
+		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logs_appended counter: %w", err)
+	}
+
 	return &FSM{
 		state: &raftcmdpb.State{
 			Ledgers:      make(map[uint32]*raftcmdpb.LedgerState),
@@ -41,6 +55,7 @@ func newFSM(logger logging.Logger, store store.Store, transport Transport) (*FSM
 		store:                 store,
 		transport:             transport,
 		storeLastAppliedIndex: lastAppliedIndex,
+		logsAppendedCounter:   logsAppendedCounter,
 	}, nil
 }
 
@@ -335,6 +350,9 @@ func (fsm *FSM) applyAction(ctx context.Context, batch store.Batch, action *raft
 	if err := batch.AppendLogs(ctx, log); err != nil {
 		return nil, fmt.Errorf("writing system log to runtime store: %w", err)
 	}
+
+	// Increment the logs appended counter
+	fsm.logsAppendedCounter.Add(ctx, 1)
 
 	return log, nil
 }

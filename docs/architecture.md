@@ -144,6 +144,9 @@ type LedgerState struct {
 2. **Consistent Operations**: All operations go through the same consensus layer
 3. **Easier Recovery**: Single snapshot and WAL for the entire system
 4. **Reduced Overhead**: No need to coordinate multiple Raft leaders
+5. **Cross-Ledger Atomicity**: Enables atomic bulk operations spanning multiple ledgers
+
+> **📋 Related**: See [Global Log Architecture](./global-log.md) for details on how the global log enables system-level atomic operations.
 
 ```mermaid
 graph TB
@@ -329,8 +332,9 @@ The following metrics are available:
 
 To deepen your understanding:
 
-1. [Raft Consensus](./raft-consensus.md) - Details on Raft implementation
-2. [Ledgers](./buckets-ledgers.md) - Data organization
-3. [API and Interfaces](./api.md) - API documentation
-4. [Storage and Persistence](./storage.md) - Storage management
-5. [gRPC Connections](./grpc-connections.md) - Inter-node communication and reconnection strategies
+1. [Global Log Architecture](./global-log.md) - Two-level log architecture and atomic bulk operations
+2. [Raft Consensus](./raft-consensus.md) - Details on Raft implementation
+3. [Ledgers](./buckets-ledgers.md) - Data organization
+4. [API and Interfaces](./api.md) - API documentation
+5. [Storage and Persistence](./storage.md) - Storage management
+6. [gRPC Connections](./grpc-connections.md) - Inter-node communication and reconnection strategies

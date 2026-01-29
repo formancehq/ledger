@@ -26,7 +26,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Bulk ADD_METADATA | ✅ | ✅ | |
 | Bulk REVERT_TRANSACTION | ✅ | ✅ | |
 | Bulk DELETE_METADATA | ✅ | ✅ | |
-| Bulk atomic | ⚠️ | ✅ | Not implemented |
+| Bulk atomic | ✅ | ✅ | System-level atomicity (cross-ledger) |
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
 | Create ledger | ✅ | ✅ | |
@@ -103,7 +103,9 @@ This document compares the POC's API with the original Formance ledger API and d
 
 **Options:**
 - ✅ `continueOnFailure` - Continue even on error
-- ⚠️ `atomic` - **Not implemented** (returns an error)
+- ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
+
+> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](./global-log.md).
 
 ### 5. Ledger Management
 
@@ -139,17 +141,7 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 
 ## Missing Features
 
-### 1. ❌ Bulk Atomic
-
-**Description:** Execute all bulk operations in an atomic transaction. If one operation fails, all are rolled back.
-
-**Current status:** The option exists in the API but returns an error "atomic bulk transactions are not yet supported".
-
-**Implementation required:**
-- Wrap all operations in a database transaction
-- Rollback on failure
-
-### 2. ❌ Log Import
+### 1. ❌ Log Import
 
 **Description:** Import logs from another ledger for migration or synchronization.
 
@@ -163,7 +155,7 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 - Sequential insertion with consistency verification
 - Streaming support for large volumes
 
-### 3. ❌ Log Export
+### 2. ❌ Log Export
 
 **Description:** Export all logs from a ledger for backup or migration.
 
@@ -177,7 +169,7 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 - Output format (JSON lines, protobuf, etc.)
 - Pagination/cursor for large volumes
 
-### 4. ⚠️ Unique Reference Validation
+### 3. ⚠️ Unique Reference Validation
 
 **Description:** In the original ledger, transaction reference must be unique within a ledger.
 
@@ -189,7 +181,7 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 - Ensure the runtime store checks reference uniqueness
 - Return appropriate error if reference already exists
 
-### 5. ❌ Ledger Metadata Update
+### 4. ❌ Ledger Metadata Update
 
 **Description:** Ability to add/modify metadata on a ledger after creation.
 
@@ -201,14 +193,14 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 - `POST /{ledgerName}/metadata` - Add/modify metadata
 - `DELETE /{ledgerName}/metadata/{key}` - Delete a metadata key
 
-### 6. ❌ Ledger Configuration Update
+### 5. ❌ Ledger Configuration Update
 
 **Description:** Modify certain ledger parameters after creation (e.g., snapshotThreshold).
 
 **To implement:**
 - `PATCH /{ledgerName}` or `PUT /{ledgerName}/config`
 
-### 7. ❌ Force Parameter on Transaction Creation
+### 6. ❌ Force Parameter on Transaction Creation
 
 **Description:** In the original ledger, the `force` parameter on transaction creation allows creating transactions even if source accounts have insufficient funds (bypasses balance check).
 
@@ -321,15 +313,14 @@ Read endpoints comparison with the original ledger:
 
 ### High Priority
 1. **Import/Export** - Critical for migration and backups
-2. **Bulk Atomic** - Important for complex transactional operations
 
 ### Medium Priority
-3. **Force parameter on transaction creation** - Required for unbounded accounts and migration scenarios
-4. **Unique reference validation** - Verify and document behavior
-5. **Ledger metadata update** - Useful for ledger management
+2. **Force parameter on transaction creation** - Required for unbounded accounts and migration scenarios
+3. **Unique reference validation** - Verify and document behavior
+4. **Ledger metadata update** - Useful for ledger management
 
 ### Low Priority
-6. **Ledger config update** - Can be done manually via recreation
+5. **Ledger config update** - Can be done manually via recreation
 
 ---
 
@@ -339,11 +330,14 @@ The POC uses a different architecture with Raft for replication:
 - A single Raft group manages all ledgers and their transactions
 - Write operations go through the leader
 - Logs are stored via the Store (Pebble or SQLite)
+- A global log provides system-wide ordering and enables cross-ledger atomic operations
 
 This architecture impacts certain implementation decisions:
-- Bulk atomicity requires handling at the Raft level
+- **Bulk atomicity is handled at the Raft level** - All actions in a bulk request are submitted as a single Raft command, enabling system-level atomicity
 - Import must respect log sequence
 - Export can be done from any node (local read)
+
+See [Global Log Architecture](./global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
 ---
 

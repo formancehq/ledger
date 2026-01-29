@@ -38,6 +38,9 @@ Comparison of the write API between this POC and the original ledger (`github.co
 ### ✅ [Problems Solved from v2](./v2-problems-solved.md)
 Summary of key problems and limitations from Ledger v2 that have been addressed in this v3 POC, including PostgreSQL elimination, Raft consensus, pure Go builds, and improved observability.
 
+### 📋 [Global Log Architecture](./global-log.md)
+Explanation of the two-level log architecture (global log vs ledger log) and how it enables system-level atomic bulk operations across multiple ledgers.
+
 ### 💾 [Storage and Persistence](./storage.md)
 Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 

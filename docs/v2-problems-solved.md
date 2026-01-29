@@ -558,12 +558,107 @@ Some v2 features are still being implemented in v3:
 
 | Feature | Status |
 |---------|--------|
-| Bulk atomic transactions | Planned |
 | Log import/export | Interface defined |
 | Force parameter on transaction creation | Not implemented |
 | Ledger metadata update | Not implemented |
 
 See [API Comparison](./api-comparison.md) for detailed feature comparison.
+
+---
+
+## 12. System-Level Atomic Bulk Operations
+
+### v2 Problem
+
+In v2, the bulk API was limited to a single ledger per request:
+
+- **Per-ledger scope**: Bulk operations could only affect one ledger at a time
+- **No cross-ledger atomicity in API**: Operations on multiple ledgers required separate requests with no atomicity guarantee
+- **Partial failures**: In a multi-ledger scenario, some operations could succeed while others failed
+
+> **Note**: While PostgreSQL supports cross-schema atomic transactions, the v2 API did not expose this capability. The bulk endpoint (`POST /{ledger}/_bulk`) was designed to operate on a single ledger only.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     v2: Per-Ledger Bulk Operations                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Request 1: POST /ledger-a/_bulk ──── [Op1, Op2] ──► Ledger A               │
+│                                                                              │
+│  Request 2: POST /ledger-b/_bulk ──── [Op3, Op4] ──► Ledger B               │
+│                                                                              │
+│  ⚠️  No atomicity guarantee between Request 1 and Request 2                 │
+│  ⚠️  Request 1 could succeed, Request 2 could fail                          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### v3 Solution
+
+v3 introduces **system-level atomic bulk operations** thanks to the global log architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    v3: System-Level Atomic Bulk                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Single Raft Command:                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ [Op1: Ledger A] [Op2: Ledger B] [Op3: Ledger A] [Op4: Ledger C]    │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                         ↓                                                    │
+│                  Single Raft Entry                                           │
+│                         ↓                                                    │
+│                  All-or-Nothing                                              │
+│                                                                              │
+│  ✅  Either ALL operations succeed, or NONE are applied                     │
+│  ✅  Cross-ledger atomicity guaranteed                                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### How It Works
+
+1. **Single Raft Group**: All ledgers are managed by a single Raft group
+2. **Global Log**: All operations are ordered in a global sequence
+3. **Multi-Action Commands**: A single Raft command can contain actions on multiple ledgers
+4. **Atomic FSM Application**: The FSM applies all actions atomically
+
+#### Usage (gRPC)
+
+The gRPC service accepts multiple actions targeting different ledgers in a single `Apply` call:
+
+```go
+// Multiple actions on different ledgers in one atomic operation
+logs, err := service.Apply(ctx,
+    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-a", ...}},
+    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-b", ...}},
+    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-c", ...}},
+)
+// All succeed or all fail together
+```
+
+#### Usage (HTTP Bulk)
+
+The HTTP bulk endpoint supports atomic mode:
+
+```http
+POST /ledger-a/_bulk?atomic=true
+Content-Type: application/json
+
+[
+  {"action": "CREATE_TRANSACTION", "data": {...}},
+  {"action": "CREATE_TRANSACTION", "ledger": "ledger-b", "data": {...}}
+]
+```
+
+**Benefits**:
+- **Cross-ledger transfers**: Atomic transfers between accounts in different ledgers
+- **Consistent state**: System is always in a consistent state
+- **Simplified error handling**: No need to handle partial failures across ledgers
+- **Audit trail**: Single global sequence for all operations
+
+See [Global Log Architecture](./global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
 
 ---
 
