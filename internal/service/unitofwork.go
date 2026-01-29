@@ -26,16 +26,6 @@ func (s *unitOfWork) LockKeys(ctx context.Context, keys ...string) (func(), erro
 	return release, nil
 }
 
-func (s *unitOfWork) TryLockKeys(ctx context.Context, keys ...string) (func(), error) {
-	release, err := s.KeySetLocker.TryLockKeys(ctx, keys...)
-	if err != nil {
-		return nil, err
-	}
-	s.releases = append(s.releases, release)
-
-	return release, nil
-}
-
 func (s *unitOfWork) ReleaseLocks() {
 	for _, release := range s.releases {
 		release()

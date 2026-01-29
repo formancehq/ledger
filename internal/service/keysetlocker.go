@@ -2,19 +2,15 @@ package service
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 )
-
-var ErrLockUnavailable = errors.New("lock unavailable")
 
 // todo: add deadlocks detection
 // KeySetLocker provides key-based locking for concurrent access.
 // The caller is responsible for including any necessary prefixes (e.g., ledgerID) in the keys.
 type KeySetLocker interface {
 	LockKeys(ctx context.Context, keys ...string) (func(), error)
-	TryLockKeys(ctx context.Context, keys ...string) (func(), error)
 }
 
 // DefaultKeySetLocker is a default implementation of KeySetLocker.
@@ -39,9 +35,6 @@ func NewDefaultKeySetLocker() *DefaultKeySetLocker {
 
 // LockKeys locks the requested keys and returns a release function.
 func (s *DefaultKeySetLocker) LockKeys(_ context.Context, keys ...string) (func(), error) {
-	if len(keys) == 0 {
-		return func() {}, nil
-	}
 
 	// Sort lock keys to avoid deadlocks (always lock in the same order).
 	sortedKeys := make([]string, len(keys))
@@ -56,33 +49,6 @@ func (s *DefaultKeySetLocker) LockKeys(_ context.Context, keys ...string) (func(
 
 	return func() {
 		s.releaseLocks(sortedKeys)
-	}, nil
-}
-
-// TryLockKeys attempts to lock all keys immediately. It returns ErrLockUnavailable if any lock cannot be acquired.
-func (s *DefaultKeySetLocker) TryLockKeys(_ context.Context, keys ...string) (func(), error) {
-	if len(keys) == 0 {
-		return func() {}, nil
-	}
-
-	// Sort lock keys to avoid deadlocks (always lock in the same order).
-	sortedKeys := make([]string, len(keys))
-	copy(sortedKeys, keys)
-	sort.Strings(sortedKeys)
-
-	lockedKeys := make([]string, 0, len(sortedKeys))
-	for _, lockKey := range sortedKeys {
-		entry := s.getOrCreateLock(lockKey)
-		if !entry.mutex.TryLock() {
-			s.decrementLockRef(lockKey)
-			s.releaseLocks(lockedKeys)
-			return nil, ErrLockUnavailable
-		}
-		lockedKeys = append(lockedKeys, lockKey)
-	}
-
-	return func() {
-		s.releaseLocks(lockedKeys)
 	}, nil
 }
 
