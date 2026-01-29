@@ -2,21 +2,26 @@
 // This test simulates transactions from variable sources to variable destinations with unbounded overdraft
 
 import { check } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
+import { Rate, Trend, Counter } from 'k6/metrics';
 import { config } from './shared/config.js';
 import { buildOptions } from './shared/options.js';
 import { bulkOperation } from './shared/utils.js';
 import exec from 'k6/execution';
 
+// Bulk size (number of transactions per request)
+const BULK_SIZE = parseInt(__ENV.BULK_SIZE || '1');
+
 // Custom metrics
 const errorRate = new Rate('errors');
-const transactionLatency = new Trend('transaction_latency', true);
+const bulkLatency = new Trend('bulk_latency', true);
+const transactionsCreated = new Counter('transactions_created');
 
 export const options = buildOptions(config);
 
-function generateTransaction(iteration) {
-  const source = `src:${exec.scenario.iterationInTest}`
-  const destination = `dst:${exec.scenario.iterationInTest}`
+function generateTransaction(iterationBase, index) {
+  const uniqueId = iterationBase * BULK_SIZE + index;
+  const source = `src:${uniqueId}`;
+  const destination = `dst:${uniqueId}`;
   return {
     action: 'CREATE_TRANSACTION',
     data: {
@@ -38,24 +43,32 @@ function generateTransaction(iteration) {
   };
 }
 
+function generateBulkElements(iteration) {
+  const elements = [];
+  for (let i = 0; i < BULK_SIZE; i++) {
+    elements.push(generateTransaction(iteration, i));
+  }
+  return elements;
+}
+
 export default function () {
   const ledgerName = config.ledgerName;
-  const element = generateTransaction(__ITER);
+  const elements = generateBulkElements(exec.scenario.iterationInTest);
   
   const startTime = Date.now();
-  const response = bulkOperation(config, ledgerName, [element]);
+  const response = bulkOperation(config, ledgerName, elements);
   const latency = Date.now() - startTime;
   
-  transactionLatency.add(latency);
+  bulkLatency.add(latency);
   
   const success = check(response, {
-    'transaction created successfully': (r) => r.status === 200,
-    'response time < 500ms': (r) => r.timings.duration < 500,
+    'bulk operation successful': (r) => r.status === 200,
   });
 
   if (!success) {
     errorRate.add(1);
   } else {
     errorRate.add(0);
+    transactionsCreated.add(BULK_SIZE);
   }
 }

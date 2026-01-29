@@ -10,6 +10,7 @@ runner:
     ledgerUrl: "http://ledger-exp.ledger-exp.svc.cluster.local:9000"
     ledgerName: "ledger0"
     stages: "3m:600,5m:600,1m:0"
+    bulkSize: 10
   otlp:
     endpoint: "otel-opentelemetry-collector.ledger-exp.svc.cluster.local:4317"
   nodeSelector:
