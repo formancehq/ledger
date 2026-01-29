@@ -157,20 +157,23 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     environment: staging
+    permissions:
+      id-token: write
     needs:
       - GoReleaser
       - Tests
     steps:
       - name: Tailscale
-        uses: formancehq/tailscale-github-action@v3+formance
+        uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          oauth-client-id: ${{ secrets.TS_OIDC_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
           tags: ${{ vars.TS_TAGS }}
           version: ${{ vars.TS_VERSION }}
           args: ${{ vars.TS_ARGS }}
           retry: ${{ vars.TS_RETRY }}
           timeout: ${{ vars.TS_TIMEOUT }}
+          ping: ${{ vars.TS_PING }}
       - uses: earthly/actions-setup@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
