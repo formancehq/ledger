@@ -169,6 +169,7 @@ type StoreInterceptor struct {
 	OnListLedgers                  func(ctx context.Context, delegate Store) ([]*commonpb.LedgerInfo, error)
 	OnGetBalances                  func(ctx context.Context, delegate Store, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	OnGetAccountMetadata           func(ctx context.Context, delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
+	OnGetAccountVolumes            func(ctx context.Context, delegate Store, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	OnGetSequenceForIdempotencyKey func(ctx context.Context, delegate Store, idempotencyKey string) (uint64, error)
 	OnGetSequenceForTransactionID  func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (uint64, error)
 	OnIsTransactionReverted        func(ctx context.Context, delegate Store, ledgerID uint32, transactionID uint64) (bool, error)
@@ -252,6 +253,16 @@ func (s *StoreInterceptor) GetAccountMetadata(ctx context.Context, ledgerID uint
 		return interceptor(ctx, s.delegate, ledgerID, accounts)
 	}
 	return s.delegate.GetAccountMetadata(ctx, ledgerID, accounts)
+}
+
+func (s *StoreInterceptor) GetAccountVolumes(ctx context.Context, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+	s.mu.RLock()
+	interceptor := s.OnGetAccountVolumes
+	s.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(ctx, s.delegate, ledgerID, account)
+	}
+	return s.delegate.GetAccountVolumes(ctx, ledgerID, account)
 }
 
 func (s *StoreInterceptor) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
@@ -420,6 +431,7 @@ func (s *StoreInterceptor) ClearInterceptors() {
 	s.OnListLedgers = nil
 	s.OnGetBalances = nil
 	s.OnGetAccountMetadata = nil
+	s.OnGetAccountVolumes = nil
 	s.OnGetSequenceForIdempotencyKey = nil
 	s.OnGetSequenceForTransactionID = nil
 	s.OnIsTransactionReverted = nil

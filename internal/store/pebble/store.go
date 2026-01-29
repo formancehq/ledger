@@ -498,6 +498,90 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts 
 	return result, nil
 }
 
+// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
+// Input is calculated as sum of positive balance diffs (when account receives funds)
+// Output is calculated as sum of absolute negative balance diffs (when account sends funds)
+func (s *Store) GetAccountVolumes(ctx context.Context, ledger uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+	result := make(map[string]*commonpb.VolumesWithBalance)
+
+	buf := bytes.NewBuffer(nil)
+
+	// Build prefix for all balance diffs for this account (across all assets)
+	writeLedgerPrefix(buf, ledger)
+	writeByte(buf, keyPrefixBalanceDiff)
+	writeString(buf, account)
+	lowerBound := bytes.Clone(buf.Bytes())
+
+	writeByte(buf, 0xFF)
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for account volumes: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	// Track input/output per asset
+	inputByAsset := make(map[string]*big.Int)
+	outputByAsset := make(map[string]*big.Int)
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading balance diff value: %w", err)
+		}
+
+		// Extract asset from key (format: ledger_prefix + keyPrefixBalanceDiff + account + asset + sequence)
+		// After lowerBound, the remaining bytes are: asset + sequence (8 bytes)
+		keyAfterPrefix := key[len(lowerBound):]
+		if len(keyAfterPrefix) <= 8 {
+			continue // Skip malformed keys (must have at least asset + 8 bytes for sequence)
+		}
+		// Asset is everything except the last 8 bytes (which is the sequence)
+		asset := string(keyAfterPrefix[:len(keyAfterPrefix)-8])
+
+		// Initialize if needed
+		if _, exists := inputByAsset[asset]; !exists {
+			inputByAsset[asset] = big.NewInt(0)
+			outputByAsset[asset] = big.NewInt(0)
+		}
+
+		// Parse the diff value
+		diff := &commonpb.BigInt{}
+		if err := proto.Unmarshal(valueBytes, diff); err != nil {
+			return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
+		}
+		diffValue := diff.Value()
+
+		// Positive diff = input (receiving funds), negative diff = output (sending funds)
+		if diffValue.Sign() > 0 {
+			inputByAsset[asset] = inputByAsset[asset].Add(inputByAsset[asset], diffValue)
+		} else if diffValue.Sign() < 0 {
+			// Output is the absolute value of negative diffs
+			outputByAsset[asset] = outputByAsset[asset].Sub(outputByAsset[asset], diffValue)
+		}
+	}
+
+	// Build result
+	for asset := range inputByAsset {
+		input := inputByAsset[asset]
+		output := outputByAsset[asset]
+		balance := new(big.Int).Sub(input, output)
+
+		result[asset] = &commonpb.VolumesWithBalance{
+			Input:   input.String(),
+			Output:  output.String(),
+			Balance: balance.String(),
+		}
+	}
+
+	return result, nil
+}
+
 // GetSequenceForIdempotencyKey retrieves the sequence for an idempotency key (global) (implements store.Store)
 func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
 

@@ -167,10 +167,17 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerID uint32, 
 		return nil, fmt.Errorf("getting account metadata: %w", err)
 	}
 
+	// Get account volumes
+	volumes, err := ctrl.store.GetAccountVolumes(ctx, ledgerID, address)
+	if err != nil {
+		return nil, fmt.Errorf("getting account volumes: %w", err)
+	}
+
 	// Build the account response
 	account := &commonpb.Account{
 		Address:  address,
 		Metadata: make(map[string]string),
+		Volumes:  volumes,
 	}
 
 	// Add metadata if it exists

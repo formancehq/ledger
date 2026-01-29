@@ -36,7 +36,9 @@ func (g *LedgerGrpcClient) Apply(ctx context.Context, actions ...*servicepb.Acti
 
 func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
 	return g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
-		LedgerId:      ledgerID,
+		Ledger: &servicepb.LedgerNameOrId{
+			Type: &servicepb.LedgerNameOrId_Id{Id: ledgerID},
+		},
 		TransactionId: transactionID,
 	})
 }

@@ -14,6 +14,7 @@ func newLedgersCommand() *cobra.Command {
 
 	cmd.AddCommand(newLedgersListCommand())
 	cmd.AddCommand(newLedgersGetCommand())
+	cmd.AddCommand(newLedgersCreateCommand())
 
 	return cmd
 }

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,101 @@ import (
 )
 
 const defaultTimeout = 10 * time.Second
+
+// ErrNoLedgers is returned when no ledgers exist.
+var ErrNoLedgers = fmt.Errorf("no ledgers found")
+
+// selectLedger selects a ledger interactively or automatically.
+// If ledgerFlag is set, it returns that value.
+// If only one ledger exists, it returns that ledger's name automatically.
+// If multiple ledgers exist, it prompts the user to select one.
+// If no ledgers exist, it returns an error with a hint to create one.
+func selectLedger(cmd *cobra.Command, client servicepb.LedgerServiceClient, reader *bufio.Reader, ledgerFlag string) (string, error) {
+	// If a ledger was specified via flag, use it directly
+	if ledgerFlag != "" {
+		return ledgerFlag, nil
+	}
+
+	// Get context for the API call
+	ctx, cancel := getContext(cmd)
+	defer cancel()
+
+	// List available ledgers
+	resp, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list ledgers: %w", err)
+	}
+
+	// Convert map to sorted slice for consistent ordering
+	var ledgerNames []string
+	for name := range resp.Ledgers {
+		ledgerNames = append(ledgerNames, name)
+	}
+
+	// Sort for consistent ordering
+	sortStrings(ledgerNames)
+
+	// No ledgers exist
+	if len(ledgerNames) == 0 {
+		fmt.Println("\nNo ledgers found.")
+		fmt.Println("Hint: Create a ledger first using:")
+		fmt.Println("  ledgerctl ledgers create --name <ledger-name>")
+		return "", ErrNoLedgers
+	}
+
+	// Only one ledger exists, use it automatically
+	if len(ledgerNames) == 1 {
+		fmt.Printf("Using ledger: %s\n", ledgerNames[0])
+		return ledgerNames[0], nil
+	}
+
+	// Multiple ledgers exist, prompt for selection
+	return promptLedgerSelection(reader, ledgerNames)
+}
+
+// promptLedgerSelection prompts the user to select a ledger from a list.
+func promptLedgerSelection(reader *bufio.Reader, ledgerNames []string) (string, error) {
+	fmt.Println("\nAvailable ledgers:")
+	for i, name := range ledgerNames {
+		fmt.Printf("  [%d] %s\n", i+1, name)
+	}
+
+	for {
+		fmt.Printf("\nSelect a ledger (1-%d): ", len(ledgerNames))
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+
+		input = strings.TrimSpace(input)
+
+		// Try to parse as a number
+		num, err := strconv.Atoi(input)
+		if err == nil && num >= 1 && num <= len(ledgerNames) {
+			return ledgerNames[num-1], nil
+		}
+
+		// Try to match by name
+		for _, name := range ledgerNames {
+			if name == input {
+				return name, nil
+			}
+		}
+
+		fmt.Printf("Invalid selection. Please enter a number between 1 and %d, or a ledger name.\n", len(ledgerNames))
+	}
+}
+
+// sortStrings sorts a slice of strings in place.
+func sortStrings(s []string) {
+	for i := 0; i < len(s)-1; i++ {
+		for j := i + 1; j < len(s); j++ {
+			if s[i] > s[j] {
+				s[i], s[j] = s[j], s[i]
+			}
+		}
+	}
+}
 
 // getClient creates a gRPC client connection and returns the client.
 // The caller is responsible for closing the connection.

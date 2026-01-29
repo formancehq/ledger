@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 89352ca69103fc533d1d6793990bdacf
+  docChecksum: 59911320be8a1f9b8257253260399fd9
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.12.29
-  configChecksum: e2e75c895c6fadca090b943436989ffc
+  releaseVersion: 0.12.30
+  configChecksum: 416e228ffaca6bf5a2e8d7f3ae8afdef
 features:
   go:
     additionalDependencies: 0.1.0
@@ -60,6 +60,7 @@ generatedFiles:
   - /models/components/script.go
   - /models/components/systemstate.go
   - /models/components/transactionresponse.go
+  - /models/components/volumeswithbalance.go
   - /models/operations/bulkoperations.go
   - /models/operations/createledger.go
   - /models/operations/createtransaction.go
@@ -125,6 +126,7 @@ generatedFiles:
   - docs/models/components/targetid.md
   - docs/models/components/targettype.md
   - docs/models/components/transactionresponse.md
+  - docs/models/components/volumeswithbalance.md
   - docs/models/operations/bulkoperationsrequest.md
   - docs/models/operations/bulkoperationsresponse.md
   - docs/models/operations/createledgerrequest.md

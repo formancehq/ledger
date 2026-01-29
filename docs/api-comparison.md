@@ -34,10 +34,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Accounts (Read)** |
-| Get account | ✅ | ✅ | |
+| Get account | ✅ | ✅ | Includes volumes per asset |
 | List accounts | ❌ | ✅ | Not implemented |
-| Get account balances | ❌ | ✅ | Not implemented |
-| Get account volumes | ❌ | ✅ | Not implemented |
+| Get account balances | ⚠️ | ✅ | Included in account volumes |
+| Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | **Logs** |
 | List logs | ❌ | ✅ | Not implemented |
 | **Import/Export** |

@@ -998,6 +998,28 @@ components:
           additionalProperties:
             type: string
           description: Account metadata
+        volumes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/VolumesWithBalance'
+          description: Account volumes per asset (input, output, balance)
+
+    VolumesWithBalance:
+      type: object
+      required:
+        - input
+        - output
+        - balance
+      properties:
+        input:
+          type: string
+          description: Total amount received (as big integer string)
+        output:
+          type: string
+          description: Total amount sent (as big integer string)
+        balance:
+          type: string
+          description: Current balance (input - output, as big integer string)
 
     TransactionResponse:
       type: object

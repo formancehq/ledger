@@ -93,6 +93,16 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`ledgers.go`** : Parent command for ledger operations
 - **`ledgers_list.go`** : `ledgers list` command to list all ledgers via gRPC
 - **`ledgers_get.go`** : `ledgers get` command to retrieve a specific ledger via gRPC
+- **`ledgers_create.go`** : `ledgers create` command to create a new ledger via gRPC
+
+**Account commands:**
+- **`accounts.go`** : Parent command for account operations
+- **`accounts_get.go`** : `accounts get` command to retrieve an account with its volumes via gRPC
+
+**Transaction commands:**
+- **`transactions.go`** : Parent command for transaction operations
+- **`transactions_get.go`** : `transactions get` command to retrieve a transaction by ID via gRPC
+- **`transactions_create.go`** : `transactions create` command to create a new transaction via gRPC
 
 **Store commands:**
 - **`store.go`** : Parent command for store operations

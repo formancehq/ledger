@@ -104,7 +104,19 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest
 }
 
 func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
-	return impl.ctrl.GetTransaction(ctx, req.LedgerId, req.TransactionId)
+	// Get ledger ID from name or ID
+	var ledgerID uint32
+	if req.Ledger.GetName() != "" {
+		ledger, err := impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+		if err != nil {
+			return nil, fmt.Errorf("getting ledger: %w", err)
+		}
+		ledgerID = ledger.Id
+	} else {
+		ledgerID = req.Ledger.GetId()
+	}
+
+	return impl.ctrl.GetTransaction(ctx, ledgerID, req.TransactionId)
 }
 
 func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *servicepb.GetAllLedgersRequest) (*servicepb.GetAllLedgersResponse, error) {
@@ -122,6 +134,22 @@ func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *s
 
 func (impl *LedgerServiceServerImpl) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
 	return impl.ctrl.GetLedgerByName(ctx, req.Name)
+}
+
+func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+	// Get ledger ID from name or ID
+	var ledgerID uint32
+	if req.Ledger.GetName() != "" {
+		ledger, err := impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+		if err != nil {
+			return nil, fmt.Errorf("getting ledger: %w", err)
+		}
+		ledgerID = ledger.Id
+	} else {
+		ledgerID = req.Ledger.GetId()
+	}
+
+	return impl.ctrl.GetAccount(ctx, ledgerID, req.Address)
 }
 
 func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {

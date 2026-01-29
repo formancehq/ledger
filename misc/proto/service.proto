@@ -16,6 +16,8 @@ service LedgerService {
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
   // GetLedgerInfo returns a ledger info by its name
   rpc GetLedgerByName(GetLedgerByNameRequest) returns (common.LedgerInfo);
+  // GetAccount retrieves an account by address
+  rpc GetAccount(GetAccountRequest) returns (common.Account);
   // GetTransaction retrieves a transaction by ID
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
   // StreamLedgerLogs streams logs from a ledger, optionally starting from a log ID
@@ -32,8 +34,13 @@ service LedgerService {
 // gRPC Request/Response Messages
 // ============================================================================
 
+message GetAccountRequest {
+  LedgerNameOrId ledger = 1;
+  string address = 2;
+}
+
 message GetTransactionRequest {
-  uint32 ledger_id = 1;
+  LedgerNameOrId ledger = 1;
   uint64 transaction_id = 2;
 }
 

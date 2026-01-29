@@ -588,6 +588,58 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts 
 	return result, nil
 }
 
+// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
+// Input is calculated as sum of positive balance diffs (when account receives funds)
+// Output is calculated as sum of absolute negative balance diffs (when account sends funds)
+func (s *Store) GetAccountVolumes(ctx context.Context, ledger uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+	result := make(map[string]*commonpb.VolumesWithBalance)
+
+	// Query all balance diffs for this account, grouped by asset
+	query := `
+		SELECT asset, 
+		       COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as input,
+		       COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as output
+		FROM balances 
+		WHERE ledger = ? AND account_address = ?
+		GROUP BY asset
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, ledger, account)
+	if err != nil {
+		return nil, fmt.Errorf("querying account volumes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			asset       string
+			inputStr    string
+			outputStr   string
+		)
+		if err := rows.Scan(&asset, &inputStr, &outputStr); err != nil {
+			return nil, fmt.Errorf("scanning account volumes row: %w", err)
+		}
+
+		input, ok := new(big.Int).SetString(inputStr, 10)
+		if !ok {
+			input = big.NewInt(0)
+		}
+		output, ok := new(big.Int).SetString(outputStr, 10)
+		if !ok {
+			output = big.NewInt(0)
+		}
+		balance := new(big.Int).Sub(input, output)
+
+		result[asset] = &commonpb.VolumesWithBalance{
+			Input:   input.String(),
+			Output:  output.String(),
+			Balance: balance.String(),
+		}
+	}
+
+	return result, nil
+}
+
 // GetLogForIdempotencyKey retrieves the idempotency hash and the id of a log
 func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
 

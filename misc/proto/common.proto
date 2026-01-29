@@ -110,6 +110,7 @@ message Account {
   Timestamp first_usage = 3;
   Timestamp insertion_date = 4;
   Timestamp updated_at = 5;
+  map<string, VolumesWithBalance> volumes = 6;  // Volumes per asset
 }
 
 // AccountsVolumes represents volumes for a specific account and asset

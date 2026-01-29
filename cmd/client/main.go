@@ -23,6 +23,8 @@ func newRootCommand() *cobra.Command {
 
 	// Add subcommands
 	rootCmd.AddCommand(newLedgersCommand())
+	rootCmd.AddCommand(newAccountsCommand())
+	rootCmd.AddCommand(newTransactionsCommand())
 	rootCmd.AddCommand(newStoreCommand())
 
 	return rootCmd

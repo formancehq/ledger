@@ -77,6 +77,8 @@ type Store interface {
 	ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
+	// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
+	GetAccountVolumes(ctx context.Context, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	// GetSequenceForIdempotencyKey retrieves the sequence of a log for its idempotency key (global)
 	GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error)
 	// GetSequenceForTransactionID retrieves the sequence for a given transaction ID
