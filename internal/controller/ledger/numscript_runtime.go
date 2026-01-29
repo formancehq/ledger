@@ -105,8 +105,8 @@ func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, store St
 	execResult, err := d.parseResult.RunWithFeatureFlags(ctx, vars, newNumscriptRewriteAdapter(store), d.featureFlags)
 	if err != nil {
 		return nil, ErrRuntime{
-			Source: d.parseResult.GetSource(),
-			Inner:  err,
+			Source:           d.parseResult.GetSource(),
+			InterpreterError: err,
 		}
 	}
 
