@@ -61,7 +61,7 @@ type Batch interface {
 type Store interface {
 	LogReader
 	// ListLedgers lists all ledgers
-	ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
+	ListLedgers(ctx context.Context) (Cursor[*commonpb.LedgerInfo], error)
 	GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error)
 	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)

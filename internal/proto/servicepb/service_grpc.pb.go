@@ -37,8 +37,8 @@ const (
 //
 // LedgerService provides ledger operations
 type LedgerServiceClient interface {
-	// GetAllLedgersInfo returns all ledgers info in the cluster
-	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error)
+	// GetAllLedgersInfo streams all ledgers info in the cluster
+	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error)
 	// GetAccount retrieves an account by address
@@ -63,15 +63,24 @@ func NewLedgerServiceClient(cc grpc.ClientConnInterface) LedgerServiceClient {
 	return &ledgerServiceClient{cc}
 }
 
-func (c *ledgerServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error) {
+func (c *ledgerServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetAllLedgersResponse)
-	err := c.cc.Invoke(ctx, LedgerService_GetAllLedgersInfo_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[0], LedgerService_GetAllLedgersInfo_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LedgerService_GetAllLedgersInfoClient = grpc.ServerStreamingClient[commonpb.LedgerInfo]
 
 func (c *ledgerServiceClient) GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -105,7 +114,7 @@ func (c *ledgerServiceClient) GetTransaction(ctx context.Context, in *GetTransac
 
 func (c *ledgerServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[0], LedgerService_StreamLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[1], LedgerService_StreamLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,8 +167,8 @@ func (c *ledgerServiceClient) GetClusterState(ctx context.Context, in *GetCluste
 //
 // LedgerService provides ledger operations
 type LedgerServiceServer interface {
-	// GetAllLedgersInfo returns all ledgers info in the cluster
-	GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error)
+	// GetAllLedgersInfo streams all ledgers info in the cluster
+	GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error)
 	// GetAccount retrieves an account by address
@@ -184,8 +193,8 @@ type LedgerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLedgerServiceServer struct{}
 
-func (UnimplementedLedgerServiceServer) GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
+func (UnimplementedLedgerServiceServer) GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
+	return status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
 }
 func (UnimplementedLedgerServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLedger not implemented")
@@ -229,23 +238,16 @@ func RegisterLedgerServiceServer(s grpc.ServiceRegistrar, srv LedgerServiceServe
 	s.RegisterService(&LedgerService_ServiceDesc, srv)
 }
 
-func _LedgerService_GetAllLedgersInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAllLedgersRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _LedgerService_GetAllLedgersInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetAllLedgersRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetAllLedgersInfo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LedgerService_GetAllLedgersInfo_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetAllLedgersInfo(ctx, req.(*GetAllLedgersRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(LedgerServiceServer).GetAllLedgersInfo(m, &grpc.GenericServerStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LedgerService_GetAllLedgersInfoServer = grpc.ServerStreamingServer[commonpb.LedgerInfo]
 
 func _LedgerService_GetLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLedgerRequest)
@@ -374,10 +376,6 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*LedgerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetAllLedgersInfo",
-			Handler:    _LedgerService_GetAllLedgersInfo_Handler,
-		},
-		{
 			MethodName: "GetLedger",
 			Handler:    _LedgerService_GetLedger_Handler,
 		},
@@ -403,6 +401,11 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GetAllLedgersInfo",
+			Handler:       _LedgerService_GetAllLedgersInfo_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "StreamLogs",
 			Handler:       _LedgerService_StreamLogs_Handler,

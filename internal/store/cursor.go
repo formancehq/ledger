@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"io"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -42,4 +43,31 @@ var _ Cursor[any] = (*GRPCStreamCursor[any, any])(nil)
 
 func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(*Res) (To, error)) Cursor[To] {
 	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
+}
+
+// SliceCursor wraps a slice to implement the Cursor interface
+type SliceCursor[T any] struct {
+	items []T
+	index int
+}
+
+func (c *SliceCursor[T]) Next(_ context.Context) (T, error) {
+	if c.index >= len(c.items) {
+		var zero T
+		return zero, io.EOF
+	}
+	item := c.items[c.index]
+	c.index++
+	return item, nil
+}
+
+func (c *SliceCursor[T]) Close() error {
+	return nil
+}
+
+var _ Cursor[any] = (*SliceCursor[any])(nil)
+
+// NewSliceCursor creates a new cursor from a slice
+func NewSliceCursor[T any](items []T) Cursor[T] {
+	return &SliceCursor[T]{items: items, index: 0}
 }

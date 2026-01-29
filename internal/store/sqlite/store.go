@@ -714,48 +714,73 @@ func (s *Store) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerI
 	return info, nil
 }
 
-// ListLedgers returns all registered ledgers.
-func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+// cursor implements store.Cursor[T] for SQLite using a scan function.
+type cursor[T any] struct {
+	rows *sql.Rows
+	scan func(rows *sql.Rows) (T, error)
+}
+
+func (c *cursor[T]) Next(_ context.Context) (T, error) {
+	var zero T
+	if !c.rows.Next() {
+		if err := c.rows.Err(); err != nil {
+			return zero, err
+		}
+		return zero, io.EOF
+	}
+	return c.scan(c.rows)
+}
+
+func (c *cursor[T]) Close() error {
+	if c.rows != nil {
+		return c.rows.Close()
+	}
+	return nil
+}
+
+// ListLedgers returns a cursor over all registered ledgers.
+func (s *Store) ListLedgers(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
 	rows, err := s.stmtListLedgers.QueryContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("querying ledgers: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	var ledgers []*commonpb.LedgerInfo
-	for rows.Next() {
-		var id uint32
-		var name string
-		var metadataJSON sql.NullString
-		var createdAtStr sql.NullString
+	return &cursor[*commonpb.LedgerInfo]{
+		rows: rows,
+		scan: func(rows *sql.Rows) (*commonpb.LedgerInfo, error) {
+			var (
+				id           uint32
+				name         string
+				metadataJSON sql.NullString
+				createdAtStr sql.NullString
+			)
 
-		if err := rows.Scan(&id, &name, &metadataJSON, &createdAtStr); err != nil {
-			return nil, fmt.Errorf("scanning ledger row: %w", err)
-		}
-
-		info := &commonpb.LedgerInfo{
-			Id:   id,
-			Name: name,
-		}
-
-		if metadataJSON.Valid && metadataJSON.String != "" {
-			var metadata map[string]string
-			if err := json.Unmarshal([]byte(metadataJSON.String), &metadata); err != nil {
-				return nil, fmt.Errorf("unmarshaling ledger metadata: %w", err)
+			if err := rows.Scan(&id, &name, &metadataJSON, &createdAtStr); err != nil {
+				return nil, fmt.Errorf("scanning ledger row: %w", err)
 			}
-			info.Metadata = metadata
-		}
 
-		if createdAtStr.Valid {
-			createdAt, err := stdtime.Parse(stdtime.RFC3339, createdAtStr.String)
-			if err != nil {
-				return nil, fmt.Errorf("parsing created_at: %w", err)
+			info := &commonpb.LedgerInfo{
+				Id:   id,
+				Name: name,
 			}
-			info.CreatedAt = commonpb.NewTimestamp(time.New(createdAt))
-		}
 
-		ledgers = append(ledgers, info)
-	}
+			if metadataJSON.Valid && metadataJSON.String != "" {
+				var metadata map[string]string
+				if err := json.Unmarshal([]byte(metadataJSON.String), &metadata); err != nil {
+					return nil, fmt.Errorf("unmarshaling ledger metadata: %w", err)
+				}
+				info.Metadata = metadata
+			}
 
-	return ledgers, nil
+			if createdAtStr.Valid {
+				createdAt, err := stdtime.Parse(stdtime.RFC3339, createdAtStr.String)
+				if err != nil {
+					return nil, fmt.Errorf("parsing created_at: %w", err)
+				}
+				info.CreatedAt = commonpb.NewTimestamp(time.New(createdAt))
+			}
+
+			return info, nil
+		},
+	}, nil
 }

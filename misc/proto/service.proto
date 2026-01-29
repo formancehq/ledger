@@ -13,8 +13,8 @@ import "raftcmd.proto";
 
 // LedgerService provides ledger operations
 service LedgerService {
-  // GetAllLedgersInfo returns all ledgers info in the cluster
-  rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
+  // GetAllLedgersInfo streams all ledgers info in the cluster
+  rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (stream common.LedgerInfo);
   // GetLedger returns a ledger info by its name or ID
   rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo);
   // GetAccount retrieves an account by address
@@ -66,10 +66,6 @@ message DeleteLedgerRequest {
 message DeleteLedgerResponse {}
 
 message GetAllLedgersRequest {}
-
-message GetAllLedgersResponse {
-  map<string, common.LedgerInfo> ledgers = 1;
-}
 
 message GetLedgerRequest {
   LedgerNameOrId ledger = 1;

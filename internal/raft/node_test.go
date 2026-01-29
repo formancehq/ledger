@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"sync"
 	"testing"
@@ -19,6 +20,29 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 )
+
+// listLedgerContains checks if a ledger with the given name exists in the store
+func listLedgerContains(ctx context.Context, s storepkg.Store, name string) bool {
+	cursor, err := s.ListLedgers(ctx)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		ledger, err := cursor.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return false
+		}
+		if ledger.Name == name {
+			return true
+		}
+	}
+	return false
+}
 
 // ClusterNode represents a single node in the test cluster
 type ClusterNode struct {
@@ -688,16 +712,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		ledgers, err := follower.Store.ListLedgers(ctx)
-		if err != nil {
-			return false
-		}
-		for _, l := range ledgers {
-			if l.Name == "test-ledger" {
-				return true
-			}
-		}
-		return false
+		return listLedgerContains(ctx, follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -835,16 +850,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		ledgers, err := follower.Store.ListLedgers(ctx)
-		if err != nil {
-			return false
-		}
-		for _, l := range ledgers {
-			if l.Name == "test-ledger" {
-				return true
-			}
-		}
-		return false
+		return listLedgerContains(ctx, follower.Store, "test-ledger")
 	}, 10*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -1029,16 +1035,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		ledgers, err := follower.Store.ListLedgers(ctx)
-		if err != nil {
-			return false
-		}
-		for _, l := range ledgers {
-			if l.Name == "test-ledger" {
-				return true
-			}
-		}
-		return false
+		return listLedgerContains(ctx, follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -1226,16 +1223,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		ledgers, err := follower.Store.ListLedgers(ctx)
-		if err != nil {
-			return false
-		}
-		for _, l := range ledgers {
-			if l.Name == "test-ledger" {
-				return true
-			}
-		}
-		return false
+		return listLedgerContains(ctx, follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Stop and restart the follower

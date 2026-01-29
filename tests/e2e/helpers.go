@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
@@ -202,4 +204,26 @@ func newPosting(source, destination string, amount *big.Int, asset string) *comm
 		Amount:      commonpb.NewBigInt(amount),
 		Asset:       asset,
 	}
+}
+
+// getAllLedgersInfo collects all ledgers from the streaming RPC into a map
+func getAllLedgersInfo(ctx context.Context, client servicepb.LedgerServiceClient) (map[string]*commonpb.LedgerInfo, error) {
+	stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	ledgers := make(map[string]*commonpb.LedgerInfo)
+	for {
+		ledger, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		ledgers[ledger.Name] = ledger
+	}
+
+	return ledgers, nil
 }

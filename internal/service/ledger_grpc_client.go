@@ -76,13 +76,15 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint6
 	}), nil
 }
 
-func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {
-	resp, err := g.client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
+	stream, err := g.client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.Ledgers, nil
+	return store.NewGRPCStreamCursor(stream, func(res *commonpb.LedgerInfo) (*commonpb.LedgerInfo, error) {
+		return res, nil
+	}), nil
 }
 
 func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {

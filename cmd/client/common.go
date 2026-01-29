@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -37,14 +39,14 @@ func selectLedger(cmd *cobra.Command, client servicepb.LedgerServiceClient, read
 	defer cancel()
 
 	// List available ledgers
-	resp, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	ledgers, err := getAllLedgersInfo(ctx, client)
 	if err != nil {
 		return "", fmt.Errorf("failed to list ledgers: %w", err)
 	}
 
 	// Convert map to sorted slice for consistent ordering
 	var ledgerNames []string
-	for name := range resp.Ledgers {
+	for name := range ledgers {
 		ledgerNames = append(ledgerNames, name)
 	}
 
@@ -152,6 +154,28 @@ func getContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 		timeout = defaultTimeout
 	}
 	return context.WithTimeout(cmd.Context(), timeout)
+}
+
+// getAllLedgersInfo collects all ledgers from the streaming RPC into a map
+func getAllLedgersInfo(ctx context.Context, client servicepb.LedgerServiceClient) (map[string]*commonpb.LedgerInfo, error) {
+	stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	ledgers := make(map[string]*commonpb.LedgerInfo)
+	for {
+		ledger, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		ledgers[ledger.Name] = ledger
+	}
+
+	return ledgers, nil
 }
 
 // formatBytes formats a byte count as a human-readable string.

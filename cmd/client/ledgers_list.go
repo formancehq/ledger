@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +36,7 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := getContext(cmd)
 	defer cancel()
 
-	resp, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	ledgers, err := getAllLedgersInfo(ctx, client)
 	if err != nil {
 		return fmt.Errorf("failed to list ledgers: %w", err)
 	}
@@ -46,12 +45,12 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(resp.Ledgers)
+		return encoder.Encode(ledgers)
 	}
 
 	// Sort ledgers by name for consistent output
-	names := make([]string, 0, len(resp.Ledgers))
-	for name := range resp.Ledgers {
+	names := make([]string, 0, len(ledgers))
+	for name := range ledgers {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -66,7 +65,7 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintf(w, "--\t----\t----------\n")
 
 	for _, name := range names {
-		ledger := resp.Ledgers[name]
+		ledger := ledgers[name]
 		createdAt := "N/A"
 		if ledger.CreatedAt != nil {
 			createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)

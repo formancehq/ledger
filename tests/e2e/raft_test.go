@@ -261,10 +261,10 @@ var _ = Describe("Simple cluster", func() {
 					Eventually(servers[followerID-1]).To(BeFollower())
 					Eventually(func(g Gomega) bool {
 						// Then verify the follower can see the ledger created while it was down
-						ledgers, err := servers[followerID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+						ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
 						g.Expect(err).To(Succeed())
 
-						_, found := ledgers.Ledgers[ledgerName]
+						_, found := ledgers[ledgerName]
 						return found
 					}).To(BeTrue())
 

@@ -93,17 +93,32 @@ func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	return impl.ctrl.GetTransaction(ctx, ledgerID, req.TransactionId)
 }
 
-func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *servicepb.GetAllLedgersRequest) (*servicepb.GetAllLedgersResponse, error) {
+func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedgersRequest, stream servicepb.LedgerService_GetAllLedgersInfoServer) error {
 	impl.logger.Debugf("GetAllLedgersInfo request received")
 
-	ledgers, err := impl.ctrl.GetAllLedgersInfo(ctx)
+	ctx := stream.Context()
+	cursor, err := impl.ctrl.GetAllLedgersInfo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("getting all ledgers: %w", err)
+		return fmt.Errorf("getting all ledgers: %w", err)
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		ledger, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading ledger: %w", err)
+		}
+		if err := stream.Send(ledger); err != nil {
+			return fmt.Errorf("sending ledger: %w", err)
+		}
 	}
 
-	return &servicepb.GetAllLedgersResponse{
-		Ledgers: ledgers,
-	}, nil
+	return nil
 }
 
 func (impl *LedgerServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {

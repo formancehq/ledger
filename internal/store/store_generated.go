@@ -542,10 +542,10 @@ func (mr *MockStoreMockRecorder) IsTransactionReverted(ctx, ledgerID, transactio
 }
 
 // ListLedgers mocks base method.
-func (m *MockStore) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+func (m *MockStore) ListLedgers(ctx context.Context) (Cursor[*commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].([]*commonpb.LedgerInfo)
+	ret0, _ := ret[0].(Cursor[*commonpb.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

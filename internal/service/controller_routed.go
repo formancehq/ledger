@@ -51,7 +51,7 @@ func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {
+func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
 	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err

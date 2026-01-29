@@ -16,6 +16,23 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
+// collectLedgers collects all ledgers from a cursor into a slice
+func collectLedgers(ctx context.Context, cursor store.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
+	defer func() { _ = cursor.Close() }()
+	var ledgers []*commonpb.LedgerInfo
+	for {
+		ledger, err := cursor.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		ledgers = append(ledgers, ledger)
+	}
+	return ledgers, nil
+}
+
 func TestPebbleStore(t *testing.T) {
 	testStoreCommon(t, func(t *testing.T) store.Store {
 		tmpDir := t.TempDir()
@@ -242,13 +259,17 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		s := createStore(t)
 
 		// Initially no ledgers
-		ledgers, err := s.ListLedgers(ctx)
+		cursor, err := s.ListLedgers(ctx)
+		require.NoError(t, err)
+		ledgers, err := collectLedgers(ctx, cursor)
 		require.NoError(t, err)
 		require.Empty(t, ledgers)
 
 		// Register first ledger
 		registerLedger(ctx, t, s, "ledger-1", 1)
-		ledgers, err = s.ListLedgers(ctx)
+		cursor, err = s.ListLedgers(ctx)
+		require.NoError(t, err)
+		ledgers, err = collectLedgers(ctx, cursor)
 		require.NoError(t, err)
 		require.Len(t, ledgers, 1)
 		require.Equal(t, "ledger-1", ledgers[0].Name)
@@ -256,7 +277,9 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 
 		// Register second ledger
 		registerLedger(ctx, t, s, "ledger-2", 2)
-		ledgers, err = s.ListLedgers(ctx)
+		cursor, err = s.ListLedgers(ctx)
+		require.NoError(t, err)
+		ledgers, err = collectLedgers(ctx, cursor)
 		require.NoError(t, err)
 		require.Len(t, ledgers, 2)
 	})
@@ -570,7 +593,9 @@ func TestStoreDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.Commit(ctx))
 
 	// Verify data exists
-	ledgers, err := s.ListLedgers(ctx)
+	cursor, err := s.ListLedgers(ctx)
+	require.NoError(t, err)
+	ledgers, err := collectLedgers(ctx, cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
 
@@ -580,7 +605,9 @@ func TestStoreDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.Commit(ctx))
 
 	// Verify ledger deleted
-	ledgers, err = s.ListLedgers(ctx)
+	cursor, err = s.ListLedgers(ctx)
+	require.NoError(t, err)
+	ledgers, err = collectLedgers(ctx, cursor)
 	require.NoError(t, err)
 	require.Empty(t, ledgers)
 }

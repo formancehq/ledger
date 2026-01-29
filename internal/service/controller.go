@@ -10,7 +10,7 @@ import (
 
 type Controller interface {
 	// Ledger management (read-only)
-	GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error)
+	GetAllLedgersInfo(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error)
 	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 
 	// Read operations

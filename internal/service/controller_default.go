@@ -48,18 +48,9 @@ func NewDefaultController(
 	}
 }
 
-// GetAllLedgersInfo returns all ledgers
-func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (map[string]*commonpb.LedgerInfo, error) {
-	ledgers, err := ctrl.store.ListLedgers(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("listing ledgers: %w", err)
-	}
-
-	ret := make(map[string]*commonpb.LedgerInfo)
-	for _, ledger := range ledgers {
-		ret[ledger.Name] = ledger
-	}
-	return ret, nil
+// GetAllLedgersInfo returns a cursor over all ledgers
+func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
+	return ctrl.store.ListLedgers(ctx)
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {

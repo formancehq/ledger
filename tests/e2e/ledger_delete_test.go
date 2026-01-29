@@ -167,9 +167,9 @@ var _ = Describe("Ledger Deletion", func() {
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
 			// Verify the ledger is not in the list of all ledgers
-			ledgers, err := servers[leaderID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+			ledgers, err := getAllLedgersInfo(ctx, servers[leaderID-1].client)
 			Expect(err).To(Succeed())
-			for name := range ledgers.Ledgers {
+			for name := range ledgers {
 				Expect(name).NotTo(Equal(ledgerName))
 			}
 
@@ -180,9 +180,9 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(err).To(HaveOccurred())
 
 			// Verify the ledger does not appear in the list
-			ledgers, err = servers[leaderID-1].client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+			ledgers, err = getAllLedgersInfo(ctx, servers[leaderID-1].client)
 			Expect(err).To(Succeed())
-			_, found := ledgers.Ledgers[ledgerName]
+			_, found := ledgers[ledgerName]
 			Expect(found).To(BeFalse())
 		})
 

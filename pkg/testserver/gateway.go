@@ -380,8 +380,26 @@ func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.
 	return &servicepb.DeleteLedgerResponse{}, nil
 }
 
-func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *servicepb.GetAllLedgersRequest) (*servicepb.GetAllLedgersResponse, error) {
-	return g.client.GetAllLedgersInfo(ctx, req)
+func (g *ledgerServiceGateway) GetAllLedgersInfo(req *servicepb.GetAllLedgersRequest, stream servicepb.LedgerService_GetAllLedgersInfoServer) error {
+	ctx := stream.Context()
+
+	clientStream, err := g.client.GetAllLedgersInfo(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	for {
+		ledger, err := clientStream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := stream.Send(ledger); err != nil {
+			return err
+		}
+	}
 }
 
 func (g *ledgerServiceGateway) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {

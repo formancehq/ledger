@@ -163,7 +163,7 @@ type StoreInterceptor struct {
 	OnGetLogBySequence func(ctx context.Context, delegate Store, sequence uint64) (*commonpb.Log, error)
 
 	// Store interceptors
-	OnListLedgers                  func(ctx context.Context, delegate Store) ([]*commonpb.LedgerInfo, error)
+	OnListLedgers                  func(ctx context.Context, delegate Store) (Cursor[*commonpb.LedgerInfo], error)
 	OnGetBalances                  func(ctx context.Context, delegate Store, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
 	OnGetAccountMetadata           func(ctx context.Context, delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	OnGetAccountVolumes            func(ctx context.Context, delegate Store, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
@@ -212,7 +212,7 @@ func (s *StoreInterceptor) GetLogBySequence(ctx context.Context, sequence uint64
 	return s.delegate.GetLogBySequence(ctx, sequence)
 }
 
-func (s *StoreInterceptor) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+func (s *StoreInterceptor) ListLedgers(ctx context.Context) (Cursor[*commonpb.LedgerInfo], error) {
 	s.mu.RLock()
 	interceptor := s.OnListLedgers
 	s.mu.RUnlock()
@@ -371,7 +371,7 @@ func (s *StoreInterceptor) SetGetLogBySequenceInterceptor(fn func(ctx context.Co
 	s.mu.Unlock()
 }
 
-func (s *StoreInterceptor) SetListLedgersInterceptor(fn func(ctx context.Context, delegate Store) ([]*commonpb.LedgerInfo, error)) {
+func (s *StoreInterceptor) SetListLedgersInterceptor(fn func(ctx context.Context, delegate Store) (Cursor[*commonpb.LedgerInfo], error)) {
 	s.mu.Lock()
 	s.OnListLedgers = fn
 	s.mu.Unlock()

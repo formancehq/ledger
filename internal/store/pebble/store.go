@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"time"
@@ -680,8 +681,61 @@ func (s *Store) GetLastSequence(ctx context.Context) (uint64, error) {
 	return log.Sequence, nil
 }
 
-// ListLedgers returns all registered ledgers.
-func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error) {
+// cursor implements store.Cursor[T] for Pebble where T is a proto.Message pointer.
+type cursor[T proto.Message] struct {
+	iter    *pebble.Iterator
+	started bool
+	elemTyp reflect.Type
+}
+
+func newCursor[T proto.Message](iter *pebble.Iterator) *cursor[T] {
+	var zero T
+	return &cursor[T]{
+		iter:    iter,
+		elemTyp: reflect.TypeOf(zero).Elem(),
+	}
+}
+
+func (c *cursor[T]) Next(_ context.Context) (T, error) {
+	var zero T
+	if !c.started {
+		c.started = true
+		if !c.iter.First() {
+			if err := c.iter.Error(); err != nil {
+				return zero, err
+			}
+			return zero, io.EOF
+		}
+	} else {
+		if !c.iter.Next() {
+			if err := c.iter.Error(); err != nil {
+				return zero, err
+			}
+			return zero, io.EOF
+		}
+	}
+
+	value, err := c.iter.ValueAndErr()
+	if err != nil {
+		return zero, fmt.Errorf("reading value: %w", err)
+	}
+
+	item := reflect.New(c.elemTyp).Interface().(T)
+	if err := proto.Unmarshal(value, item); err != nil {
+		return zero, fmt.Errorf("unmarshaling: %w", err)
+	}
+	return item, nil
+}
+
+func (c *cursor[T]) Close() error {
+	if c.iter != nil {
+		return c.iter.Close()
+	}
+	return nil
+}
+
+// ListLedgers returns a cursor over all registered ledgers.
+func (s *Store) ListLedgers(_ context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
 	// Create bounds for ledger info prefix
 	lowerBound := []byte{keyPrefixLedgerInfo}
 	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -693,36 +747,26 @@ func (s *Store) ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for ledger info: %w", err)
 	}
-	defer func() {
-		_ = iter.Close()
-	}()
 
-	var ledgers []*commonpb.LedgerInfo
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading ledger info value: %w", err)
-		}
-
-		info := &commonpb.LedgerInfo{}
-		if err := proto.Unmarshal(value, info); err != nil {
-			return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
-		}
-		ledgers = append(ledgers, info)
-	}
-
-	return ledgers, nil
+	return newCursor[*commonpb.LedgerInfo](iter), nil
 }
 
 // GetLedgerByName retrieves a ledger by its name.
 func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
-	// Iterate over all ledgers to find by name
-	ledgers, err := s.ListLedgers(ctx)
+	cursor, err := s.ListLedgers(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = cursor.Close() }()
 
-	for _, ledger := range ledgers {
+	for {
+		ledger, err := cursor.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
 		if ledger.Name == name {
 			return ledger, nil
 		}
@@ -732,20 +776,26 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 }
 
 // GetLedgerByID retrieves a ledger by its ID.
-func (s *Store) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error) {
-	// Iterate over all ledgers to find by ID
-	ledgers, err := s.ListLedgers(ctx)
+func (s *Store) GetLedgerByID(_ context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+	// Build key: [keyPrefixLedgerInfo][ledgerID]
+	key := make([]byte, 5)
+	key[0] = keyPrefixLedgerInfo
+	binary.BigEndian.PutUint32(key[1:], id)
+
+	value, closer, err := s.db.Get(key)
 	if err != nil {
-		return nil, err
-	}
-
-	for _, ledger := range ledgers {
-		if ledger.Id == id {
-			return ledger, nil
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, store.ErrNotFound
 		}
+		return nil, fmt.Errorf("getting ledger by ID: %w", err)
 	}
+	defer func() { _ = closer.Close() }()
 
-	return nil, store.ErrNotFound
+	info := &commonpb.LedgerInfo{}
+	if err := proto.Unmarshal(value, info); err != nil {
+		return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
+	}
+	return info, nil
 }
 
 func writeLedgerPrefix(buf *bytes.Buffer, ledgerID uint32) {
