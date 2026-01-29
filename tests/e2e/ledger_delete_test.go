@@ -143,8 +143,8 @@ var _ = Describe("Ledger Deletion", func() {
 			ledgerID = createLog.Info.Id
 
 			// Verify the ledger exists
-			ledger, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-				Name: ledgerName,
+			ledger, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+				Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 			})
 			Expect(err).To(Succeed())
 			Expect(ledger.Name).To(Equal(ledgerName))
@@ -160,8 +160,8 @@ var _ = Describe("Ledger Deletion", func() {
 
 			// Verify the ledger is completely removed (hard delete)
 			Eventually(func(g Gomega) bool {
-				_, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-					Name: ledgerName,
+				_, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+					Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 				})
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
@@ -174,8 +174,8 @@ var _ = Describe("Ledger Deletion", func() {
 			}
 
 			// Verify the ledger cannot be retrieved (hard delete)
-			_, err = servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-				Name: ledgerName,
+			_, err = servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+				Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -248,8 +248,8 @@ var _ = Describe("Ledger Deletion", func() {
 
 			// Verify the ledger no longer exists
 			Eventually(func(g Gomega) bool {
-				_, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-					Name: ledgerName,
+				_, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+					Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 				})
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())

@@ -301,8 +301,8 @@ var _ = Describe("Ledger", func() {
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			ledger, err := servers[leaderID-1].client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-				Name: ledgerName,
+			ledger, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+				Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 			})
 			Expect(err).To(Succeed())
 			Expect(ledger.Name).To(Equal(ledgerName))

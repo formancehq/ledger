@@ -139,38 +139,6 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		}
 	})
 
-	t.Run("GetAllLedgerLogs", func(t *testing.T) {
-		t.Parallel()
-		s := createStore(t)
-
-		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
-		testLogs := createTestLogs(testLedgerID)
-		appendLogs(ctx, t, s, 0, testLogs...)
-
-		// Test GetAllLedgerLogs (ledger-specific logs)
-		cursor, err := s.GetAllLedgerLogs(ctx, testLedgerID, 0, 0)
-		require.NoError(t, err)
-		require.NotNil(t, cursor)
-		t.Cleanup(func() { _ = cursor.Close() })
-
-		var ledgerLogs []*commonpb.LedgerLog
-		for {
-			log, err := cursor.Next(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			ledgerLogs = append(ledgerLogs, log)
-		}
-
-		require.Equal(t, len(testLogs), len(ledgerLogs))
-
-		// Verify logs are in ID order
-		for i := 0; i < len(ledgerLogs)-1; i++ {
-			require.LessOrEqual(t, ledgerLogs[i].Id, ledgerLogs[i+1].Id)
-		}
-	})
-
 	t.Run("GetLogBySequence", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)

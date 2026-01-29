@@ -39,8 +39,8 @@ func runLedgersGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := getContext(cmd)
 	defer cancel()
 
-	ledger, err := client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-		Name: ledgerName,
+	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+		Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get ledger: %w", err)

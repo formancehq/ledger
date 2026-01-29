@@ -99,15 +99,6 @@ func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWr
 	return ctrl.Export(ctx, ledger, w)
 }
 
-func (b *RoutedController) GetAllLedgerLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
-	ctrl, err := b.getCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return ctrl.GetAllLedgerLogs(ctx, ledger, from, to)
-}
-
 func (b *RoutedController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {

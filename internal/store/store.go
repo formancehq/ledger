@@ -29,18 +29,6 @@ type LogReader interface {
 	GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 }
 
-type LedgerLogStreamer interface {
-	// GetAllLedgerLogs returns a cursor over all ledger logs in the given ledger
-	// from: optional log ID to start from (0 = from beginning)
-	// to: optional log ID to stop at (0 = until end, inclusive)
-	GetAllLedgerLogs(ctx context.Context, ledger uint32, from uint64, to uint64) (Cursor[*commonpb.LedgerLog], error)
-}
-
-// LedgerLogReader handles ledger log reading operations (for service layer compatibility)
-type LedgerLogReader interface {
-	LedgerLogStreamer
-}
-
 // Batch allows atomic operations on the store.
 // All operations are buffered until Commit is called.
 // Cancel must be called if the batch is not committed to release resources.
@@ -72,7 +60,6 @@ type Batch interface {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Store
 type Store interface {
 	LogReader
-	LedgerLogReader
 	// ListLedgers lists all ledgers
 	ListLedgers(ctx context.Context) ([]*commonpb.LedgerInfo, error)
 	GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error)

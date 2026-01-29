@@ -125,38 +125,6 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		}
 	})
 
-	t.Run("GetAllLedgerLogs", func(t *testing.T) {
-		t.Parallel()
-		s := createStore(t)
-
-		registerLedger(ctx, t, s, "test-ledger", testLedgerID)
-		testLogs := createTestLogs(testLedgerID)
-		appendLogs(ctx, t, s, 0, testLogs...)
-
-		// Test GetAllLedgerLogs (ledger-specific logs)
-		cursor, err := s.GetAllLedgerLogs(ctx, testLedgerID, 0, 0)
-		require.NoError(t, err)
-		require.NotNil(t, cursor)
-		t.Cleanup(func() { _ = cursor.Close() })
-
-		var ledgerLogs []*commonpb.LedgerLog
-		for {
-			log, err := cursor.Next(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			ledgerLogs = append(ledgerLogs, log)
-		}
-
-		require.Equal(t, len(testLogs), len(ledgerLogs))
-
-		// Verify logs are in ID order
-		for i := 0; i < len(ledgerLogs)-1; i++ {
-			require.LessOrEqual(t, ledgerLogs[i].Id, ledgerLogs[i+1].Id)
-		}
-	})
-
 	t.Run("GetLogBySequence", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
@@ -310,61 +278,6 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
 		require.Nil(t, ledger)
 	})
 
-	t.Run("MultiLedger", func(t *testing.T) {
-		t.Parallel()
-		s := createStore(t)
-
-		var ledger1ID uint32 = 1
-		var ledger2ID uint32 = 2
-
-		registerLedger(ctx, t, s, "ledger-1", ledger1ID)
-		registerLedger(ctx, t, s, "ledger-2", ledger2ID)
-
-		// Add logs to ledger 1
-		logs1 := createTestLogsForLedger(ledger1ID, 1)
-		appendLogs(ctx, t, s, 0, logs1...)
-
-		// Add logs to ledger 2
-		logs2 := createTestLogsForLedger(ledger2ID, uint64(len(logs1)+1))
-		appendLogs(ctx, t, s, 1, logs2...)
-
-		// Verify ledger 1 logs
-		cursor1, err := s.GetAllLedgerLogs(ctx, ledger1ID, 0, 0)
-		require.NoError(t, err)
-		defer func() { _ = cursor1.Close() }()
-
-		var ledger1Logs []*commonpb.LedgerLog
-		for {
-			log, err := cursor1.Next(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			ledger1Logs = append(ledger1Logs, log)
-		}
-		require.Equal(t, len(logs1), len(ledger1Logs))
-
-		// Verify ledger 2 logs
-		cursor2, err := s.GetAllLedgerLogs(ctx, ledger2ID, 0, 0)
-		require.NoError(t, err)
-		defer func() { _ = cursor2.Close() }()
-
-		var ledger2Logs []*commonpb.LedgerLog
-		for {
-			log, err := cursor2.Next(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			ledger2Logs = append(ledger2Logs, log)
-		}
-		require.Equal(t, len(logs2), len(ledger2Logs))
-
-		// Verify last sequence is global
-		lastSequence, err := s.GetLastSequence(ctx)
-		require.NoError(t, err)
-		require.Equal(t, uint64(len(logs1)+len(logs2)), lastSequence)
-	})
 }
 
 // createTestLogs creates test logs wrapped in Log with ApplyLog payload

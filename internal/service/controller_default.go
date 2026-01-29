@@ -140,10 +140,6 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerID uint32, 
 	return account, nil
 }
 
-func (ctrl *DefaultController) GetAllLedgerLogs(ctx context.Context, ledgerID uint32, from uint64, to uint64) (store.Cursor[*commonpb.LedgerLog], error) {
-	return ctrl.store.GetAllLedgerLogs(ctx, ledgerID, from, to)
-}
-
 func (ctrl *DefaultController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	return ctrl.store.GetAllLogs(ctx, from, to)
 }

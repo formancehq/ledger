@@ -745,8 +745,8 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 })
 
 // For read operations
-ledger, err := client.GetLedgerByName(ctx, &servicepb.GetLedgerByNameRequest{
-    Name: "ledger1",
+ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+    Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: "ledger1"}},
 })
 ```
 

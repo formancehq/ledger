@@ -352,7 +352,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `CreateLedger` | Create a new ledger | ✅ |
 | `DeleteLedger` | Delete a ledger | ✅ |
 | `GetAllLedgersInfo` | Get all ledgers info | ✅ |
-| `GetLedgerByName` | Get ledger by name | ✅ |
+| `GetLedger` | Get ledger by name or ID | ✅ |
 | `GetTransaction` | Get transaction by ID | ✅ |
 | `StreamLogs` | Stream logs from a ledger | ✅ |
 | `Apply` | Apply a ledger action (write operations) | ✅ |

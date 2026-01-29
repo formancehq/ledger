@@ -384,8 +384,8 @@ func (g *ledgerServiceGateway) GetAllLedgersInfo(ctx context.Context, req *servi
 	return g.client.GetAllLedgersInfo(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
-	return g.client.GetLedgerByName(ctx, req)
+func (g *ledgerServiceGateway) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	return g.client.GetLedger(ctx, req)
 }
 
 func (g *ledgerServiceGateway) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {

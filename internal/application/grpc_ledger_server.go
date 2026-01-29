@@ -47,36 +47,6 @@ func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	return &servicepb.ApplyResponse{Logs: logs}, nil
 }
 
-func (impl *LedgerServiceServerImpl) StreamLedgerLogs(req *servicepb.StreamLedgerLogsRequest, stream servicepb.LedgerService_StreamLedgerLogsServer) error {
-	ctx := stream.Context()
-
-	cursor, err := impl.ctrl.GetAllLedgerLogs(ctx, req.LedgerId, req.FromId, req.ToId)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	for {
-		log, err := cursor.Next(ctx)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading log from store: %w", err)
-		}
-
-		if err := stream.Send(&servicepb.StreamLedgerLogsResponse{
-			Log: log,
-		}); err != nil {
-			return fmt.Errorf("sending log: %w", err)
-		}
-	}
-
-	return nil
-}
-
 func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
 	ctx := stream.Context()
 
@@ -136,8 +106,11 @@ func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(ctx context.Context, _ *s
 	}, nil
 }
 
-func (impl *LedgerServiceServerImpl) GetLedgerByName(ctx context.Context, req *servicepb.GetLedgerByNameRequest) (*commonpb.LedgerInfo, error) {
-	return impl.ctrl.GetLedgerByName(ctx, req.Name)
+func (impl *LedgerServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	if req.Ledger.GetName() != "" {
+		return impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+	}
+	return impl.store.GetLedgerByID(ctx, req.Ledger.GetId())
 }
 
 func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {

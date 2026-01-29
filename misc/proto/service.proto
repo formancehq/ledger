@@ -15,14 +15,12 @@ import "raftcmd.proto";
 service LedgerService {
   // GetAllLedgersInfo returns all ledgers info in the cluster
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (GetAllLedgersResponse);
-  // GetLedgerInfo returns a ledger info by its name
-  rpc GetLedgerByName(GetLedgerByNameRequest) returns (common.LedgerInfo);
+  // GetLedger returns a ledger info by its name or ID
+  rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo);
   // GetAccount retrieves an account by address
   rpc GetAccount(GetAccountRequest) returns (common.Account);
   // GetTransaction retrieves a transaction by ID
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
-  // StreamLedgerLogs streams logs from a ledger, optionally starting from a log ID
-  rpc StreamLedgerLogs(StreamLedgerLogsRequest) returns (stream StreamLedgerLogsResponse);
   // StreamLogs streams logs, optionally starting from a sequence
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
@@ -45,16 +43,6 @@ message GetAccountRequest {
 message GetTransactionRequest {
   LedgerNameOrId ledger = 1;
   uint64 transaction_id = 2;
-}
-
-message StreamLedgerLogsRequest {
-  uint32 ledger_id = 1;
-  uint64 from_id = 2; // Optional: start streaming from this log ID (inclusive). If 0, streams from the beginning
-  uint64 to_id = 3;   // Optional: stop streaming at this log ID (inclusive). If 0, streams until the end
-}
-
-message StreamLedgerLogsResponse {
-  common.LedgerLog log = 1;
 }
 
 message StreamLogsRequest {
@@ -83,8 +71,8 @@ message GetAllLedgersResponse {
   map<string, common.LedgerInfo> ledgers = 1;
 }
 
-message GetLedgerByNameRequest {
-  string name = 1;
+message GetLedgerRequest {
+  LedgerNameOrId ledger = 1;
 }
 
 message GetClusterStateRequest {}
