@@ -64,16 +64,10 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
-		return
-	}
-
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Action{
 		Type: &servicepb.Action_Apply{
 			Apply: &servicepb.LedgerApplyAction{
-				LedgerId:       ledgerInfo.Id,
+				Ledger:         servicepb.LedgerName(ledgerName),
 				IdempotencyKey: r.Header.Get("Idempotency-Key"),
 				Data: &servicepb.LedgerApplyAction_RevertTransaction{
 					RevertTransaction: payload,

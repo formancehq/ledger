@@ -32,16 +32,10 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
-		return
-	}
-
-	_, err = s.backend.Apply(r.Context(), &servicepb.Action{
+	_, err := s.backend.Apply(r.Context(), &servicepb.Action{
 		Type: &servicepb.Action_Apply{
 			Apply: &servicepb.LedgerApplyAction{
-				LedgerId:       ledgerInfo.Id,
+				Ledger:         servicepb.LedgerName(ledgerName),
 				IdempotencyKey: r.Header.Get("Idempotency-Key"),
 				Data: &servicepb.LedgerApplyAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{

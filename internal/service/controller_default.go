@@ -29,6 +29,7 @@ type DefaultController struct {
 	engine Engine
 	// todo: use a LRU cache with limits
 	scriptCache                 sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
+	ledgerIDCache               sync.Map // Cache for ledger name to ID: map[string]uint32
 	createTransactionLp         *logProcessor
 	saveTransactionMetadataLp   *logProcessor
 	saveAccountMetadataLp       *logProcessor
@@ -256,7 +257,11 @@ func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, actio
 
 	switch actionType := action.Type.(type) {
 	case *servicepb.Action_Apply:
-		raftAction, cachedLog, err := ctrl.forgeLedgerAction(ctx, actionType.Apply)
+		ledgerID, err := ctrl.resolveLedgerID(ctx, actionType.Apply.GetLedger())
+		if err != nil {
+			return nil, err
+		}
+		raftAction, cachedLog, err := ctrl.forgeLedgerAction(ctx, ledgerID, actionType.Apply)
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +271,7 @@ func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, actio
 				cachedLog: &commonpb.Log{
 					Payload: &commonpb.Log_Apply{
 						Apply: &commonpb.ApplyLog{
-							LedgerId: actionType.Apply.LedgerId,
+							LedgerId: ledgerID,
 							Log:      cachedLog,
 						},
 					},
@@ -276,7 +281,7 @@ func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, actio
 		return &forgedAction{
 			index:      index,
 			raftAction: raftAction,
-			ledgerID:   actionType.Apply.LedgerId,
+			ledgerID:   ledgerID,
 		}, nil
 
 	case *servicepb.Action_CreateLedger:
@@ -303,13 +308,41 @@ func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, actio
 	}
 }
 
+// resolveLedgerID resolves a LedgerNameOrId to a ledger ID
+func (ctrl *DefaultController) resolveLedgerID(ctx context.Context, ledger *servicepb.LedgerNameOrId) (uint32, error) {
+	if ledger == nil {
+		return 0, fmt.Errorf("ledger identifier is required")
+	}
+
+	switch t := ledger.Type.(type) {
+	case *servicepb.LedgerNameOrId_Id:
+		return t.Id, nil
+	case *servicepb.LedgerNameOrId_Name:
+		// Check cache first
+		if cached, ok := ctrl.ledgerIDCache.Load(t.Name); ok {
+			return cached.(uint32), nil
+		}
+
+		// Cache miss - fetch from store
+		ledgerInfo, err := ctrl.store.GetLedgerByName(ctx, t.Name)
+		if err != nil {
+			return 0, fmt.Errorf("resolving ledger name %q: %w", t.Name, err)
+		}
+
+		// Store in cache
+		ctrl.ledgerIDCache.Store(t.Name, ledgerInfo.Id)
+		return ledgerInfo.Id, nil
+	default:
+		return 0, fmt.Errorf("invalid ledger identifier type")
+	}
+}
+
 // forgeLedgerAction forges a ledger action and returns either a raft action or a cached log
-func (ctrl *DefaultController) forgeLedgerAction(ctx context.Context, action *servicepb.LedgerApplyAction) (*raftcmdpb.Action, *commonpb.LedgerLog, error) {
+func (ctrl *DefaultController) forgeLedgerAction(ctx context.Context, ledgerID uint32, action *servicepb.LedgerApplyAction) (*raftcmdpb.Action, *commonpb.LedgerLog, error) {
 	if action == nil {
 		return nil, nil, fmt.Errorf("action is required")
 	}
 
-	ledgerID := action.LedgerId
 	idempotencyKey := action.IdempotencyKey
 
 	switch data := action.Data.(type) {

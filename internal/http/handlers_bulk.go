@@ -20,12 +20,6 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
-		return
-	}
-
 	// Parse JSON array of bulk elements
 	var rawElements []json.RawValue
 	if err := json.UnmarshalRead(r.Body, &rawElements); err != nil {
@@ -56,7 +50,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		continueOnFailure: queryParamBool(r, "continueOnFailure"),
 		atomic:            queryParamBool(r, "atomic"),
 	}
-	results := s.runBulk(r.Context(), ledgerInfo.Id, elements, opts)
+	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
 	writeBulkResponse(w, elements, results)
@@ -75,7 +69,7 @@ type bulkResult struct {
 }
 
 // runBulk processes a list of bulk elements and returns the results
-func (s *Server) runBulk(ctx context.Context, ledgerID uint32, elements []*servicepb.LedgerApplyAction, opts bulkOptions) []bulkResult {
+func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*servicepb.LedgerApplyAction, opts bulkOptions) []bulkResult {
 	if len(elements) == 0 {
 		return nil
 	}
@@ -83,7 +77,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerID uint32, elements []*servi
 	// Build actions slice
 	actions := make([]*servicepb.Action, len(elements))
 	for i, elem := range elements {
-		elem.LedgerId = ledgerID
+		elem.Ledger = servicepb.LedgerName(ledgerName)
 		actions[i] = &servicepb.Action{
 			Type: &servicepb.Action_Apply{
 				Apply: elem,

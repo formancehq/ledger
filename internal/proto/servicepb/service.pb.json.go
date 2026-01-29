@@ -50,6 +50,20 @@ const (
 	LedgerActionTypeDeleteMetadata    = "DELETE_METADATA"
 )
 
+// LedgerID creates a LedgerNameOrId with an ID
+func LedgerID(id uint32) *LedgerNameOrId {
+	return &LedgerNameOrId{
+		Type: &LedgerNameOrId_Id{Id: id},
+	}
+}
+
+// LedgerName creates a LedgerNameOrId with a name
+func LedgerName(name string) *LedgerNameOrId {
+	return &LedgerNameOrId{
+		Type: &LedgerNameOrId_Name{Name: name},
+	}
+}
+
 // UnmarshalJSON implements json.Unmarshaler for LedgerApplyAction
 func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
 	// First pass: parse action and idempotency key

@@ -113,9 +113,16 @@ message RevertTransactionPayload {
   map<string, string> metadata = 4;
 }
 
+message LedgerNameOrId {
+  oneof Type {
+    string name = 1;
+    uint32 id = 2;
+  }
+}
+
 // LedgerAction represents a single ledger action
 message LedgerApplyAction {
-  uint32 ledger_id = 1;
+  LedgerNameOrId ledger = 1;
   string idempotency_key = 2;
   oneof data {
     CreateTransactionPayload create_transaction = 3;
