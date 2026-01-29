@@ -5,6 +5,20 @@ config:
   debug: false
   httpPort: 9000
   storageType: pebble
+  # Pebble storage configuration
+  pebble:
+    memTableSize: 268435456         # 256MB
+    memTableStopWritesThreshold: 6
+    l0CompactionThreshold: 64
+    l0StopWritesThreshold: 256
+    lBaseMaxBytes: 2147483648       # 2GB
+    cacheSize: 1073741824           # 1GB
+    targetFileSize: 268435456       # 256MB
+    bytesPerSync: 1048576           # 1MB
+    walBytesPerSync: 1048576        # 1MB
+    maxConcurrentCompactions: 2
+    walMinSyncInterval: "0"
+    disableWAL: false
   monitoring:
     logs:
       enabled: true

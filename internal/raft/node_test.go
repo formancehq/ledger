@@ -151,7 +151,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		require.NoError(t, err)
 
 		// Create store
-		store, err := pebble.NewStore(dataDir, logger, meter)
+		store, err := pebble.NewStore(dataDir, logger, meter, pebble.DefaultConfig())
 		require.NoError(t, err)
 
 		// Wrap with interceptors
@@ -419,7 +419,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("recreating spool: %w", err)
 	}
 
-	store, err := pebble.NewStore(clusterNode.dataDir, c.logger, noop.Meter{})
+	store, err := pebble.NewStore(clusterNode.dataDir, c.logger, noop.Meter{}, pebble.DefaultConfig())
 	if err != nil {
 		return nil, fmt.Errorf("recreating store: %w", err)
 	}

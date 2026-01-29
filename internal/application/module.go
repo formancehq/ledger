@@ -53,7 +53,8 @@ func Module() fx.Option {
 					return pebble.NewStore(
 						cfg.DataDir,
 						logger,
-						meterProvider.Meter("peeble.runtime_store"),
+						meterProvider.Meter("pebble.runtime_store"),
+						cfg.PebbleConfig,
 					)
 				case "sqlite-mattn":
 					return sqlite.NewMattnStore(cfg.DataDir, logger)

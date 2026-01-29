@@ -46,6 +46,44 @@ config:
   # Storage type: sqlite-mattn, sqlite-modern, or pebble
   storageType: "sqlite-mattn"
   
+  # Pebble storage configuration (only used when storageType is "pebble")
+  pebble:
+    # Memtable size in bytes (default: 256MB = 268435456)
+    # Larger values absorb more writes before flush, reducing SST files and compactions
+    memTableSize: 268435456
+    # Number of memtables before writes are stopped (default: 6)
+    # Higher values reduce write stalls at the cost of increased memory usage
+    memTableStopWritesThreshold: 6
+    # L0 file count to trigger L0->L1 compaction (default: 64)
+    # Lower values prevent runaway L0 growth but increase compaction frequency
+    l0CompactionThreshold: 64
+    # L0 file count before writes are stopped (default: 256)
+    # Higher values allow more L0 files before stalling, but increase read amplification
+    l0StopWritesThreshold: 256
+    # Maximum size of L1 in bytes (default: 2GB = 2147483648)
+    # Larger values are better for larger datasets
+    lBaseMaxBytes: 2147483648
+    # Block cache size in bytes (default: 1GB = 1073741824)
+    # Larger caches improve read performance at the cost of memory
+    cacheSize: 1073741824
+    # Target SST file size in bytes (default: 256MB = 268435456)
+    # Larger files mean fewer files and fewer compactions
+    targetFileSize: 268435456
+    # Bytes written before sync during flush/compaction (default: 1MB = 1048576)
+    bytesPerSync: 1048576
+    # WAL bytes written before sync (default: 1MB = 1048576)
+    walBytesPerSync: 1048576
+    # Maximum concurrent compactions (default: 2)
+    # Higher values can speed up compaction but may saturate IO
+    maxConcurrentCompactions: 2
+    # Minimum interval between WAL syncs (default: 0, immediate sync)
+    # Non-zero values improve write throughput but risk data loss on crash
+    # Example: "100ms" for batched syncs
+    walMinSyncInterval: "0"
+    # Disable WAL entirely (default: false)
+    # WARNING: Risks data loss on crash. Only use for testing or ephemeral data
+    disableWAL: false
+  
   # Raft configuration
   raft:
     snapshotThreshold: 15000   # Number of logs before triggering a snapshot

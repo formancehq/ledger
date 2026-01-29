@@ -115,6 +115,57 @@ spec:
         - name: STORAGE_TYPE
           value: {{ .Values.config.storageType | quote }}
         {{- end }}
+        # Pebble configuration (only used when storageType is "pebble")
+        {{- if .Values.config.pebble }}
+        {{- if .Values.config.pebble.memTableSize }}
+        - name: PEBBLE_MEMTABLE_SIZE
+          value: {{ .Values.config.pebble.memTableSize | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.memTableStopWritesThreshold }}
+        - name: PEBBLE_MEMTABLE_STOP_WRITES_THRESHOLD
+          value: {{ .Values.config.pebble.memTableStopWritesThreshold | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.l0CompactionThreshold }}
+        - name: PEBBLE_L0_COMPACTION_THRESHOLD
+          value: {{ .Values.config.pebble.l0CompactionThreshold | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.l0StopWritesThreshold }}
+        - name: PEBBLE_L0_STOP_WRITES_THRESHOLD
+          value: {{ .Values.config.pebble.l0StopWritesThreshold | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.lBaseMaxBytes }}
+        - name: PEBBLE_LBASE_MAX_BYTES
+          value: {{ .Values.config.pebble.lBaseMaxBytes | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.cacheSize }}
+        - name: PEBBLE_CACHE_SIZE
+          value: {{ .Values.config.pebble.cacheSize | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.targetFileSize }}
+        - name: PEBBLE_TARGET_FILE_SIZE
+          value: {{ .Values.config.pebble.targetFileSize | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.bytesPerSync }}
+        - name: PEBBLE_BYTES_PER_SYNC
+          value: {{ .Values.config.pebble.bytesPerSync | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.walBytesPerSync }}
+        - name: PEBBLE_WAL_BYTES_PER_SYNC
+          value: {{ .Values.config.pebble.walBytesPerSync | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.maxConcurrentCompactions }}
+        - name: PEBBLE_MAX_CONCURRENT_COMPACTIONS
+          value: {{ .Values.config.pebble.maxConcurrentCompactions | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.walMinSyncInterval }}
+        - name: PEBBLE_WAL_MIN_SYNC_INTERVAL
+          value: {{ .Values.config.pebble.walMinSyncInterval | quote }}
+        {{- end }}
+        {{- if .Values.config.pebble.disableWAL }}
+        - name: PEBBLE_DISABLE_WAL
+          value: {{ .Values.config.pebble.disableWAL | quote }}
+        {{- end }}
+        {{- end }}
         # OpenTelemetry metrics configuration
         - name: OTEL_METRICS_KEEP_IN_MEMORY
           value: {{ .Values.config.monitoring.metrics.keepInMemory | default true | toString | quote }}

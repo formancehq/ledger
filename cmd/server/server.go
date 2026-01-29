@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/tracesampling"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
@@ -85,6 +86,20 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().String("storage-type", "", "Define storage type (sqlite-mattn, sqlite-modern, pebble)")
+
+	// Pebble storage configuration flags
+	runCmd.Flags().Uint64("pebble-memtable-size", 0, "Pebble memtable size in bytes (default: 256MB)")
+	runCmd.Flags().Int("pebble-memtable-stop-writes-threshold", 0, "Pebble memtable count before stopping writes (default: 6)")
+	runCmd.Flags().Int("pebble-l0-compaction-threshold", 0, "Pebble L0 file count to trigger compaction (default: 64)")
+	runCmd.Flags().Int("pebble-l0-stop-writes-threshold", 0, "Pebble L0 file count before stopping writes (default: 256)")
+	runCmd.Flags().Int64("pebble-lbase-max-bytes", 0, "Pebble L1 max size in bytes (default: 2GB)")
+	runCmd.Flags().Int64("pebble-cache-size", 0, "Pebble block cache size in bytes (default: 1GB)")
+	runCmd.Flags().Int64("pebble-target-file-size", 0, "Pebble SST file target size in bytes (default: 256MB)")
+	runCmd.Flags().Int("pebble-bytes-per-sync", 0, "Pebble bytes written before sync during flush/compaction (default: 1MB)")
+	runCmd.Flags().Int("pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1MB)")
+	runCmd.Flags().Int("pebble-max-concurrent-compactions", 0, "Pebble max concurrent compactions (default: 2)")
+	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
+	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 
 	return runCmd
 }
@@ -267,6 +282,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.ProposeQueueCapacity = getInt("raft-propose-queue-capacity", 0)
 	cfg.StorageType = getString("storage-type", "pebble")
 
+	// Load Pebble configuration with defaults
+	cfg.PebbleConfig = loadPebbleConfig(cmd)
+
 	// Parse transport reception queues
 	// Default values based on commented code in transport.go: [10, 512, 512, 512, 128]
 	receptionQueues := getIntSlice("raft-transport-reception-queues")
@@ -292,4 +310,60 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// loadPebbleConfig loads Pebble configuration from command flags with defaults.
+func loadPebbleConfig(cmd *cobra.Command) pebble.Config {
+	cfg := pebble.DefaultConfig()
+
+	// Helper to get uint64 with default
+	getUint64 := func(flagName string, defaultValue uint64) uint64 {
+		if val, _ := cmd.Flags().GetUint64(flagName); val != 0 {
+			return val
+		}
+		return defaultValue
+	}
+
+	// Helper to get int64 with default
+	getInt64 := func(flagName string, defaultValue int64) int64 {
+		if val, _ := cmd.Flags().GetInt64(flagName); val != 0 {
+			return val
+		}
+		return defaultValue
+	}
+
+	// Helper to get int with default
+	getInt := func(flagName string, defaultValue int) int {
+		if val, _ := cmd.Flags().GetInt(flagName); val != 0 {
+			return val
+		}
+		return defaultValue
+	}
+
+	// Helper to get duration with default
+	getDuration := func(flagName string, defaultValue time.Duration) time.Duration {
+		if val, _ := cmd.Flags().GetDuration(flagName); val != 0 {
+			return val
+		}
+		return defaultValue
+	}
+
+	cfg.MemTableSize = getUint64("pebble-memtable-size", cfg.MemTableSize)
+	cfg.MemTableStopWritesThreshold = getInt("pebble-memtable-stop-writes-threshold", cfg.MemTableStopWritesThreshold)
+	cfg.L0CompactionThreshold = getInt("pebble-l0-compaction-threshold", cfg.L0CompactionThreshold)
+	cfg.L0StopWritesThreshold = getInt("pebble-l0-stop-writes-threshold", cfg.L0StopWritesThreshold)
+	cfg.LBaseMaxBytes = getInt64("pebble-lbase-max-bytes", cfg.LBaseMaxBytes)
+	cfg.CacheSize = getInt64("pebble-cache-size", cfg.CacheSize)
+	cfg.TargetFileSize = getInt64("pebble-target-file-size", cfg.TargetFileSize)
+	cfg.BytesPerSync = getInt("pebble-bytes-per-sync", cfg.BytesPerSync)
+	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
+	cfg.MaxConcurrentCompactions = getInt("pebble-max-concurrent-compactions", cfg.MaxConcurrentCompactions)
+	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
+
+	// Bool flag: explicitly check if set
+	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
+		cfg.DisableWAL = true
+	}
+
+	return cfg
 }

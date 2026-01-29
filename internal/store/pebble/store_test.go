@@ -23,7 +23,7 @@ func TestPebbleStore(t *testing.T) {
 		logger := logging.FromContext(ctx)
 		meter := noop.NewMeterProvider().Meter("test")
 
-		s, err := NewStore(tmpDir, logger, meter)
+		s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close(ctx) })
 
@@ -498,7 +498,7 @@ func TestStoreSnapshot(t *testing.T) {
 	meter := noop.NewMeterProvider().Meter("test")
 
 	tmpDir := t.TempDir()
-	s, err := NewStore(tmpDir, logger, meter)
+	s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close(ctx) })
 
@@ -525,7 +525,7 @@ func TestStoreLastAppliedIndex(t *testing.T) {
 	meter := noop.NewMeterProvider().Meter("test")
 
 	tmpDir := t.TempDir()
-	s, err := NewStore(tmpDir, logger, meter)
+	s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close(ctx) })
 
@@ -568,7 +568,7 @@ func TestStoreTransactionIDIndex(t *testing.T) {
 	meter := noop.NewMeterProvider().Meter("test")
 
 	tmpDir := t.TempDir()
-	s, err := NewStore(tmpDir, logger, meter)
+	s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close(ctx) })
 
@@ -604,7 +604,7 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	meter := noop.NewMeterProvider().Meter("test")
 
 	tmpDir := t.TempDir()
-	s, err := NewStore(tmpDir, logger, meter)
+	s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close(ctx) })
 

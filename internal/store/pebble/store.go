@@ -62,33 +62,36 @@ func NewStore(
 	dataDir string,
 	logger logging.Logger,
 	meter metric.Meter,
+	cfg Config,
 ) (*Store, error) {
 
-	// todo: make configurable
 	opts := &pebble.Options{
 		EventListener: NewMetricsListener(meter),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
-		MemTableSize:                256 << 20, // 256MB (adjust based on available RAM)
-		MemTableStopWritesThreshold: 6,         // default is often 2; 4 reduces write stalls
+		MemTableSize:                cfg.MemTableSize,
+		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
 
 		// 2) Control L0 pressure (main source of compactions/churn in write-heavy workloads).
-		L0CompactionThreshold: 64,      // triggers L0->L1 compactions earlier (prevents runaway growth)
-		L0StopWritesThreshold: 256,     // higher => fewer "stop-the-world writes" (at cost of more debt)
-		LBaseMaxBytes:         2 << 30, // 2G base level (increase for larger datasets)
-		Cache:                 pebble.NewCache(1024 << 20),
+		L0CompactionThreshold: cfg.L0CompactionThreshold,
+		L0StopWritesThreshold: cfg.L0StopWritesThreshold,
+		LBaseMaxBytes:         cfg.LBaseMaxBytes,
+		Cache:                 pebble.NewCache(cfg.CacheSize),
 
 		// 3) Table sizes: fewer small files => fewer compactions.
-		// (calibrate as needed; 256MB is a good starting point)
 		Levels: []pebble.LevelOptions{
-			{TargetFileSize: 256 << 20},
+			{TargetFileSize: cfg.TargetFileSize},
 		},
 
 		// 4) Smooth IO during flush/compactions.
-		BytesPerSync:    1 << 20, // 1MB
-		WALBytesPerSync: 1 << 20, // 1MB
+		BytesPerSync:    cfg.BytesPerSync,
+		WALBytesPerSync: cfg.WALBytesPerSync,
 
 		// 5) Compaction concurrency: OK but not too high (otherwise you saturate IO).
-		MaxConcurrentCompactions: func() int { return 2 }, // 2 or 3 depending on CPU/IO
+		MaxConcurrentCompactions: func() int { return cfg.MaxConcurrentCompactions },
+
+		// 6) WAL configuration
+		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
+		DisableWAL:         cfg.DisableWAL,
 	}
 
 	var (
