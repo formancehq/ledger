@@ -25,13 +25,19 @@ func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller) serv
 	}
 }
 
-func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*commonpb.Log, error) {
-	if req.Action == nil {
-		return nil, fmt.Errorf("action is required")
+func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+	if len(req.Actions) == 0 {
+		return nil, fmt.Errorf("at least one action is required")
 	}
 
-	impl.logger.Debugf("Apply request received")
-	return impl.ctrl.Apply(ctx, req.Action)
+	impl.logger.Debugf("Apply request received with %d actions", len(req.Actions))
+
+	logs, err := impl.ctrl.Apply(ctx, req.Actions...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &servicepb.ApplyResponse{Logs: logs}, nil
 }
 
 func (impl *LedgerServiceServerImpl) StreamLedgerLogs(req *servicepb.StreamLedgerLogsRequest, stream servicepb.LedgerService_StreamLedgerLogsServer) error {

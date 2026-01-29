@@ -179,67 +179,134 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 }
 
 // applyAction applies an action and returns the resulting ledger log
-func (ctrl *DefaultController) applyAction(ctx context.Context, action *raftcmdpb.Action) (*commonpb.LedgerLog, error) {
-	logs, err := ctrl.engine.Apply(ctx, action)
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract the ledger log from the ApplyLog payload
-	return logs[0].GetApply().GetLog(), nil
+// forgedAction holds the result of forging a servicepb.Action
+type forgedAction struct {
+	// index is the original position in the input slice
+	index int
+	// raftAction is the raft action to apply (nil if cached)
+	raftAction *raftcmdpb.Action
+	// cachedLog is the cached log from idempotency (nil if needs raft apply)
+	cachedLog *commonpb.Log
+	// ledgerId is set for LedgerApplyAction to wrap the result
+	ledgerID uint32
 }
 
-// Apply applies an action and returns the resulting log
-func (ctrl *DefaultController) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
+// Apply applies a list of actions and returns the resulting logs
+func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
+	if len(actions) == 0 {
+		return nil, fmt.Errorf("at least one action is required")
+	}
+
+	// First pass: forge all actions (check idempotency, build raft actions)
+	forged := make([]*forgedAction, len(actions))
+	var raftActions []*raftcmdpb.Action
+	for i, action := range actions {
+		fa, err := ctrl.forgeAction(ctx, i, action)
+		if err != nil {
+			return nil, fmt.Errorf("forging action %d: %w", i, err)
+		}
+		forged[i] = fa
+		if fa.raftAction != nil {
+			raftActions = append(raftActions, fa.raftAction)
+		}
+	}
+
+	// Second pass: batch apply all raft actions
+	var raftLogs []*commonpb.Log
+	if len(raftActions) > 0 {
+		var err error
+		raftLogs, err = ctrl.engine.Apply(ctx, raftActions...)
+		if err != nil {
+			return nil, fmt.Errorf("applying raft actions: %w", err)
+		}
+	}
+
+	// Third pass: merge results in the correct order
+	logs := make([]*commonpb.Log, len(actions))
+	raftLogIndex := 0
+	for i, fa := range forged {
+		if fa.cachedLog != nil {
+			logs[i] = fa.cachedLog
+		} else {
+			log := raftLogs[raftLogIndex]
+			raftLogIndex++
+			// Wrap ledger logs in ApplyLog
+			if fa.ledgerID > 0 {
+				logs[i] = &commonpb.Log{
+					Payload: &commonpb.Log_Apply{
+						Apply: &commonpb.ApplyLog{
+							LedgerId: fa.ledgerID,
+							Log:      log.GetApply().GetLog(),
+						},
+					},
+				}
+			} else {
+				logs[i] = log
+			}
+		}
+	}
+	return logs, nil
+}
+
+// forgeAction converts a servicepb.Action to a forgedAction
+func (ctrl *DefaultController) forgeAction(ctx context.Context, index int, action *servicepb.Action) (*forgedAction, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is required")
 	}
 
 	switch actionType := action.Type.(type) {
 	case *servicepb.Action_Apply:
-		ledgerLog, err := ctrl.applyLedgerAction(ctx, actionType.Apply)
+		raftAction, cachedLog, err := ctrl.forgeLedgerAction(ctx, actionType.Apply)
 		if err != nil {
 			return nil, err
 		}
-		return &commonpb.Log{
-			Payload: &commonpb.Log_Apply{
-				Apply: &commonpb.ApplyLog{
-					LedgerId: actionType.Apply.LedgerId,
-					Log:      ledgerLog,
+		if cachedLog != nil {
+			return &forgedAction{
+				index: index,
+				cachedLog: &commonpb.Log{
+					Payload: &commonpb.Log_Apply{
+						Apply: &commonpb.ApplyLog{
+							LedgerId: actionType.Apply.LedgerId,
+							Log:      cachedLog,
+						},
+					},
 				},
-			},
+			}, nil
+		}
+		return &forgedAction{
+			index:      index,
+			raftAction: raftAction,
+			ledgerID:   actionType.Apply.LedgerId,
 		}, nil
 
 	case *servicepb.Action_CreateLedger:
-		action := raft.NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
+		raftAction := raft.NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
 			Name:     actionType.CreateLedger.Name,
 			Metadata: actionType.CreateLedger.Metadata,
 		})
-		logs, err := ctrl.engine.Apply(ctx, action)
-		if err != nil {
-			return nil, fmt.Errorf("applying create ledger command: %w", err)
-		}
-		return logs[0], nil
+		return &forgedAction{
+			index:      index,
+			raftAction: raftAction,
+		}, nil
 
 	case *servicepb.Action_DeleteLedger:
-		action := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
+		raftAction := raft.NewAction(raftcmdpb.ActionType_DeleteLedger, &raftcmdpb.DeleteLedgerCommand{
 			Id: actionType.DeleteLedger.Id,
 		})
-		logs, err := ctrl.engine.Apply(ctx, action)
-		if err != nil {
-			return nil, fmt.Errorf("applying delete ledger command: %w", err)
-		}
-		return logs[0], nil
+		return &forgedAction{
+			index:      index,
+			raftAction: raftAction,
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported action type")
 	}
 }
 
-// applyLedgerAction applies a ledger action and returns the resulting ledger log
-func (ctrl *DefaultController) applyLedgerAction(ctx context.Context, action *servicepb.LedgerApplyAction) (*commonpb.LedgerLog, error) {
+// forgeLedgerAction forges a ledger action and returns either a raft action or a cached log
+func (ctrl *DefaultController) forgeLedgerAction(ctx context.Context, action *servicepb.LedgerApplyAction) (*raftcmdpb.Action, *commonpb.LedgerLog, error) {
 	if action == nil {
-		return nil, fmt.Errorf("action is required")
+		return nil, nil, fmt.Errorf("action is required")
 	}
 
 	ledgerID := action.LedgerId
@@ -247,41 +314,41 @@ func (ctrl *DefaultController) applyLedgerAction(ctx context.Context, action *se
 
 	switch data := action.Data.(type) {
 	case *servicepb.LedgerApplyAction_CreateTransaction:
-		return forgeLogAndApply(ctx, ctrl.createTransactionLp, ledgerID, idempotencyKey, data.CreateTransaction, ctrl.applyAction)
+		return ctrl.createTransactionLp.forgeAction(ctx, ledgerID, idempotencyKey, data.CreateTransaction)
 
 	case *servicepb.LedgerApplyAction_AddMetadata:
 		if data.AddMetadata == nil || data.AddMetadata.Target == nil {
-			return nil, fmt.Errorf("missing add metadata data or target")
+			return nil, nil, fmt.Errorf("missing add metadata data or target")
 		}
 
 		switch data.AddMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			return forgeLogAndApply(ctx, ctrl.saveAccountMetadataLp, ledgerID, idempotencyKey, data.AddMetadata, ctrl.applyAction)
+			return ctrl.saveAccountMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.AddMetadata)
 		case *commonpb.Target_Transaction:
-			return forgeLogAndApply(ctx, ctrl.saveTransactionMetadataLp, ledgerID, idempotencyKey, data.AddMetadata, ctrl.applyAction)
+			return ctrl.saveTransactionMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.AddMetadata)
 		default:
-			return nil, fmt.Errorf("unsupported target type for add metadata")
+			return nil, nil, fmt.Errorf("unsupported target type for add metadata")
 		}
 
 	case *servicepb.LedgerApplyAction_RevertTransaction:
-		return forgeLogAndApply(ctx, ctrl.revertTransactionLp, ledgerID, idempotencyKey, data.RevertTransaction, ctrl.applyAction)
+		return ctrl.revertTransactionLp.forgeAction(ctx, ledgerID, idempotencyKey, data.RevertTransaction)
 
 	case *servicepb.LedgerApplyAction_DeleteMetadata:
 		if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
-			return nil, fmt.Errorf("missing delete metadata data or target")
+			return nil, nil, fmt.Errorf("missing delete metadata data or target")
 		}
 
 		switch data.DeleteMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			return forgeLogAndApply(ctx, ctrl.deleteAccountMetadataLp, ledgerID, idempotencyKey, data.DeleteMetadata, ctrl.applyAction)
+			return ctrl.deleteAccountMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.DeleteMetadata)
 		case *commonpb.Target_Transaction:
-			return forgeLogAndApply(ctx, ctrl.deleteTransactionMetadataLp, ledgerID, idempotencyKey, data.DeleteMetadata, ctrl.applyAction)
+			return ctrl.deleteTransactionMetadataLp.forgeAction(ctx, ledgerID, idempotencyKey, data.DeleteMetadata)
 		default:
-			return nil, fmt.Errorf("unsupported target type for delete metadata")
+			return nil, nil, fmt.Errorf("unsupported target type for delete metadata")
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported action type")
+		return nil, nil, fmt.Errorf("unsupported action type")
 	}
 }
 

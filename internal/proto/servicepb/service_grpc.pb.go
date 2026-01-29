@@ -44,8 +44,8 @@ type LedgerServiceClient interface {
 	StreamLedgerLogs(ctx context.Context, in *StreamLedgerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLedgerLogsResponse], error)
 	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
-	// Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
-	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
+	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
+	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -124,9 +124,9 @@ func (c *ledgerServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequ
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type LedgerService_StreamLogsClient = grpc.ServerStreamingClient[StreamLogsResponse]
 
-func (c *ledgerServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*commonpb.Log, error) {
+func (c *ledgerServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(commonpb.Log)
+	out := new(ApplyResponse)
 	err := c.cc.Invoke(ctx, LedgerService_Apply_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -150,8 +150,8 @@ type LedgerServiceServer interface {
 	StreamLedgerLogs(*StreamLedgerLogsRequest, grpc.ServerStreamingServer[StreamLedgerLogsResponse]) error
 	// StreamLogs streams logs, optionally starting from a sequence
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
-	// Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
-	Apply(context.Context, *ApplyRequest) (*commonpb.Log, error)
+	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
+	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -177,7 +177,7 @@ func (UnimplementedLedgerServiceServer) StreamLedgerLogs(*StreamLedgerLogsReques
 func (UnimplementedLedgerServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
 }
-func (UnimplementedLedgerServiceServer) Apply(context.Context, *ApplyRequest) (*commonpb.Log, error) {
+func (UnimplementedLedgerServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}

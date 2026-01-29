@@ -341,29 +341,36 @@ type ledgerServiceGateway struct {
 	client servicepb.LedgerServiceClient
 }
 
-func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*commonpb.Log, error) {
+func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	return g.client.Apply(ctx, req)
 }
 
 func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
-	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Action: &servicepb.Action{
-			Type: &servicepb.Action_CreateLedger{
-				CreateLedger: req,
+	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
+		Actions: []*servicepb.Action{
+			{
+				Type: &servicepb.Action_CreateLedger{
+					CreateLedger: req,
+				},
 			},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return log.GetCreateLedger().GetInfo(), nil
+	if len(resp.Logs) == 0 {
+		return nil, fmt.Errorf("no logs returned")
+	}
+	return resp.Logs[0].GetCreateLedger().GetInfo(), nil
 }
 
 func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
 	_, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Action: &servicepb.Action{
-			Type: &servicepb.Action_DeleteLedger{
-				DeleteLedger: req,
+		Actions: []*servicepb.Action{
+			{
+				Type: &servicepb.Action_DeleteLedger{
+					DeleteLedger: req,
+				},
 			},
 		},
 	})

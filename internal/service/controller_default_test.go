@@ -301,7 +301,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		log1, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
+		logs1, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
 			LedgerId:       testLedgerID,
 			IdempotencyKey: idempotencyKey,
 			Data: &servicepb.LedgerApplyAction_DeleteMetadata{
@@ -309,8 +309,8 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			},
 		}))
 		require.NoError(t, err)
-		require.NotNil(t, log1)
-		ledgerLog1 := log1.GetApply().GetLog()
+		require.Len(t, logs1, 1)
+		ledgerLog1 := logs1[0].GetApply().GetLog()
 
 		runtimeStore.EXPECT().
 			GetSequenceForIdempotencyKey(gomock.Any(), idempotencyKey).
@@ -319,7 +319,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			GetLogBySequence(gomock.Any(), ledgerLog1.Id).
 			Return(wrapLedgerLogInLogWithIdempotency(ledgerLog1.Id, testLedgerID, ledgerLog1, idempotencyKey, deleteMetadataCmd), nil)
 
-		log2, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
+		logs2, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
 			LedgerId:       testLedgerID,
 			IdempotencyKey: idempotencyKey,
 			Data: &servicepb.LedgerApplyAction_DeleteMetadata{
@@ -327,8 +327,8 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 			},
 		}))
 		require.NoError(t, err)
-		require.NotNil(t, log2)
-		ledgerLog2 := log2.GetApply().GetLog()
+		require.Len(t, logs2, 1)
+		ledgerLog2 := logs2[0].GetApply().GetLog()
 		require.Equal(t, ledgerLog1.Id, ledgerLog2.Id)
 	})
 
@@ -691,7 +691,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			}).
 			Times(1)
 
-		log, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
+		logs, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyAction{
 			LedgerId: testLedgerID,
 			Data: &servicepb.LedgerApplyAction_RevertTransaction{
 				RevertTransaction: &servicepb.RevertTransactionPayload{
@@ -701,10 +701,10 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 			},
 		}))
 		require.NoError(t, err)
-		require.NotNil(t, log)
+		require.Len(t, logs, 1)
 
 		// Verify that the revert transaction command contains the original timestamp
-		ledgerLog := log.GetApply().GetLog()
+		ledgerLog := logs[0].GetApply().GetLog()
 		require.NotNil(t, ledgerLog.Data)
 		require.NotNil(t, ledgerLog.Data.Payload)
 	})

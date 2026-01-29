@@ -59,12 +59,12 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (map[string]*c
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
-	return ctrl.Apply(ctx, action)
+	return ctrl.Apply(ctx, actions...)
 }
 
 func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*commonpb.Transaction, error) {

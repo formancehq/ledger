@@ -22,8 +22,8 @@ service LedgerService {
   rpc StreamLedgerLogs(StreamLedgerLogsRequest) returns (stream StreamLedgerLogsResponse);
   // StreamLogs streams logs, optionally starting from a sequence
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
-  // Apply applies an action (create/delete ledger, create transaction, revert, save/delete metadata)
-  rpc Apply(ApplyRequest) returns (common.Log);
+  // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
+  rpc Apply(ApplyRequest) returns (ApplyResponse);
 }
 
 // ============================================================================
@@ -76,7 +76,11 @@ message GetLedgerByNameRequest {
 }
 
 message ApplyRequest {
-  Action action = 1;
+  repeated Action actions = 1;
+}
+
+message ApplyResponse {
+  repeated common.Log logs = 1;
 }
 
 message Action {

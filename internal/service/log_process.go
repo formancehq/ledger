@@ -105,23 +105,3 @@ func (lp *logProcessor) forgeAction(
 
 	return action, nil, nil
 }
-
-// forgeLogAndApply forges an action and applies it, returning the resulting log
-func forgeLogAndApply(
-	ctx context.Context,
-	lp *logProcessor,
-	ledgerID uint32,
-	idempotencyKey string,
-	input proto.Message,
-	apply func(ctx context.Context, action *raftcmdpb.Action) (*commonpb.LedgerLog, error),
-) (*commonpb.LedgerLog, error) {
-	action, cachedLog, err := lp.forgeAction(ctx, ledgerID, idempotencyKey, input)
-	if err != nil {
-		return nil, err
-	}
-	if cachedLog != nil {
-		return cachedLog, nil
-	}
-
-	return apply(ctx, action)
-}

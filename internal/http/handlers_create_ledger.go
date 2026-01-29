@@ -32,7 +32,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create ledger via Apply
-	log, err := s.backend.Apply(r.Context(), &servicepb.Action{
+	logs, err := s.backend.Apply(r.Context(), &servicepb.Action{
 		Type: &servicepb.Action_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:     ledgerName,
@@ -46,5 +46,5 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return the ledger info wrapped in BaseResponse
-	writeCreated(w, log.GetCreateLedger().GetInfo())
+	writeCreated(w, logs[0].GetCreateLedger().GetInfo())
 }

@@ -91,7 +91,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan *LedgerActionRe
 func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerApplyAction) (*commonpb.LedgerLog, error) {
 	// Set the ledger ID on the action before applying
 	elem.LedgerId = b.ledgerID
-	log, err := b.ledger.Apply(ctx, &servicepb.Action{
+	logs, err := b.ledger.Apply(ctx, &servicepb.Action{
 		Type: &servicepb.Action_Apply{
 			Apply: elem,
 		},
@@ -99,8 +99,11 @@ func (b *Bulker) processElement(ctx context.Context, elem *servicepb.LedgerApply
 	if err != nil {
 		return nil, err
 	}
+	if len(logs) == 0 {
+		return nil, fmt.Errorf("no logs returned")
+	}
 	// Extract the LedgerLog from the ApplyLog payload
-	return log.GetApply().GetLog(), nil
+	return logs[0].GetApply().GetLog(), nil
 }
 
 func NewBulker(ledgerCluster service.Controller, ledgerID uint32, options ...BulkerOption) *Bulker {

@@ -23,15 +23,15 @@ func NewLedgerGrpcClient(client servicepb.LedgerServiceClient) *LedgerGrpcClient
 	}
 }
 
-// Apply forwards the action via gRPC to the leader
-func (g *LedgerGrpcClient) Apply(ctx context.Context, action *servicepb.Action) (*commonpb.Log, error) {
-	log, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Action: action,
+// Apply forwards the actions via gRPC to the leader
+func (g *LedgerGrpcClient) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
+	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
+		Actions: actions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
-	return log, nil
+	return resp.Logs, nil
 }
 
 func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
