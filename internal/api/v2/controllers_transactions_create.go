@@ -10,6 +10,7 @@ import (
 	"errors"
 
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/api/common"
 )
@@ -42,7 +43,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		_, res, idempotencyHit, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
 		if err != nil {
 			switch {
-			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
+			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}), errors.Is(err, numscript.MissingFundsErr{}):
 				api.BadRequest(w, common.ErrInsufficientFund, err)
 			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
 				api.BadRequest(w, common.ErrCompilationFailed, err)
