@@ -186,7 +186,7 @@ func resolveFilter(schema resources.EntitySchema, key string, value string, vars
 	}
 	_, field := schema.GetFieldByNameOrAlias(key)
 	if field == nil {
-		return nil, fmt.Errorf("unknown field %s", key)
+		return nil, fmt.Errorf("unknown field: %s", key)
 	}
 	valueType := field.Type.ValueType()
 	switch valueType.(type) {
@@ -207,8 +207,9 @@ func resolveFilter(schema resources.EntitySchema, key string, value string, vars
 	case resources.TypeNumeric:
 		v, err := extractVariable[json.Number](value, vars)
 		if err != nil {
-			v, err := extractVariable[float64](value, vars)
-			if err != nil {
+			// fallback to float64 for now
+			v, err2 := extractVariable[float64](value, vars)
+			if err2 != nil {
 				return nil, err
 			}
 			return v, nil
@@ -232,17 +233,16 @@ func extractVariable[T any](s string, vars map[string]any) (*T, error) {
 		if v, ok := value.(T); ok {
 			return &v, nil
 		} else {
-			return nil, fmt.Errorf("cannot use variable %v as type %s", value, reflect.TypeOf((*T)(nil)).Elem().Name())
+			return nil, fmt.Errorf("cannot use variable `%s` as type `%s`", name, reflect.TypeOf((*T)(nil)).Elem().Name())
 		}
 	} else {
-		return nil, fmt.Errorf("template references undeclared variable: %v", name)
+		return nil, fmt.Errorf("missing variable: %v", name)
 	}
 }
 
 var accessRegex = regexp.MustCompile(`^([a-z_]+)(?:\[([a-zA-Z0-9_/]+)\])?$`)
 
 func parseAccess(input string) (string, string, error) {
-	fmt.Printf("%s\n", input)
 	m := accessRegex.FindStringSubmatch(input)
 	if m == nil {
 		return "", "", errors.New("invalid field name")

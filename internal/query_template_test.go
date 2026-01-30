@@ -144,6 +144,41 @@ func TestQueryResolution(t *testing.T) {
 			vars:          map[string]any{"minimum_balance": json.Number("42")},
 			expectedError: "invalid field name",
 		},
+		{
+			name:            "missing variable",
+			resource:        resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{},
+			source: `{"$gt": {
+				"balance[COIN]": "<doesntexist>"
+			}}`,
+			vars:          map[string]any{},
+			expectedError: "missing variable: doesntexist",
+		},
+		{
+			name:            "unknown field",
+			resource:        resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{},
+			source: `{"$gt": {
+				"doesntexist": "test"
+			}}`,
+			vars:          map[string]any{},
+			expectedError: "unknown field: doesntexist",
+		},
+		{
+			name:     "wrong variable type",
+			resource: resources.ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{
+				"wrongtype": {
+					Type:    "string",
+					Default: "test",
+				},
+			},
+			source: `{"$gt": {
+				"balance[COIN]": "<wrongtype>"
+			}}`,
+			vars:          map[string]any{},
+			expectedError: "cannot use variable `wrongtype` as type `Number`",
+		},
 	} {
 		resolved, err := ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
 

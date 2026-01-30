@@ -26,6 +26,8 @@ func ReplaceVariables(s string, vars map[string]any) (string, error) {
 					return "", err
 				}
 				buf.WriteString(s)
+			} else {
+				return "", fmt.Errorf("missing variable: %s", varRefs[i])
 			}
 		}
 	}
