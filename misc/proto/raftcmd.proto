@@ -18,7 +18,7 @@ message LedgerState {
 
 message State {
   map<uint32, LedgerState> ledgers = 1;
-  uint32 next_ledger_id = 2;                // Next available ledger ID (max 65535)
+  uint32 next_ledger_id = 2;                // Next available ledger ID (max ~4.3 billion)
   uint64 next_sequence = 3;                 // Next global sequence number for SystemLog
 }
 
@@ -36,7 +36,7 @@ message AppendTransactionCommand {
 
 message RevertTransactionCommand {
   uint64 transaction_id = 1;
-  common.Transaction revert_transaction = 2;
+  AppendTransactionCommand revert_transaction = 2;
 }
 
 message CreateLedgerLogCommand {
@@ -66,7 +66,7 @@ message AnyCommand {
   }
 }
 
-message ActionData {
+message Action {
   common.Idempotency idempotency = 1;
   AnyCommand command = 2;
 }
@@ -74,17 +74,6 @@ message ActionData {
 // ============================================================================
 // Raft Command Wrapper
 // ============================================================================
-
-enum ActionType {
-  CreateLedger = 0;
-  DeleteLedger = 1;
-  CreateLedgerLog = 2;
-}
-
-message Action {
-  ActionType action_type = 1;
-  bytes data = 2;
-}
 
 // CommandBatch represents a batch of commands to be executed in the FSM (protobuf serialization format)
 // A batch can contain multiple actions that will be executed atomically

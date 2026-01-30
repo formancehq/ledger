@@ -59,7 +59,7 @@ func (b *RoutedController) GetAllLedgersInfo(ctx context.Context) (store.Cursor[
 	return clusterLeader.GetAllLedgersInfo(ctx)
 }
 
-func (b *RoutedController) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, actions ...*servicepb.Request) ([]*commonpb.Log, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err

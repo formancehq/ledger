@@ -165,6 +165,7 @@ type StoreInterceptor struct {
 	// Store interceptors
 	OnListLedgers                  func(ctx context.Context, delegate Store) (Cursor[*commonpb.LedgerInfo], error)
 	OnGetBalances                  func(ctx context.Context, delegate Store, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
+	OnGetBalance                   func(ctx context.Context, delegate Store, ledgerID uint32, account, asset string) (*commonpb.BigInt, error)
 	OnGetAccountMetadata           func(ctx context.Context, delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	OnGetAccountVolumes            func(ctx context.Context, delegate Store, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	OnGetSequenceForIdempotencyKey func(ctx context.Context, delegate Store, idempotencyKey string) (uint64, error)
@@ -230,6 +231,16 @@ func (s *StoreInterceptor) GetBalances(ctx context.Context, ledgerID uint32, bal
 		return interceptor(ctx, s.delegate, ledgerID, balanceQuery)
 	}
 	return s.delegate.GetBalances(ctx, ledgerID, balanceQuery)
+}
+
+func (s *StoreInterceptor) GetBalance(ctx context.Context, ledgerID uint32, account, asset string) (*commonpb.BigInt, error) {
+	s.mu.RLock()
+	interceptor := s.OnGetBalance
+	s.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(ctx, s.delegate, ledgerID, account, asset)
+	}
+	return s.delegate.GetBalance(ctx, ledgerID, account, asset)
 }
 
 func (s *StoreInterceptor) GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
@@ -383,6 +394,12 @@ func (s *StoreInterceptor) SetGetBalancesInterceptor(fn func(ctx context.Context
 	s.mu.Unlock()
 }
 
+func (s *StoreInterceptor) SetGetBalanceInterceptor(fn func(ctx context.Context, delegate Store, ledgerID uint32, account, asset string) (*commonpb.BigInt, error)) {
+	s.mu.Lock()
+	s.OnGetBalance = fn
+	s.mu.Unlock()
+}
+
 func (s *StoreInterceptor) SetNewBatchInterceptor(fn func(delegate Store, lastAppliedIndex uint64) Batch) {
 	s.mu.Lock()
 	s.OnNewBatch = fn
@@ -420,6 +437,7 @@ func (s *StoreInterceptor) ClearInterceptors() {
 	s.OnGetLogBySequence = nil
 	s.OnListLedgers = nil
 	s.OnGetBalances = nil
+	s.OnGetBalance = nil
 	s.OnGetAccountMetadata = nil
 	s.OnGetAccountVolumes = nil
 	s.OnGetSequenceForIdempotencyKey = nil

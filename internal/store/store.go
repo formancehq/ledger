@@ -82,4 +82,5 @@ type Store interface {
 	GetLastSequence(ctx context.Context) (uint64, error)
 	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 	Close(ctx context.Context) error
+	GetBalance(ctx context.Context, id uint32, account string, asset string) (*commonpb.BigInt, error)
 }

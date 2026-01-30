@@ -134,12 +134,12 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "test-account", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -155,7 +155,7 @@ var _ = Describe("Ledger", func() {
 			}
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Actions: []*servicepb.Request{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -164,7 +164,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should merge metadata with existing account metadata", func() {
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "merge-account", big.NewInt(50), "USD"),
 					}, nil, map[string]*commonpb.Metadata{
@@ -183,7 +183,7 @@ var _ = Describe("Ledger", func() {
 			}
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "merge-account", metadata)},
+				Actions: []*servicepb.Request{saveAccountMetadataAction(ledgerName, "merge-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -196,13 +196,13 @@ var _ = Describe("Ledger", func() {
 			}
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Actions: []*servicepb.Request{saveAccountMetadataAction(ledgerName, "test-account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			deleteResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{deleteAccountMetadataAction(ledgerName, "test-account", "to_delete")},
+				Actions: []*servicepb.Request{deleteAccountMetadataAction(ledgerName, "test-account", "to_delete")},
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
@@ -220,12 +220,12 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -236,7 +236,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should save account metadata via bulk endpoint", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{
 						"account_type": "asset",
 						"label":        "Bulk Account",
@@ -250,7 +250,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should handle multiple metadata operations in bulk", func() {
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "bulk-account-2", big.NewInt(50), "USD"),
 					}, nil, nil),
@@ -259,7 +259,7 @@ var _ = Describe("Ledger", func() {
 			Expect(err).To(Succeed())
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"key1": "value1"}),
 					saveAccountMetadataAction(ledgerName, "bulk-account-2", map[string]string{"key2": "value2"}),
 				},
@@ -271,7 +271,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should delete account metadata via bulk endpoint", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					saveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"to_delete": "value"}),
 					deleteAccountMetadataAction(ledgerName, "bulk-account", "to_delete"),
 				},
@@ -295,7 +295,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should create a ledger successfully", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed(), "Failed to create ledger")
 			Expect(resp).NotTo(BeNil())
@@ -310,12 +310,12 @@ var _ = Describe("Ledger", func() {
 
 		It("Should create a transaction on the ledger", func() {
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -328,7 +328,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should create multiple transactions successfully", func() {
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -345,7 +345,7 @@ var _ = Describe("Ledger", func() {
 
 			for i, tx := range transactions {
 				resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{
+					Actions: []*servicepb.Request{
 						createTransactionAction(ledgerName, []*commonpb.Posting{
 							newPosting(tx.source, tx.destination, tx.amount, tx.asset),
 						}, nil, nil),
@@ -359,12 +359,12 @@ var _ = Describe("Ledger", func() {
 
 		It("Should create transactions with metadata", func() {
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-with-metadata", big.NewInt(100), "USD"),
 					}, map[string]string{
@@ -394,7 +394,7 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -402,7 +402,7 @@ var _ = Describe("Ledger", func() {
 		It("Should get a transaction by ID", func() {
 			// Create a transaction first
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, map[string]string{"description": "Test transaction"}, nil),
@@ -448,7 +448,7 @@ var _ = Describe("Ledger", func() {
 		It("Should get a reverted transaction and show reverted status", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-revert", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -461,7 +461,7 @@ var _ = Describe("Ledger", func() {
 
 			// Revert the transaction
 			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -478,7 +478,7 @@ var _ = Describe("Ledger", func() {
 		It("Should read transaction from any node (follower read)", func() {
 			// Create a transaction on the leader
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-follower-read", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -522,14 +522,14 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata successfully", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -550,7 +550,7 @@ var _ = Describe("Ledger", func() {
 			}
 
 			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{saveTransactionMetadataAction(ledgerName, transactionID, metadata)},
+				Actions: []*servicepb.Request{saveTransactionMetadataAction(ledgerName, transactionID, metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
@@ -559,7 +559,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should delete transaction metadata successfully", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 					}, map[string]string{"to_delete": "value"}, nil),
@@ -575,7 +575,7 @@ var _ = Describe("Ledger", func() {
 			Expect(transactionID).NotTo(BeZero())
 
 			deleteResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{deleteTransactionMetadataAction(ledgerName, transactionID, "to_delete")},
+				Actions: []*servicepb.Request{deleteTransactionMetadataAction(ledgerName, transactionID, "to_delete")},
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
@@ -593,14 +593,14 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata via bulk endpoint", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -615,7 +615,7 @@ var _ = Describe("Ledger", func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					saveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 						"category": "bulk",
 						"reason":   "reconciliation",
@@ -629,7 +629,7 @@ var _ = Describe("Ledger", func() {
 
 		It("Should delete transaction metadata via bulk endpoint", func() {
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -644,7 +644,7 @@ var _ = Describe("Ledger", func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			saveResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					saveTransactionMetadataAction(ledgerName, transactionID, map[string]string{"to_delete": "value"}),
 					deleteTransactionMetadataAction(ledgerName, transactionID, "to_delete"),
 				},
@@ -665,7 +665,7 @@ var _ = Describe("Ledger", func() {
 			leaderID = getLeaderID()
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -673,7 +673,7 @@ var _ = Describe("Ledger", func() {
 		It("Should revert a transaction successfully", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -690,7 +690,7 @@ var _ = Describe("Ledger", func() {
 
 			// Revert the transaction
 			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -700,7 +700,7 @@ var _ = Describe("Ledger", func() {
 		It("Should revert a transaction with metadata", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -720,7 +720,7 @@ var _ = Describe("Ledger", func() {
 			}
 
 			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, revertMetadata)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, revertMetadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -730,7 +730,7 @@ var _ = Describe("Ledger", func() {
 		It("Should revert a transaction with force flag", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -745,7 +745,7 @@ var _ = Describe("Ledger", func() {
 
 			// Revert the transaction with force flag
 			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, true, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, true, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -755,7 +755,7 @@ var _ = Describe("Ledger", func() {
 		It("Should revert a transaction with atEffectiveDate flag", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -770,7 +770,7 @@ var _ = Describe("Ledger", func() {
 
 			// Revert the transaction with atEffectiveDate flag
 			revertResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, true, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, true, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -781,7 +781,7 @@ var _ = Describe("Ledger", func() {
 			nonExistentTransactionID := uint64(99999)
 
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)},
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -789,7 +789,7 @@ var _ = Describe("Ledger", func() {
 		It("Should fail to revert an already reverted transaction", func() {
 			// Create a transaction
 			createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{
+				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -804,14 +804,14 @@ var _ = Describe("Ledger", func() {
 
 			// Revert the transaction first time
 			revertResp1, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp1).NotTo(BeNil())
 
 			// Try to revert the same transaction again
 			_, err = servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Actions: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -821,7 +821,7 @@ var _ = Describe("Ledger", func() {
 			var transactionIDs []uint64
 			for i := 0; i < 3; i++ {
 				createResp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{
+					Actions: []*servicepb.Request{
 						createTransactionAction(ledgerName, []*commonpb.Posting{
 							newPosting("world", fmt.Sprintf("account-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
@@ -835,7 +835,7 @@ var _ = Describe("Ledger", func() {
 			}
 
 			// Revert all transactions in bulk
-			actions := make([]*servicepb.Action, len(transactionIDs))
+			actions := make([]*servicepb.Request, len(transactionIDs))
 			for i, txID := range transactionIDs {
 				actions[i] = revertTransactionAction(ledgerName, txID, false, false, nil)
 			}

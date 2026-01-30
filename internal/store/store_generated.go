@@ -406,6 +406,21 @@ func (mr *MockStoreMockRecorder) GetAllLogs(ctx, from, to any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockStore)(nil).GetAllLogs), ctx, from, to)
 }
 
+// GetBalance mocks base method.
+func (m *MockStore) GetBalance(ctx context.Context, id uint32, account, asset string) (*commonpb.BigInt, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBalance", ctx, id, account, asset)
+	ret0, _ := ret[0].(*commonpb.BigInt)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBalance indicates an expected call of GetBalance.
+func (mr *MockStoreMockRecorder) GetBalance(ctx, id, account, asset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalance", reflect.TypeOf((*MockStore)(nil).GetBalance), ctx, id, account, asset)
+}
+
 // GetBalances mocks base method.
 func (m *MockStore) GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
 	m.ctrl.T.Helper()

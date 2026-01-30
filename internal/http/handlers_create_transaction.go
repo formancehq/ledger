@@ -28,12 +28,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Call ledger service via Apply
-	logs, err := s.backend.Apply(r.Context(), &servicepb.Action{
+	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: servicepb.LedgerName(ledgerName),
-				Data: &servicepb.LedgerApplyAction_CreateTransaction{
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: req,
 				},
 			},

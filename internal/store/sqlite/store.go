@@ -458,6 +458,33 @@ func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map
 	return result, nil
 }
 
+// GetBalance retrieves the balance for a single account/asset combination
+func (s *Store) GetBalance(_ context.Context, ledger uint32, account string, asset string) (*commonpb.BigInt, error) {
+	var balanceStr sql.NullString
+	err := s.db.QueryRow(
+		`SELECT balance FROM balances WHERE ledger = ? AND account = ? AND asset = ?`,
+		ledger, account, asset,
+	).Scan(&balanceStr)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return commonpb.NewBigInt(big.NewInt(0)), nil
+		}
+		return nil, fmt.Errorf("querying balance: %w", err)
+	}
+
+	if !balanceStr.Valid {
+		return commonpb.NewBigInt(big.NewInt(0)), nil
+	}
+
+	balance, ok := new(big.Int).SetString(balanceStr.String, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid balance string: %s", balanceStr.String)
+	}
+
+	return commonpb.NewBigInt(balance), nil
+}
+
 // GetAccountMetadata retrieves account metadata for multiple accounts
 func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)

@@ -142,11 +142,12 @@ func (t *ChannelTransport) sendBatch(peerID uint64, priority int, msgs []raftpb.
 	}
 
 	// Try to send to peer's receive channel
+	// Hold the lock during send to prevent race with Close()
+	// This is safe because we use select with default, so we never block
 	peer.mu.RLock()
-	peerClosed := peer.closed
-	peer.mu.RUnlock()
+	defer peer.mu.RUnlock()
 
-	if peerClosed {
+	if peer.closed {
 		select {
 		case t.unreachableCh <- peerID:
 		default:

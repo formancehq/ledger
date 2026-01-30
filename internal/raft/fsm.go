@@ -76,15 +76,7 @@ func (fsm *FSM) GetState() *raftcmdpb.State {
 // Ledgers and logs are now managed by ledger Raft groups.
 
 // handleCreateLedger handles the create ledger action
-func (fsm *FSM) handleCreateLedger(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
-	var createCmd raftcmdpb.CreateLedgerCommand
-	if err := UnmarshalCommandData(action.Data, &createCmd); err != nil {
-		fsm.logger.
-			WithFields(map[string]any{"error": err}).
-			Errorf("Failed to unmarshal create ledger command")
-		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
-	}
-
+func (fsm *FSM) handleCreateLedger(createCmd *raftcmdpb.CreateLedgerCommand, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
 	for _, state := range fsm.state.Ledgers {
 		if state.LedgerInfo.Name == createCmd.Name {
 			return nil, fmt.Errorf("ledger already exists: %s", createCmd.Name)
@@ -129,13 +121,7 @@ func (fsm *FSM) handleCreateLedger(action *raftcmdpb.Action, cmdDate *commonpb.T
 }
 
 // handleDeleteLedger handles the delete ledger action (hard delete)
-func (fsm *FSM) handleDeleteLedger(action *raftcmdpb.Action) (*commonpb.Log, error) {
-	var deleteCmd raftcmdpb.DeleteLedgerCommand
-	if err := UnmarshalCommandData(action.Data, &deleteCmd); err != nil {
-		fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete ledger command")
-		return nil, fmt.Errorf("unmarshaling delete ledger command: %w", err)
-	}
-
+func (fsm *FSM) handleDeleteLedger(deleteCmd *raftcmdpb.DeleteLedgerCommand) (*commonpb.Log, error) {
 	// Check if ledger exists
 	_, ok := fsm.state.Ledgers[deleteCmd.Id]
 	if !ok {
@@ -158,31 +144,20 @@ func (fsm *FSM) handleDeleteLedger(action *raftcmdpb.Action) (*commonpb.Log, err
 
 // createLog handles the insert log action by building the log entry
 func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
+	cmd := action.Command
+	if cmd == nil {
+		return nil, fmt.Errorf("action has no command")
+	}
 
-	switch action.ActionType {
-	case raftcmdpb.ActionType_CreateLedger:
-		var cmd raftcmdpb.CreateLedgerCommand
-		if err := UnmarshalCommandData(action.Data, &cmd); err != nil {
-			fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
-			return nil, err
-		}
+	switch {
+	case cmd.GetCreateLedger() != nil:
+		return fsm.handleCreateLedger(cmd.GetCreateLedger(), cmdDate)
 
-		return fsm.handleCreateLedger(action, cmdDate)
+	case cmd.GetDeleteLedger() != nil:
+		return fsm.handleDeleteLedger(cmd.GetDeleteLedger())
 
-	case raftcmdpb.ActionType_DeleteLedger:
-		var cmd raftcmdpb.DeleteLedgerCommand
-		if err := UnmarshalCommandData(action.Data, &cmd); err != nil {
-			fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
-			return nil, err
-		}
-		return fsm.handleDeleteLedger(action)
-
-	case raftcmdpb.ActionType_CreateLedgerLog:
-		var createCmd raftcmdpb.CreateLedgerLogCommand
-		if err := UnmarshalCommandData(action.Data, &createCmd); err != nil {
-			fsm.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
-			return nil, err
-		}
+	case cmd.GetCreateLedgerLog() != nil:
+		createCmd := cmd.GetCreateLedgerLog()
 
 		var logPayload *commonpb.LedgerLogPayload
 		switch cmd := createCmd.Command.(type) {
@@ -225,19 +200,24 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 					},
 				},
 			}
-		case *raftcmdpb.CreateLedgerLogCommand_RevertTransaction: // todo: should not need to read the original data
-			// Use the revert transaction provided in the command
-			revertTx := cmd.RevertTransaction.RevertTransaction
-
-			// Set timestamp if not provided (use current date)
-			if revertTx.Timestamp == nil || revertTx.Timestamp.Data == 0 {
-				revertTx.Timestamp = cmdDate
+		case *raftcmdpb.CreateLedgerLogCommand_RevertTransaction:
+			// Build the revert transaction from the command data
+			revertCmd := cmd.RevertTransaction.RevertTransaction
+			timestamp := revertCmd.Timestamp
+			if timestamp == nil || timestamp.Data == 0 {
+				timestamp = cmdDate
 			}
 
-			// Assign transaction ID and timestamps
-			revertTx.Id = fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID()
-			revertTx.InsertedAt = cmdDate
-			revertTx.UpdatedAt = cmdDate
+			// Create a new transaction with the assigned ID and timestamps
+			revertTx := &commonpb.Transaction{
+				Postings:   revertCmd.Postings,
+				Metadata:   revertCmd.Metadata,
+				Timestamp:  timestamp,
+				Reference:  revertCmd.Reference,
+				Id:         fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID(),
+				InsertedAt: cmdDate,
+				UpdatedAt:  cmdDate,
+			}
 
 			logPayload = &commonpb.LedgerLogPayload{
 				Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
@@ -269,7 +249,7 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("unknown action type: %s", action.ActionType)
+		return nil, fmt.Errorf("unknown action command type")
 	}
 }
 

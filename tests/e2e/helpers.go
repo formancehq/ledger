@@ -41,9 +41,9 @@ func newGRPCClient(grpcPort int) (servicepb.LedgerServiceClient, *grpc.ClientCon
 // Helper functions for creating gRPC requests
 
 // createLedgerAction creates an action for creating a new ledger
-func createLedgerAction(name string, metadata map[string]string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_CreateLedger{
+func createLedgerAction(name string, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:     name,
 				Metadata: metadata,
@@ -53,9 +53,9 @@ func createLedgerAction(name string, metadata map[string]string) *servicepb.Acti
 }
 
 // deleteLedgerAction creates an action for deleting a ledger
-func deleteLedgerAction(ledgerID uint32) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_DeleteLedger{
+func deleteLedgerAction(ledgerID uint32) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeleteLedger{
 			DeleteLedger: &servicepb.DeleteLedgerRequest{
 				Id: ledgerID,
 			},
@@ -64,14 +64,14 @@ func deleteLedgerAction(ledgerID uint32) *servicepb.Action {
 }
 
 // createTransactionAction creates an action for creating a transaction
-func createTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.Metadata) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func createTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.Metadata) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_CreateTransaction{
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:        postings,
 						Metadata:        metadata,
@@ -84,14 +84,14 @@ func createTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 }
 
 // saveAccountMetadataAction creates an action for saving account metadata
-func saveAccountMetadataAction(ledgerName, address string, metadata map[string]string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func saveAccountMetadataAction(ledgerName, address string, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_AddMetadata{
+				Data: &servicepb.LedgerApplyRequest_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -107,14 +107,14 @@ func saveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 }
 
 // deleteAccountMetadataAction creates an action for deleting account metadata
-func deleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func deleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_DeleteMetadata{
+				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -130,14 +130,14 @@ func deleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Act
 }
 
 // saveTransactionMetadataAction creates an action for saving transaction metadata
-func saveTransactionMetadataAction(ledgerName string, transactionID uint64, metadata map[string]string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func saveTransactionMetadataAction(ledgerName string, transactionID uint64, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_AddMetadata{
+				Data: &servicepb.LedgerApplyRequest_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -153,14 +153,14 @@ func saveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 }
 
 // deleteTransactionMetadataAction creates an action for deleting transaction metadata
-func deleteTransactionMetadataAction(ledgerName string, transactionID uint64, key string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func deleteTransactionMetadataAction(ledgerName string, transactionID uint64, key string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_DeleteMetadata{
+				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -176,14 +176,14 @@ func deleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 }
 
 // revertTransactionAction creates an action for reverting a transaction
-func revertTransactionAction(ledgerName string, transactionID uint64, force, atEffectiveDate bool, metadata map[string]string) *servicepb.Action {
-	return &servicepb.Action{
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+func revertTransactionAction(ledgerName string, transactionID uint64, force, atEffectiveDate bool, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: &servicepb.LedgerNameOrId{
 					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 				},
-				Data: &servicepb.LedgerApplyAction_RevertTransaction{
+				Data: &servicepb.LedgerApplyRequest_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
 						TransactionId:   transactionID,
 						Force:           force,

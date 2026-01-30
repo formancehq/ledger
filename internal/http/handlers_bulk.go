@@ -75,12 +75,12 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 	}
 
 	// Build actions slice
-	actions := make([]*servicepb.Action, len(elements))
+	actions := make([]*servicepb.Request, len(elements))
 	for i, elem := range elements {
 		elem.Action.Ledger = servicepb.LedgerName(ledgerName)
-		actions[i] = &servicepb.Action{
+		actions[i] = &servicepb.Request{
 			IdempotencyKey: elem.IdempotencyKey,
-			Type: &servicepb.Action_Apply{
+			Type: &servicepb.Request_Apply{
 				Apply: elem.Action,
 			},
 		}
@@ -93,7 +93,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 }
 
 // runBulkAtomic applies all actions in a single batch
-func (s *Server) runBulkAtomic(ctx context.Context, actions []*servicepb.Action) []bulkResult {
+func (s *Server) runBulkAtomic(ctx context.Context, actions []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(actions))
 
 	logs, err := s.backend.Apply(ctx, actions...)
@@ -112,7 +112,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, actions []*servicepb.Action)
 }
 
 // runBulkSequential applies actions one by one
-func (s *Server) runBulkSequential(ctx context.Context, actions []*servicepb.Action, continueOnFailure bool) []bulkResult {
+func (s *Server) runBulkSequential(ctx context.Context, actions []*servicepb.Request, continueOnFailure bool) []bulkResult {
 	results := make([]bulkResult, len(actions))
 	hasError := false
 

@@ -22,8 +22,8 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.backend.Apply(r.Context(), &servicepb.Action{
-		Type: &servicepb.Action_DeleteLedger{
+	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
+		Type: &servicepb.Request_DeleteLedger{
 			DeleteLedger: &servicepb.DeleteLedgerRequest{
 				Id: ledgerInfo.Id,
 			},

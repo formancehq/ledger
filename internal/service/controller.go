@@ -19,7 +19,7 @@ type Controller interface {
 	GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error)
 
 	// Write operations - single entry point for all actions
-	Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error)
+	Apply(ctx context.Context, actions ...*servicepb.Request) ([]*commonpb.Log, error)
 
 	// Import/Export
 	Import(ctx context.Context, id uint32, stream chan *commonpb.LedgerLog) error

@@ -65,7 +65,7 @@ func LedgerName(name string) *LedgerNameOrId {
 
 // BulkElement represents a bulk element with idempotency key
 type BulkElement struct {
-	Action         *LedgerApplyAction
+	Action         *LedgerApplyRequest
 	IdempotencyKey string
 }
 
@@ -83,7 +83,7 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	}
 
 	x.IdempotencyKey = raw.IdempotencyKey
-	x.Action = &LedgerApplyAction{}
+	x.Action = &LedgerApplyRequest{}
 
 	// Parse data based on action
 	switch raw.Action {
@@ -92,28 +92,28 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(raw.Data, req); err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
-		x.Action.Data = &LedgerApplyAction_CreateTransaction{CreateTransaction: req}
+		x.Action.Data = &LedgerApplyRequest_CreateTransaction{CreateTransaction: req}
 
 	case LedgerActionTypeAddMetadata:
 		req, err := unmarshalSaveMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing add metadata data: %w", err)
 		}
-		x.Action.Data = &LedgerApplyAction_AddMetadata{AddMetadata: req}
+		x.Action.Data = &LedgerApplyRequest_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
 		req, err := unmarshalRevertTransactionPayload(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
-		x.Action.Data = &LedgerApplyAction_RevertTransaction{RevertTransaction: req}
+		x.Action.Data = &LedgerApplyRequest_RevertTransaction{RevertTransaction: req}
 
 	case LedgerActionTypeDeleteMetadata:
 		req, err := unmarshalDeleteMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing delete metadata data: %w", err)
 		}
-		x.Action.Data = &LedgerApplyAction_DeleteMetadata{DeleteMetadata: req}
+		x.Action.Data = &LedgerApplyRequest_DeleteMetadata{DeleteMetadata: req}
 
 	default:
 		return fmt.Errorf("unsupported action: %s", raw.Action)
@@ -122,8 +122,8 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler for LedgerApplyAction
-func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON implements json.Unmarshaler for LedgerApplyRequest
+func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 	// First pass: parse action
 	type rawElement struct {
 		Action string        `json:"action"`
@@ -141,28 +141,28 @@ func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(raw.Data, req); err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
-		x.Data = &LedgerApplyAction_CreateTransaction{CreateTransaction: req}
+		x.Data = &LedgerApplyRequest_CreateTransaction{CreateTransaction: req}
 
 	case LedgerActionTypeAddMetadata:
 		req, err := unmarshalSaveMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing add metadata data: %w", err)
 		}
-		x.Data = &LedgerApplyAction_AddMetadata{AddMetadata: req}
+		x.Data = &LedgerApplyRequest_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
 		req, err := unmarshalRevertTransactionPayload(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
-		x.Data = &LedgerApplyAction_RevertTransaction{RevertTransaction: req}
+		x.Data = &LedgerApplyRequest_RevertTransaction{RevertTransaction: req}
 
 	case LedgerActionTypeDeleteMetadata:
 		req, err := unmarshalDeleteMetadataCommand(raw.Data)
 		if err != nil {
 			return fmt.Errorf("error parsing delete metadata data: %w", err)
 		}
-		x.Data = &LedgerApplyAction_DeleteMetadata{DeleteMetadata: req}
+		x.Data = &LedgerApplyRequest_DeleteMetadata{DeleteMetadata: req}
 
 	default:
 		return fmt.Errorf("unsupported action: %s", raw.Action)
@@ -172,15 +172,15 @@ func (x *LedgerApplyAction) UnmarshalJSON(data []byte) error {
 }
 
 // GetLedgerApplyActionType returns the action type string based on the oneof data
-func GetLedgerApplyActionType(action *LedgerApplyAction) string {
+func GetLedgerApplyActionType(action *LedgerApplyRequest) string {
 	switch action.Data.(type) {
-	case *LedgerApplyAction_CreateTransaction:
+	case *LedgerApplyRequest_CreateTransaction:
 		return LedgerActionTypeCreateTransaction
-	case *LedgerApplyAction_AddMetadata:
+	case *LedgerApplyRequest_AddMetadata:
 		return LedgerActionTypeAddMetadata
-	case *LedgerApplyAction_RevertTransaction:
+	case *LedgerApplyRequest_RevertTransaction:
 		return LedgerActionTypeRevertTransaction
-	case *LedgerApplyAction_DeleteMetadata:
+	case *LedgerApplyRequest_DeleteMetadata:
 		return LedgerActionTypeDeleteMetadata
 	default:
 		return ""

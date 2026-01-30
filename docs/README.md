@@ -74,6 +74,9 @@ gRPC connection mechanics, reconnection strategies, and optimizations for rollin
 ### 🔍 [Storage Sanity Check](./sanity-check.md)
 Local storage verification, integrity checks, and troubleshooting node-specific storage issues.
 
+### ⚠️ [System Limitations](./limitations.md)
+Current system limitations based on ID types: maximum ledgers, transactions, and logs.
+
 ## Key Concepts
 
 ### Ledgers

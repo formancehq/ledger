@@ -24,7 +24,7 @@ func NewLedgerGrpcClient(client servicepb.LedgerServiceClient) *LedgerGrpcClient
 }
 
 // Apply forwards the actions via gRPC to the leader
-func (g *LedgerGrpcClient) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
+func (g *LedgerGrpcClient) Apply(ctx context.Context, actions ...*servicepb.Request) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
 		Actions: actions,
 	})

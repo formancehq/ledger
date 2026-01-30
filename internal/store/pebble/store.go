@@ -359,6 +359,46 @@ func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map
 	return result, nil
 }
 
+// GetBalance retrieves the balance for a single account/asset combination (implements store.Store)
+func (s *Store) GetBalance(_ context.Context, ledger uint32, account string, asset string) (*commonpb.BigInt, error) {
+	balance := big.NewInt(0)
+
+	buf := bytes.NewBuffer(nil)
+	writeLedgerPrefix(buf, ledger)
+	writeByte(buf, keyPrefixBalanceDiff)
+	writeString(buf, account)
+	writeString(buf, asset)
+	lowerBound := buf.Bytes()
+
+	writeByte(buf, 0xFF)
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for balance diffs: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	// Sum all diffs
+	for iter.First(); iter.Valid(); iter.Next() {
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading balance diff value: %w", err)
+		}
+
+		diff := &commonpb.BigInt{}
+		if err := proto.Unmarshal(valueBytes, diff); err != nil {
+			return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
+		}
+		balance = balance.Add(balance, diff.Value())
+	}
+
+	return commonpb.NewBigInt(balance), nil
+}
+
 // GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)
 func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)

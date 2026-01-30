@@ -131,7 +131,7 @@ var _ = Describe("Ledger Deletion", func() {
 
 			// Create a ledger
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -153,7 +153,7 @@ var _ = Describe("Ledger Deletion", func() {
 		It("Should successfully delete the ledger (hard delete)", func() {
 			// Delete the ledger
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{deleteLedgerAction(ledgerID)},
+				Actions: []*servicepb.Request{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -189,7 +189,7 @@ var _ = Describe("Ledger Deletion", func() {
 		It("Should return error when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{deleteLedgerAction(99999)},
+				Actions: []*servicepb.Request{deleteLedgerAction(99999)},
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -214,7 +214,7 @@ var _ = Describe("Ledger Deletion", func() {
 
 			// Create a ledger
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -228,7 +228,7 @@ var _ = Describe("Ledger Deletion", func() {
 			// Create some transactions
 			for i := 0; i < 5; i++ {
 				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{
+					Actions: []*servicepb.Request{
 						createTransactionAction(ledgerName, []*commonpb.Posting{
 							newPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
@@ -241,7 +241,7 @@ var _ = Describe("Ledger Deletion", func() {
 		It("Should successfully delete the ledger even with transactions", func() {
 			// Delete the ledger (should succeed even with transactions)
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{deleteLedgerAction(ledgerID)},
+				Actions: []*servicepb.Request{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())

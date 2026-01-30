@@ -510,7 +510,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 // createLedger is a test helper that creates a ledger via the node's Apply method
 func createLedger(ctx context.Context, node *Node, name string) (*commonpb.LedgerInfo, error) {
-	action := NewAction(raftcmdpb.ActionType_CreateLedger, &raftcmdpb.CreateLedgerCommand{
+	action := NewCreateLedgerAction(&raftcmdpb.CreateLedgerCommand{
 		Name: name,
 	})
 	logs, err := node.Apply(ctx, action)

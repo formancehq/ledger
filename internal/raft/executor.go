@@ -58,6 +58,8 @@ func (t *singleTaskExecutor) interrupt() {
 }
 
 func (t *singleTaskExecutor) error() chan error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.errChan
 }
 

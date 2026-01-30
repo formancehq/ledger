@@ -74,17 +74,17 @@ message GetLedgerRequest {
 message GetClusterStateRequest {}
 
 message ApplyRequest {
-  repeated Action actions = 1;
+  repeated Request actions = 1;
 }
 
 message ApplyResponse {
   repeated common.Log logs = 1;
 }
 
-message Action {
+message Request {
   string idempotency_key = 1;
   oneof type {
-    LedgerApplyAction apply = 2;
+    LedgerApplyRequest apply = 2;
     CreateLedgerRequest create_ledger = 3;
     DeleteLedgerRequest delete_ledger = 4;
   }
@@ -120,7 +120,7 @@ message LedgerNameOrId {
 }
 
 // LedgerAction represents a single ledger action
-message LedgerApplyAction {
+message LedgerApplyRequest {
   LedgerNameOrId ledger = 1;
   oneof data {
     CreateTransactionPayload create_transaction = 2;

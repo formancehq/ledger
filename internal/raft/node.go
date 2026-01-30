@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/utils"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
@@ -53,7 +54,7 @@ type Node struct {
 	config              NodeConfig
 	proposeCh           chan *proposal
 	confState           *raftpb.ConfState
-	futures             SyncMap[uint64, *future]
+	futures             utils.SyncMap[uint64, *future]
 	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
 

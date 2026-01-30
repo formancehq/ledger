@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/numscript"
 	"google.golang.org/protobuf/proto"
@@ -147,8 +146,8 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 }
 
 // Apply applies a list of actions and returns the resulting logs
-func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.Action) ([]*commonpb.Log, error) {
-	if len(actions) == 0 {
+func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	if len(requests) == 0 {
 		return nil, fmt.Errorf("at least one action is required")
 	}
 
@@ -166,16 +165,16 @@ func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.
 	defer uow.ReleaseLocks()
 
 	// First pass: resolve all actions and check idempotency
-	forged := make([]*forgedAction, len(actions))
-	var raftActions []*raftcmdpb.Action
-	for i, action := range actions {
-		input, err := ctrl.resolveActionInput(action)
+	forged := make([]*forgedAction, len(requests))
+	var actions []*raftcmdpb.Action
+	for i, request := range requests {
+		input, err := ctrl.resolveActionInput(request)
 		if err != nil {
 			return nil, fmt.Errorf("resolving action input %d: %w", i, err)
 		}
 
 		// Check idempotency
-		cachedLog, err := checkIdempotency(ctx, uow, action.IdempotencyKey, input)
+		cachedLog, err := checkIdempotency(ctx, uow, request.IdempotencyKey, input)
 		if err != nil {
 			return nil, fmt.Errorf("checking idempotency for action %d: %w", i, err)
 		}
@@ -186,7 +185,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.
 			continue
 		}
 
-		builder, err := ctrl.resolveActionBuilder(action)
+		builder, err := ctrl.resolveActionBuilder(request)
 		if err != nil {
 			return nil, fmt.Errorf("resolving action builder %d: %w", i, err)
 		}
@@ -196,64 +195,63 @@ func (ctrl *DefaultController) Apply(ctx context.Context, actions ...*servicepb.
 		if err != nil {
 			return nil, fmt.Errorf("building action %d: %w", i, err)
 		}
-		actionData := &raftcmdpb.ActionData{
+		action := &raftcmdpb.Action{
 			Command: cmd,
 		}
-		if action.IdempotencyKey != "" {
-			actionData.Idempotency = &commonpb.Idempotency{
-				Key:  action.IdempotencyKey,
+		if request.IdempotencyKey != "" {
+			action.Idempotency = &commonpb.Idempotency{
+				Key:  request.IdempotencyKey,
 				Hash: commonpb.ComputeIdempotencyHash(input),
 			}
 		}
-		raftAction := raft.NewActionFromData(actionData)
 		forged[i] = &forgedAction{
-			raftAction: raftAction,
+			raftAction: action,
 		}
-		raftActions = append(raftActions, raftAction)
+		actions = append(actions, action)
 	}
 
 	// Second pass: batch apply all raft actions
-	var raftLogs []*commonpb.Log
-	if len(raftActions) > 0 {
+	var createdLogs []*commonpb.Log
+	if len(actions) > 0 {
 		var err error
-		raftLogs, err = ctrl.engine.Apply(ctx, raftActions...)
+		createdLogs, err = ctrl.engine.Apply(ctx, actions...)
 		if err != nil {
 			return nil, fmt.Errorf("applying raft actions: %w", err)
 		}
 	}
 
 	// Third pass: merge results in the correct order
-	logs := make([]*commonpb.Log, len(actions))
-	raftLogIndex := 0
+	logs := make([]*commonpb.Log, len(requests))
+	createdLogIndex := 0
 	for i, fa := range forged {
 		if fa.cachedLog != nil {
 			logs[i] = fa.cachedLog
 		} else {
-			logs[i] = raftLogs[raftLogIndex]
-			raftLogIndex++
+			logs[i] = createdLogs[createdLogIndex]
+			createdLogIndex++
 		}
 	}
 	return logs, nil
 }
 
 // resolveActionInput resolves action input data (ledgerID and input proto.Message).
-func (ctrl *DefaultController) resolveActionInput(action *servicepb.Action) (proto.Message, error) {
+func (ctrl *DefaultController) resolveActionInput(action *servicepb.Request) (proto.Message, error) {
 	switch actionType := action.Type.(type) {
-	case *servicepb.Action_Apply:
+	case *servicepb.Request_Apply:
 		switch data := actionType.Apply.Data.(type) {
-		case *servicepb.LedgerApplyAction_CreateTransaction:
+		case *servicepb.LedgerApplyRequest_CreateTransaction:
 			return data.CreateTransaction, nil
 
-		case *servicepb.LedgerApplyAction_AddMetadata:
+		case *servicepb.LedgerApplyRequest_AddMetadata:
 			if data.AddMetadata == nil || data.AddMetadata.Target == nil {
 				return nil, fmt.Errorf("missing add metadata data or target")
 			}
 			return data.AddMetadata, nil
 
-		case *servicepb.LedgerApplyAction_RevertTransaction:
+		case *servicepb.LedgerApplyRequest_RevertTransaction:
 			return data.RevertTransaction, nil
 
-		case *servicepb.LedgerApplyAction_DeleteMetadata:
+		case *servicepb.LedgerApplyRequest_DeleteMetadata:
 			if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
 				return nil, fmt.Errorf("missing delete metadata data or target")
 			}
@@ -263,10 +261,10 @@ func (ctrl *DefaultController) resolveActionInput(action *servicepb.Action) (pro
 			return nil, fmt.Errorf("unsupported action type")
 		}
 
-	case *servicepb.Action_CreateLedger:
+	case *servicepb.Request_CreateLedger:
 		return actionType.CreateLedger, nil
 
-	case *servicepb.Action_DeleteLedger:
+	case *servicepb.Request_DeleteLedger:
 		return actionType.DeleteLedger, nil
 
 	default:
@@ -275,25 +273,25 @@ func (ctrl *DefaultController) resolveActionInput(action *servicepb.Action) (pro
 }
 
 // resolveActionBuilder resolves the builder function for an action.
-func (ctrl *DefaultController) resolveActionBuilder(action *servicepb.Action) (ForgeActionBuilder, error) {
+func (ctrl *DefaultController) resolveActionBuilder(action *servicepb.Request) (ForgeActionBuilder, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is required")
 	}
 
 	switch actionType := action.Type.(type) {
-	case *servicepb.Action_Apply:
+	case *servicepb.Request_Apply:
 		id, err := ctrl.resolveLedgerID(context.Background(), actionType.Apply.Ledger)
 		if err != nil {
 			return nil, err
 		}
 
 		switch data := actionType.Apply.Data.(type) {
-		case *servicepb.LedgerApplyAction_CreateTransaction:
+		case *servicepb.LedgerApplyRequest_CreateTransaction:
 			return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
 				return ctrl.createTransaction(ctx, uow, id, input)
 			}, nil
 
-		case *servicepb.LedgerApplyAction_AddMetadata:
+		case *servicepb.LedgerApplyRequest_AddMetadata:
 			if data.AddMetadata == nil || data.AddMetadata.Target == nil {
 				return nil, fmt.Errorf("missing add metadata data or target")
 			}
@@ -310,12 +308,12 @@ func (ctrl *DefaultController) resolveActionBuilder(action *servicepb.Action) (F
 				return nil, fmt.Errorf("unsupported target type for add metadata")
 			}
 
-		case *servicepb.LedgerApplyAction_RevertTransaction:
+		case *servicepb.LedgerApplyRequest_RevertTransaction:
 			return func(ctx context.Context, uow *unitOfWork, input proto.Message) (*raftcmdpb.AnyCommand, error) {
 				return ctrl.revertTransaction(ctx, uow, id, input)
 			}, nil
 
-		case *servicepb.LedgerApplyAction_DeleteMetadata:
+		case *servicepb.LedgerApplyRequest_DeleteMetadata:
 			if data.DeleteMetadata == nil || data.DeleteMetadata.Target == nil {
 				return nil, fmt.Errorf("missing delete metadata data or target")
 			}
@@ -335,10 +333,10 @@ func (ctrl *DefaultController) resolveActionBuilder(action *servicepb.Action) (F
 		default:
 			return nil, fmt.Errorf("unsupported action type")
 		}
-	case *servicepb.Action_CreateLedger:
+	case *servicepb.Request_CreateLedger:
 		return ctrl.createLedger, nil
 
-	case *servicepb.Action_DeleteLedger:
+	case *servicepb.Request_DeleteLedger:
 		return ctrl.deleteLedger, nil
 
 	default:
@@ -655,8 +653,8 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 		revertTimestamp = originalTx.Timestamp
 	}
 
-	// Create the revert transaction (transaction ID will be assigned by FSM)
-	revertTx := &commonpb.Transaction{
+	// Create the revert transaction command (transaction ID will be assigned by FSM)
+	revertTx := &raftcmdpb.AppendTransactionCommand{
 		Postings:  reversedPostings,
 		Metadata:  revertMetadata,
 		Timestamp: revertTimestamp,

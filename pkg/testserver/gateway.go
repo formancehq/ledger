@@ -347,9 +347,9 @@ func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRe
 
 func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Actions: []*servicepb.Action{
+		Actions: []*servicepb.Request{
 			{
-				Type: &servicepb.Action_CreateLedger{
+				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: req,
 				},
 			},
@@ -366,9 +366,9 @@ func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.
 
 func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
 	_, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Actions: []*servicepb.Action{
+		Actions: []*servicepb.Request{
 			{
-				Type: &servicepb.Action_DeleteLedger{
+				Type: &servicepb.Request_DeleteLedger{
 					DeleteLedger: req,
 				},
 			},

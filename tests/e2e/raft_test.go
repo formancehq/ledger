@@ -157,7 +157,7 @@ var _ = Describe("Simple cluster", func() {
 	Context("When creating a new ledger", func() {
 		BeforeEach(func() {
 			_, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction("ledger0", nil)},
+				Actions: []*servicepb.Request{createLedgerAction("ledger0", nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -180,7 +180,7 @@ var _ = Describe("Simple cluster", func() {
 
 			// Create ledger
 			_, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -189,7 +189,7 @@ var _ = Describe("Simple cluster", func() {
 			// Create a transaction through each node
 			for i := range countInstances {
 				_, err := servers[i].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{
+					Actions: []*servicepb.Request{
 						createTransactionAction(ledgerName, []*commonpb.Posting{
 							newPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
@@ -222,14 +222,14 @@ var _ = Describe("Simple cluster", func() {
 
 			// Create a ledger
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction("ledger1", nil)},
+				Actions: []*servicepb.Request{createLedgerAction("ledger1", nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create some transactions
 			for i := 0; i < 5; i++ {
 				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{
+					Actions: []*servicepb.Request{
 						createTransactionAction("ledger1", []*commonpb.Posting{
 							newPosting("world", "bank", big.NewInt(100), "USD"),
 						}, nil, nil),
@@ -246,7 +246,7 @@ var _ = Describe("Simple cluster", func() {
 				ledgerName = "ledger2"
 				// Create a ledger while follower is down
 				_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+					Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 				})
 				Expect(err).To(Succeed())
 			})
@@ -285,7 +285,7 @@ var _ = Describe("Simple cluster", func() {
 					GinkgoLogr.Info("Creating transactions")
 					for i := 0; i < countTransactions; i++ {
 						_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-							Actions: []*servicepb.Action{
+							Actions: []*servicepb.Request{
 								createTransactionAction(ledgerName, []*commonpb.Posting{
 									newPosting("world", "bank", big.NewInt(100), "USD"),
 								}, nil, nil),
@@ -340,7 +340,7 @@ var _ = Describe("Simple cluster", func() {
 			ledgerName = "ledger2"
 			// Create a ledger while follower is down
 			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Actions: []*servicepb.Action{createLedgerAction(ledgerName, nil)},
+				Actions: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -369,7 +369,7 @@ var _ = Describe("Simple cluster", func() {
 					// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 					for i := 0; i < countTransactions; i++ {
 						_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-							Actions: []*servicepb.Action{
+							Actions: []*servicepb.Request{
 								createTransactionAction(ledgerName, []*commonpb.Posting{
 									newPosting("world", "bank", big.NewInt(100), "USD"),
 								}, nil, nil),
@@ -387,7 +387,7 @@ var _ = Describe("Simple cluster", func() {
 						// snapshotThreshold is 10, so we create 15 transactions to ensure a snapshot is created and we have some tx in spool
 						for i := 0; i < countTransactions; i++ {
 							_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-								Actions: []*servicepb.Action{
+								Actions: []*servicepb.Request{
 									createTransactionAction(ledgerName, []*commonpb.Posting{
 										newPosting("world", "bank", big.NewInt(100), "USD"),
 									}, nil, nil),

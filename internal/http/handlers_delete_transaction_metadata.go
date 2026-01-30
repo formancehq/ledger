@@ -37,12 +37,12 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, err = s.backend.Apply(r.Context(), &servicepb.Action{
+	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		Type: &servicepb.Action_Apply{
-			Apply: &servicepb.LedgerApplyAction{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: servicepb.LedgerName(ledgerName),
-				Data: &servicepb.LedgerApplyAction_DeleteMetadata{
+				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{

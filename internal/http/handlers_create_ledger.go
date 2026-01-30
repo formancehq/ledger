@@ -32,8 +32,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create ledger via Apply
-	logs, err := s.backend.Apply(r.Context(), &servicepb.Action{
-		Type: &servicepb.Action_CreateLedger{
+	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:     ledgerName,
 				Metadata: metadata,
