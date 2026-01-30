@@ -13,6 +13,13 @@ const (
 	ResourceKindVolume      ResourceKind = "volumes"
 )
 
+var Resources []ResourceKind = []ResourceKind{
+	ResourceKindTransaction,
+	ResourceKindAccount,
+	ResourceKindLog,
+	ResourceKindVolume,
+}
+
 var AccountSchema EntitySchema = EntitySchema{
 	Fields: map[string]Field{
 		"address":        NewStringField().Paginated(),

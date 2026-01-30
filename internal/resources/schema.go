@@ -19,6 +19,22 @@ const (
 	OperatorGTE    = "$gte"
 )
 
+type ValueType string
+
+const (
+	ValueTypeBoolean ValueType = "bool"
+	ValueTypeDate    ValueType = "date"
+	ValueTypeInt     ValueType = "int"
+	ValueTypeString  ValueType = "string"
+)
+
+var ValueTypes = []ValueType{
+	ValueTypeBoolean,
+	ValueTypeInt,
+	ValueTypeDate,
+	ValueTypeString,
+}
+
 type EntitySchema struct {
 	Fields map[string]Field
 }
@@ -38,7 +54,7 @@ type FieldType interface {
 	ValidateValue(operator string, value any) error
 	IsIndexable() bool
 	IsPaginated() bool
-	ValueType() FieldType
+	ValueType() ValueType
 }
 
 type Field struct {
@@ -153,8 +169,8 @@ func (t TypeString) ValidateValue(operator string, value any) error {
 	return nil
 }
 
-func (t TypeString) ValueType() FieldType {
-	return t
+func (t TypeString) ValueType() ValueType {
+	return ValueTypeString
 }
 
 var _ FieldType = (*TypeString)(nil)
@@ -197,8 +213,8 @@ func (t TypeDate) ValidateValue(_ string, value any) error {
 	return nil
 }
 
-func (t TypeDate) ValueType() FieldType {
-	return t
+func (t TypeDate) ValueType() ValueType {
+	return ValueTypeDate
 }
 
 func NewTypeDate() TypeDate {
@@ -233,8 +249,8 @@ func NewTypeMap(underlyingType FieldType) TypeMap {
 	}
 }
 
-func (t TypeMap) ValueType() FieldType {
-	return t.underlyingType
+func (t TypeMap) ValueType() ValueType {
+	return t.underlyingType.ValueType()
 }
 
 var _ FieldType = (*TypeMap)(nil)
@@ -269,8 +285,8 @@ func (t TypeNumeric) ValidateValue(_ string, value any) error {
 	}
 }
 
-func (t TypeNumeric) ValueType() FieldType {
-	return t
+func (t TypeNumeric) ValueType() ValueType {
+	return ValueTypeInt
 }
 
 func NewTypeNumeric() TypeNumeric {
@@ -304,8 +320,8 @@ func (t TypeBoolean) ValidateValue(_ string, value any) error {
 	return nil
 }
 
-func (t TypeBoolean) ValueType() FieldType {
-	return t
+func (t TypeBoolean) ValueType() ValueType {
+	return ValueTypeBoolean
 }
 
 func NewTypeBoolean() TypeBoolean {

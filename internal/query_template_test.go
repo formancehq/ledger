@@ -11,8 +11,226 @@ import (
 	"github.com/formancehq/ledger/internal/resources"
 )
 
-func TestQueryResolution(t *testing.T) {
+func TestQueryTemplateValidation(t *testing.T) {
+	t.Parallel()
 
+	type testCase struct {
+		name             string
+		source           string
+		expectedTemplate QueryTemplate
+		expectedError    string
+	}
+
+	for _, tc := range []testCase{
+		{
+			name: "complex & valid",
+			source: `{
+				"description": "complex & valid",
+				"resource": "accounts",
+				"vars": {
+					"iban":            "string",
+					"minimum_balance": "int",
+					"metadata_field": {
+						"type": "string",
+						"default": "qux"
+					}
+				},
+				"body": {
+	"$and": [
+		{"$match": {
+			"address": "banks:<iban>:"
+		}},
+		{"$or": [
+			{"$gt": {
+				"balance[COIN]": "<minimum_balance>"
+			}},
+			{"$exists": {
+				"metadata": "<metadata_field>"
+			}}
+		]}
+	]
+}}`,
+			expectedTemplate: QueryTemplate{
+				Description: "complex & valid",
+				Resource:    resources.ResourceKindAccount,
+				Params:      nil,
+				Vars: map[string]VarSpec{
+					"iban": {
+						Type: resources.ValueTypeString,
+					},
+					"minimum_balance": {
+						Type: resources.ValueTypeInt,
+					},
+					"metadata_field": {
+						Type:    resources.ValueTypeString,
+						Default: "qux",
+					},
+				},
+				Body: json.RawMessage(`{
+	"$and": [
+		{"$match": {
+			"address": "banks:<iban>:"
+		}},
+		{"$or": [
+			{"$gt": {
+				"balance[COIN]": "<minimum_balance>"
+			}},
+			{"$exists": {
+				"metadata": "<metadata_field>"
+			}}
+		]}
+	]
+}`),
+			},
+		},
+		{
+			name: "params",
+			source: `{
+				"description": "complex params",
+				"resource": "volumes",
+				"params": {"groupLvl": 2}
+			}`,
+			expectedTemplate: QueryTemplate{
+				Description: "complex params",
+				Resource:    resources.ResourceKindVolume,
+				Params:      json.RawMessage(`{"groupLvl": 2}`),
+				Vars:        nil,
+				Body:        nil,
+			},
+		},
+		{
+			name: "all types",
+			source: `{
+				"description": "all types",
+				"resource": "accounts",
+				"vars": {
+					"my_bool":   {
+						"type": "bool",
+						"default": false
+					},
+					"my_int":    {
+						"type": "int",
+						"default": 42
+					},
+					"my_string": {
+						"type": "string",
+						"default": "hello"
+					},
+					"my_date":   {
+						"type": "date",
+						"default": "2023-01-01T01:01:01Z"
+					}
+				},
+				"body": {}
+			}`,
+			expectedTemplate: QueryTemplate{
+				Description: "all types",
+				Resource:    resources.ResourceKindAccount,
+				Params:      nil,
+				Vars: map[string]VarSpec{
+					"my_bool": {
+						Type:    resources.ValueTypeBoolean,
+						Default: false,
+					},
+					"my_int": {
+						Type:    resources.ValueTypeInt,
+						Default: json.Number("42"),
+					},
+					"my_string": {
+						Type:    resources.ValueTypeString,
+						Default: "hello",
+					},
+					"my_date": {
+						Type:    resources.ValueTypeDate,
+						Default: "2023-01-01T01:01:01Z",
+					},
+				},
+				Body: json.RawMessage(`{}`),
+			},
+		},
+		{
+			source: `{
+				"description": "unknown resource kind",
+				"resource": "doesntexist"
+			}`,
+			expectedError: "unknown resource kind",
+		},
+		{
+			source: `{
+				"description": "invalid variable type",
+				"resource": "transactions",
+				"vars": {
+					"my_bool": "doesntexist"
+				}
+			}`,
+			expectedError: "invalid type",
+		},
+		{
+			source: `{
+				"description": "invalid default",
+				"resource": "transactions",
+				"vars": {
+					"my_bool": {
+						"type": "bool",
+						"default": "wrongtype"
+					}
+				}
+			}`,
+			expectedError: "invalid default",
+		},
+		{
+			source: `{
+				"description": "invalid params",
+				"resource": "volumes",
+				"params": {
+					"groupLvl": false
+				}
+			}`,
+			expectedError: "cannot unmarshal",
+		},
+		{
+			source: `{
+				"description": "wrong variable type",
+				"resource": "accounts",
+				"vars": {
+					"foo": "string"
+				},
+				"body": {
+					"$match": {
+						"balance[COIN]": "<foo>"
+					}
+				}
+			}`,
+			expectedError: "cannot use variable",
+		},
+		{
+			source: `{
+				"description": "undeclared variable",
+				"resource": "accounts",
+				"vars": {},
+				"body": {
+					"$match": {
+						"balance[COIN]": "<foo>"
+					}
+				}
+			}`,
+			expectedError: "variable `foo` is not declared",
+		},
+	} {
+		var template QueryTemplate
+		err := unmarshalWithNumber([]byte(tc.source), &template)
+		require.NoError(t, err)
+
+		err = template.Validate()
+		if tc.expectedError == "" {
+			require.Equal(t, tc.expectedTemplate, template, tc.name)
+		} else {
+			require.ErrorContains(t, err, tc.expectedError, tc.name)
+		}
+	}
+}
+
+func TestQueryResolution(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {

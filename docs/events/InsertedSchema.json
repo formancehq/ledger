@@ -114,7 +114,7 @@
     },
     "QueryTemplate": {
       "properties": {
-        "name": {
+        "description": {
           "type": "string"
         },
         "resource": {

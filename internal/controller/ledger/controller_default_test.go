@@ -624,8 +624,8 @@ func TestRunQuery(t *testing.T) {
 			Transactions: ledger.TransactionTemplates{},
 			Queries: ledger.QueryTemplates{
 				"FOO": {
-					Name:     "Foo template",
-					Resource: "accounts",
+					Description: "Foo template",
+					Resource:    "accounts",
 					Vars: map[string]ledger.VarSpec{
 						"aaa": {
 							Type:    "string",
