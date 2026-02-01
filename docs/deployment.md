@@ -42,7 +42,6 @@ Available flags for `run`:
 - `--data-dir`: Data directory for application storage (default: `./data`)
 - `--peers`: Initial peer list (format: `<id>/<address>`, e.g., `1/node-1:8888,2/node-2:8888`)
 - `--http-port`: HTTP server port (default: `9000`)
-- `--storage-type`: Storage type (`sqlite-mattn`, `sqlite-modern`, `pebble`)
 
 ### Configuration
 
@@ -539,19 +538,6 @@ config:
 >
 > Setting the threshold too low will cause constant snapshotting, impacting performance. Setting it too high will increase recovery time after a restart.
 
-### Storage
-
-#### SQLite
-
-By default, SQLite is used with an auto-generated DSN:
-
-```yaml
-config:
-  extraData:
-    enabled: true
-    mountPath: "/extra-data"
-```
-
 ## Scaling
 
 ### Horizontal Scaling
@@ -603,13 +589,6 @@ curl http://localhost:9000/cluster/state
 # Kubernetes
 kubectl exec -it ledger-v3-poc-0 -- tar czf /tmp/backup.tar.gz /data/raft
 kubectl cp ledger-v3-poc-0:/tmp/backup.tar.gz ./backup.tar.gz
-```
-
-#### Transaction Log Backup
-
-For SQLite:
-```bash
-kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/ledgers/my-ledger/ledger-<id>-runtime.db ".backup /tmp/backup.db"
 ```
 
 ### Restoration

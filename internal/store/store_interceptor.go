@@ -16,7 +16,7 @@ type BatchInterceptor struct {
 	OnAppendLogs                 func(ctx context.Context, delegate Batch, logs []*commonpb.Log) error
 	OnRegisterLedger             func(ctx context.Context, delegate Batch, info *commonpb.LedgerInfo) error
 	OnDeleteLedger               func(ctx context.Context, delegate Batch, id uint32) error
-	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error
+	OnAppendBalanceDiff          func(ctx context.Context, delegate Batch, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error
 	OnSaveAccountMetadata        func(ctx context.Context, delegate Batch, ledger uint32, account string, metadata *commonpb.Metadata) error
 	OnDeleteAccountMetadata      func(ctx context.Context, delegate Batch, ledger uint32, account string, keys []string) error
 	OnStoreTransactionID         func(ctx context.Context, delegate Batch, ledger uint32, transactionID uint64, sequence uint64) error
@@ -66,14 +66,14 @@ func (b *BatchInterceptor) DeleteLedger(ctx context.Context, id uint32) error {
 	return b.delegate.DeleteLedger(ctx, id)
 }
 
-func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error {
+func (b *BatchInterceptor) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error {
 	b.mu.RLock()
 	interceptor := b.OnAppendBalanceDiff
 	b.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(ctx, b.delegate, ledger, account, asset, diff, sequence)
+		return interceptor(ctx, b.delegate, ledger, account, asset, diff, raftIndex)
 	}
-	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff, sequence)
+	return b.delegate.AppendBalanceDiff(ctx, ledger, account, asset, diff, raftIndex)
 }
 
 func (b *BatchInterceptor) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, md *commonpb.Metadata) error {

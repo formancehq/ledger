@@ -10,7 +10,7 @@ The Ledger v3 POC system uses multiple storage layers to ensure data durability 
 
 All ledgers share a **single storage layer**, with data organized by ledger name prefixes.
 
-For detailed information on specific storage backends (SQLite, Pebble), see [Storage Drivers](./storage-drivers.md).
+For detailed information on the Pebble storage backend, see [Storage Drivers](./storage-drivers.md).
 
 ## Storage Architecture
 
@@ -65,7 +65,7 @@ data/
 │   │   └── ...
 │   ├── raft-state.pb                                 # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED                        # WAL creation marker
-└── runtime.db (SQLite) or runtime/ (Pebble)
+└── runtime/ (Pebble)
 ```
 
 **Note**: The HardState is persisted inside the etcd WAL itself, not in a separate file.
@@ -339,9 +339,7 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
-└── runtime.db (SQLite)            # All ledgers data (sqlite-mattn or sqlite-modern)
-    OR
-└── runtime/ (Pebble)              # All ledgers data (pebble driver)
+└── runtime/                       # All ledgers data (Pebble)
     ├── live/                      # Active database
     ├── checkpoints/               # Checkpoint directories for snapshots
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
@@ -352,7 +350,7 @@ data/
 ### Write Durability
 
 1. **WAL**: Synchronized on disk before commit
-2. **Store**: ACID transactions for SQLite, durable writes for Pebble
+2. **Store**: Durable writes with Pebble
 3. **Snapshots**: Created periodically for recovery
 
 ### Recovery after Failure
@@ -417,7 +415,7 @@ Pebble performs automatic LSM-tree compaction:
 
 To deepen your understanding:
 
-1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on each storage driver (SQLite, Pebble)
+1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on the Pebble storage driver
 2. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
 3. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
 4. [Deployment](./deployment.md) - Storage configuration in production

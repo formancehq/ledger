@@ -6,7 +6,7 @@ This document summarizes the key problems and limitations encountered in Ledger 
 
 | Category | v2 Problem | v3 Solution |
 |----------|-----------|-------------|
-| **Database** | PostgreSQL dependency | Embedded storage (SQLite/Pebble) |
+| **Database** | PostgreSQL dependency | Embedded storage (Pebble) |
 | **Replication** | PostgreSQL replication complexity | Raft consensus protocol |
 | **Deployment** | External database management | Self-contained binary |
 | **Build** | External database dependency | Self-contained with pure Go options |
@@ -120,13 +120,7 @@ v2 with PostgreSQL required an external database server, but the Go binary itsel
 
 ### v3 Solution
 
-v3 offers **multiple embedded storage drivers**, including pure Go options that require no external dependencies:
-
-| Driver | CGO | Use Case |
-|--------|-----|----------|
-| `sqlite-mattn` | Yes | Best performance |
-| `sqlite-modern` | No | Cross-compilation, scratch images |
-| `pebble` | No | High-throughput, pure Go |
+v3 uses **Pebble** as its embedded storage engine, a high-performance LSM-tree based key-value store from CockroachDB that requires no CGO:
 
 ```bash
 # Pure Go build - no CGO required
@@ -262,7 +256,7 @@ PYROSCOPE_PROFILE_TYPES: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_spac
 
 ---
 
-## 8. Multiple Storage Backend Options
+## 8. Optimized Storage Backend
 
 ### v2 Problem
 
@@ -274,25 +268,13 @@ v2 was tied to PostgreSQL:
 
 ### v3 Solution
 
-v3 offers **multiple storage backends**:
-
-| Driver | Best For |
-|--------|----------|
-| `sqlite-mattn` | Production (best SQLite performance) |
-| `sqlite-modern` | Cross-compilation, Docker scratch |
-| `pebble` | High-throughput, write-heavy workloads |
-
-```bash
-# Choose based on your workload
-./ledger serve --storage-type sqlite-mattn  # Best compatibility
-./ledger serve --storage-type pebble        # Best write throughput
-```
+v3 uses **Pebble**, an LSM-tree storage engine optimized for high-throughput workloads:
 
 **Benefits**:
-- Choose the right storage for your workload
-- Pebble for high-throughput (LSM-tree optimized for writes)
-- SQLite for simplicity and SQL debugging
-- Easy to switch between backends
+- High-throughput write performance (LSM-tree optimized for writes)
+- No CGO required (pure Go)
+- Efficient range scans for balance reconstruction
+- Built-in compression and compaction
 
 ---
 
@@ -364,7 +346,7 @@ LSM-tree (Pebble):
 - Background compaction sorts data
 - No B-tree page splits during writes
 
-**Recommendation**: Use `--storage-type pebble` for workloads with UUID v4 account addresses.
+Pebble's LSM-tree architecture handles UUID v4 account addresses efficiently.
 
 ---
 
@@ -446,13 +428,13 @@ v3 with Pebble uses **balance diffs** instead of absolute balances, eliminating 
 // Value: balance delta (can be negative for debits)
 
 // Transaction 1: debit 100 from bank
-AppendBalanceDiff(ledger, "bank", "USD", -100, logID=1)
+AppendBalanceDiff(ledger, "bank", "USD", -100, raftIndex=1)
 
 // Transaction 2: debit 50 from bank (parallel, no lock needed)
-AppendBalanceDiff(ledger, "bank", "USD", -50, logID=2)
+AppendBalanceDiff(ledger, "bank", "USD", -50, raftIndex=2)
 
 // Transaction 3: debit 75 from bank (parallel, no lock needed)
-AppendBalanceDiff(ledger, "bank", "USD", -75, logID=3)
+AppendBalanceDiff(ledger, "bank", "USD", -75, raftIndex=3)
 ```
 
 **Read path** (balance reconstruction):
@@ -525,18 +507,6 @@ Balance = SUM(values) = 1000000 - 100 - 50 + 200 - 75 = 999975
 **Considerations**:
 - **Read cost**: Balance reads require summing all diffs (mitigated by Pebble's efficient range scans)
 - **Storage growth**: Each transaction creates new diff entries (mitigated by compaction)
-- **Read-heavy workloads**: May prefer SQLite for O(1) balance reads
-
-#### When to Use
-
-| Workload | Recommended Storage |
-|----------|---------------------|
-| High write throughput, hot accounts | Pebble (diffs) |
-| Read-heavy, few writes | SQLite |
-| Balanced read/write | Either works |
-| Many concurrent transactions on same accounts | Pebble (diffs) |
-
-**Recommendation**: Use `--storage-type pebble` for workloads with high concurrency on shared accounts (bank accounts, fee collectors, treasury).
 
 ---
 
@@ -668,7 +638,7 @@ Ledger v3 addresses the fundamental architectural challenges of v2 by:
 
 1. **Eliminating external dependencies** (PostgreSQL → embedded storage)
 2. **Implementing native distributed consensus** (PostgreSQL replication → Raft)
-3. **Providing deployment flexibility** (pure Go builds, multiple storage backends)
+3. **Providing deployment flexibility** (pure Go builds, Pebble storage)
 4. **Improving performance** (local writes, optimized storage engines)
 5. **Enhancing observability** (OpenTelemetry, Pyroscope)
 6. **Eliminating write contention** (row locks → append-only balance diffs)

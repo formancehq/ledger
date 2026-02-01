@@ -19,7 +19,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/store/sqlite"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"go.opentelemetry.io/otel/metric"
@@ -48,21 +47,12 @@ func Module() fx.Option {
 				)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Store, error) {
-				switch cfg.StorageType {
-				case "pebble":
-					return pebble.NewStore(
-						cfg.DataDir,
-						logger,
-						meterProvider.Meter("pebble.runtime_store"),
-						cfg.PebbleConfig,
-					)
-				case "sqlite-mattn":
-					return sqlite.NewMattnStore(cfg.DataDir, logger)
-				case "sqlite-modernc":
-					return sqlite.NewModernStore(cfg.DataDir, logger)
-				default:
-					return nil, fmt.Errorf("invalid storage type: %s", cfg.StorageType)
-				}
+				return pebble.NewStore(
+					cfg.DataDir,
+					logger,
+					meterProvider.Meter("pebble.runtime_store"),
+					cfg.PebbleConfig,
+				)
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{

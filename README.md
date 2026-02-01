@@ -8,13 +8,13 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 |---------|-------------|
 | **Distributed Consensus** | Uses etcd/raft for strong consistency across cluster nodes |
 | **Single Raft Architecture** | All ledgers managed by one Raft group for atomic operations |
-| **Multiple Storage Backends** | SQLite (mattn/modern) and Pebble for different use cases |
+| **Pebble Storage** | High-performance LSM-tree storage engine from CockroachDB |
 | **Numscript Support** | Full support for Numscript transaction scripting |
 | **Idempotency** | Built-in idempotency key support for safe retries |
 | **Bulk Operations** | Process multiple transactions in a single request |
 | **OpenTelemetry** | Comprehensive observability with traces, metrics, and logs |
 | **Continuous Profiling** | Pyroscope integration for CPU, memory, and goroutine profiling |
-| **Pure Go Options** | Pebble and sqlite-modern drivers require no CGO |
+| **Pure Go** | Pebble requires no CGO, enabling easy cross-compilation |
 
 ## Architecture Overview
 
@@ -38,18 +38,13 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
 │ FSM (All Ledgers)│ │ FSM (All Ledgers)│ │ FSM (All Ledgers)│
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│  Store (SQLite/ │  │  Store (SQLite/ │  │  Store (SQLite/ │
-│   Pebble)       │  │   Pebble)       │  │   Pebble)       │
+│  Store (Pebble) │  │  Store (Pebble) │  │  Store (Pebble) │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
-### Storage Backends
+### Storage Backend
 
-| Driver | Library | CGO | Best For |
-|--------|---------|-----|----------|
-| `sqlite-mattn` | github.com/mattn/go-sqlite3 | Yes | Production (best performance) |
-| `sqlite-modern` | modernc.org/sqlite | No | Cross-compilation, Docker scratch |
-| `pebble` | github.com/cockroachdb/pebble | No | High-throughput workloads |
+The system uses **Pebble** (github.com/cockroachdb/pebble) as its storage engine - a high-performance LSM-tree based key-value store from CockroachDB. Pebble requires no CGO, enabling easy cross-compilation and minimal Docker images.
 
 ## Documentation
 
@@ -98,28 +93,12 @@ After setup, `direnv` will automatically load the Nix development environment wh
 # Start a single node with default settings
 just run
 
-# Or manually with specific storage driver
+# Or manually
 go run . run \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
   --data-dir ./data/node-1 \
-  --http-port 9000 \
-  --storage-type pebble  # or sqlite-mattn, sqlite-modern
-```
-
-### Storage Configuration
-
-Choose your storage backend based on your needs:
-
-```bash
-# SQLite with CGO (best performance, requires C compiler)
-./ledger-v3-poc run --storage-type sqlite-mattn
-
-# SQLite pure Go (no CGO, works with scratch Docker images)
-./ledger-v3-poc run --storage-type sqlite-modern
-
-# Pebble (high-throughput LSM-tree, no CGO)
-./ledger-v3-poc run --storage-type pebble
+  --http-port 9000
 ```
 
 ### Development Environment with Pulumi

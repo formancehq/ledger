@@ -22,8 +22,8 @@ func TestValidateBucketConfig(t *testing.T) {
         wantErr bool
     }{
         {
-            name:   "valid sqlite",
-            driver: "sqlite",
+            name:   "valid pebble",
+            driver: "pebble",
             config: map[string]interface{}{},
             wantErr: false,
         },

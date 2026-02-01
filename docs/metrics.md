@@ -212,18 +212,6 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 > - Reducing write rate
 > - Scaling horizontally
 
-## SQLite Metrics
-
-SQLite is used for the log store (WAL). These metrics are provided by `go-libs` SQL instrumentation.
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `db.sql.latency` | Histogram | ms | Time spent executing SQL operations |
-
-**Attributes**:
-- `method`: SQL operation type (`sql.conn.begin_tx`, `sql.conn.exec`, `sql.conn.prepare`, `sql.conn.query`, `sql.rows`, `sql.stmt.exec`, `sql.tx.commit`)
-- `store.type`: Store identifier (`log-store`)
-
 ## Configuration
 
 ### Enabling Metrics Export
@@ -347,9 +335,6 @@ The dashboard is organized into the following sections:
 - WAL Cache Update Time
 - WAL Save Time
 - WAL Append Batch Size
-
-**SQLite Section** (collapsed by default):
-- Log Store SQL Time Passed
 
 **Pebble Section**:
 - Flush / Second

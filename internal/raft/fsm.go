@@ -329,7 +329,8 @@ func (fsm *FSM) applyAction(ctx context.Context, batch store.Batch, action *raft
 		return nil, err
 	}
 
-	if err := fsm.projectLog(ctx, batch, log); err != nil {
+	// Use the current raft index for balance diff keys (storeLastAppliedIndex is updated before this call)
+	if err := fsm.projectLog(ctx, batch, log, fsm.storeLastAppliedIndex); err != nil {
 		return nil, fmt.Errorf("projecting log %d: %w", log.Sequence, err)
 	}
 
@@ -387,18 +388,21 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 	return proto.Unmarshal(snapshot.Data, fsm.state)
 }
 
-func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb.Log) error {
-
+// projectLog projects a log to the store using the given index for balance diff keys.
+// The index parameter is used as the unique suffix for balance diff keys to avoid collisions.
+// During normal raft apply, this is the raft entry index.
+// During sync from leader, this is the log's sequence number.
+func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb.Log, index uint64) error {
 	switch {
 	case log.Payload.GetApply() != nil:
 		ledgerLog := log.Payload.GetApply().Log
 
 		projectTransaction := func(ctx context.Context, batch store.Batch, tx *commonpb.Transaction) error {
 			for _, posting := range tx.Postings {
-				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), ledgerLog.Id); err != nil {
+				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), index); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
-				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Destination, posting.Asset, posting.Amount, ledgerLog.Id); err != nil {
+				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Destination, posting.Asset, posting.Amount, index); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
 			}
@@ -498,8 +502,9 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 		}
 		count++
 
-		// Project the log
-		if err := fsm.projectLog(ctx, batch, log); err != nil {
+		// Project the log using the log's sequence as the index for balance diff keys
+		// (during sync we don't have the original raft index, so we use sequence which is globally unique)
+		if err := fsm.projectLog(ctx, batch, log, log.Sequence); err != nil {
 			return 0, fmt.Errorf("projecting log %d: %w", log.Sequence, err)
 		}
 

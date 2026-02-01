@@ -99,7 +99,7 @@ func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) e
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error {
+func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -108,7 +108,7 @@ func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, a
 	writeByte(b.keyBuffer, keyPrefixBalanceDiff)
 	writeString(b.keyBuffer, account)
 	writeString(b.keyBuffer, asset)
-	writeUInt64(b.keyBuffer, sequence)
+	writeUInt64(b.keyBuffer, raftIndex)
 
 	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff)
 	if err != nil {

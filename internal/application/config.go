@@ -10,7 +10,6 @@ type Config struct {
 	Debug           bool
 	HTTPPort        int
 	TransportConfig raft.TransportConfig
-	StorageType     string
 	DataDir         string
 	PebbleConfig    pebble.Config
 }

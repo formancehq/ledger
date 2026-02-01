@@ -150,7 +150,7 @@ During catch-up, the system uses range queries to efficiently stream only the ne
 - **Per Ledger**: Logs are streamed for each ledger that has missing data
 
 **Implementation**:
-- SQLite: `WHERE ledger = ? AND id >= ? AND id <= ?`
+- Pebble: Range iteration with prefix-based key filtering
 - gRPC: `StreamLogs` with ledger name and `from_id`/`to_id` parameters
 
 ## Command Batching
@@ -268,7 +268,7 @@ Balances are **not** reconstructed by replaying all logs (which would be too slo
 
 ### How It Works
 
-- The Store persists balances directly (SQLite: `balances` table, Pebble: balance diff entries)
+- The Store persists balance diff entries in Pebble
 - On `AppendLogs()`, balances are updated atomically with the log insertion
 - On recovery, the Store snapshot already contains the correct balances up to the snapshot point
 - Only the recent Raft entries (after the snapshot) need to be replayed

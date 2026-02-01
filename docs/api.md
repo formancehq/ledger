@@ -438,11 +438,11 @@ GET /cluster/state
       "ledgers": {
         "ledger1": {
           "id": 1,
-          "driver": "sqlite"
+          "driver": "pebble"
         },
         "ledger2": {
           "id": 2,
-          "driver": "sqlite"
+          "driver": "pebble"
         }
       }
     }

@@ -421,11 +421,6 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 	return logs
 }
 
-func TestPebbleStoreSQLite(t *testing.T) {
-	// Test to ensure SQLite backend also works with the common tests
-	// This is a placeholder - actual SQLite tests are in the sqlite package
-}
-
 func TestStoreSnapshot(t *testing.T) {
 	t.Parallel()
 

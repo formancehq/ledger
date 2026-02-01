@@ -1,6 +1,6 @@
 # Storage Drivers
 
-This document describes the available storage drivers for the Store and how they are configured in the Ledger v3 POC.
+This document describes the storage driver for the Store in the Ledger v3 POC.
 
 ## Overview
 
@@ -12,318 +12,11 @@ The Store is responsible for persisting:
 - **Transaction ID mappings** - Map transaction IDs to log IDs
 - **Reverted transaction IDs** - Track which transactions have been reverted
 
-**Storage is configured at the server level** using the `--storage-type` flag. All ledgers on a node use the same storage driver.
-
-## Configuration
-
-Storage type is specified when starting the server:
-
-```bash
-# Using SQLite (mattn driver)
-./ledger serve --storage-type sqlite-mattn
-
-# Using SQLite (modern driver)  
-./ledger serve --storage-type sqlite-modern
-
-# Using Pebble
-./ledger serve --storage-type pebble
-```
-
-Or via environment variable:
-
-```bash
-STORAGE_TYPE=pebble ./ledger serve
-```
-
-## Available Drivers
-
-| Driver | Library | CGO Required | Best For |
-|--------|---------|--------------|----------|
-| `sqlite-mattn` | `github.com/mattn/go-sqlite3` | ✅ Yes | Production (better performance) |
-| `sqlite-modern` | `modernc.org/sqlite` | ❌ No | Cross-compilation, Docker scratch images |
-| `pebble` | `github.com/cockroachdb/pebble` | ❌ No | High-throughput workloads |
+The storage backend is **Pebble**, a high-performance LSM-tree based storage engine from CockroachDB.
 
 ---
 
-## SQLite Mattn (`sqlite-mattn`)
-
-### Description
-
-Uses the popular `github.com/mattn/go-sqlite3` driver, which is a CGO wrapper around the SQLite C library. This provides the best performance and full SQLite compatibility.
-
-### Library
-
-```
-github.com/mattn/go-sqlite3
-```
-
-### Characteristics
-
-| Property | Value |
-|----------|-------|
-| **CGO Required** | Yes |
-| **Pure Go** | No |
-| **Performance** | Excellent |
-| **Cross-compilation** | Difficult (requires C compiler) |
-| **Docker compatibility** | Requires glibc (no scratch images) |
-
-### SQLite Settings
-
-The driver is configured with optimized settings for write-heavy workloads:
-
-```sql
-_journal_mode=WAL          -- Write-Ahead Logging for better concurrency
-_synchronous=NORMAL        -- Balanced durability/performance
-_cache_size=-32768         -- 32MB cache
-_temp_store=MEMORY         -- Keep temp tables in memory
-_busy_timeout=5000         -- 5 second timeout for locked database
-_txlock=immediate          -- Acquire write lock immediately
-```
-
-### Schema
-
-```sql
--- Transaction logs (with idempotency tracking embedded)
-CREATE TABLE logs (
-    ledger TEXT NOT NULL,
-    id INTEGER NOT NULL,
-    data BLOB NOT NULL,          -- Protobuf-encoded log
-    date TEXT,
-    idempotency_key TEXT,
-    idempotency_hash TEXT,
-    PRIMARY KEY (ledger, id),
-    UNIQUE(ledger, idempotency_key)
-) WITHOUT ROWID;
-
-CREATE INDEX idx_logs_ledger_idempotency_key ON logs(ledger, idempotency_key);
-
--- Account balances
-CREATE TABLE balances (
-    ledger TEXT NOT NULL,
-    account TEXT NOT NULL,
-    asset TEXT NOT NULL,
-    balance TEXT NOT NULL DEFAULT '0',
-    PRIMARY KEY (ledger, account, asset)
-) WITHOUT ROWID;
-
--- Account metadata
-CREATE TABLE account_metadata (
-    ledger TEXT NOT NULL,
-    account_address TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (ledger, account_address, key)
-) WITHOUT ROWID;
-
--- Transaction ID to log ID mapping
-CREATE TABLE transaction_ids (
-    ledger TEXT NOT NULL,
-    transaction_id INTEGER NOT NULL,
-    log_id INTEGER NOT NULL,
-    PRIMARY KEY (ledger, transaction_id)
-) WITHOUT ROWID;
-
--- Reverted transactions tracking
-CREATE TABLE reverted_transaction_ids (
-    ledger TEXT NOT NULL,
-    transaction_id INTEGER NOT NULL,
-    PRIMARY KEY (ledger, transaction_id)
-) WITHOUT ROWID;
-
--- Last applied Raft index tracking
-CREATE TABLE last_applied_index (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    value INTEGER NOT NULL DEFAULT 0
-);
-```
-
-### Use Cases
-
-- **Production deployments** where performance is critical
-- **Linux servers** with standard glibc
-- **Environments** where CGO is available
-
-### File Location
-
-```
-data/runtime.db
-```
-
-### ⚠️ Performance Impact of Random UUIDs as Account Addresses
-
-When inserting accounts with UUID v4 (or any random identifier) as account addresses, SQLite exhibits significant performance degradation. This section explains why and provides recommendations.
-
-#### The Problem
-
-SQLite uses B-tree data structures for both tables and indexes. The `balances` and `account_metadata` tables use `WITHOUT ROWID`, meaning they are organized as **clustered B-trees** keyed directly by the primary key (which includes the account address).
-
-When inserting accounts with **random UUIDs**:
-
-```
-INSERT account: a3f2e8d1-7b4c-4e9a-8f6d-2c1b0a9e8d7f  → goes to middle of B-tree
-INSERT account: f8c1d9e2-3a6b-4c5d-9e8f-1a2b3c4d5e6f  → goes to another random position
-INSERT account: 1b2c3d4e-5f6a-7b8c-9d0e-f1a2b3c4d5e6  → goes near the beginning
-...
-```
-
-Each insert lands at a **random position** in the B-tree, causing:
-
-1. **Page Splits**: When a B-tree page is full and a new key must be inserted in the middle, SQLite splits the page into two. With random inserts, this happens frequently and unpredictably.
-
-2. **Write Amplification**: A single logical insert may require:
-   - Reading multiple pages to find the insertion point
-   - Splitting one or more pages
-   - Updating parent pages up to the root
-   - Writing all modified pages to the WAL
-
-3. **Poor Cache Utilization**: Random access patterns defeat caching strategies. Pages loaded into the buffer pool are evicted before they can be reused, resulting in constant disk I/O.
-
-4. **Index Fragmentation**: The B-tree becomes fragmented over time, with pages at low fill factors (around 50% after many splits) instead of the optimal ~90%.
-
-#### Performance Comparison
-
-| Insert Pattern | Pages Read/Insert | Pages Written/Insert | Relative Speed |
-|----------------|-------------------|---------------------|----------------|
-| Sequential (incrementing IDs) | ~1 | ~1 | ⭐⭐⭐⭐⭐ (baseline) |
-| Random (UUID v4) | 3-10+ | 2-5+ | ⭐ (5-20x slower) |
-
-For a table with 1 million accounts:
-- **Sequential inserts**: B-tree depth ~3-4, mostly appending to the rightmost leaf
-- **Random inserts**: Every insert traverses the full tree depth, potentially causing splits at multiple levels
-
-#### Why UUID v4 is Particularly Bad
-
-UUID v4 is designed to be **cryptographically random**:
-
-```
-xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-        ^    ^
-        |    └── version 4 indicator
-        └── variant bits
-```
-
-This randomness, while excellent for uniqueness and security, is the **worst case** for B-tree insertion performance.
-
-#### Recommendations
-
-1. **Use Sequential or Time-Based Identifiers When Possible**
-   
-   If you control account address generation:
-   
-   ```
-   # UUID v7 (time-ordered) - Much better B-tree performance
-   018f6e8a-1234-7abc-8def-123456789abc
-   018f6e8a-1235-7abc-8def-123456789abc
-   018f6e8a-1236-7abc-8def-123456789abc
-   
-   # Or prefixed sequential IDs
-   user:000001
-   user:000002
-   user:000003
-   ```
-
-2. **Use Pebble for Random Insert Workloads**
-   
-   Pebble's LSM-tree architecture handles random inserts much better than B-trees:
-   - Writes go to an in-memory memtable (always fast)
-   - Background compaction sorts and organizes data
-   - No page splits during writes
-   
-   ```bash
-   ./ledger serve --storage-type pebble
-   ```
-
-3. **Batch Inserts When Possible**
-   
-   If you must use random UUIDs with SQLite, batch inserts reduce overhead:
-   ```
-   # Instead of 1000 individual transactions
-   # Use single transaction with 1000 inserts
-   ```
-
-4. **Pre-sort Bulk Imports**
-   
-   When loading many accounts, sort by address first:
-   ```bash
-   sort accounts.csv | import-tool
-   ```
-
-#### Technical Details
-
-The `WITHOUT ROWID` optimization (used for all our tables) makes this effect more pronounced:
-
-```sql
-CREATE TABLE balances (
-    ledger TEXT NOT NULL,
-    account TEXT NOT NULL,    -- ← Random UUID here
-    asset TEXT NOT NULL,
-    balance TEXT NOT NULL DEFAULT '0',
-    PRIMARY KEY (ledger, account, asset)
-) WITHOUT ROWID;  -- ← Table is the B-tree itself
-```
-
-In a regular table, SQLite would:
-1. Insert a row with an auto-incrementing rowid (sequential, fast)
-2. Update secondary indexes (random, slower)
-
-With `WITHOUT ROWID`, there's no fast sequential path - every insert goes directly to a position determined by the primary key.
-
----
-
-## SQLite Modern (`sqlite-modern`)
-
-### Description
-
-Uses the `modernc.org/sqlite` driver, which is a pure Go implementation of SQLite. No CGO required, making it ideal for cross-compilation and minimal Docker images.
-
-### Library
-
-```
-modernc.org/sqlite
-```
-
-### Characteristics
-
-| Property | Value |
-|----------|-------|
-| **CGO Required** | No |
-| **Pure Go** | Yes |
-| **Performance** | Good (slightly slower than mattn) |
-| **Cross-compilation** | Easy |
-| **Docker compatibility** | Works with scratch images |
-
-### SQLite Settings
-
-Similar optimized settings as sqlite-mattn:
-
-```sql
-journal_mode(WAL)          -- Write-Ahead Logging
-synchronous(NORMAL)        -- Balanced durability/performance
-busy_timeout(5000)         -- 5 second timeout
-temp_store(MEMORY)         -- Keep temp tables in memory
-cache_size(-32768)         -- 32MB cache
-```
-
-### Schema
-
-Same schema as sqlite-mattn (see above).
-
-### Use Cases
-
-- **Cross-platform builds** where CGO is not available
-- **Minimal Docker images** (scratch, distroless)
-- **Development environments** without C compiler
-- **CI/CD pipelines** for simpler builds
-
-### File Location
-
-```
-data/runtime.db
-```
-
----
-
-## Pebble (`pebble`)
+## Pebble
 
 ### Description
 
@@ -383,7 +76,7 @@ Pebble uses single-byte prefixes for efficient key organization. Keys are format
 
 ### Balance Storage Model
 
-Unlike SQLite which stores the current balance, Pebble stores **balance diffs** (deltas):
+Pebble stores **balance diffs** (deltas):
 
 - Each transaction creates new diff entries with a unique timestamp
 - Balance is computed by summing all diffs for an account/asset pair
@@ -439,44 +132,37 @@ Pebble exposes detailed metrics accessible via the API through OpenTelemetry:
 
 ---
 
-## Comparison
+## Configuration
 
-### Performance
+Pebble can be configured using command-line flags:
 
-| Operation | sqlite-mattn | sqlite-modern | pebble |
-|-----------|--------------|---------------|--------|
-| Single insert | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ |
-| Batch insert | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
-| Balance read | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
-| Range scan | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+```bash
+./ledger serve \
+  --pebble-memtable-size=268435456 \
+  --pebble-memtable-stop-writes-threshold=6 \
+  --pebble-l0-compaction-threshold=64 \
+  --pebble-l0-stop-writes-threshold=256 \
+  --pebble-lbase-max-bytes=2147483648 \
+  --pebble-cache-size=1073741824 \
+  --pebble-target-file-size=268435456 \
+  --pebble-bytes-per-sync=1048576 \
+  --pebble-wal-bytes-per-sync=1048576 \
+  --pebble-max-concurrent-compactions=2 \
+  --pebble-wal-min-sync-interval=0 \
+  --pebble-disable-wal=false
+```
 
-### Features
+Or via environment variables:
 
-| Feature | sqlite-mattn | sqlite-modern | pebble |
-|---------|--------------|---------------|--------|
-| SQL queries | ✅ | ✅ | ❌ |
-| Pure Go | ❌ | ✅ | ✅ |
-| ACID transactions | ✅ | ✅ | ✅ |
-| Compression | ❌ | ❌ | ✅ |
-| Point-in-time recovery | ❌ | ❌ | ✅ (checkpoints) |
-| Metrics | Basic | Basic | Detailed |
-
-### Recommendations
-
-| Scenario | Recommended Driver |
-|----------|-------------------|
-| Production (Linux) | `sqlite-mattn` or `pebble` |
-| Development | `sqlite-modern` |
-| Docker scratch images | `sqlite-modern` or `pebble` |
-| High write throughput | `pebble` |
-| Simple debugging | `sqlite-mattn` or `sqlite-modern` |
-| Cross-compilation | `sqlite-modern` or `pebble` |
+```bash
+PEBBLE_MEMTABLE_SIZE=268435456 ./ledger serve
+```
 
 ---
 
 ## Creating a Ledger
 
-Ledgers are created without specifying storage - storage is determined by the server's `--storage-type` flag:
+Ledgers are created without specifying storage - Pebble is the only storage backend:
 
 ### HTTP API
 
@@ -496,7 +182,7 @@ curl -X POST http://localhost:9000/my-ledger \
 
 ### Common Interface
 
-All drivers implement the `Store` interface defined in `internal/store/store.go`. The interface provides:
+The Pebble driver implements the `Store` interface defined in `internal/store/store.go`. The interface provides:
 
 - **Log operations**: `AppendLogs`, `GetAllLogs`, `GetLogByID`
 - **Runtime queries**: `GetBalances`, `GetAccountMetadata`
@@ -506,12 +192,12 @@ All drivers implement the `Store` interface defined in `internal/store/store.go`
 
 ### Source Files
 
-| Driver | Source File |
-|--------|-------------|
-| sqlite-mattn | `internal/store/sqlite/store.go` |
-| sqlite-modern | `internal/store/sqlite/store.go` |
-| pebble | `internal/store/pebble/store.go` |
-| Common SQLite | `internal/store/sqlite/db.go` |
+| Component | Source File |
+|-----------|-------------|
+| Pebble Store | `internal/store/pebble/store.go` |
+| Pebble Batch | `internal/store/pebble/batch.go` |
+| Pebble Config | `internal/store/pebble/config.go` |
+| Pebble Metrics | `internal/store/pebble/metrics.go` |
 | Interfaces | `internal/store/store.go` |
 
 ---

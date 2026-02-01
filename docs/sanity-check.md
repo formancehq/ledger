@@ -27,8 +27,7 @@ The sanity check endpoint provides a way to detect these issues on individual no
 │  │                 │  │                 │  │                 │     │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │     │
 │  │  │  Storage  │  │  │  │  Storage  │  │  │  │  Storage  │  │     │
-│  │  │  Pebble/  │  │  │  │  Pebble/  │  │  │  │  Pebble/  │  │     │
-│  │  │  SQLite   │  │  │  │  SQLite   │  │  │  │  SQLite   │  │     │
+│  │  │  (Pebble) │  │  │  │  (Pebble) │  │  │  │  (Pebble) │  │     │
 │  │  └─────┬─────┘  │  │  └─────┬─────┘  │  │  └─────┬─────┘  │     │
 │  │        │        │  │        │        │  │        │        │     │
 │  │   Sanity Check  │  │   Sanity Check  │  │   Sanity Check  │     │
@@ -186,11 +185,6 @@ Depending on the storage driver, additional checks may include:
 - LSM tree integrity
 - Block checksum verification
 - Manifest file consistency
-
-**SQLite**:
-- `PRAGMA integrity_check`
-- Foreign key consistency
-- Index integrity
 
 ## Monitoring Integration
 

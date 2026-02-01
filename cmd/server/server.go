@@ -85,7 +85,6 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
-	runCmd.Flags().String("storage-type", "", "Define storage type (sqlite-mattn, sqlite-modern, pebble)")
 
 	// Pebble storage configuration flags
 	runCmd.Flags().Uint64("pebble-memtable-size", 0, "Pebble memtable size in bytes (default: 256MB)")
@@ -280,7 +279,6 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.TickInterval = getDuration("raft-tick-interval", 0)
 	cfg.RaftConfig.CompactionMargin = getUint64("raft-compaction-margin", 1000)
 	cfg.RaftConfig.ProposeQueueCapacity = getInt("raft-propose-queue-capacity", 0)
-	cfg.StorageType = getString("storage-type", "pebble")
 
 	// Load Pebble configuration with defaults
 	cfg.PebbleConfig = loadPebbleConfig(cmd)

@@ -3,7 +3,6 @@ module github.com/formancehq/ledger-v3-poc
 go 1.25.3
 
 require (
-	github.com/XSAM/otelsql v0.41.0
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble v1.1.3
 	github.com/formancehq/go-libs/v3 v3.6.0
@@ -12,7 +11,6 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/invopop/jsonschema v0.13.0
-	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.3
 	github.com/sirupsen/logrus v1.9.3
@@ -37,7 +35,6 @@ require (
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.42.2
 )
 
 require (
@@ -86,7 +83,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/docker/docker v28.5.2+incompatible // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
@@ -139,7 +135,6 @@ require (
 	github.com/nats-io/nats.go v1.44.0 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -151,7 +146,6 @@ require (
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
-	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/riandyrn/otelchi v0.12.2 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
@@ -201,7 +195,4 @@ require (
 	golang.org/x/tools v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	modernc.org/libc v1.66.10 // indirect
-	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
 )

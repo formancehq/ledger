@@ -1,16 +1,11 @@
-FROM golang:1.25-alpine AS compiler
-RUN apk add --no-cache --update go gcc g++ make build-base sqlite
-ENV CGO_ENABLED=1
-
-FROM compiler AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /build
 RUN apk add --no-cache git make
 COPY go.mod go.sum ./
 RUN go mod download
 ENV GOEXPERIMENT=jsonv2
-ENV CGO_ENABLED=1
+ENV CGO_ENABLED=0
 ENV GOOS=linux
-RUN go install github.com/mattn/go-sqlite3
 COPY main.go .
 COPY internal internal
 COPY cmd cmd
@@ -26,4 +21,3 @@ WORKDIR /app
 COPY --from=builder /build/ledger-v3-poc .
 COPY --from=builder /build/ledgerctl .
 ENTRYPOINT ["./ledger-v3-poc"]
-

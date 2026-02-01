@@ -43,10 +43,7 @@ config:
   walDir: "/data/raft"
   dataDir: "/data/app"
   
-  # Storage type: sqlite-mattn, sqlite-modern, or pebble
-  storageType: "sqlite-mattn"
-  
-  # Pebble storage configuration (only used when storageType is "pebble")
+  # Pebble storage configuration
   pebble:
     # Memtable size in bytes (default: 256MB = 268435456)
     # Larger values absorb more writes before flush, reducing SST files and compactions

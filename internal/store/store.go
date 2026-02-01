@@ -8,7 +8,6 @@ import (
 )
 
 // MetricsProvider is an optional interface for stores that provide metrics.
-// Stores that don't support metrics (e.g., SQLite) don't need to implement this.
 type MetricsProvider interface {
 	// GetMetrics returns store-specific metrics as proto message.
 	GetMetrics() any
@@ -40,7 +39,7 @@ type Batch interface {
 	// DeleteLedger deletes all data for a ledger
 	DeleteLedger(ctx context.Context, id uint32) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, sequence uint64) error
+	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account

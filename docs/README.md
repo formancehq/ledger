@@ -10,13 +10,13 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 
 - **Distributed Consensus**: Uses etcd/raft for strong consistency across cluster nodes
 - **Single Raft Architecture**: All ledgers managed by one Raft group for simplicity and atomic operations
-- **Multiple Storage Backends**: SQLite (mattn/modern) and Pebble for different use cases
+- **Pebble Storage**: High-performance LSM-tree storage engine from CockroachDB
 - **Numscript Support**: Full support for Numscript transaction scripting
 - **Idempotency**: Built-in idempotency key support for safe retries
 - **Bulk Operations**: Process multiple transactions in a single request
 - **OpenTelemetry**: Comprehensive observability with traces, metrics, and logs
 - **Continuous Profiling**: Pyroscope integration for CPU, memory, and goroutine profiling
-- **Pure Go Options**: Pebble and sqlite-modern drivers require no CGO (sqlite-mattn requires CGO)
+- **Pure Go**: Pebble requires no CGO, enabling easy cross-compilation and minimal Docker images
 
 ## Documentation Structure
 
@@ -45,7 +45,7 @@ Explanation of the two-level log architecture (global log vs ledger log) and how
 Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
 
 ### 🗄️ [Storage Drivers](./storage-drivers.md)
-Detailed documentation on each storage driver (SQLite mattn, SQLite modern, Pebble), their characteristics, configuration, and use cases.
+Detailed documentation on the Pebble storage driver, its characteristics, configuration, and use cases.
 
 ### 🚀 [Deployment](./deployment.md)
 Deployment guide, Kubernetes/Helm configuration, and environment management.
@@ -101,8 +101,7 @@ This architecture simplifies operations while maintaining strong consistency gua
 | **gRPC** | Inter-node communication and request forwarding |
 | **HTTP/REST** | Public API with OpenAPI specification |
 | **Protocol Buffers** | Data serialization for Raft entries and storage |
-| **SQLite** | Relational storage option (mattn: CGO, modern: pure Go) |
-| **Pebble** | LSM-tree storage option (CockroachDB's engine, pure Go) |
+| **Pebble** | LSM-tree storage engine (CockroachDB's engine, pure Go) |
 | **fx (Uber)** | Dependency injection and lifecycle management |
 | **OpenTelemetry** | Observability: traces, metrics, and logs |
 | **Pyroscope** | Continuous profiling: CPU, memory, goroutines |

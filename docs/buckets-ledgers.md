@@ -128,17 +128,9 @@ sequenceDiagram
     HTTP-->>Client: 201 Created
 ```
 
-### Storage Configuration
+### Storage
 
-Storage type is configured at the **server level** using the `--storage-type` flag. All ledgers on a node use the same storage driver:
-
-```bash
-# Using SQLite
-./ledger serve --storage-type sqlite-mattn
-
-# Using Pebble
-./ledger serve --storage-type pebble
-```
+Storage is handled by Pebble, a high-performance LSM-tree storage engine. All ledgers on a node share the same Pebble database.
 
 ## Transactions
 

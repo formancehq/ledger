@@ -329,7 +329,7 @@ Read endpoints comparison with the original ledger:
 The POC uses a different architecture with Raft for replication:
 - A single Raft group manages all ledgers and their transactions
 - Write operations go through the leader
-- Logs are stored via the Store (Pebble or SQLite)
+- Logs are stored via the Store (Pebble)
 - A global log provides system-wide ordering and enables cross-ledger atomic operations
 
 This architecture impacts certain implementation decisions:
