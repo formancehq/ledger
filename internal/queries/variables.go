@@ -34,7 +34,7 @@ func ValidateVars(vars map[string]VarSpec) error {
 	for name, spec := range vars {
 		// validate type
 		if !slices.Contains(ValueTypes, spec.Type) {
-			return fmt.Errorf("variable `%s` has invalid type `%s`, expected one of `%v`", name, spec, ValueTypes)
+			return fmt.Errorf("variable `%s` has invalid type `%s`, expected one of `%v`", name, spec.Type, ValueTypes)
 		}
 		// validate default
 		err := validateValueType(spec.Type, spec.Default)

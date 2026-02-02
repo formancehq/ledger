@@ -35,13 +35,16 @@ func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
 }
 
 func (s EntitySchema) GetFieldType(access string) (*ValueType, error) {
-	key, _, err := parseAccess(access)
+	key, idx, err := parseAccess(access)
 	if err != nil {
 		return nil, err
 	}
 	_, field := s.GetFieldByNameOrAlias(key)
 	if field == nil {
 		return nil, fmt.Errorf("unknown field: %s", key)
+	}
+	if idx != "" && !field.Type.IsIndexable() {
+		return nil, fmt.Errorf("unexpected field indexing: %s", access)
 	}
 	return pointer.For(field.Type.ValueType()), nil
 }

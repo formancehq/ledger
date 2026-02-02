@@ -715,6 +715,8 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 			return nil, nil, err
 		}
 		result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
+	default:
+		return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
 	}
 	return &template.Resource, result, nil
 }
@@ -798,6 +800,8 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					return nil, nil, err
 				}
 				result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
+			default:
+				return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
 			}
 			return &template.Resource, result, nil
 		}

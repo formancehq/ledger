@@ -81,7 +81,7 @@ func (e ParsingError) Error() string {
 		currentChar = fmt.Sprintf("'%c'", e.state.peek())
 	}
 
-	return fmt.Sprintf("i was expecting %s, but I got %s instead", e.expecting, currentChar)
+	return fmt.Sprintf("expected %s, got %s instead", e.expecting, currentChar)
 }
 
 func (p parserState) isEOF() bool {
@@ -131,7 +131,7 @@ func isVarHeadChar(b byte) bool {
 
 // alphanum chars or '_'
 func isVarTailChar(b byte) bool {
-	return isVarHeadChar(b) || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
+	return isVarHeadChar(b) || (b >= '0' && b <= '9') || b == '_'
 }
 
 // Parse and consume the var identifier until we get a non-identifier char

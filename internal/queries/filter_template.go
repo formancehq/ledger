@@ -66,6 +66,8 @@ func validateFilterTemplate(schema EntitySchema, m map[string]any, vars map[stri
 							return err
 						}
 					}
+				} else {
+					return fmt.Errorf("unexpected type: %T", value)
 				}
 			} else {
 				err := validateValue(*valueType, operand, vars)
