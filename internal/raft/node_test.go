@@ -904,6 +904,25 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		}
 	}
 
+	// Wait for the leader's snapshot to be created and logs to be compacted.
+	// This is important because snapshot creation is async (runMaintenanceTask).
+	// Without this wait, the leader might still have all entries and would
+	// replicate them instead of sending a snapshot to the follower.
+	t.Log("Waiting for leader snapshot to be created and logs compacted...")
+	require.Eventually(t, func() bool {
+		snapshot, err := leader.WAL.Snapshot()
+		if err != nil {
+			return false
+		}
+		// Snapshot should be at an index close to the last entry (20 + ledger = 21)
+		// With compaction margin, we just need to ensure a recent snapshot exists
+		hasSnapshot := snapshot.Metadata.Index > 0
+		if hasSnapshot {
+			t.Logf("Leader snapshot at index %d", snapshot.Metadata.Index)
+		}
+		return hasSnapshot
+	}, 10*time.Second, 100*time.Millisecond, "leader should have created a snapshot")
+
 	// Set up a blocker for the sync process
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)

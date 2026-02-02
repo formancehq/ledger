@@ -121,6 +121,30 @@ func (b *Batch) AppendBalanceDiff(diff store.BalanceDiff) error {
 	return nil
 }
 
+// SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair.
+func (b *Batch) SetBalanceBase(base store.BalanceBase) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	writeLedgerPrefix(b.keyBuffer, base.LedgerID)
+	writeByte(b.keyBuffer, keyPrefixBalanceBase)
+	writeString(b.keyBuffer, base.Account)
+	writeString(b.keyBuffer, base.Asset)
+	writeUInt64(b.keyBuffer, base.RaftIndex)
+
+	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, base.Balance)
+	if err != nil {
+		return fmt.Errorf("marshaling balance base: %w", err)
+	}
+
+	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
+		return fmt.Errorf("storing balance base for ledger %d account %s asset %s: %w", base.LedgerID, base.Account, base.Asset, err)
+	}
+
+	return nil
+}
+
 // SaveAccountMetadata saves metadata for an account.
 func (b *Batch) SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error {
 	if b.committed {

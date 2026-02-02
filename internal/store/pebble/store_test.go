@@ -345,10 +345,10 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 					}).
 						WithID(1).
 						WithDate(now),
-			},
-		}},
-		Idempotency: &commonpb.Idempotency{
-			Key:  "idempotency-key-1",
+				},
+			}},
+			Idempotency: &commonpb.Idempotency{
+				Key:  "idempotency-key-1",
 				Hash: []byte("hash-1"),
 			},
 		},
@@ -371,60 +371,60 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 					}).
 						WithID(2).
 						WithDate(now.Add(time.Second)),
-			},
-		}},
-		Idempotency: &commonpb.Idempotency{
-			Key:  "idempotency-key-2",
+				},
+			}},
+			Idempotency: &commonpb.Idempotency{
+				Key:  "idempotency-key-2",
 				Hash: []byte("hash-2"),
 			},
 		},
-	{
-		Sequence: startSequence + 2,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
-				LedgerId: ledgerID,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-						SavedMetadata: &commonpb.SavedMetadata{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-									Addr: "bank",
+		{
+			Sequence: startSequence + 2,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
+							SavedMetadata: &commonpb.SavedMetadata{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+										Addr: "bank",
+									}},
+								},
+								Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
+									"label": "Bank Account",
 								}},
 							},
-							Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
-								"label": "Bank Account",
-							}},
 						},
-					},
-				}).
-					WithID(3).
-					WithDate(now.Add(2 * time.Second)),
-			},
-		}},
-	},
-	{
-		Sequence: startSequence + 3,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
-				LedgerId: ledgerID,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-						DeletedMetadata: &commonpb.DeletedMetadata{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
-									Addr: "bank",
-								}},
+					}).
+						WithID(3).
+						WithDate(now.Add(2 * time.Second)),
+				},
+			}},
+		},
+		{
+			Sequence: startSequence + 3,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerId: ledgerID,
+					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
+							DeletedMetadata: &commonpb.DeletedMetadata{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+										Addr: "bank",
+									}},
+								},
+								Key: "old_key",
 							},
-							Key: "old_key",
 						},
-					},
-				}).
-					WithID(4).
-					WithDate(now.Add(3 * time.Second)),
-			},
-		}},
-	},
-}
+					}).
+						WithID(4).
+						WithDate(now.Add(3 * time.Second)),
+				},
+			}},
+		},
+	}
 
 	return logs
 }
@@ -613,4 +613,101 @@ func TestStoreDeleteLedger(t *testing.T) {
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Empty(t, ledgers)
+}
+
+func TestStoreBalanceBase(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	tmpDir := t.TempDir()
+	s, err := NewStore(tmpDir, logger, meter, DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var ledgerID uint32 = 1
+	registerLedger(t, s, "test-ledger", ledgerID)
+
+	// Initially no balance base should exist
+	base, err := s.GetBalanceBase(ledgerID, "bank", "USD", 100)
+	require.NoError(t, err)
+	require.Nil(t, base)
+
+	// Store balance base at raft index 10
+	batch := s.NewBatch(10)
+	require.NoError(t, batch.SetBalanceBase(store.BalanceBase{
+		LedgerID:  ledgerID,
+		Account:   "bank",
+		Asset:     "USD",
+		Balance:   commonpb.NewBigInt(big.NewInt(1000)),
+		RaftIndex: 10,
+	}))
+	require.NoError(t, batch.Commit())
+
+	// Query with maxRaftIndex >= 10 should return the base
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 10)
+	require.NoError(t, err)
+	require.NotNil(t, base)
+	require.Equal(t, uint64(10), base.RaftIndex)
+	require.Equal(t, big.NewInt(1000), base.Balance.Value())
+
+	// Query with maxRaftIndex > 10 should also return the base
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 100)
+	require.NoError(t, err)
+	require.NotNil(t, base)
+	require.Equal(t, uint64(10), base.RaftIndex)
+
+	// Query with maxRaftIndex < 10 should return nil
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 9)
+	require.NoError(t, err)
+	require.Nil(t, base)
+
+	// Store another balance base at raft index 20
+	batch = s.NewBatch(20)
+	require.NoError(t, batch.SetBalanceBase(store.BalanceBase{
+		LedgerID:  ledgerID,
+		Account:   "bank",
+		Asset:     "USD",
+		Balance:   commonpb.NewBigInt(big.NewInt(2000)),
+		RaftIndex: 20,
+	}))
+	require.NoError(t, batch.Commit())
+
+	// Query with maxRaftIndex = 15 should return base at index 10
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 15)
+	require.NoError(t, err)
+	require.NotNil(t, base)
+	require.Equal(t, uint64(10), base.RaftIndex)
+	require.Equal(t, big.NewInt(1000), base.Balance.Value())
+
+	// Query with maxRaftIndex = 20 should return base at index 20
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 20)
+	require.NoError(t, err)
+	require.NotNil(t, base)
+	require.Equal(t, uint64(20), base.RaftIndex)
+	require.Equal(t, big.NewInt(2000), base.Balance.Value())
+
+	// Query with maxRaftIndex = 100 should return base at index 20 (the latest)
+	base, err = s.GetBalanceBase(ledgerID, "bank", "USD", 100)
+	require.NoError(t, err)
+	require.NotNil(t, base)
+	require.Equal(t, uint64(20), base.RaftIndex)
+	require.Equal(t, big.NewInt(2000), base.Balance.Value())
+
+	// Query for different account should return nil
+	base, err = s.GetBalanceBase(ledgerID, "user", "USD", 100)
+	require.NoError(t, err)
+	require.Nil(t, base)
+
+	// Query for different asset should return nil
+	base, err = s.GetBalanceBase(ledgerID, "bank", "EUR", 100)
+	require.NoError(t, err)
+	require.Nil(t, base)
+
+	// Query for different ledger should return nil
+	base, err = s.GetBalanceBase(999, "bank", "USD", 100)
+	require.NoError(t, err)
+	require.Nil(t, base)
 }

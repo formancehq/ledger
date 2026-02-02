@@ -55,6 +55,7 @@ var (
 	keyPrefixLedgerInfo      byte = 0x07
 	keyPrefixLog             byte = 0x08 // [keyPrefixLog][sequence] -> Log
 	// 0x09 was keyPrefixLogIndex - now unused, logs are accessed via Log
+	keyPrefixBalanceBase byte = 0x0A // [ledger][keyPrefixBalanceBase][account][asset][raftIndex] -> BigInt
 )
 
 // NewStore creates a new Store instance
@@ -369,6 +370,61 @@ func (s *Store) GetBalanceDiffs(ledger uint32, query store.BalanceDiffsQuery) (s
 	}
 
 	return result, nil
+}
+
+// GetBalanceBase retrieves the most recent balance base for an account/asset pair
+// whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
+func (s *Store) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*store.StoredBalanceBase, error) {
+	buf := bytes.NewBuffer(nil)
+
+	// Build the prefix for this ledger/account/asset
+	writeLedgerPrefix(buf, ledgerID)
+	writeByte(buf, keyPrefixBalanceBase)
+	writeString(buf, account)
+	writeString(buf, asset)
+	lowerBound := bytes.Clone(buf.Bytes())
+
+	// Upper bound includes maxRaftIndex + 1 so we include entries at maxRaftIndex
+	writeUInt64(buf, maxRaftIndex+1)
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for balance base: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	// Seek to the last entry in the range (the one with the highest RaftIndex <= maxRaftIndex)
+	if !iter.Last() {
+		// No base found
+		return nil, nil
+	}
+
+	key := iter.Key()
+	valueBytes, err := iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading balance base value: %w", err)
+	}
+
+	// Extract RaftIndex from key (last 8 bytes after lowerBound prefix)
+	keyAfterPrefix := key[len(lowerBound):]
+	if len(keyAfterPrefix) < 8 {
+		return nil, fmt.Errorf("malformed balance base key: expected at least 8 bytes for RaftIndex, got %d", len(keyAfterPrefix))
+	}
+	raftIndex := binary.BigEndian.Uint64(keyAfterPrefix[:8])
+
+	balance := &commonpb.BigInt{}
+	if err := proto.Unmarshal(valueBytes, balance); err != nil {
+		return nil, fmt.Errorf("unmarshaling balance base value: %w", err)
+	}
+
+	return &store.StoredBalanceBase{
+		RaftIndex: raftIndex,
+		Balance:   balance,
+	}, nil
 }
 
 // GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)

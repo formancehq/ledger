@@ -280,6 +280,20 @@ func (mr *MockBatchMockRecorder) SaveLedger(info any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveLedger", reflect.TypeOf((*MockBatch)(nil).SaveLedger), info)
 }
 
+// SetBalanceBase mocks base method.
+func (m *MockBatch) SetBalanceBase(base BalanceBase) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetBalanceBase", base)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetBalanceBase indicates an expected call of SetBalanceBase.
+func (mr *MockBatchMockRecorder) SetBalanceBase(base any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBalanceBase", reflect.TypeOf((*MockBatch)(nil).SetBalanceBase), base)
+}
+
 // StoreRevertedTransactionID mocks base method.
 func (m *MockBatch) StoreRevertedTransactionID(ledger uint32, transactionID, sequence uint64) error {
 	m.ctrl.T.Helper()
@@ -402,6 +416,21 @@ func (m *MockStore) GetAllLogs(from, to uint64) (Cursor[*commonpb.Log], error) {
 func (mr *MockStoreMockRecorder) GetAllLogs(from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockStore)(nil).GetAllLogs), from, to)
+}
+
+// GetBalanceBase mocks base method.
+func (m *MockStore) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBalanceBase", ledgerID, account, asset, maxRaftIndex)
+	ret0, _ := ret[0].(*StoredBalanceBase)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBalanceBase indicates an expected call of GetBalanceBase.
+func (mr *MockStoreMockRecorder) GetBalanceBase(ledgerID, account, asset, maxRaftIndex any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalanceBase", reflect.TypeOf((*MockStore)(nil).GetBalanceBase), ledgerID, account, asset, maxRaftIndex)
 }
 
 // GetBalanceDiffs mocks base method.

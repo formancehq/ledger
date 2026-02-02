@@ -16,6 +16,7 @@ type BatchInterceptor struct {
 	OnSaveLedger                 func(delegate Batch, info *commonpb.LedgerInfo) error
 	OnDeleteLedger               func(delegate Batch, id uint32) error
 	OnAppendBalanceDiff          func(delegate Batch, diff BalanceDiff) error
+	OnSetBalanceBase             func(delegate Batch, base BalanceBase) error
 	OnSaveAccountMetadata        func(delegate Batch, ledger uint32, account string, metadata *commonpb.Metadata) error
 	OnDeleteAccountMetadata      func(delegate Batch, ledger uint32, account string, keys []string) error
 	OnStoreTransactionID         func(delegate Batch, ledger uint32, transactionID uint64, sequence uint64) error
@@ -73,6 +74,16 @@ func (b *BatchInterceptor) AppendBalanceDiff(diff BalanceDiff) error {
 		return interceptor(b.delegate, diff)
 	}
 	return b.delegate.AppendBalanceDiff(diff)
+}
+
+func (b *BatchInterceptor) SetBalanceBase(base BalanceBase) error {
+	b.mu.RLock()
+	interceptor := b.OnSetBalanceBase
+	b.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(b.delegate, base)
+	}
+	return b.delegate.SetBalanceBase(base)
 }
 
 func (b *BatchInterceptor) SaveAccountMetadata(ledger uint32, account string, md *commonpb.Metadata) error {
@@ -141,6 +152,7 @@ func (b *BatchInterceptor) ClearInterceptors() {
 	b.OnSaveLedger = nil
 	b.OnDeleteLedger = nil
 	b.OnAppendBalanceDiff = nil
+	b.OnSetBalanceBase = nil
 	b.OnSaveAccountMetadata = nil
 	b.OnDeleteAccountMetadata = nil
 	b.OnStoreTransactionID = nil
@@ -164,6 +176,7 @@ type StoreInterceptor struct {
 	// Store interceptors
 	OnListLedgers                  func(delegate Store) (Cursor[*commonpb.LedgerInfo], error)
 	OnGetBalanceDiffs              func(delegate Store, ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)
+	OnGetBalanceBase               func(delegate Store, ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error)
 	OnGetAccountMetadata           func(delegate Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	OnGetAccountVolumes            func(delegate Store, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	OnGetSequenceForIdempotencyKey func(delegate Store, idempotencyKey string) (uint64, error)
@@ -229,6 +242,16 @@ func (s *StoreInterceptor) GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQu
 		return interceptor(s.delegate, ledgerID, query)
 	}
 	return s.delegate.GetBalanceDiffs(ledgerID, query)
+}
+
+func (s *StoreInterceptor) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
+	s.mu.RLock()
+	interceptor := s.OnGetBalanceBase
+	s.mu.RUnlock()
+	if interceptor != nil {
+		return interceptor(s.delegate, ledgerID, account, asset, maxRaftIndex)
+	}
+	return s.delegate.GetBalanceBase(ledgerID, account, asset, maxRaftIndex)
 }
 
 func (s *StoreInterceptor) GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
@@ -419,6 +442,7 @@ func (s *StoreInterceptor) ClearInterceptors() {
 	s.OnGetLogBySequence = nil
 	s.OnListLedgers = nil
 	s.OnGetBalanceDiffs = nil
+	s.OnGetBalanceBase = nil
 	s.OnGetAccountMetadata = nil
 	s.OnGetAccountVolumes = nil
 	s.OnGetSequenceForIdempotencyKey = nil

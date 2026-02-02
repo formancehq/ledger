@@ -26,6 +26,23 @@ type StoredBalanceDiff struct {
 	Diff      *commonpb.BigInt
 }
 
+// BalanceBase represents a compacted balance snapshot for an account/asset pair.
+// It stores the cumulative balance at a specific Raft index, allowing efficient
+// balance computation by summing the base with subsequent diffs.
+type BalanceBase struct {
+	LedgerID  uint32
+	Account   string
+	Asset     string
+	Balance   *commonpb.BigInt
+	RaftIndex uint64
+}
+
+// StoredBalanceBase represents a balance base retrieved from storage.
+type StoredBalanceBase struct {
+	RaftIndex uint64
+	Balance   *commonpb.BigInt
+}
+
 type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs (global logs by sequence)
 	// from: optional sequence to start from (0 = from beginning)
@@ -53,6 +70,8 @@ type Batch interface {
 	DeleteLedger(id uint32) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
 	AppendBalanceDiff(diff BalanceDiff) error
+	// SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair
+	SetBalanceBase(base BalanceBase) error
 	// SaveAccountMetadata saves metadata for an account
 	SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account
@@ -84,6 +103,9 @@ type Store interface {
 	// GetBalanceDiffs retrieves all balance diffs for the given account/asset combinations.
 	// The caller is responsible for computing the final balance by summing the diffs.
 	GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)
+	// GetBalanceBase retrieves the most recent balance base for an account/asset pair
+	// whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
+	GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error)
 	GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
 	GetAccountVolumes(ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
