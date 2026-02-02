@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -172,9 +172,9 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	return schemas, err
 }
 
-func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, defaultPageSize uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	var (
-		resource *resources.ResourceKind
+		resource *queries.ResourceKind
 		cursor   *bunpaginate.Cursor[any]
 		err      error
 	)

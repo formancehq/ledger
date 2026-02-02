@@ -12,7 +12,7 @@ import (
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	resources "github.com/formancehq/ledger/internal/resources"
+	resources "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"

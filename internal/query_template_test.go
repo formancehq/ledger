@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/query"
 
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 )
 
 func TestQueryTemplateValidation(t *testing.T) {
@@ -52,17 +52,17 @@ func TestQueryTemplateValidation(t *testing.T) {
 }}`,
 			expectedTemplate: QueryTemplate{
 				Description: "complex & valid",
-				Resource:    resources.ResourceKindAccount,
+				Resource:    queries.ResourceKindAccount,
 				Params:      nil,
-				Vars: map[string]resources.VarSpec{
+				Vars: map[string]queries.VarSpec{
 					"iban": {
-						Type: resources.ValueTypeString,
+						Type: queries.ValueTypeString,
 					},
 					"minimum_balance": {
-						Type: resources.ValueTypeInt,
+						Type: queries.ValueTypeInt,
 					},
 					"metadata_field": {
-						Type:    resources.ValueTypeString,
+						Type:    queries.ValueTypeString,
 						Default: "qux",
 					},
 				},
@@ -92,7 +92,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 			}`,
 			expectedTemplate: QueryTemplate{
 				Description: "complex params",
-				Resource:    resources.ResourceKindVolume,
+				Resource:    queries.ResourceKindVolume,
 				Params:      json.RawMessage(`{"groupLvl": 2}`),
 				Vars:        nil,
 				Body:        nil,
@@ -125,23 +125,23 @@ func TestQueryTemplateValidation(t *testing.T) {
 			}`,
 			expectedTemplate: QueryTemplate{
 				Description: "all types",
-				Resource:    resources.ResourceKindAccount,
+				Resource:    queries.ResourceKindAccount,
 				Params:      nil,
-				Vars: map[string]resources.VarSpec{
+				Vars: map[string]queries.VarSpec{
 					"my_bool": {
-						Type:    resources.ValueTypeBoolean,
+						Type:    queries.ValueTypeBoolean,
 						Default: false,
 					},
 					"my_int": {
-						Type:    resources.ValueTypeInt,
+						Type:    queries.ValueTypeInt,
 						Default: json.Number("42"),
 					},
 					"my_string": {
-						Type:    resources.ValueTypeString,
+						Type:    queries.ValueTypeString,
 						Default: "hello",
 					},
 					"my_date": {
-						Type:    resources.ValueTypeDate,
+						Type:    queries.ValueTypeDate,
 						Default: "2023-01-01T01:01:01Z",
 					},
 				},
@@ -235,8 +235,8 @@ func TestQueryResolution(t *testing.T) {
 
 	type testCase struct {
 		name            string
-		resource        resources.ResourceKind
-		varDeclarations map[string]resources.VarSpec
+		resource        queries.ResourceKind
+		varDeclarations map[string]queries.VarSpec
 		source          string
 		vars            map[string]any
 		expectedError   string
@@ -246,8 +246,8 @@ func TestQueryResolution(t *testing.T) {
 	for _, tc := range []testCase{
 		{
 			name:     "simple int substitution",
-			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{
+			resource: queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{
 				"minimum_balance": {},
 			},
 			source: `{
@@ -266,8 +266,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:     "complex",
-			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{
+			resource: queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{
 				"iban":            {},
 				"minimum_balance": {},
 				"metadata_field": {
@@ -311,8 +311,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:     "different types",
-			resource: resources.ResourceKindTransaction,
-			varDeclarations: map[string]resources.VarSpec{
+			resource: queries.ResourceKindTransaction,
+			varDeclarations: map[string]queries.VarSpec{
 				"my_bool":   {},
 				"my_int":    {},
 				"my_string": {},
@@ -343,8 +343,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:            "invalid substitution syntax",
-			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{"minimum_balance": {}},
+			resource:        queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{"minimum_balance": {}},
 			source: `{"$gt": {
 				"balance[COIN]": "${minimum_balance}000"
 			}}`,
@@ -354,8 +354,8 @@ func TestQueryResolution(t *testing.T) {
 		{
 			// should be elsewhere
 			name:            "invalid field access syntax",
-			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{"minimum_balance": {}},
+			resource:        queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{"minimum_balance": {}},
 			source: `{"$gt": {
 				"balance[COIN][THING]": "${minimum_balance}"
 			}}`,
@@ -364,8 +364,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:            "missing variable",
-			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{},
+			resource:        queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{},
 			source: `{"$gt": {
 				"balance[COIN]": "${doesntexist}"
 			}}`,
@@ -374,8 +374,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:            "unknown field",
-			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{},
+			resource:        queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{},
 			source: `{"$gt": {
 				"doesntexist": "test"
 			}}`,
@@ -384,8 +384,8 @@ func TestQueryResolution(t *testing.T) {
 		},
 		{
 			name:     "wrong variable type",
-			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]resources.VarSpec{
+			resource: queries.ResourceKindAccount,
+			varDeclarations: map[string]queries.VarSpec{
 				"wrongtype": {
 					Type:    "string",
 					Default: "test",
@@ -398,7 +398,7 @@ func TestQueryResolution(t *testing.T) {
 			expectedError: "cannot use variable `wrongtype` as type `Number`",
 		},
 	} {
-		resolved, err := resources.ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
+		resolved, err := queries.ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
 
 		if tc.expectedError == "" {
 			require.NoError(t, err, tc.name)

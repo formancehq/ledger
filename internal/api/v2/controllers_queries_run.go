@@ -12,7 +12,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	storage "github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -39,7 +39,7 @@ func runQuery(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	}
 }
 
-func getJsonResponse(r *http.Request, w http.ResponseWriter, resource resources.ResourceKind, cursor bunpaginate.Cursor[any]) error {
+func getJsonResponse(r *http.Request, w http.ResponseWriter, resource queries.ResourceKind, cursor bunpaginate.Cursor[any]) error {
 	renderedCursor := *bunpaginate.MapCursor(&cursor, func(item any) any {
 		switch v := item.(type) {
 		case ledger.Transaction:

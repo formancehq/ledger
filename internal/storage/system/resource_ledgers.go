@@ -7,7 +7,7 @@ import (
 	"github.com/uptrace/bun"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -19,14 +19,14 @@ type ledgersResourceHandler struct {
 	store *DefaultStore
 }
 
-func (h ledgersResourceHandler) Schema() resources.EntitySchema {
-	return resources.EntitySchema{
-		Fields: map[string]resources.Field{
-			"bucket":   resources.NewStringField(),
-			"features": resources.NewStringMapField(),
-			"metadata": resources.NewStringMapField(),
-			"name":     resources.NewStringField(),
-			"id":       resources.NewNumericField().Paginated(),
+func (h ledgersResourceHandler) Schema() queries.EntitySchema {
+	return queries.EntitySchema{
+		Fields: map[string]queries.Field{
+			"bucket":   queries.NewStringField(),
+			"features": queries.NewStringMapField(),
+			"metadata": queries.NewStringMapField(),
+			"name":     queries.NewStringField(),
+			"id":       queries.NewNumericField().Paginated(),
 		},
 	}
 }

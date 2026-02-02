@@ -20,7 +20,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -626,7 +626,7 @@ func TestRunQuery(t *testing.T) {
 				"FOO": {
 					Description: "Foo template",
 					Resource:    "accounts",
-					Vars: map[string]resources.VarSpec{
+					Vars: map[string]queries.VarSpec{
 						"aaa": {
 							Type:    "string",
 							Default: nil,
@@ -696,7 +696,7 @@ func TestRunQuery(t *testing.T) {
 		},
 	}, bunpaginate.QueryDefaultPageSize)
 	require.NoError(t, err)
-	require.Equal(t, resources.ResourceKindAccount, *resource)
+	require.Equal(t, queries.ResourceKindAccount, *resource)
 	require.Equal(t, &bunpaginate.Cursor[any]{
 		Data: []any{},
 	}, ret)

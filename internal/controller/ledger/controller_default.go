@@ -27,7 +27,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -672,10 +672,10 @@ func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parame
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template ledger.QueryTemplate, q storagecommon.RunQuery) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template ledger.QueryTemplate, q storagecommon.RunQuery) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	var result *bunpaginate.Cursor[any]
 	switch template.Resource {
-	case resources.ResourceKindTransaction:
+	case queries.ResourceKindTransaction:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
 			return nil, nil, err
@@ -685,7 +685,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 			return nil, nil, err
 		}
 		result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
-	case resources.ResourceKindAccount:
+	case queries.ResourceKindAccount:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
 			return nil, nil, err
@@ -695,7 +695,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 			return nil, nil, err
 		}
 		result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
-	case resources.ResourceKindLog:
+	case queries.ResourceKindLog:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
 			return nil, nil, err
@@ -705,7 +705,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 			return nil, nil, err
 		}
 		result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
-	case resources.ResourceKindVolume:
+	case queries.ResourceKindVolume:
 		resourceQuery, err := storagecommon.UnmarshalCursor[ledger.GetVolumesOptions](*q.Cursor)
 		if err != nil {
 			return nil, nil, err
@@ -719,7 +719,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 	return &template.Resource, result, nil
 }
 
-func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion string, id string, q storagecommon.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion string, id string, q storagecommon.RunQuery, defaultPageSize uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	schema, err := ctrl.GetSchema(ctx, schemaVersion)
 	if err != nil {
 		return nil, nil, newErrSchemaValidationError(schemaVersion, fmt.Errorf("failed to find schema: %w", err))
@@ -729,12 +729,12 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 			return ctrl.runQueryFromCursor(ctx, template, q)
 		} else {
 			var result *bunpaginate.Cursor[any]
-			builder, err := resources.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
+			builder, err := queries.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
 			if err != nil {
 				return nil, nil, err
 			}
 			switch template.Resource {
-			case resources.ResourceKindTransaction:
+			case queries.ResourceKindTransaction:
 				params, err := ledger.QueryTemplateParams[any]{
 					PageSize:   uint(defaultPageSize),
 					SortColumn: "id",
@@ -749,7 +749,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					return nil, nil, err
 				}
 				result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
-			case resources.ResourceKindAccount:
+			case queries.ResourceKindAccount:
 				params, err := ledger.QueryTemplateParams[any]{
 					PageSize:   uint(defaultPageSize),
 					SortColumn: "address",
@@ -764,7 +764,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					return nil, nil, err
 				}
 				result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
-			case resources.ResourceKindLog:
+			case queries.ResourceKindLog:
 				params, err := ledger.QueryTemplateParams[any]{
 					PageSize:   uint(defaultPageSize),
 					SortColumn: "id",
@@ -779,7 +779,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					return nil, nil, err
 				}
 				result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
-			case resources.ResourceKindVolume:
+			case queries.ResourceKindVolume:
 				params, err := ledger.QueryTemplateParams[ledger.GetVolumesOptions]{
 					PageSize:   uint(defaultPageSize),
 					SortColumn: "account",

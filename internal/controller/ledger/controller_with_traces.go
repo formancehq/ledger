@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 )
@@ -589,9 +589,9 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	return schemas, nil
 }
 
-func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, defaultPageSize uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	var (
-		resource *resources.ResourceKind
+		resource *queries.ResourceKind
 		cursor   *bunpaginate.Cursor[any]
 		err      error
 	)

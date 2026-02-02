@@ -16,7 +16,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
-	resources "github.com/formancehq/ledger/internal/resources"
+	resources "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"

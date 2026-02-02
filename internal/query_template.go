@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 )
 
 type QueryTemplates map[string]QueryTemplate
@@ -61,17 +61,17 @@ func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryT
 }
 
 type QueryTemplate struct {
-	Description string                       `json:"description,omitempty"`
-	Resource    resources.ResourceKind       `json:"resource"`
-	Params      json.RawMessage              `json:"params"`
-	Vars        map[string]resources.VarSpec `json:"vars"`
-	Body        json.RawMessage              `json:"body"`
+	Description string                     `json:"description,omitempty"`
+	Resource    queries.ResourceKind       `json:"resource"`
+	Params      json.RawMessage            `json:"params"`
+	Vars        map[string]queries.VarSpec `json:"vars"`
+	Body        json.RawMessage            `json:"body"`
 }
 
 // Validate a query template
 func (q QueryTemplate) Validate() error {
 	// check resource validity
-	if !slices.Contains(resources.Resources, q.Resource) {
+	if !slices.Contains(queries.Resources, q.Resource) {
 		return fmt.Errorf("unknown resource kind: %v", q.Resource)
 	}
 	// check if the params matches the resource
@@ -83,19 +83,19 @@ func (q QueryTemplate) Validate() error {
 		// 	return fmt.Errorf("invalid params: %w", err)
 		// }
 		switch q.Resource {
-		case resources.ResourceKindVolume:
+		case queries.ResourceKindVolume:
 			err = validateParam[GetVolumesOptions](q.Params)
 		}
 		if err != nil {
 			return fmt.Errorf("invalid params: %w", err)
 		}
 	}
-	err := resources.ValidateVars(q.Vars)
+	err := queries.ValidateVars(q.Vars)
 	if err != nil {
 		return err
 	}
 	// validate body
-	return resources.ValidateFilterBody(q.Resource, q.Body, q.Vars)
+	return queries.ValidateFilterBody(q.Resource, q.Body, q.Vars)
 }
 
 func validateParam[Opts any](params json.RawMessage) error {

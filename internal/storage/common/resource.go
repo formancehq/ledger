@@ -15,22 +15,22 @@ import (
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 )
 
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
-	case resources.OperatorMatch:
+	case queries.OperatorMatch:
 		return "="
-	case resources.OperatorLT:
+	case queries.OperatorLT:
 		return "<"
-	case resources.OperatorGT:
+	case queries.OperatorGT:
 		return ">"
-	case resources.OperatorLTE:
+	case queries.OperatorLTE:
 		return "<="
-	case resources.OperatorGTE:
+	case queries.OperatorGTE:
 		return ">="
-	case resources.OperatorLike:
+	case queries.OperatorLike:
 		return "like"
 	}
 	panic("unreachable")
@@ -90,7 +90,7 @@ func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...f
 }
 
 type RepositoryHandler[Opts any] interface {
-	Schema() resources.EntitySchema
+	Schema() queries.EntitySchema
 	BuildDataset(query RepositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	ResolveFilter(query ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	Project(query ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)

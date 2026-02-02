@@ -6,7 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/ledger/internal/resources"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -14,8 +14,8 @@ type logsResourceHandler struct {
 	store *Store
 }
 
-func (h logsResourceHandler) Schema() resources.EntitySchema {
-	return resources.LogSchema
+func (h logsResourceHandler) Schema() queries.EntitySchema {
+	return queries.LogSchema
 }
 
 func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
