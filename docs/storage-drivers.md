@@ -182,23 +182,23 @@ curl -X POST http://localhost:9000/my-ledger \
 
 ### Common Interface
 
-The Pebble driver implements the `Store` interface defined in `internal/store/store.go`. The interface provides:
+The Store implements the `Batch` interface defined in `internal/store/types.go`. The interface provides:
 
-- **Log operations**: `AppendLogs`, `GetAllLogs`, `GetLogByID`
-- **Runtime queries**: `GetBalances`, `GetAccountMetadata`
-- **Idempotency**: `GetLogIDForIdempotencyKey`
-- **Transaction tracking**: `GetLogIDForTransactionID`, `IsTransactionReverted`
+- **Log operations**: `AppendLogs`, `GetAllLogs`, `GetLogBySequence`
+- **Runtime queries**: `GetBalanceDiffs`, `GetAccountMetadata`
+- **Idempotency**: `GetSequenceForIdempotencyKey`
+- **Transaction tracking**: `GetSequenceForTransactionID`, `IsTransactionReverted`
 - **Lifecycle**: `Close`, `CreateSnapshot`, `GetLastAppliedIndex`, `DeleteLedger`
 
 ### Source Files
 
 | Component | Source File |
 |-----------|-------------|
-| Pebble Store | `internal/store/pebble/store.go` |
-| Pebble Batch | `internal/store/pebble/batch.go` |
-| Pebble Config | `internal/store/pebble/config.go` |
-| Pebble Metrics | `internal/store/pebble/metrics.go` |
-| Interfaces | `internal/store/store.go` |
+| Store | `internal/store/pebble_store.go` |
+| Batch | `internal/store/batch.go` |
+| Config | `internal/store/config.go` |
+| Metrics | `internal/store/metrics.go` |
+| Interfaces | `internal/store/types.go` |
 
 ---
 

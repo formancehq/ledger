@@ -1,4 +1,4 @@
-package pebble
+package store
 
 import (
 	"bytes"
@@ -10,12 +10,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
-var _ store.Batch = (*Batch)(nil)
-
-// Batch implements store.Batch using a pebble.Batch with NoSync for atomic operations.
+// Batch provides atomic operations on the store using a pebble.Batch with NoSync.
+// All operations are buffered until Commit is called.
+// Cancel must be called if the batch is not committed to release resources.
 type Batch struct {
 	store            *Store
 	batch            *pebble.Batch
@@ -27,7 +26,7 @@ type Batch struct {
 }
 
 // NewBatch creates a new Batch for atomic operations.
-func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
+func (s *Store) NewBatch(lastAppliedIndex uint64) *Batch {
 	return &Batch{
 		store:            s,
 		batch:            s.db.NewBatch(),
@@ -98,7 +97,7 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(diff store.BalanceDiff) error {
+func (b *Batch) AppendBalanceDiff(diff BalanceDiff) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -122,7 +121,7 @@ func (b *Batch) AppendBalanceDiff(diff store.BalanceDiff) error {
 }
 
 // SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair.
-func (b *Batch) SetBalanceBase(base store.BalanceBase) error {
+func (b *Batch) SetBalanceBase(base BalanceBase) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -145,45 +144,27 @@ func (b *Batch) SetBalanceBase(base store.BalanceBase) error {
 	return nil
 }
 
-// SaveAccountMetadata saves metadata for an account.
-func (b *Batch) SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error {
+// AppendMetadataDiff appends a metadata diff for an account key.
+// If diff.Value is nil, it represents a deletion of the key (stored as empty value).
+func (b *Batch) AppendMetadataDiff(diff MetadataDiff) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	if metadata == nil {
-		return nil
+	writeLedgerPrefix(b.keyBuffer, diff.LedgerID)
+	writeByte(b.keyBuffer, keyPrefixMetadataDiff)
+	writeString(b.keyBuffer, diff.Account)
+	writeString(b.keyBuffer, diff.Key)
+	writeUInt64(b.keyBuffer, diff.RaftIndex)
+
+	var valueBytes []byte
+	if diff.Value != nil {
+		valueBytes = []byte(*diff.Value)
 	}
+	// nil Value means deletion, stored as empty value
 
-	for metaKey, value := range metadata.Entries {
-		writeLedgerPrefix(b.keyBuffer, ledger)
-		writeByte(b.keyBuffer, keyPrefixAccountMetadata)
-		writeString(b.keyBuffer, account)
-		writeString(b.keyBuffer, metaKey)
-
-		if err := setOnBatch(b.batch, b.keyBuffer, []byte(value)); err != nil {
-			return fmt.Errorf("upserting account metadata: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// DeleteAccountMetadata deletes metadata keys for an account.
-func (b *Batch) DeleteAccountMetadata(ledger uint32, account string, keys []string) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	for _, metaKey := range keys {
-		writeLedgerPrefix(b.keyBuffer, ledger)
-		writeByte(b.keyBuffer, keyPrefixAccountMetadata)
-		writeString(b.keyBuffer, account)
-		writeString(b.keyBuffer, metaKey)
-
-		if err := deleteOnBatch(b.batch, b.keyBuffer); err != nil {
-			return fmt.Errorf("deleting account metadata key: %w", err)
-		}
+	if err := setOnBatch(b.batch, b.keyBuffer, valueBytes); err != nil {
+		return fmt.Errorf("appending metadata diff: %w", err)
 	}
 
 	return nil

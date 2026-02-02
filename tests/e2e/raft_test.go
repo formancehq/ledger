@@ -79,6 +79,9 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+					testserver.WithRaftTickInterval(10*time.Millisecond),
+					testserver.WithRaftHeartbeatTick(10),
+					testserver.WithRaftElectionTick(100),
 					testserver.WithPeers(func() []raft.Peer {
 						ret := make([]raft.Peer, 0, countInstances-1)
 						for j := range countInstances {
@@ -141,8 +144,8 @@ var _ = Describe("Simple cluster", func() {
 			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 		})
 		It("Should properly rejoin the cluster", func() {
-			Eventually(servers[followerID-1]).To(BeFollower())
-			Consistently(servers[followerID-1]).To(BeFollower())
+			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
+			Consistently(servers[followerID-1]).Should(BeFollower())
 		})
 	})
 	Context("when the leader is down", func() {
@@ -258,7 +261,7 @@ var _ = Describe("Simple cluster", func() {
 				})
 				It("Should restore the state", func() {
 					// Wait for follower to reconnect and sync, then verify it can see the ledger
-					Eventually(servers[followerID-1]).To(BeFollower())
+					Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
 					Eventually(func(g Gomega) bool {
 						// Then verify the follower can see the ledger created while it was down
 						ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
@@ -308,7 +311,7 @@ var _ = Describe("Simple cluster", func() {
 							Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 						})
 
-						Eventually(servers[followerID-1]).To(BeFollower())
+						Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
 						Eventually(servers[followerID-1]).To(HasNextLogID(ledgerName, countTransactions+1))
 					})
 
@@ -324,7 +327,7 @@ var _ = Describe("Simple cluster", func() {
 							})
 						})
 						It("Should restart as expected", func() {
-							Eventually(servers[followerID-1]).To(BeFollower())
+							Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
 							Eventually(servers[followerID-1]).To(HasNextLogID(ledgerName, countTransactions+1))
 						})
 					})

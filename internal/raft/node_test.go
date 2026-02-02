@@ -13,8 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	storepkg "github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -22,7 +21,7 @@ import (
 )
 
 // computeBalancesFromDiffs computes balances from balance diffs result
-func computeBalancesFromDiffs(diffs storepkg.BalanceDiffsResult) map[string]map[string]*big.Int {
+func computeBalancesFromDiffs(diffs store.BalanceDiffsResult) map[string]map[string]*big.Int {
 	result := make(map[string]map[string]*big.Int)
 	for account, assetDiffs := range diffs {
 		result[account] = make(map[string]*big.Int)
@@ -38,7 +37,7 @@ func computeBalancesFromDiffs(diffs storepkg.BalanceDiffsResult) map[string]map[
 }
 
 // listLedgerContains checks if a ledger with the given name exists in the store
-func listLedgerContains(s *pebble.Store, name string) bool {
+func listLedgerContains(s *store.Store, name string) bool {
 	cursor, err := s.ListLedgers()
 	if err != nil {
 		return false
@@ -67,12 +66,12 @@ type ClusterNode struct {
 	Transport *ChannelTransport
 
 	// Underlying implementations
-	Store *pebble.Store
+	Store *store.Store
 	WAL   WAL
 	Spool Spool
 
 	// Interceptors - use these to intercept/modify behavior during tests
-	StoreInterceptor *pebble.StoreInterceptor
+	StoreInterceptor *store.StoreInterceptor
 	WALInterceptor   *WALInterceptor
 	SpoolInterceptor *SpoolInterceptor
 
@@ -93,7 +92,7 @@ type Cluster struct {
 // storeLogStreamerWrapper wraps a store.LogStreamer and adds a Close() method
 // to implement the raft.LogStreamer interface.
 type storeLogStreamerWrapper struct {
-	storepkg.LogStreamer
+	store.LogStreamer
 }
 
 func (w *storeLogStreamerWrapper) Close() error {
@@ -191,13 +190,13 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		require.NoError(t, err)
 
 		// Create store
-		store, err := pebble.NewStore(dataDir, logger, meter, pebble.DefaultConfig())
+		pebbleStore, err := store.NewStore(dataDir, logger, meter, store.DefaultConfig())
 		require.NoError(t, err)
 
 		// Wrap with interceptors
 		walInterceptor := NewWALInterceptor(w)
 		spoolInterceptor := NewSpoolInterceptor(spool)
-		storeInterceptor := pebble.NewStoreInterceptor(store)
+		storeInterceptor := store.NewStoreInterceptor(pebbleStore)
 
 		// Build peer list excluding self
 		peers := make([]Peer, 0, numNodes-1)
@@ -216,7 +215,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 				ElectionTick:      20,
 			},
 			transports[i],
-			store,
+			pebbleStore,
 			logger.WithFields(map[string]any{"node": nodeID}),
 			meter,
 			spoolInterceptor,
@@ -229,7 +228,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			ID:               nodeID,
 			Node:             node,
 			Transport:        transports[i],
-			Store:            store,
+			Store:            pebbleStore,
 			WAL:              w,
 			Spool:            spool,
 			StoreInterceptor: storeInterceptor,
@@ -459,7 +458,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("recreating spool: %w", err)
 	}
 
-	store, err := pebble.NewStore(clusterNode.dataDir, c.logger, noop.Meter{}, pebble.DefaultConfig())
+	newStore, err := store.NewStore(clusterNode.dataDir, c.logger, noop.Meter{}, store.DefaultConfig())
 	if err != nil {
 		return nil, fmt.Errorf("recreating store: %w", err)
 	}
@@ -467,7 +466,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	// Create new interceptors
 	walInterceptor := NewWALInterceptor(w)
 	spoolInterceptor := NewSpoolInterceptor(spool)
-	storeInterceptor := pebble.NewStoreInterceptor(store)
+	storeInterceptor := store.NewStoreInterceptor(newStore)
 
 	// Create LogStreamerProvider that accesses peer stores via the cluster
 	logStreamerProvider := &ClusterLogStreamerProvider{cluster: c}
@@ -488,7 +487,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 			Peers:             peers,
 		},
 		clusterNode.Transport,
-		store,
+		newStore,
 		c.logger.WithFields(map[string]any{"node": nodeID}),
 		noop.Meter{},
 		spoolInterceptor,
@@ -504,7 +503,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		ID:               nodeID,
 		Node:             node,
 		Transport:        clusterNode.Transport,
-		Store:            store,
+		Store:            newStore,
 		WAL:              w,
 		Spool:            spool,
 		StoreInterceptor: storeInterceptor,
@@ -927,7 +926,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *pebble.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *store.Store, from, to uint64) (store.Cursor[*commonpb.Log], error) {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
@@ -1126,7 +1125,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
 	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *pebble.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *store.Store, from, to uint64) (store.Cursor[*commonpb.Log], error) {
 		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
 		return nil, errSyncFailed
 	})

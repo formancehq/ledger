@@ -1,4 +1,4 @@
-package pebble
+package store
 
 import "time"
 

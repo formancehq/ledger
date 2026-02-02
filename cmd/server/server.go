@@ -15,7 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/tracesampling"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
@@ -311,8 +311,8 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.
-func loadPebbleConfig(cmd *cobra.Command) pebble.Config {
-	cfg := pebble.DefaultConfig()
+func loadPebbleConfig(cmd *cobra.Command) store.Config {
+	cfg := store.DefaultConfig()
 
 	// Helper to get uint64 with default
 	getUint64 := func(flagName string, defaultValue uint64) uint64 {

@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"google.golang.org/grpc"
 )
 
@@ -19,11 +19,11 @@ type LedgerServiceServerImpl struct {
 	servicepb.UnimplementedLedgerServiceServer
 	logger logging.Logger
 	ctrl   service.Controller
-	store  *pebble.Store
+	store  *store.Store
 	node   *raft.Node
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s *pebble.Store, node *raft.Node) servicepb.LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s *store.Store, node *raft.Node) servicepb.LedgerServiceServer {
 	return &LedgerServiceServerImpl{
 		logger: logger,
 		ctrl:   ctrl,

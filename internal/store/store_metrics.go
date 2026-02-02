@@ -1,4 +1,4 @@
-package pebble
+package store
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"

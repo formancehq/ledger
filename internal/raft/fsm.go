@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
@@ -21,7 +20,7 @@ type FSM struct {
 	// use the store directly
 	state     *raftcmdpb.State // FSM state
 	logger    logging.Logger
-	store     *pebble.Store
+	store     *store.Store
 	transport Transport
 
 	storeLastAppliedIndex uint64
@@ -31,7 +30,7 @@ type FSM struct {
 	logsAppendedCounter metric.Int64Counter
 }
 
-func newFSM(logger logging.Logger, store *pebble.Store, transport Transport, meter metric.Meter) (*FSM, error) {
+func newFSM(logger logging.Logger, store *store.Store, transport Transport, meter metric.Meter) (*FSM, error) {
 	lastAppliedIndex, err := store.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -303,7 +302,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 }
 
 // applyEntry processes all actions in a command atomically
-func (fsm *FSM) applyEntry(ctx context.Context, batch store.Batch, cmd *raftcmdpb.CommandBatch) (*ApplyResult, error) {
+func (fsm *FSM) applyEntry(ctx context.Context, batch *store.Batch, cmd *raftcmdpb.CommandBatch) (*ApplyResult, error) {
 	var logs []*commonpb.Log
 
 	for _, action := range cmd.Actions {
@@ -323,7 +322,7 @@ func (fsm *FSM) applyEntry(ctx context.Context, batch store.Batch, cmd *raftcmdp
 }
 
 // applyAction processes a single action
-func (fsm *FSM) applyAction(ctx context.Context, batch store.Batch, action *raftcmdpb.Action, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
+func (fsm *FSM) applyAction(ctx context.Context, batch *store.Batch, action *raftcmdpb.Action, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
 
 	log, err := fsm.createLog(action, cmdDate)
 	if err != nil {
@@ -393,12 +392,12 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 // The index parameter is used as the unique suffix for balance diff keys to avoid collisions.
 // During normal raft apply, this is the raft entry index.
 // During sync from leader, this is the log's sequence number.
-func (fsm *FSM) projectLog(_ context.Context, batch store.Batch, log *commonpb.Log, index uint64) error {
+func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.Log, index uint64) error {
 	switch {
 	case log.Payload.GetApply() != nil:
 		ledgerLog := log.Payload.GetApply().Log
 
-		projectTransaction := func(batch store.Batch, tx *commonpb.Transaction) error {
+		projectTransaction := func(batch *store.Batch, tx *commonpb.Transaction) error {
 			for _, posting := range tx.Postings {
 				if err := batch.AppendBalanceDiff(store.BalanceDiff{
 					LedgerID:  log.Payload.GetApply().LedgerId,
@@ -434,9 +433,18 @@ func (fsm *FSM) projectLog(_ context.Context, batch store.Batch, log *commonpb.L
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
 				for account, metadata := range payload.CreatedTransaction.AccountMetadata {
-					err := batch.SaveAccountMetadata(log.Payload.GetApply().LedgerId, account, metadata)
-					if err != nil {
-						return err
+					for key, value := range metadata.Entries {
+						v := value // capture for pointer
+						err := batch.AppendMetadataDiff(store.MetadataDiff{
+							LedgerID:  log.Payload.GetApply().LedgerId,
+							Account:   account,
+							Key:       key,
+							Value:     &v,
+							RaftIndex: log.Sequence,
+						})
+						if err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -451,14 +459,27 @@ func (fsm *FSM) projectLog(_ context.Context, batch store.Batch, log *commonpb.L
 			}
 		case *commonpb.LedgerLogPayload_SavedMetadata:
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.SaveAccountMetadata(log.Payload.GetApply().LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
-					return err
+				for key, value := range payload.SavedMetadata.Metadata.Entries {
+					v := value // capture for pointer
+					if err := batch.AppendMetadataDiff(store.MetadataDiff{
+						LedgerID:  log.Payload.GetApply().LedgerId,
+						Account:   account.Addr,
+						Key:       key,
+						Value:     &v,
+						RaftIndex: log.Sequence,
+					}); err != nil {
+						return err
+					}
 				}
 			}
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.DeleteAccountMetadata(log.Payload.GetApply().LedgerId, account.Addr, []string{
-					payload.DeletedMetadata.Key,
+				if err := batch.AppendMetadataDiff(store.MetadataDiff{
+					LedgerID:  log.Payload.GetApply().LedgerId,
+					Account:   account.Addr,
+					Key:       payload.DeletedMetadata.Key,
+					Value:     nil, // nil means deletion
+					RaftIndex: log.Sequence,
 				}); err != nil {
 					return err
 				}

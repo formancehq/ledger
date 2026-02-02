@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -328,7 +327,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 	})
 }
 
-func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController, *pebble.StoreInterceptor, *MockEngine) {
+func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController, *store.StoreInterceptor, *MockEngine) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
@@ -338,13 +337,13 @@ func newTestLedgerService(t *testing.T, ctx context.Context) (*DefaultController
 	// Create a temporary pebble store
 	dataDir := t.TempDir()
 	meterProvider := noop.NewMeterProvider()
-	pebbleStore, err := pebble.NewStore(dataDir, logger, meterProvider.Meter("test"), pebble.DefaultConfig())
+	pebbleStore, err := store.NewStore(dataDir, logger, meterProvider.Meter("test"), store.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = pebbleStore.Close()
 	})
 
-	storeInterceptor := pebble.NewStoreInterceptor(pebbleStore)
+	storeInterceptor := store.NewStoreInterceptor(pebbleStore)
 
 	ledgerService := NewDefaultController(engine, pebbleStore, logger)
 	return ledgerService, storeInterceptor, engine

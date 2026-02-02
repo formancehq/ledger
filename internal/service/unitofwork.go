@@ -7,12 +7,11 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/numscript"
 )
 
 type unitOfWork struct {
-	*pebble.Store
+	*store.Store
 	KeySetLocker
 	releases []func()
 }

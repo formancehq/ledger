@@ -1,4 +1,4 @@
-package pebble
+package store
 
 import (
 	"io"
@@ -10,13 +10,13 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
+	
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // collectLedgers collects all ledgers from a cursor into a slice
-func collectLedgers(cursor store.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
+func collectLedgers(cursor Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
 	defer func() { _ = cursor.Close() }()
 	var ledgers []*commonpb.LedgerInfo
 	for {
@@ -30,6 +30,11 @@ func collectLedgers(cursor store.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.Ledg
 		ledgers = append(ledgers, ledger)
 	}
 	return ledgers, nil
+}
+
+// ptr returns a pointer to the given string value
+func ptr(s string) *string {
+	return &s
 }
 
 func TestPebbleStore(t *testing.T) {
@@ -91,10 +96,10 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch(0)
-		require.NoError(t, batch.AppendBalanceDiff(store.BalanceDiff{LedgerID: testLedgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
-		require.NoError(t, batch.AppendBalanceDiff(store.BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(100)), RaftIndex: 1}))
-		require.NoError(t, batch.AppendBalanceDiff(store.BalanceDiff{LedgerID: testLedgerID, Account: "user", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(50)), RaftIndex: 2}))
-		require.NoError(t, batch.AppendBalanceDiff(store.BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-50)), RaftIndex: 2}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(100)), RaftIndex: 1}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "user", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(50)), RaftIndex: 2}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-50)), RaftIndex: 2}))
 		require.NoError(t, batch.Commit())
 
 		diffs, err := s.GetBalanceDiffs(testLedgerID, map[string][]string{
@@ -105,7 +110,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 		require.NoError(t, err)
 
 		// Compute balances from diffs
-		computeBalance := func(diffs []store.StoredBalanceDiff) *big.Int {
+		computeBalance := func(diffs []StoredBalanceDiff) *big.Int {
 			balance := big.NewInt(0)
 			for _, d := range diffs {
 				balance = balance.Add(balance, d.Diff.Value())
@@ -174,17 +179,27 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch(0)
-		require.NoError(t, batch.SaveAccountMetadata(testLedgerID, "bank", &commonpb.Metadata{
-			Entries: metadata.Metadata{
-				"account_type": "asset",
-			},
+		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
+			LedgerID:  testLedgerID,
+			Account:   "bank",
+			Key:       "account_type",
+			Value:     ptr("asset"),
+			RaftIndex: 1,
 		}))
-		require.NoError(t, batch.SaveAccountMetadata(testLedgerID, "bank", &commonpb.Metadata{
-			Entries: metadata.Metadata{
-				"label": "Bank Account",
-			},
+		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
+			LedgerID:  testLedgerID,
+			Account:   "bank",
+			Key:       "label",
+			Value:     ptr("Bank Account"),
+			RaftIndex: 2,
 		}))
-		require.NoError(t, batch.DeleteAccountMetadata(testLedgerID, "bank", []string{"old_key"}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
+			LedgerID:  testLedgerID,
+			Account:   "bank",
+			Key:       "old_key",
+			Value:     nil, // nil means deletion
+			RaftIndex: 3,
+		}))
 		require.NoError(t, batch.Commit())
 
 		accountsMetadata, err := s.GetAccountMetadata(testLedgerID, []string{"bank", "user", "world", "non-existing"})
@@ -588,9 +603,13 @@ func TestStoreDeleteLedger(t *testing.T) {
 
 	// Add some data
 	batch := s.NewBatch(1)
-	require.NoError(t, batch.AppendBalanceDiff(store.BalanceDiff{LedgerID: ledgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
-	require.NoError(t, batch.SaveAccountMetadata(ledgerID, "bank", &commonpb.Metadata{
-		Entries: metadata.Metadata{"key": "value"},
+	require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: ledgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
+	require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
+		LedgerID:  ledgerID,
+		Account:   "bank",
+		Key:       "key",
+		Value:     ptr("value"),
+		RaftIndex: 1,
 	}))
 	require.NoError(t, batch.StoreTransactionID(ledgerID, 1, 1))
 	require.NoError(t, batch.Commit())
@@ -637,7 +656,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store balance base at raft index 10
 	batch := s.NewBatch(10)
-	require.NoError(t, batch.SetBalanceBase(store.BalanceBase{
+	require.NoError(t, batch.SetBalanceBase(BalanceBase{
 		LedgerID:  ledgerID,
 		Account:   "bank",
 		Asset:     "USD",
@@ -666,7 +685,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store another balance base at raft index 20
 	batch = s.NewBatch(20)
-	require.NoError(t, batch.SetBalanceBase(store.BalanceBase{
+	require.NoError(t, batch.SetBalanceBase(BalanceBase{
 		LedgerID:  ledgerID,
 		Account:   "bank",
 		Asset:     "USD",

@@ -2,7 +2,7 @@ package application
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 )
 
 type Config struct {
@@ -11,7 +11,7 @@ type Config struct {
 	HTTPPort        int
 	TransportConfig raft.TransportConfig
 	DataDir         string
-	PebbleConfig    pebble.Config
+	PebbleConfig    store.Config
 }
 
 func (c Config) Validate() error {

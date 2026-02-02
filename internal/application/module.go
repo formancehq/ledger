@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
 	"go.opentelemetry.io/otel/metric"
@@ -45,8 +45,8 @@ func Module() fx.Option {
 					cfg.TransportConfig,
 				)
 			},
-		func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*pebble.Store, error) {
-			return pebble.NewStore(
+		func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*store.Store, error) {
+			return store.NewStore(
 				cfg.DataDir,
 				logger,
 				meterProvider.Meter("pebble.runtime_store"),
@@ -73,7 +73,7 @@ func Module() fx.Option {
 				Logger              logging.Logger
 				Transport           *raft.DefaultTransport
 				MeterProvider       metric.MeterProvider
-				Store               *pebble.Store
+				Store               *store.Store
 				WAL                 *wal.WAL
 				Spool               *raft.DefaultSpool
 				LogStreamerProvider raft.LogStreamerProvider
@@ -108,7 +108,7 @@ func Module() fx.Option {
 
 			return grpcserver.NewServer(grpcPort, logger, cfg.Debug), nil
 		},
-		func(logger logging.Logger, ctrl service.Controller, s *pebble.Store, node *raft.Node) servicepb.LedgerServiceServer {
+		func(logger logging.Logger, ctrl service.Controller, s *store.Store, node *raft.Node) servicepb.LedgerServiceServer {
 			return NewLedgerServiceServer(logger, ctrl, s, node)
 		},
 			httphandler.NewServer,
@@ -123,7 +123,7 @@ func Module() fx.Option {
 			raftNode *raft.Node,
 			connectionPool *transport.ConnectionPool,
 			engine service.Engine,
-			store *pebble.Store,
+			store *store.Store,
 			logger logging.Logger,
 		) service.Controller {
 				return service.NewRoutedController(
@@ -156,7 +156,7 @@ func Module() fx.Option {
 		fx.Invoke(
 		func(
 			lc fx.Lifecycle,
-			runtime *pebble.Store,
+			runtime *store.Store,
 			wal *wal.WAL,
 			logger logging.Logger,
 		) {

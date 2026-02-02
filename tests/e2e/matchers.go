@@ -20,11 +20,11 @@ func (matcher beFollowerMatcher) Match(actual any) (success bool, err error) {
 
 	clusterState, err := srv.client.GetClusterState(context.Background(), &servicepb.GetClusterStateRequest{})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("gRPC error getting cluster state: %w", err)
 	}
 
 	if clusterState.Leader == 0 {
-		return false, nil
+		return false, nil // Leader not yet known
 	}
 	return clusterState.Leader != clusterState.LocalNode, nil
 }

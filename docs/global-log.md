@@ -267,7 +267,7 @@ The FSM processes all actions in a command atomically:
 
 ```go
 // In fsm.go
-func (fsm *FSM) applyEntry(ctx context.Context, batch store.Batch, cmd *raftcmdpb.Command) (*ApplyResult, error) {
+func (fsm *FSM) applyEntry(ctx context.Context, batch *store.PebbleBatch, cmd *raftcmdpb.Command) (*ApplyResult, error) {
     var logs []*commonpb.Log
 
     // Process ALL actions atomically
