@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
@@ -20,7 +21,7 @@ type FSM struct {
 	// use the store directly
 	state     *raftcmdpb.State // FSM state
 	logger    logging.Logger
-	store     store.Store
+	store     *pebble.Store
 	transport Transport
 
 	storeLastAppliedIndex uint64
@@ -30,7 +31,7 @@ type FSM struct {
 	logsAppendedCounter metric.Int64Counter
 }
 
-func newFSM(logger logging.Logger, store store.Store, transport Transport, meter metric.Meter) (*FSM, error) {
+func newFSM(logger logging.Logger, store *pebble.Store, transport Transport, meter metric.Meter) (*FSM, error) {
 	lastAppliedIndex, err := store.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err

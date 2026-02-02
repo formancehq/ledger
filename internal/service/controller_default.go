@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/numscript"
 	"google.golang.org/protobuf/proto"
 )
@@ -29,14 +30,14 @@ type DefaultController struct {
 	// todo: use a LRU cache with limits
 	scriptCache   sync.Map // Cache for parsed numscript scripts: map[string]numscript.ParseResult
 	ledgerIDCache sync.Map // Cache for ledger name to ID: map[string]uint32
-	store         store.Store
+	store         *pebble.Store
 	keySetLocker  KeySetLocker
 }
 
 // NewDefaultLedger creates a new default ledger service
 func NewDefaultController(
 	engine Engine,
-	store store.Store,
+	store *pebble.Store,
 	logger logging.Logger,
 ) *DefaultController {
 	return &DefaultController{

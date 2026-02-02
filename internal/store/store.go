@@ -1,7 +1,6 @@
 package store
 
 import (
-	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -52,7 +51,7 @@ type LogStreamer interface {
 
 // LogReader handles log reading operations (global logs by sequence)
 //
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader,Batch
 type LogReader interface {
 	LogStreamer
 	GetLogBySequence(sequence uint64) (*commonpb.Log, error)
@@ -92,36 +91,3 @@ type BalanceDiffsQuery = map[string][]string
 // BalanceDiffsResult is the result of GetBalanceDiffs: map[account][asset][]StoredBalanceDiff
 type BalanceDiffsResult = map[string]map[string][]StoredBalanceDiff
 
-// Store handles runtime queries and provides log access.
-//
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . Store
-type Store interface {
-	LogReader
-	// ListLedgers lists all ledgers
-	ListLedgers() (Cursor[*commonpb.LedgerInfo], error)
-	GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error)
-	// GetBalanceDiffs retrieves all balance diffs for the given account/asset combinations.
-	// The caller is responsible for computing the final balance by summing the diffs.
-	GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)
-	// GetBalanceBase retrieves the most recent balance base for an account/asset pair
-	// whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
-	GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error)
-	GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
-	// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
-	GetAccountVolumes(ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
-	// GetSequenceForIdempotencyKey retrieves the sequence of a log for its idempotency key (global)
-	GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error)
-	// GetSequenceForTransactionID retrieves the sequence for a given transaction ID
-	GetSequenceForTransactionID(ledgerID uint32, transactionID uint64) (uint64, error)
-	// IsTransactionReverted checks if a transaction has been reverted
-	IsTransactionReverted(ledgerID uint32, transactionID uint64) (bool, error)
-	// NewBatch creates a new batch for atomic operations.
-	// lastAppliedIndex is the raft index that will be stored when the batch is committed.
-	NewBatch(lastAppliedIndex uint64) Batch
-	CreateSnapshot() error
-	GetLastAppliedIndex() (uint64, error)
-	// GetLastSequence returns the last sequence number for logs
-	GetLastSequence() (uint64, error)
-	GetLedgerByName(name string) (*commonpb.LedgerInfo, error)
-	Close() error
-}

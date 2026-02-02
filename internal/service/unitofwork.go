@@ -7,11 +7,12 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/numscript"
 )
 
 type unitOfWork struct {
-	store.Store
+	*pebble.Store
 	KeySetLocker
 	releases []func()
 }
@@ -42,6 +43,10 @@ func (s *unitOfWork) GetSequenceForTransactionID(_ context.Context, ledgerID uin
 
 func (s *unitOfWork) GetLogBySequence(_ context.Context, sequence uint64) (*commonpb.Log, error) {
 	return s.Store.GetLogBySequence(sequence)
+}
+
+func (s *unitOfWork) GetBalanceDiffs(ledgerID uint32, query store.BalanceDiffsQuery) (store.BalanceDiffsResult, error) {
+	return s.Store.GetBalanceDiffs(ledgerID, query)
 }
 
 // numscriptStore wraps unitOfWork to implement numscript interfaces

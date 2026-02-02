@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/utils"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -58,7 +59,7 @@ type Node struct {
 	lastSoftState       atomic.Pointer[raft.SoftState]
 	logStreamerProvider LogStreamerProvider
 
-	store             store.Store
+	store             *pebble.Store
 	spool             Spool
 	status            *atomic.Int32
 	snapshotThreshold uint64
@@ -91,7 +92,7 @@ type Node struct {
 func NewNode(
 	cfg NodeConfig,
 	transport Transport,
-	store store.Store,
+	store *pebble.Store,
 	logger logging.Logger,
 	meter metric.Meter,
 	spool Spool,

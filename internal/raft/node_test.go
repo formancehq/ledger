@@ -38,7 +38,7 @@ func computeBalancesFromDiffs(diffs storepkg.BalanceDiffsResult) map[string]map[
 }
 
 // listLedgerContains checks if a ledger with the given name exists in the store
-func listLedgerContains(s storepkg.Store, name string) bool {
+func listLedgerContains(s *pebble.Store, name string) bool {
 	cursor, err := s.ListLedgers()
 	if err != nil {
 		return false
@@ -67,12 +67,12 @@ type ClusterNode struct {
 	Transport *ChannelTransport
 
 	// Underlying implementations
-	Store storepkg.Store
+	Store *pebble.Store
 	WAL   WAL
 	Spool Spool
 
 	// Interceptors - use these to intercept/modify behavior during tests
-	StoreInterceptor *storepkg.StoreInterceptor
+	StoreInterceptor *pebble.StoreInterceptor
 	WALInterceptor   *WALInterceptor
 	SpoolInterceptor *SpoolInterceptor
 
@@ -197,7 +197,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		// Wrap with interceptors
 		walInterceptor := NewWALInterceptor(w)
 		spoolInterceptor := NewSpoolInterceptor(spool)
-		storeInterceptor := storepkg.NewStoreInterceptor(store)
+		storeInterceptor := pebble.NewStoreInterceptor(store)
 
 		// Build peer list excluding self
 		peers := make([]Peer, 0, numNodes-1)
@@ -216,7 +216,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 				ElectionTick:      20,
 			},
 			transports[i],
-			storeInterceptor,
+			store,
 			logger.WithFields(map[string]any{"node": nodeID}),
 			meter,
 			spoolInterceptor,
@@ -467,7 +467,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	// Create new interceptors
 	walInterceptor := NewWALInterceptor(w)
 	spoolInterceptor := NewSpoolInterceptor(spool)
-	storeInterceptor := storepkg.NewStoreInterceptor(store)
+	storeInterceptor := pebble.NewStoreInterceptor(store)
 
 	// Create LogStreamerProvider that accesses peer stores via the cluster
 	logStreamerProvider := &ClusterLogStreamerProvider{cluster: c}
@@ -488,7 +488,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 			Peers:             peers,
 		},
 		clusterNode.Transport,
-		storeInterceptor,
+		store,
 		c.logger.WithFields(map[string]any{"node": nodeID}),
 		noop.Meter{},
 		spoolInterceptor,
@@ -927,7 +927,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *pebble.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
@@ -1126,7 +1126,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
 	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *pebble.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
 		return nil, errSyncFailed
 	})

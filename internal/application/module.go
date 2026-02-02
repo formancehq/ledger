@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
 	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/wal"
@@ -46,14 +45,14 @@ func Module() fx.Option {
 					cfg.TransportConfig,
 				)
 			},
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (store.Store, error) {
-				return pebble.NewStore(
-					cfg.DataDir,
-					logger,
-					meterProvider.Meter("pebble.runtime_store"),
-					cfg.PebbleConfig,
-				)
-			},
+		func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*pebble.Store, error) {
+			return pebble.NewStore(
+				cfg.DataDir,
+				logger,
+				meterProvider.Meter("pebble.runtime_store"),
+				cfg.PebbleConfig,
+			)
+		},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
 					"cmp": "wal",
@@ -74,7 +73,7 @@ func Module() fx.Option {
 				Logger              logging.Logger
 				Transport           *raft.DefaultTransport
 				MeterProvider       metric.MeterProvider
-				Store               store.Store
+				Store               *pebble.Store
 				WAL                 *wal.WAL
 				Spool               *raft.DefaultSpool
 				LogStreamerProvider raft.LogStreamerProvider
@@ -109,7 +108,7 @@ func Module() fx.Option {
 
 			return grpcserver.NewServer(grpcPort, logger, cfg.Debug), nil
 		},
-		func(logger logging.Logger, ctrl service.Controller, s store.Store, node *raft.Node) servicepb.LedgerServiceServer {
+		func(logger logging.Logger, ctrl service.Controller, s *pebble.Store, node *raft.Node) servicepb.LedgerServiceServer {
 			return NewLedgerServiceServer(logger, ctrl, s, node)
 		},
 			httphandler.NewServer,
@@ -120,13 +119,13 @@ func Module() fx.Option {
 			func(node *raft.Node) service.Engine {
 				return node
 			},
-			func(
-				raftNode *raft.Node,
-				connectionPool *transport.ConnectionPool,
-				engine service.Engine,
-				store store.Store,
-				logger logging.Logger,
-			) service.Controller {
+		func(
+			raftNode *raft.Node,
+			connectionPool *transport.ConnectionPool,
+			engine service.Engine,
+			store *pebble.Store,
+			logger logging.Logger,
+		) service.Controller {
 				return service.NewRoutedController(
 					service.NewDefaultController(engine, store, logger),
 					raftNode,
@@ -155,12 +154,12 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
-			func(
-				lc fx.Lifecycle,
-				runtime store.Store,
-				wal *wal.WAL,
-				logger logging.Logger,
-			) {
+		func(
+			lc fx.Lifecycle,
+			runtime *pebble.Store,
+			wal *wal.WAL,
+			logger logging.Logger,
+		) {
 				lc.Append(fx.Hook{
 					OnStop: func(ctx context.Context) error {
 						return wal.Close()

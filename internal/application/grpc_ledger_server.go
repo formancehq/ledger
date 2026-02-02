@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/store/pebble"
 	"google.golang.org/grpc"
 )
 
@@ -19,11 +19,11 @@ type LedgerServiceServerImpl struct {
 	servicepb.UnimplementedLedgerServiceServer
 	logger logging.Logger
 	ctrl   service.Controller
-	store  store.Store
+	store  *pebble.Store
 	node   *raft.Node
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s store.Store, node *raft.Node) servicepb.LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s *pebble.Store, node *raft.Node) servicepb.LedgerServiceServer {
 	return &LedgerServiceServerImpl{
 		logger: logger,
 		ctrl:   ctrl,
@@ -145,16 +145,8 @@ func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servic
 }
 
 func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
-	// Check if the store supports metrics (only Pebble does)
-	metricsProvider, ok := impl.store.(store.MetricsProvider)
-	if !ok {
-		return &servicepb.GetStoreMetricsResponse{
-			Available: false,
-		}, nil
-	}
-
-	// Get metrics from the store (already in proto format)
-	metrics, ok := metricsProvider.GetMetrics().(*servicepb.PebbleMetrics)
+	// Get metrics from the Pebble store directly
+	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
 	if !ok {
 		return &servicepb.GetStoreMetricsResponse{
 			Available: false,

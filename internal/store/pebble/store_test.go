@@ -33,7 +33,7 @@ func collectLedgers(cursor store.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.Ledg
 }
 
 func TestPebbleStore(t *testing.T) {
-	testStoreCommon(t, func(t *testing.T) store.Store {
+	testStoreCommon(t, func(t *testing.T) *Store {
 		tmpDir := t.TempDir()
 		ctx := logging.TestingContext()
 		logger := logging.FromContext(ctx)
@@ -48,7 +48,7 @@ func TestPebbleStore(t *testing.T) {
 }
 
 // registerLedger is a helper function to register a ledger and return its ID
-func registerLedger(t *testing.T, s store.Store, name string, id uint32) {
+func registerLedger(t *testing.T, s *Store, name string, id uint32) {
 	t.Helper()
 	batch := s.NewBatch(0)
 	err := batch.SaveLedger(&commonpb.LedgerInfo{
@@ -62,7 +62,7 @@ func registerLedger(t *testing.T, s store.Store, name string, id uint32) {
 }
 
 // appendLogs is a helper function to append logs using the batch pattern
-func appendLogs(t *testing.T, s store.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
+func appendLogs(t *testing.T, s *Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
 	batch := s.NewBatch(lastAppliedIndex)
 	err := batch.AppendLogs(logs...)
@@ -71,7 +71,7 @@ func appendLogs(t *testing.T, s store.Store, lastAppliedIndex uint64, logs ...*c
 	require.NoError(t, err)
 }
 
-func testStoreCommon(t *testing.T, createStore func(*testing.T) store.Store) {
+func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 	t.Parallel()
 
 	var testLedgerID uint32 = 1

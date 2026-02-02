@@ -31,7 +31,6 @@ const (
 	checkpointsDir        = "checkpoints"
 )
 
-var _ store.Store = (*Store)(nil)
 
 // Store is a Pebble implementation of store.Store
 // It stores balances and account metadata
