@@ -844,6 +844,7 @@ func (s *Store) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 }
 
 // GetLedgerByName retrieves a ledger by its name.
+// Returns ErrNotFound if the ledger does not exist or is soft-deleted.
 func (s *Store) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
 	cursor, err := s.ListLedgers()
 	if err != nil {
@@ -860,6 +861,10 @@ func (s *Store) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
 			return nil, err
 		}
 		if ledger.Name == name {
+			// Check if soft-deleted
+			if ledger.DeletedAt != nil {
+				return nil, ErrNotFound
+			}
 			return ledger, nil
 		}
 	}
@@ -868,6 +873,7 @@ func (s *Store) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
 }
 
 // GetLedgerByID retrieves a ledger by its ID.
+// Returns ErrNotFound if the ledger does not exist or is soft-deleted.
 func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	// Build key: [keyPrefixLedgerInfo][ledgerID]
 	key := make([]byte, 5)
@@ -887,6 +893,12 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	if err := proto.Unmarshal(value, info); err != nil {
 		return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
 	}
+
+	// Check if soft-deleted
+	if info.DeletedAt != nil {
+		return nil, ErrNotFound
+	}
+
 	return info, nil
 }
 

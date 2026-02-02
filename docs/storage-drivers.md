@@ -188,7 +188,7 @@ The Store implements the `Batch` interface defined in `internal/store/types.go`.
 - **Runtime queries**: `GetBalanceDiffs`, `GetAccountMetadata`
 - **Idempotency**: `GetSequenceForIdempotencyKey`
 - **Transaction tracking**: `GetSequenceForTransactionID`, `IsTransactionReverted`
-- **Lifecycle**: `Close`, `CreateSnapshot`, `GetLastAppliedIndex`, `DeleteLedger`
+- **Lifecycle**: `Close`, `CreateSnapshot`, `GetLastAppliedIndex`
 
 ### Source Files
 

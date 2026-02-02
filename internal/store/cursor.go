@@ -71,3 +71,34 @@ var _ Cursor[any] = (*SliceCursor[any])(nil)
 func NewSliceCursor[T any](items []T) Cursor[T] {
 	return &SliceCursor[T]{items: items, index: 0}
 }
+
+// FilteredCursor wraps a cursor and filters items based on a predicate
+type FilteredCursor[T any] struct {
+	inner     Cursor[T]
+	predicate func(T) bool
+}
+
+func (c *FilteredCursor[T]) Next() (T, error) {
+	for {
+		item, err := c.inner.Next()
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		if c.predicate(item) {
+			return item, nil
+		}
+		// Skip items that don't match the predicate
+	}
+}
+
+func (c *FilteredCursor[T]) Close() error {
+	return c.inner.Close()
+}
+
+var _ Cursor[any] = (*FilteredCursor[any])(nil)
+
+// NewFilteredCursor creates a new cursor that filters items based on a predicate
+func NewFilteredCursor[T any](inner Cursor[T], predicate func(T) bool) Cursor[T] {
+	return &FilteredCursor[T]{inner: inner, predicate: predicate}
+}

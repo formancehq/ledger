@@ -120,22 +120,28 @@ func (fsm *FSM) handleCreateLedger(createCmd *raftcmdpb.CreateLedgerCommand, cmd
 	}, nil
 }
 
-// handleDeleteLedger handles the delete ledger action (hard delete)
-func (fsm *FSM) handleDeleteLedger(deleteCmd *raftcmdpb.DeleteLedgerCommand) (*commonpb.Log, error) {
+// handleDeleteLedger handles the delete ledger action (soft delete)
+func (fsm *FSM) handleDeleteLedger(deleteCmd *raftcmdpb.DeleteLedgerCommand, cmdDate *commonpb.Timestamp) (*commonpb.Log, error) {
 	// Check if ledger exists
-	_, ok := fsm.state.Ledgers[deleteCmd.Id]
+	ledgerState, ok := fsm.state.Ledgers[deleteCmd.Id]
 	if !ok {
 		return nil, commonpb.NewNotFoundError("ledger %d does not exist", deleteCmd.Id)
 	}
 
-	delete(fsm.state.Ledgers, deleteCmd.Id)
+	// Check if already deleted
+	if ledgerState.LedgerInfo.DeletedAt != nil {
+		return nil, fmt.Errorf("ledger %d is already deleted", deleteCmd.Id)
+	}
+
+	// Mark as deleted (soft delete)
+	ledgerState.LedgerInfo.DeletedAt = cmdDate
 
 	return &commonpb.Log{
 		Sequence: fsm.getNextSequence(),
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{
 				DeleteLedger: &commonpb.DeleteLedgerLog{
-					LedgerId: deleteCmd.Id,
+					Info: ledgerState.LedgerInfo,
 				},
 			},
 		},
@@ -154,7 +160,7 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 		return fsm.handleCreateLedger(cmd.GetCreateLedger(), cmdDate)
 
 	case cmd.GetDeleteLedger() != nil:
-		return fsm.handleDeleteLedger(cmd.GetDeleteLedger())
+		return fsm.handleDeleteLedger(cmd.GetDeleteLedger(), cmdDate)
 
 	case cmd.GetCreateLedgerLog() != nil:
 		createCmd := cmd.GetCreateLedgerLog()
@@ -492,7 +498,7 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 	case log.Payload.GetCreateLedger() != nil:
 		return batch.SaveLedger(log.Payload.GetCreateLedger().GetInfo())
 	case log.Payload.GetDeleteLedger() != nil:
-		return batch.DeleteLedger(log.Payload.GetDeleteLedger().GetLedgerId())
+		return batch.SaveLedger(log.Payload.GetDeleteLedger().GetInfo())
 	default:
 		return fmt.Errorf("unhandled log type: %T", log)
 	}

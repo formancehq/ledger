@@ -586,7 +586,7 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	require.False(t, reverted)
 }
 
-func TestStoreDeleteLedger(t *testing.T) {
+func TestStoreSoftDeleteLedger(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -599,10 +599,18 @@ func TestStoreDeleteLedger(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	var ledgerID uint32 = 1
-	registerLedger(t, s, "test-ledger", ledgerID)
+	createdAt := commonpb.NewTimestamp(time.Now())
+	batch := s.NewBatch(0)
+	err = batch.SaveLedger(&commonpb.LedgerInfo{
+		Id:        ledgerID,
+		Name:      "test-ledger",
+		CreatedAt: createdAt,
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
 
 	// Add some data
-	batch := s.NewBatch(1)
+	batch = s.NewBatch(1)
 	require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: ledgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
 	require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
 		LedgerID:  ledgerID,
@@ -614,24 +622,38 @@ func TestStoreDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.StoreTransactionID(ledgerID, 1, 1))
 	require.NoError(t, batch.Commit())
 
-	// Verify data exists
+	// Verify ledger exists and is not deleted
 	cursor, err := s.ListLedgers()
 	require.NoError(t, err)
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
+	require.Nil(t, ledgers[0].DeletedAt)
 
-	// Delete ledger
+	// Soft delete ledger
+	deletedAt := commonpb.NewTimestamp(time.Now())
 	batch = s.NewBatch(2)
-	require.NoError(t, batch.DeleteLedger(ledgerID))
+	require.NoError(t, batch.SaveLedger(&commonpb.LedgerInfo{
+		Id:        ledgerID,
+		Name:      "test-ledger",
+		CreatedAt: createdAt,
+		DeletedAt: deletedAt,
+	}))
 	require.NoError(t, batch.Commit())
 
-	// Verify ledger deleted
+	// Verify ledger still exists but is marked as deleted
 	cursor, err = s.ListLedgers()
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
-	require.Empty(t, ledgers)
+	require.Len(t, ledgers, 1)
+	require.NotNil(t, ledgers[0].DeletedAt)
+	require.Equal(t, deletedAt.Data, ledgers[0].DeletedAt.Data)
+
+	// Verify data still exists (soft delete doesn't remove data)
+	diffs, err := s.GetBalanceDiffs(ledgerID, BalanceDiffsQuery{"world": {"USD"}})
+	require.NoError(t, err)
+	require.Len(t, diffs["world"]["USD"], 1)
 }
 
 func TestStoreBalanceBase(t *testing.T) {

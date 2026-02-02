@@ -150,15 +150,15 @@ var _ = Describe("Ledger Deletion", func() {
 			Expect(ledger.Name).To(Equal(ledgerName))
 		})
 
-		It("Should successfully delete the ledger (hard delete)", func() {
-			// Delete the ledger
+		It("Should successfully delete the ledger (soft delete)", func() {
+			// Delete the ledger (soft delete)
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
 				Actions: []*servicepb.Request{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
-			// Verify the ledger is completely removed (hard delete)
+			// Verify the ledger is no longer accessible via GetLedger (filtered out)
 			Eventually(func(g Gomega) bool {
 				_, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 					Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
@@ -166,14 +166,14 @@ var _ = Describe("Ledger Deletion", func() {
 				return err != nil
 			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
-			// Verify the ledger is not in the list of all ledgers
+			// Verify the ledger is not in the list of all ledgers (soft-deleted are filtered)
 			ledgers, err := getAllLedgersInfo(ctx, servers[leaderID-1].client)
 			Expect(err).To(Succeed())
 			for name := range ledgers {
 				Expect(name).NotTo(Equal(ledgerName))
 			}
 
-			// Verify the ledger cannot be retrieved (hard delete)
+			// Verify the ledger cannot be retrieved (soft-deleted)
 			_, err = servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 				Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
 			})
@@ -238,15 +238,15 @@ var _ = Describe("Ledger Deletion", func() {
 			}
 		})
 
-		It("Should successfully delete the ledger even with transactions", func() {
-			// Delete the ledger (should succeed even with transactions)
+		It("Should successfully soft-delete the ledger even with transactions", func() {
+			// Soft-delete the ledger (should succeed even with transactions)
 			resp, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
 				Actions: []*servicepb.Request{deleteLedgerAction(ledgerID)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
-			// Verify the ledger no longer exists
+			// Verify the ledger is no longer accessible (soft-deleted)
 			Eventually(func(g Gomega) bool {
 				_, err := servers[leaderID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 					Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},

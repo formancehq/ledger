@@ -3,7 +3,6 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
@@ -203,56 +202,6 @@ func (b *Batch) StoreRevertedTransactionID(ledger uint32, transactionID uint64, 
 	binary.BigEndian.PutUint64(seqValue, sequence)
 	if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
 		return fmt.Errorf("storing reverted transaction ID: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteLedger deletes all data for a ledger by its ID.
-func (b *Batch) DeleteLedger(id uint32) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	// First, get the ledger info to find the name
-	writeByte(b.keyBuffer, keyPrefixLedgerInfo)
-	if err := binary.Write(b.keyBuffer, binary.BigEndian, id); err != nil {
-		return fmt.Errorf("writing ledger ID: %w", err)
-	}
-	ledgerInfoKey := make([]byte, b.keyBuffer.Len())
-	copy(ledgerInfoKey, b.keyBuffer.Bytes())
-	b.keyBuffer.Reset()
-
-	value, closer, err := b.store.db.Get(ledgerInfoKey)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil // Ledger doesn't exist, nothing to delete
-		}
-		return fmt.Errorf("getting ledger info: %w", err)
-	}
-
-	info := &commonpb.LedgerInfo{}
-	if err := proto.Unmarshal(value, info); err != nil {
-		_ = closer.Close()
-		return fmt.Errorf("unmarshaling ledger info: %w", err)
-	}
-	_ = closer.Close()
-
-	// Delete all data for this ledger ID
-	startBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(startBuf, info.Id)
-
-	endBuf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(endBuf, info.Id)
-	writeByte(endBuf, 0xFF)
-
-	if err := b.batch.DeleteRange(startBuf.Bytes(), endBuf.Bytes(), pebble.NoSync); err != nil {
-		return fmt.Errorf("deleting ledger range: %w", err)
-	}
-
-	// Delete the ledger info entry
-	if err := b.batch.Delete(ledgerInfoKey, pebble.NoSync); err != nil {
-		return fmt.Errorf("deleting ledger info: %w", err)
 	}
 
 	return nil

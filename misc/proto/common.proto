@@ -178,7 +178,7 @@ message CreateLedgerLog {
 }
 
 message DeleteLedgerLog {
-  uint32 ledger_id = 1;
+  LedgerInfo info = 1;  // Ledger info with deleted_at set
 }
 
 message ApplyLedgerLog {
@@ -231,6 +231,7 @@ message LedgerInfo {
   map<string, string> metadata = 2;         // Optional metadata
   Timestamp created_at = 3;                 // Creation timestamp
   uint32 id = 4;                            // Numeric ledger ID (auto-assigned, max 65535)
+  Timestamp deleted_at = 5;                 // Soft delete timestamp (nil if not deleted)
 }
 
 // ============================================================================

@@ -47,9 +47,16 @@ func NewDefaultController(
 	}
 }
 
-// GetAllLedgersInfo returns a cursor over all ledgers
+// GetAllLedgersInfo returns a cursor over all active (non-deleted) ledgers
 func (ctrl *DefaultController) GetAllLedgersInfo(_ context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
-	return ctrl.store.ListLedgers()
+	cursor, err := ctrl.store.ListLedgers()
+	if err != nil {
+		return nil, err
+	}
+	// Filter out soft-deleted ledgers
+	return store.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
+		return ledger.DeletedAt == nil
+	}), nil
 }
 
 func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
