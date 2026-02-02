@@ -150,6 +150,39 @@ func TestQueryTemplateValidation(t *testing.T) {
 		},
 		{
 			source: `{
+				"description": "$in filter",
+				"resource": "accounts",
+				"vars": {
+					"foo": "string",
+					"bar": "string"
+				},
+				"body": {
+					"$in": {
+						"metadata[foo]": ["${foo}", "${bar}"]
+					}
+				}
+			}`,
+			expectedTemplate: QueryTemplate{
+				Description: "$in filter",
+				Resource:    queries.ResourceKindAccount,
+				Params:      nil,
+				Vars: map[string]queries.VarSpec{
+					"foo": {
+						Type: queries.ValueTypeString,
+					},
+					"bar": {
+						Type: queries.ValueTypeString,
+					},
+				},
+				Body: json.RawMessage(`{
+					"$in": {
+						"metadata[foo]": ["${foo}", "${bar}"]
+					}
+				}`),
+			},
+		},
+		{
+			source: `{
 				"description": "unknown resource kind",
 				"resource": "doesntexist"
 			}`,
@@ -179,8 +212,18 @@ func TestQueryTemplateValidation(t *testing.T) {
 			expectedError: "invalid default",
 		},
 		{
+			name: "invalid common params",
 			source: `{
-				"description": "invalid params",
+				"resource": "volumes",
+				"params": {
+					"sort": "nope"
+				}
+			}`,
+			expectedError: "cannot unmarshal",
+		},
+		{
+			name: "invalid resource-specific params",
+			source: `{
 				"resource": "volumes",
 				"params": {
 					"groupLvl": false
@@ -189,8 +232,8 @@ func TestQueryTemplateValidation(t *testing.T) {
 			expectedError: "cannot unmarshal",
 		},
 		{
+			name: "wrong variable type",
 			source: `{
-				"description": "wrong variable type",
 				"resource": "accounts",
 				"vars": {
 					"foo": "string"
@@ -204,8 +247,8 @@ func TestQueryTemplateValidation(t *testing.T) {
 			expectedError: "cannot use variable",
 		},
 		{
+			name: "undeclared variable",
 			source: `{
-				"description": "undeclared variable",
 				"resource": "accounts",
 				"vars": {},
 				"body": {
@@ -352,7 +395,6 @@ func TestQueryResolution(t *testing.T) {
 			expectedError: "string or a plain value",
 		},
 		{
-			// should be elsewhere
 			name:            "invalid field access syntax",
 			resource:        queries.ResourceKindAccount,
 			varDeclarations: map[string]queries.VarSpec{"minimum_balance": {}},

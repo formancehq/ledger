@@ -12,7 +12,7 @@ import (
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	resources "github.com/formancehq/ledger/internal/queries"
+	queries "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
@@ -143,10 +143,10 @@ func (mr *MockRepositoryHandlerMockRecorder[Opts]) ResolveFilter(query, operator
 }
 
 // Schema mocks base method.
-func (m *MockRepositoryHandler[Opts]) Schema() resources.EntitySchema {
+func (m *MockRepositoryHandler[Opts]) Schema() queries.EntitySchema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Schema")
-	ret0, _ := ret[0].(resources.EntitySchema)
+	ret0, _ := ret[0].(queries.EntitySchema)
 	return ret0
 }
 

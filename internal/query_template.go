@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
+
+	"github.com/iancoleman/strcase"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/ledger/internal/queries"
@@ -36,6 +40,40 @@ type QueryTemplateParams[Opts any] struct {
 	SortColumn string
 	SortOrder  *bunpaginate.Order
 	PageSize   uint
+}
+
+func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error {
+	var x struct {
+		PIT      *time.Time `json:"endTime"`
+		OOT      *time.Time `json:"startTime"`
+		Expand   []string   `json:"expand,omitempty"`
+		Sort     string     `json:"sort"`
+		PageSize uint       `json:"pageSize"`
+	}
+	err := json.Unmarshal(b, &x)
+	if err != nil {
+		return err
+	}
+	p.PIT = x.PIT
+	p.OOT = x.OOT
+	p.Expand = x.Expand
+	p.PageSize = x.PageSize
+
+	if x.Sort != "" {
+		parts := strings.SplitN(x.Sort, ":", 2)
+		p.SortColumn = strcase.ToSnake(parts[0])
+		if len(parts) > 1 {
+			switch {
+			case strings.ToLower(parts[1]) == "desc":
+				p.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderDesc))
+			case strings.ToLower(parts[1]) == "asc":
+				p.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderAsc))
+			default:
+				return fmt.Errorf("invalid order: %s", parts[1])
+			}
+		}
+	}
+	return nil
 }
 
 func unmarshalWithNumber(data []byte, v any) error {
@@ -76,34 +114,40 @@ func (q QueryTemplate) Validate() error {
 	}
 	// check if the params matches the resource
 	if len(q.Params) > 0 {
-		var err error
-		// TODO: missing commmon param unmarshal?
-		// err = validateParam[QueryTemplateParams](q.Params)
-		// if err != nil {
-		// 	return fmt.Errorf("invalid params: %w", err)
-		// }
+		var params QueryTemplateParams[any]
+		err := validateParam(q.Params, &params)
+		if err != nil {
+			return fmt.Errorf("invalid params: %w", err)
+		}
 		switch q.Resource {
 		case queries.ResourceKindVolume:
-			err = validateParam[GetVolumesOptions](q.Params)
+			var opts GetVolumesOptions
+			err = validateParam(q.Params, &opts)
 		}
 		if err != nil {
 			return fmt.Errorf("invalid params: %w", err)
 		}
 	}
+	// validate variable declarations
 	err := queries.ValidateVars(q.Vars)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to validate variable declarations: %w", err)
 	}
 	// validate body
-	return queries.ValidateFilterBody(q.Resource, q.Body, q.Vars)
+	if len(q.Body) > 0 {
+		err = queries.ValidateFilterBody(q.Resource, q.Body, q.Vars)
+		if err != nil {
+			return fmt.Errorf("failed to validate filter body: %w", err)
+		}
+	}
+	return nil
 }
 
-func validateParam[Opts any](params json.RawMessage) error {
+func validateParam[Opts any](params json.RawMessage, pointer *Opts) error {
 	if params == nil {
 		return nil
 	}
-	var x GetVolumesOptions
-	if err := unmarshalWithNumber(params, &x); err != nil {
+	if err := unmarshalWithNumber(params, pointer); err != nil {
 		return err
 	}
 	return nil

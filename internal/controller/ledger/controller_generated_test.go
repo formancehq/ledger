@@ -15,7 +15,7 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
-	resources "github.com/formancehq/ledger/internal/queries"
+	queries "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
@@ -1066,10 +1066,10 @@ func (c *MockControllerRollbackCall) DoAndReturn(f func(context.Context) error) 
 }
 
 // RunQuery mocks base method.
-func (m *MockController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (m *MockController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
-	ret0, _ := ret[0].(*resources.ResourceKind)
+	ret0, _ := ret[0].(*queries.ResourceKind)
 	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -1088,19 +1088,19 @@ type MockControllerRunQueryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerRunQueryCall) Return(arg0 *resources.ResourceKind, arg1 *bunpaginate.Cursor[any], arg2 error) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) Return(arg0 *queries.ResourceKind, arg1 *bunpaginate.Cursor[any], arg2 error) *MockControllerRunQueryCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, uint64) (*resources.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, uint64) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

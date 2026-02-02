@@ -7,6 +7,8 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 )
 
+// Represents a type used for query filter predicates.
+// It supports primitive types only as it's all we need, but could represent extended to composite types if needed
 type ValueType string
 
 const (
