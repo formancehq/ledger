@@ -249,3 +249,28 @@ message DeleteMetadataCommand {
   Target target = 1;
   string key = 2;
 }
+
+message TransactionUpdate {
+  uint64 by_log = 1;
+  oneof transaction_modification_type {
+    TransactionUpdateRevert transaction_modification_revert = 2;
+    TransactionUpdateAddMetadata transaction_modification_add_metadata = 3;
+    TransactionUpdateDeleteMetadata transaction_modification_delete_metadata = 4;
+    TransactionInit transaction_init = 5;
+  }
+}
+
+message TransactionUpdateRevert {
+  uint64 by_transaction = 1;
+}
+
+message TransactionUpdateAddMetadata {
+  string key = 1;
+  string value = 2;
+}
+
+message TransactionUpdateDeleteMetadata {
+  string key = 1;
+}
+
+message TransactionInit {}

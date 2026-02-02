@@ -195,39 +195,25 @@ func (b *Batch) SetMetadataBase(base MetadataBase) error {
 	return nil
 }
 
-// StoreTransactionID stores the sequence associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ledger uint32, transactionID uint64, sequence uint64) error {
+// StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
+// Key: [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
+func (b *Batch) StoreTransactionUpdate(ledger uint32, transactionID uint64, update *commonpb.TransactionUpdate) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
 	writeLedgerPrefix(b.keyBuffer, ledger)
-	writeByte(b.keyBuffer, keyPrefixTransactionID)
+	writeByte(b.keyBuffer, keyPrefixTransactionUpdate)
 	writeUInt64(b.keyBuffer, transactionID)
+	writeUInt64(b.keyBuffer, update.ByLog)
 
-	seqValue := make([]byte, 8)
-	binary.BigEndian.PutUint64(seqValue, sequence)
-	if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
-		return fmt.Errorf("storing transaction ID mapping: %w", err)
+	updateData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, update)
+	if err != nil {
+		return fmt.Errorf("marshaling transaction update: %w", err)
 	}
 
-	return nil
-}
-
-// StoreRevertedTransactionID stores the sequence associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ledger uint32, transactionID uint64, sequence uint64) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	writeLedgerPrefix(b.keyBuffer, ledger)
-	writeByte(b.keyBuffer, keyPrefixRevertedTxID)
-	writeUInt64(b.keyBuffer, transactionID)
-
-	seqValue := make([]byte, 8)
-	binary.BigEndian.PutUint64(seqValue, sequence)
-	if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
-		return fmt.Errorf("storing reverted transaction ID: %w", err)
+	if err := setOnBatch(b.batch, b.keyBuffer, updateData); err != nil {
+		return fmt.Errorf("storing transaction update: %w", err)
 	}
 
 	return nil

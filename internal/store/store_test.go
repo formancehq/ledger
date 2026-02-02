@@ -529,10 +529,20 @@ func TestStoreTransactionIDIndex(t *testing.T) {
 	var ledgerID uint32 = 1
 	registerLedger(t, s, "test-ledger", ledgerID)
 
-	// Store transaction IDs
+	// Store transaction updates (init)
 	batch := s.NewBatch(1)
-	require.NoError(t, batch.StoreTransactionID(ledgerID, 100, 1))
-	require.NoError(t, batch.StoreTransactionID(ledgerID, 200, 2))
+	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
+		ByLog: 1,
+		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+			TransactionInit: &commonpb.TransactionInit{},
+		},
+	}))
+	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 200, &commonpb.TransactionUpdate{
+		ByLog: 2,
+		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+			TransactionInit: &commonpb.TransactionInit{},
+		},
+	}))
 	require.NoError(t, batch.Commit())
 
 	// Retrieve transaction IDs
@@ -565,14 +575,31 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	var ledgerID uint32 = 1
 	registerLedger(t, s, "test-ledger", ledgerID)
 
+	// Store transaction init first
+	batch := s.NewBatch(1)
+	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
+		ByLog: 1,
+		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+			TransactionInit: &commonpb.TransactionInit{},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
 	// Initially not reverted
 	reverted, err := s.IsTransactionReverted(ledgerID, 100)
 	require.NoError(t, err)
 	require.False(t, reverted)
 
 	// Mark as reverted
-	batch := s.NewBatch(1)
-	require.NoError(t, batch.StoreRevertedTransactionID(ledgerID, 100, 1))
+	batch = s.NewBatch(2)
+	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
+		ByLog: 2,
+		TransactionModificationType: &commonpb.TransactionUpdate_TransactionModificationRevert{
+			TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
+				ByTransaction: 101, // ID of the revert transaction
+			},
+		},
+	}))
 	require.NoError(t, batch.Commit())
 
 	// Now should be reverted
@@ -619,7 +646,12 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 		Value:     ptr("value"),
 		RaftIndex: 1,
 	}))
-	require.NoError(t, batch.StoreTransactionID(ledgerID, 1, 1))
+	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 1, &commonpb.TransactionUpdate{
+		ByLog: 1,
+		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+			TransactionInit: &commonpb.TransactionInit{},
+		},
+	}))
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger exists and is not deleted

@@ -153,3 +153,4 @@ message ClusterState {
   RaftStatus raft_status = 5;   // Complete Raft status information
   State inner_state = 6;        // FSM state (all ledgers)
 }
+

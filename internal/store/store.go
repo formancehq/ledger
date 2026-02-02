@@ -40,21 +40,17 @@ type Store struct {
 	currentCheckPoint uint64
 }
 
-// Key prefixes for Pebble storage (3 bytes max)
+// Key prefixes for Pebble storage
 var (
-	keyPrefixLastAppliedIndex byte = 0x00
-	// 0x01 was keyPrefixLog - now unused, logs are stored in Log
-	keyPrefixBalanceDiff byte = 0x02
-	// 0x03 was keyPrefixAccountMetadata - now replaced by MetadataDiff/Delete
-	keyPrefixIdempotency   byte = 0x04
-	keyPrefixTransactionID byte = 0x05
-	keyPrefixRevertedTxID  byte = 0x06
-	keyPrefixLedgerInfo    byte = 0x07
-	keyPrefixLog           byte = 0x08 // [keyPrefixLog][sequence] -> Log
-	// 0x09 was keyPrefixLogIndex - now unused, logs are accessed via Log
-	keyPrefixBalanceBase  byte = 0x0A // [ledger][keyPrefixBalanceBase][account][asset][raftIndex] -> BigInt
-	keyPrefixMetadataDiff byte = 0x0B // [ledger][keyPrefixMetadataDiff][account][key][raftIndex] -> value (string, empty = deleted)
-	keyPrefixMetadataBase byte = 0x0C // [ledger][keyPrefixMetadataBase][account][key][raftIndex] -> value (string, empty = deleted)
+	keyPrefixLastAppliedIndex  byte = 0x00 // [keyPrefixLastAppliedIndex] -> uint64
+	keyPrefixLog               byte = 0x01 // [keyPrefixLog][sequence] -> Log
+	keyPrefixIdempotency       byte = 0x02 // [keyPrefixIdempotency][key] -> sequence
+	keyPrefixLedgerInfo        byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
+	keyPrefixBalanceDiff       byte = 0x04 // [ledger][keyPrefixBalanceDiff][account][asset][raftIndex] -> BigInt
+	keyPrefixBalanceBase       byte = 0x05 // [ledger][keyPrefixBalanceBase][account][asset][raftIndex] -> BigInt
+	keyPrefixMetadataDiff      byte = 0x06 // [ledger][keyPrefixMetadataDiff][account][key][raftIndex] -> value (string, empty = deleted)
+	keyPrefixMetadataBase      byte = 0x07 // [ledger][keyPrefixMetadataBase][account][key][raftIndex] -> value (string, empty = deleted)
+	keyPrefixTransactionUpdate byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 )
 
 // NewStore creates a new Store instance
@@ -664,54 +660,80 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
-// GetSequenceForTransactionID retrieves the sequence for a given transaction ID for a specific ledger (implements store.Store)
+// GetSequenceForTransactionID retrieves the sequence (ByLog of TransactionInit) for a given transaction ID.
+// Returns 0 if no TransactionInit is found.
 func (s *Store) GetSequenceForTransactionID(ledger uint32, transactionID uint64) (uint64, error) {
-
-	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
-	writeByte(buf, keyPrefixTransactionID)
-	writeUInt64(buf, transactionID)
-
-	value, closer, err := s.db.Get(buf.Bytes())
+	updates, err := s.GetTransactionUpdates(ledger, transactionID)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
+		return 0, err
+	}
+
+	// Find the TransactionInit update
+	for _, update := range updates {
+		if update.GetTransactionInit() != nil {
+			return update.ByLog, nil
 		}
-		return 0, fmt.Errorf("querying transaction ID mapping: %w", err)
 	}
-	defer func() {
-		_ = closer.Close()
-	}()
 
-	// Parse sequence from 8-byte big-endian value
-	if len(value) != 8 {
-		return 0, fmt.Errorf("invalid sequence value length: expected 8 bytes, got %d", len(value))
-	}
-	sequence := binary.BigEndian.Uint64(value)
-
-	return sequence, nil
+	return 0, nil
 }
 
-// IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.Store)
+// IsTransactionReverted checks if a transaction has been reverted for a specific ledger.
+// Returns true if a TransactionUpdateRevert exists for this transaction.
 func (s *Store) IsTransactionReverted(ledger uint32, transactionID uint64) (bool, error) {
+	updates, err := s.GetTransactionUpdates(ledger, transactionID)
+	if err != nil {
+		return false, err
+	}
 
+	// Check for any revert update
+	for _, update := range updates {
+		if update.GetTransactionModificationRevert() != nil {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
+func (s *Store) GetTransactionUpdates(ledger uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
-	writeByte(buf, keyPrefixRevertedTxID)
+	writeByte(buf, keyPrefixTransactionUpdate)
 	writeUInt64(buf, transactionID)
+	lowerBound := bytes.Clone(buf.Bytes())
 
-	_, closer, err := s.db.Get(buf.Bytes())
+	// Upper bound: add 0xFF to get all entries for this transaction
+	writeByte(buf, 0xFF)
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return false, nil
-		}
-		return false, fmt.Errorf("querying reverted transaction ID: %w", err)
+		return nil, fmt.Errorf("creating iterator for transaction updates: %w", err)
 	}
-	defer func() {
-		_ = closer.Close()
-	}()
+	defer func() { _ = iter.Close() }()
 
-	return true, nil
+	var updates []*commonpb.TransactionUpdate
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading transaction update value: %w", err)
+		}
+
+		update := &commonpb.TransactionUpdate{}
+		if err := proto.Unmarshal(valueBytes, update); err != nil {
+			return nil, fmt.Errorf("unmarshaling transaction update: %w", err)
+		}
+
+		updates = append(updates, update)
+	}
+
+	return updates, nil
 }
 
 func (s *Store) CreateSnapshot() error {

@@ -433,8 +433,13 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			if err := projectTransaction(batch, payload.CreatedTransaction.Transaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
 			}
-			// Store the global sequence for transaction ID lookup
-			if err := batch.StoreTransactionID(log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, log.Sequence); err != nil {
+			// Store transaction init update
+			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, &commonpb.TransactionUpdate{
+				ByLog: log.Sequence,
+				TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			}); err != nil {
 				return err
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
@@ -459,8 +464,24 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			if err := projectTransaction(batch, payload.RevertedTransaction.RevertTransaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
 			}
-			// Store the global sequence for reverted transaction lookup
-			if err := batch.StoreRevertedTransactionID(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Sequence); err != nil {
+			// Store transaction revert update for the original transaction
+			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, &commonpb.TransactionUpdate{
+				ByLog: log.Sequence,
+				TransactionModificationType: &commonpb.TransactionUpdate_TransactionModificationRevert{
+					TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
+						ByTransaction: payload.RevertedTransaction.RevertTransaction.Id,
+					},
+				},
+			}); err != nil {
+				return err
+			}
+			// Store transaction init for the revert transaction itself
+			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertTransaction.Id, &commonpb.TransactionUpdate{
+				ByLog: log.Sequence,
+				TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			}); err != nil {
 				return err
 			}
 		case *commonpb.LedgerLogPayload_SavedMetadata:
