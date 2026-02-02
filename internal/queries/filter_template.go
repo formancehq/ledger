@@ -176,7 +176,7 @@ func ResolveFilterTemplate(resourceKind ResourceKind, body json.RawMessage, varD
 		}
 		return query.ParseJSON(string(s))
 	} else {
-		return nil, fmt.Errorf("unexpected type")
+		return nil, fmt.Errorf("unexpected type: %T", result)
 	}
 }
 
@@ -194,11 +194,9 @@ func resolveFilterTemplate(schema EntitySchema, m any, vars map[string]any) (any
 		for key, value := range v {
 			if !strings.HasPrefix(key, "$") {
 				// if value is a string, it may contain variable placeholders that we need to resolve
-				if value, ok := value.(string); ok {
-					v[key], err = resolveNestedFilter(schema, key, value, vars)
-					if err != nil {
-						return nil, err
-					}
+				v[key], err = resolveNestedFilter(schema, key, value, vars)
+				if err != nil {
+					return nil, err
 				}
 			} else {
 				v[key], err = resolveFilterTemplate(schema, value, vars)

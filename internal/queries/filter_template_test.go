@@ -121,6 +121,27 @@ func TestFilterTemplateResolution(t *testing.T) {
 			}`,
 		},
 		{
+			name:     "substitute in value array",
+			resource: ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{
+				"foo": {
+					Type:    "string",
+					Default: "foovalue",
+				},
+			},
+			source: `{
+				"$in": {
+					"address": ["${foo}", "barvalue"]
+				}
+			}`,
+			vars: map[string]any{},
+			expectedFilter: `{
+				"$in": {
+					"address": ["foovalue", "barvalue"]
+				}
+			}`,
+		},
+		{
 			name:            "invalid substitution syntax",
 			resource:        ResourceKindAccount,
 			varDeclarations: map[string]VarSpec{"minimum_balance": {}},
