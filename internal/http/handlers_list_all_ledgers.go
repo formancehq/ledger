@@ -23,7 +23,7 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 
 	var ret []*commonpb.LedgerInfo
 	for {
-		ledger, err := cursor.Next(ctx)
+		ledger, err := cursor.Next()
 		if err != nil {
 			if err == io.EOF {
 				break

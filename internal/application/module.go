@@ -167,7 +167,9 @@ func Module() fx.Option {
 					},
 				})
 				lc.Append(fx.Hook{
-					OnStop: runtime.Close,
+					OnStop: func(_ context.Context) error {
+						return runtime.Close()
+					},
 				})
 			},
 			func(

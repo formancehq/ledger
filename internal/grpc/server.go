@@ -2,15 +2,19 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/stats"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -20,25 +24,62 @@ type Server struct {
 	port     int
 }
 
+// errorConversionInterceptor converts known errors to proper gRPC status codes
+func errorConversionInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		resp, err := handler(ctx, req)
+		if err != nil {
+			err = convertToGRPCError(err)
+		}
+		return resp, err
+	}
+}
+
+// errorConversionStreamInterceptor converts known errors to proper gRPC status codes for streaming RPCs
+func errorConversionStreamInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := handler(srv, ss)
+		if err != nil {
+			err = convertToGRPCError(err)
+		}
+		return err
+	}
+}
+
+// convertToGRPCError converts known errors to proper gRPC status errors
+func convertToGRPCError(err error) error {
+	// Already a gRPC status error, return as-is
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+
+	// Convert ErrNoLeader to Unavailable (client should retry)
+	if errors.Is(err, commonpb.ErrNoLeader) {
+		return status.Error(codes.Unavailable, "no leader available, please retry")
+	}
+
+	// Convert NotFoundError to NotFound
+	var notFoundErr *commonpb.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		return status.Error(codes.NotFound, notFoundErr.Error())
+	}
+
+	// Default: return as Unknown (preserves the original error message)
+	return err
+}
+
 func NewServer(port int, logger logging.Logger, debug bool) *Server {
-	opts := []grpc.ServerOption{
-		// todo: make configurable (performance cost)
-		grpc.StatsHandler(otelgrpc.NewServerHandler(
-			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
-				return !strings.Contains(info.FullMethodName, "RaftTransportService")
-			}),
-		)),
-		grpc.InitialWindowSize(16 * 1024 * 1024),
-		grpc.InitialConnWindowSize(64 * 1024 * 1024),
-		grpc.ReadBufferSize(1 * 1024 * 1024),
-		grpc.WriteBufferSize(1 * 1024 * 1024),
-		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
-		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+	// Always add error conversion interceptor
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		errorConversionInterceptor(),
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		errorConversionStreamInterceptor(),
 	}
 
 	// Add logging interceptor in debug mode
 	if debug {
-		opts = append(opts, grpc.ChainUnaryInterceptor(
+		unaryInterceptors = append(unaryInterceptors,
 			func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 				logger.WithFields(map[string]any{
 					"method": info.FullMethod,
@@ -52,7 +93,24 @@ func NewServer(port int, logger logging.Logger, debug bool) *Server {
 				}
 				return resp, err
 			},
-		))
+		)
+	}
+
+	opts := []grpc.ServerOption{
+		// todo: make configurable (performance cost)
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
+				return !strings.Contains(info.FullMethodName, "RaftTransportService")
+			}),
+		)),
+		grpc.InitialWindowSize(16 * 1024 * 1024),
+		grpc.InitialConnWindowSize(64 * 1024 * 1024),
+		grpc.ReadBufferSize(1 * 1024 * 1024),
+		grpc.WriteBufferSize(1 * 1024 * 1024),
+		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
+		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 
 	server := grpc.NewServer(opts...)

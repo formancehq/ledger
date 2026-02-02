@@ -56,7 +56,7 @@ func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerID uint32, w Export
 	return fmt.Errorf("export is not implemented yet")
 }
 
-// GetAllLogs returns a cursor to iterate over all logs (implements LogStreamer)
+// GetAllLogs returns a cursor to iterate over all logs (implements Controller interface)
 func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	req := &servicepb.StreamLogsRequest{
 		FromSequence: from,

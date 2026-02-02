@@ -2,7 +2,6 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -39,7 +38,7 @@ func (s *Store) NewBatch(lastAppliedIndex uint64) store.Batch {
 }
 
 // AppendLogs appends system logs to the batch.
-func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+func (b *Batch) AppendLogs(logs ...*commonpb.Log) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -73,8 +72,8 @@ func (b *Batch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
 	return nil
 }
 
-// RegisterLedger registers a new ledger in the store.
-func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
+// SaveLedger saves or updates a ledger in the store.
+func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -99,31 +98,31 @@ func (b *Batch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) e
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error {
+func (b *Batch) AppendBalanceDiff(diff store.BalanceDiff) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, ledger)
+	writeLedgerPrefix(b.keyBuffer, diff.LedgerID)
 	writeByte(b.keyBuffer, keyPrefixBalanceDiff)
-	writeString(b.keyBuffer, account)
-	writeString(b.keyBuffer, asset)
-	writeUInt64(b.keyBuffer, raftIndex)
+	writeString(b.keyBuffer, diff.Account)
+	writeString(b.keyBuffer, diff.Asset)
+	writeUInt64(b.keyBuffer, diff.RaftIndex)
 
-	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff)
+	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff.Diff)
 	if err != nil {
 		return fmt.Errorf("marshaling balance diff: %w", err)
 	}
 
 	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
-		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", ledger, account, asset, err)
+		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", diff.LedgerID, diff.Account, diff.Asset, err)
 	}
 
 	return nil
 }
 
 // SaveAccountMetadata saves metadata for an account.
-func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error {
+func (b *Batch) SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -147,7 +146,7 @@ func (b *Batch) SaveAccountMetadata(ctx context.Context, ledger uint32, account 
 }
 
 // DeleteAccountMetadata deletes metadata keys for an account.
-func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error {
+func (b *Batch) DeleteAccountMetadata(ledger uint32, account string, keys []string) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -167,7 +166,7 @@ func (b *Batch) DeleteAccountMetadata(ctx context.Context, ledger uint32, accoun
 }
 
 // StoreTransactionID stores the sequence associated to a transaction ID.
-func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
+func (b *Batch) StoreTransactionID(ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -186,7 +185,7 @@ func (b *Batch) StoreTransactionID(ctx context.Context, ledger uint32, transacti
 }
 
 // StoreRevertedTransactionID stores the sequence associated to a transaction ID that has been reverted.
-func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error {
+func (b *Batch) StoreRevertedTransactionID(ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -205,7 +204,7 @@ func (b *Batch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, t
 }
 
 // DeleteLedger deletes all data for a ledger by its ID.
-func (b *Batch) DeleteLedger(ctx context.Context, id uint32) error {
+func (b *Batch) DeleteLedger(id uint32) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -255,7 +254,7 @@ func (b *Batch) DeleteLedger(ctx context.Context, id uint32) error {
 }
 
 // Cancel cancels the batch and releases resources.
-func (b *Batch) Cancel(ctx context.Context) error {
+func (b *Batch) Cancel() error {
 	if b.committed {
 		return nil
 	}
@@ -267,7 +266,7 @@ func (b *Batch) Cancel(ctx context.Context) error {
 }
 
 // Commit commits all buffered operations atomically with NoSync.
-func (b *Batch) Commit(ctx context.Context) error {
+func (b *Batch) Commit() error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}

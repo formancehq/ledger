@@ -261,7 +261,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 
 	batch := fsm.store.NewBatch(entries[len(entries)-1].Index)
 	defer func() {
-		_ = batch.Cancel(ctx)
+		_ = batch.Cancel()
 	}()
 	cmd := &raftcmdpb.CommandBatch{}
 
@@ -294,7 +294,7 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 		ret = append(ret, *result)
 	}
 
-	if err := batch.Commit(ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return nil, fmt.Errorf("committing batch: %w", err)
 	}
 
@@ -334,7 +334,7 @@ func (fsm *FSM) applyAction(ctx context.Context, batch store.Batch, action *raft
 		return nil, fmt.Errorf("projecting log %d: %w", log.Sequence, err)
 	}
 
-	if err := batch.AppendLogs(ctx, log); err != nil {
+	if err := batch.AppendLogs(log); err != nil {
 		return nil, fmt.Errorf("writing system log to runtime store: %w", err)
 	}
 
@@ -375,8 +375,8 @@ func (fsm *FSM) GetAllLedgers() map[string]*commonpb.LedgerInfo {
 }
 
 // CreateSnapshot creates a snapshot of the FSM state
-func (fsm *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
-	if err := fsm.store.CreateSnapshot(ctx); err != nil {
+func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
+	if err := fsm.store.CreateSnapshot(); err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}
 
@@ -392,17 +392,29 @@ func (fsm *FSM) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) e
 // The index parameter is used as the unique suffix for balance diff keys to avoid collisions.
 // During normal raft apply, this is the raft entry index.
 // During sync from leader, this is the log's sequence number.
-func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb.Log, index uint64) error {
+func (fsm *FSM) projectLog(_ context.Context, batch store.Batch, log *commonpb.Log, index uint64) error {
 	switch {
 	case log.Payload.GetApply() != nil:
 		ledgerLog := log.Payload.GetApply().Log
 
-		projectTransaction := func(ctx context.Context, batch store.Batch, tx *commonpb.Transaction) error {
+		projectTransaction := func(batch store.Batch, tx *commonpb.Transaction) error {
 			for _, posting := range tx.Postings {
-				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Source, posting.Asset, posting.Amount.Neg(), index); err != nil {
+				if err := batch.AppendBalanceDiff(store.BalanceDiff{
+					LedgerID:  log.Payload.GetApply().LedgerId,
+					Account:   posting.Source,
+					Asset:     posting.Asset,
+					Diff:      posting.Amount.Neg(),
+					RaftIndex: index,
+				}); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
-				if err := batch.AppendBalanceDiff(ctx, log.Payload.GetApply().LedgerId, posting.Destination, posting.Asset, posting.Amount, index); err != nil {
+				if err := batch.AppendBalanceDiff(store.BalanceDiff{
+					LedgerID:  log.Payload.GetApply().LedgerId,
+					Account:   posting.Destination,
+					Asset:     posting.Asset,
+					Diff:      posting.Amount,
+					RaftIndex: index,
+				}); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
 			}
@@ -412,16 +424,16 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb
 
 		switch payload := ledgerLog.Data.Payload.(type) {
 		case *commonpb.LedgerLogPayload_CreatedTransaction:
-			if err := projectTransaction(ctx, batch, payload.CreatedTransaction.Transaction); err != nil {
+			if err := projectTransaction(batch, payload.CreatedTransaction.Transaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
 			}
 			// Store the global sequence for transaction ID lookup
-			if err := batch.StoreTransactionID(ctx, log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, log.Sequence); err != nil {
+			if err := batch.StoreTransactionID(log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, log.Sequence); err != nil {
 				return err
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
 				for account, metadata := range payload.CreatedTransaction.AccountMetadata {
-					err := batch.SaveAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account, metadata)
+					err := batch.SaveAccountMetadata(log.Payload.GetApply().LedgerId, account, metadata)
 					if err != nil {
 						return err
 					}
@@ -429,22 +441,22 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb
 			}
 
 		case *commonpb.LedgerLogPayload_RevertedTransaction:
-			if err := projectTransaction(ctx, batch, payload.RevertedTransaction.RevertTransaction); err != nil {
+			if err := projectTransaction(batch, payload.RevertedTransaction.RevertTransaction); err != nil {
 				return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
 			}
 			// Store the global sequence for reverted transaction lookup
-			if err := batch.StoreRevertedTransactionID(ctx, log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Sequence); err != nil {
+			if err := batch.StoreRevertedTransactionID(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, log.Sequence); err != nil {
 				return err
 			}
 		case *commonpb.LedgerLogPayload_SavedMetadata:
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.SaveAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
+				if err := batch.SaveAccountMetadata(log.Payload.GetApply().LedgerId, account.Addr, payload.SavedMetadata.Metadata); err != nil {
 					return err
 				}
 			}
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
-				if err := batch.DeleteAccountMetadata(ctx, log.Payload.GetApply().LedgerId, account.Addr, []string{
+				if err := batch.DeleteAccountMetadata(log.Payload.GetApply().LedgerId, account.Addr, []string{
 					payload.DeletedMetadata.Key,
 				}); err != nil {
 					return err
@@ -456,16 +468,16 @@ func (fsm *FSM) projectLog(ctx context.Context, batch store.Batch, log *commonpb
 
 		return nil
 	case log.Payload.GetCreateLedger() != nil:
-		return batch.RegisterLedger(ctx, log.Payload.GetCreateLedger().GetInfo())
+		return batch.SaveLedger(log.Payload.GetCreateLedger().GetInfo())
 	case log.Payload.GetDeleteLedger() != nil:
-		return batch.DeleteLedger(ctx, log.Payload.GetDeleteLedger().GetLedgerId())
+		return batch.DeleteLedger(log.Payload.GetDeleteLedger().GetLedgerId())
 	default:
 		return fmt.Errorf("unhandled log type: %T", log)
 	}
 }
 
 func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStreamer) (uint64, error) {
-	lastSequence, err := fsm.store.GetLastSequence(ctx)
+	lastSequence, err := fsm.store.GetLastSequence()
 	if err != nil {
 		return 0, err
 	}
@@ -481,19 +493,19 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 		"newNextSequence": fsm.state.NextSequence,
 	}).Infof("Syncing system logs from leader")
 
-	logStream, err := logStreamer.GetAllLogs(ctx, lastSequence, fsm.state.NextSequence-1)
+	logStream, err := logStreamer.GetAllLogs(lastSequence, fsm.state.NextSequence-1)
 	if err != nil {
 		return 0, fmt.Errorf("streaming system logs from peer: %w", err)
 	}
 
 	batch := fsm.store.NewBatch(fsm.snapshotIndex)
 	defer func() {
-		_ = batch.Cancel(ctx)
+		_ = batch.Cancel()
 	}()
 
 	count := 0
 	for {
-		log, err := logStream.Next(ctx)
+		log, err := logStream.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -508,7 +520,7 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 			return 0, fmt.Errorf("projecting log %d: %w", log.Sequence, err)
 		}
 
-		if err := batch.AppendLogs(ctx, log); err != nil {
+		if err := batch.AppendLogs(log); err != nil {
 			return 0, fmt.Errorf("writing catch-up system logs to runtime store: %w", err)
 		}
 	}
@@ -517,7 +529,7 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 		"logsWritten": count,
 	}).Infof("Synced system logs from leader")
 
-	if err := batch.Commit(ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return 0, fmt.Errorf("committing batch: %w", err)
 	}
 

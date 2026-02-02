@@ -6,7 +6,6 @@
 package store
 
 import (
-	context "context"
 	reflect "reflect"
 
 	metadata "github.com/formancehq/go-libs/v3/metadata"
@@ -75,18 +74,18 @@ func (m *MockLogStreamer) EXPECT() *MockLogStreamerMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogStreamer) GetAllLogs(ctx context.Context, from, to uint64) (Cursor[*commonpb.Log], error) {
+func (m *MockLogStreamer) GetAllLogs(from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllLogs", ctx, from, to)
+	ret := m.ctrl.Call(m, "GetAllLogs", from, to)
 	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAllLogs indicates an expected call of GetAllLogs.
-func (mr *MockLogStreamerMockRecorder) GetAllLogs(ctx, from, to any) *gomock.Call {
+func (mr *MockLogStreamerMockRecorder) GetAllLogs(from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogStreamer)(nil).GetAllLogs), ctx, from, to)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogStreamer)(nil).GetAllLogs), from, to)
 }
 
 // MockLogReader is a mock of LogReader interface.
@@ -113,33 +112,33 @@ func (m *MockLogReader) EXPECT() *MockLogReaderMockRecorder {
 }
 
 // GetAllLogs mocks base method.
-func (m *MockLogReader) GetAllLogs(ctx context.Context, from, to uint64) (Cursor[*commonpb.Log], error) {
+func (m *MockLogReader) GetAllLogs(from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllLogs", ctx, from, to)
+	ret := m.ctrl.Call(m, "GetAllLogs", from, to)
 	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAllLogs indicates an expected call of GetAllLogs.
-func (mr *MockLogReaderMockRecorder) GetAllLogs(ctx, from, to any) *gomock.Call {
+func (mr *MockLogReaderMockRecorder) GetAllLogs(from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogReader)(nil).GetAllLogs), ctx, from, to)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockLogReader)(nil).GetAllLogs), from, to)
 }
 
 // GetLogBySequence mocks base method.
-func (m *MockLogReader) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (m *MockLogReader) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLogBySequence", ctx, sequence)
+	ret := m.ctrl.Call(m, "GetLogBySequence", sequence)
 	ret0, _ := ret[0].(*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetLogBySequence indicates an expected call of GetLogBySequence.
-func (mr *MockLogReaderMockRecorder) GetLogBySequence(ctx, sequence any) *gomock.Call {
+func (mr *MockLogReaderMockRecorder) GetLogBySequence(sequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogBySequence", reflect.TypeOf((*MockLogReader)(nil).GetLogBySequence), ctx, sequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogBySequence", reflect.TypeOf((*MockLogReader)(nil).GetLogBySequence), sequence)
 }
 
 // MockBatch is a mock of Batch interface.
@@ -166,23 +165,23 @@ func (m *MockBatch) EXPECT() *MockBatchMockRecorder {
 }
 
 // AppendBalanceDiff mocks base method.
-func (m *MockBatch) AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error {
+func (m *MockBatch) AppendBalanceDiff(diff BalanceDiff) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendBalanceDiff", ctx, ledger, account, asset, diff, raftIndex)
+	ret := m.ctrl.Call(m, "AppendBalanceDiff", diff)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AppendBalanceDiff indicates an expected call of AppendBalanceDiff.
-func (mr *MockBatchMockRecorder) AppendBalanceDiff(ctx, ledger, account, asset, diff, raftIndex any) *gomock.Call {
+func (mr *MockBatchMockRecorder) AppendBalanceDiff(diff any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBalanceDiff", reflect.TypeOf((*MockBatch)(nil).AppendBalanceDiff), ctx, ledger, account, asset, diff, raftIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBalanceDiff", reflect.TypeOf((*MockBatch)(nil).AppendBalanceDiff), diff)
 }
 
 // AppendLogs mocks base method.
-func (m *MockBatch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error {
+func (m *MockBatch) AppendLogs(logs ...*commonpb.Log) error {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
+	varargs := []any{}
 	for _, a := range logs {
 		varargs = append(varargs, a)
 	}
@@ -192,122 +191,121 @@ func (m *MockBatch) AppendLogs(ctx context.Context, logs ...*commonpb.Log) error
 }
 
 // AppendLogs indicates an expected call of AppendLogs.
-func (mr *MockBatchMockRecorder) AppendLogs(ctx any, logs ...any) *gomock.Call {
+func (mr *MockBatchMockRecorder) AppendLogs(logs ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, logs...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockBatch)(nil).AppendLogs), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockBatch)(nil).AppendLogs), logs...)
 }
 
 // Cancel mocks base method.
-func (m *MockBatch) Cancel(ctx context.Context) error {
+func (m *MockBatch) Cancel() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Cancel", ctx)
+	ret := m.ctrl.Call(m, "Cancel")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Cancel indicates an expected call of Cancel.
-func (mr *MockBatchMockRecorder) Cancel(ctx any) *gomock.Call {
+func (mr *MockBatchMockRecorder) Cancel() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cancel", reflect.TypeOf((*MockBatch)(nil).Cancel), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cancel", reflect.TypeOf((*MockBatch)(nil).Cancel))
 }
 
 // Commit mocks base method.
-func (m *MockBatch) Commit(ctx context.Context) error {
+func (m *MockBatch) Commit() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx)
+	ret := m.ctrl.Call(m, "Commit")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockBatchMockRecorder) Commit(ctx any) *gomock.Call {
+func (mr *MockBatchMockRecorder) Commit() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockBatch)(nil).Commit), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockBatch)(nil).Commit))
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *MockBatch) DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error {
+func (m *MockBatch) DeleteAccountMetadata(ledger uint32, account string, keys []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, ledger, account, keys)
+	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ledger, account, keys)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAccountMetadata indicates an expected call of DeleteAccountMetadata.
-func (mr *MockBatchMockRecorder) DeleteAccountMetadata(ctx, ledger, account, keys any) *gomock.Call {
+func (mr *MockBatchMockRecorder) DeleteAccountMetadata(ledger, account, keys any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockBatch)(nil).DeleteAccountMetadata), ctx, ledger, account, keys)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockBatch)(nil).DeleteAccountMetadata), ledger, account, keys)
 }
 
 // DeleteLedger mocks base method.
-func (m *MockBatch) DeleteLedger(ctx context.Context, id uint32) error {
+func (m *MockBatch) DeleteLedger(id uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteLedger", ctx, id)
+	ret := m.ctrl.Call(m, "DeleteLedger", id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteLedger indicates an expected call of DeleteLedger.
-func (mr *MockBatchMockRecorder) DeleteLedger(ctx, id any) *gomock.Call {
+func (mr *MockBatchMockRecorder) DeleteLedger(id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedger", reflect.TypeOf((*MockBatch)(nil).DeleteLedger), ctx, id)
-}
-
-// RegisterLedger mocks base method.
-func (m *MockBatch) RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterLedger", ctx, info)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RegisterLedger indicates an expected call of RegisterLedger.
-func (mr *MockBatchMockRecorder) RegisterLedger(ctx, info any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterLedger", reflect.TypeOf((*MockBatch)(nil).RegisterLedger), ctx, info)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedger", reflect.TypeOf((*MockBatch)(nil).DeleteLedger), id)
 }
 
 // SaveAccountMetadata mocks base method.
-func (m *MockBatch) SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error {
+func (m *MockBatch) SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, ledger, account, metadata)
+	ret := m.ctrl.Call(m, "SaveAccountMetadata", ledger, account, metadata)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveAccountMetadata indicates an expected call of SaveAccountMetadata.
-func (mr *MockBatchMockRecorder) SaveAccountMetadata(ctx, ledger, account, metadata any) *gomock.Call {
+func (mr *MockBatchMockRecorder) SaveAccountMetadata(ledger, account, metadata any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveAccountMetadata", reflect.TypeOf((*MockBatch)(nil).SaveAccountMetadata), ctx, ledger, account, metadata)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveAccountMetadata", reflect.TypeOf((*MockBatch)(nil).SaveAccountMetadata), ledger, account, metadata)
+}
+
+// SaveLedger mocks base method.
+func (m *MockBatch) SaveLedger(info *commonpb.LedgerInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveLedger", info)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveLedger indicates an expected call of SaveLedger.
+func (mr *MockBatchMockRecorder) SaveLedger(info any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveLedger", reflect.TypeOf((*MockBatch)(nil).SaveLedger), info)
 }
 
 // StoreRevertedTransactionID mocks base method.
-func (m *MockBatch) StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID, sequence uint64) error {
+func (m *MockBatch) StoreRevertedTransactionID(ledger uint32, transactionID, sequence uint64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StoreRevertedTransactionID", ctx, ledger, transactionID, sequence)
+	ret := m.ctrl.Call(m, "StoreRevertedTransactionID", ledger, transactionID, sequence)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // StoreRevertedTransactionID indicates an expected call of StoreRevertedTransactionID.
-func (mr *MockBatchMockRecorder) StoreRevertedTransactionID(ctx, ledger, transactionID, sequence any) *gomock.Call {
+func (mr *MockBatchMockRecorder) StoreRevertedTransactionID(ledger, transactionID, sequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreRevertedTransactionID", reflect.TypeOf((*MockBatch)(nil).StoreRevertedTransactionID), ctx, ledger, transactionID, sequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreRevertedTransactionID", reflect.TypeOf((*MockBatch)(nil).StoreRevertedTransactionID), ledger, transactionID, sequence)
 }
 
 // StoreTransactionID mocks base method.
-func (m *MockBatch) StoreTransactionID(ctx context.Context, ledger uint32, transactionID, sequence uint64) error {
+func (m *MockBatch) StoreTransactionID(ledger uint32, transactionID, sequence uint64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StoreTransactionID", ctx, ledger, transactionID, sequence)
+	ret := m.ctrl.Call(m, "StoreTransactionID", ledger, transactionID, sequence)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // StoreTransactionID indicates an expected call of StoreTransactionID.
-func (mr *MockBatchMockRecorder) StoreTransactionID(ctx, ledger, transactionID, sequence any) *gomock.Call {
+func (mr *MockBatchMockRecorder) StoreTransactionID(ledger, transactionID, sequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreTransactionID", reflect.TypeOf((*MockBatch)(nil).StoreTransactionID), ctx, ledger, transactionID, sequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreTransactionID", reflect.TypeOf((*MockBatch)(nil).StoreTransactionID), ledger, transactionID, sequence)
 }
 
 // MockStore is a mock of Store interface.
@@ -334,106 +332,91 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // Close mocks base method.
-func (m *MockStore) Close(ctx context.Context) error {
+func (m *MockStore) Close() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Close", ctx)
+	ret := m.ctrl.Call(m, "Close")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockStoreMockRecorder) Close(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStore)(nil).Close), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStore)(nil).Close))
 }
 
 // CreateSnapshot mocks base method.
-func (m *MockStore) CreateSnapshot(ctx context.Context) error {
+func (m *MockStore) CreateSnapshot() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSnapshot", ctx)
+	ret := m.ctrl.Call(m, "CreateSnapshot")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateSnapshot indicates an expected call of CreateSnapshot.
-func (mr *MockStoreMockRecorder) CreateSnapshot(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) CreateSnapshot() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockStore)(nil).CreateSnapshot), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockStore)(nil).CreateSnapshot))
 }
 
 // GetAccountMetadata mocks base method.
-func (m *MockStore) GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
+func (m *MockStore) GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAccountMetadata", ctx, ledgerID, accounts)
+	ret := m.ctrl.Call(m, "GetAccountMetadata", ledgerID, accounts)
 	ret0, _ := ret[0].(map[string]metadata.Metadata)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAccountMetadata indicates an expected call of GetAccountMetadata.
-func (mr *MockStoreMockRecorder) GetAccountMetadata(ctx, ledgerID, accounts any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetAccountMetadata(ledgerID, accounts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountMetadata", reflect.TypeOf((*MockStore)(nil).GetAccountMetadata), ctx, ledgerID, accounts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountMetadata", reflect.TypeOf((*MockStore)(nil).GetAccountMetadata), ledgerID, accounts)
 }
 
 // GetAccountVolumes mocks base method.
-func (m *MockStore) GetAccountVolumes(ctx context.Context, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func (m *MockStore) GetAccountVolumes(ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAccountVolumes", ctx, ledgerID, account)
+	ret := m.ctrl.Call(m, "GetAccountVolumes", ledgerID, account)
 	ret0, _ := ret[0].(map[string]*commonpb.VolumesWithBalance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAccountVolumes indicates an expected call of GetAccountVolumes.
-func (mr *MockStoreMockRecorder) GetAccountVolumes(ctx, ledgerID, account any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetAccountVolumes(ledgerID, account any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountVolumes", reflect.TypeOf((*MockStore)(nil).GetAccountVolumes), ctx, ledgerID, account)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountVolumes", reflect.TypeOf((*MockStore)(nil).GetAccountVolumes), ledgerID, account)
 }
 
 // GetAllLogs mocks base method.
-func (m *MockStore) GetAllLogs(ctx context.Context, from, to uint64) (Cursor[*commonpb.Log], error) {
+func (m *MockStore) GetAllLogs(from, to uint64) (Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllLogs", ctx, from, to)
+	ret := m.ctrl.Call(m, "GetAllLogs", from, to)
 	ret0, _ := ret[0].(Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAllLogs indicates an expected call of GetAllLogs.
-func (mr *MockStoreMockRecorder) GetAllLogs(ctx, from, to any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetAllLogs(from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockStore)(nil).GetAllLogs), ctx, from, to)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLogs", reflect.TypeOf((*MockStore)(nil).GetAllLogs), from, to)
 }
 
-// GetBalance mocks base method.
-func (m *MockStore) GetBalance(ctx context.Context, id uint32, account, asset string) (*commonpb.BigInt, error) {
+// GetBalanceDiffs mocks base method.
+func (m *MockStore) GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBalance", ctx, id, account, asset)
-	ret0, _ := ret[0].(*commonpb.BigInt)
+	ret := m.ctrl.Call(m, "GetBalanceDiffs", ledgerID, query)
+	ret0, _ := ret[0].(BalanceDiffsResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetBalance indicates an expected call of GetBalance.
-func (mr *MockStoreMockRecorder) GetBalance(ctx, id, account, asset any) *gomock.Call {
+// GetBalanceDiffs indicates an expected call of GetBalanceDiffs.
+func (mr *MockStoreMockRecorder) GetBalanceDiffs(ledgerID, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalance", reflect.TypeOf((*MockStore)(nil).GetBalance), ctx, id, account, asset)
-}
-
-// GetBalances mocks base method.
-func (m *MockStore) GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBalances", ctx, ledgerID, balanceQuery)
-	ret0, _ := ret[0].(commonpb.Balances)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetBalances indicates an expected call of GetBalances.
-func (mr *MockStoreMockRecorder) GetBalances(ctx, ledgerID, balanceQuery any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockStore)(nil).GetBalances), ctx, ledgerID, balanceQuery)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalanceDiffs", reflect.TypeOf((*MockStore)(nil).GetBalanceDiffs), ledgerID, query)
 }
 
 // GetLastAppliedIndex mocks base method.
@@ -452,123 +435,123 @@ func (mr *MockStoreMockRecorder) GetLastAppliedIndex() *gomock.Call {
 }
 
 // GetLastSequence mocks base method.
-func (m *MockStore) GetLastSequence(ctx context.Context) (uint64, error) {
+func (m *MockStore) GetLastSequence() (uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLastSequence", ctx)
+	ret := m.ctrl.Call(m, "GetLastSequence")
 	ret0, _ := ret[0].(uint64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetLastSequence indicates an expected call of GetLastSequence.
-func (mr *MockStoreMockRecorder) GetLastSequence(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLastSequence() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastSequence", reflect.TypeOf((*MockStore)(nil).GetLastSequence), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastSequence", reflect.TypeOf((*MockStore)(nil).GetLastSequence))
 }
 
 // GetLedgerByID mocks base method.
-func (m *MockStore) GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+func (m *MockStore) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLedgerByID", ctx, id)
+	ret := m.ctrl.Call(m, "GetLedgerByID", id)
 	ret0, _ := ret[0].(*commonpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetLedgerByID indicates an expected call of GetLedgerByID.
-func (mr *MockStoreMockRecorder) GetLedgerByID(ctx, id any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLedgerByID(id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByID", reflect.TypeOf((*MockStore)(nil).GetLedgerByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByID", reflect.TypeOf((*MockStore)(nil).GetLedgerByID), id)
 }
 
 // GetLedgerByName mocks base method.
-func (m *MockStore) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (m *MockStore) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLedgerByName", ctx, name)
+	ret := m.ctrl.Call(m, "GetLedgerByName", name)
 	ret0, _ := ret[0].(*commonpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetLedgerByName indicates an expected call of GetLedgerByName.
-func (mr *MockStoreMockRecorder) GetLedgerByName(ctx, name any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLedgerByName(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByName", reflect.TypeOf((*MockStore)(nil).GetLedgerByName), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByName", reflect.TypeOf((*MockStore)(nil).GetLedgerByName), name)
 }
 
 // GetLogBySequence mocks base method.
-func (m *MockStore) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (m *MockStore) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLogBySequence", ctx, sequence)
+	ret := m.ctrl.Call(m, "GetLogBySequence", sequence)
 	ret0, _ := ret[0].(*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetLogBySequence indicates an expected call of GetLogBySequence.
-func (mr *MockStoreMockRecorder) GetLogBySequence(ctx, sequence any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetLogBySequence(sequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogBySequence", reflect.TypeOf((*MockStore)(nil).GetLogBySequence), ctx, sequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogBySequence", reflect.TypeOf((*MockStore)(nil).GetLogBySequence), sequence)
 }
 
 // GetSequenceForIdempotencyKey mocks base method.
-func (m *MockStore) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
+func (m *MockStore) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSequenceForIdempotencyKey", ctx, idempotencyKey)
+	ret := m.ctrl.Call(m, "GetSequenceForIdempotencyKey", idempotencyKey)
 	ret0, _ := ret[0].(uint64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetSequenceForIdempotencyKey indicates an expected call of GetSequenceForIdempotencyKey.
-func (mr *MockStoreMockRecorder) GetSequenceForIdempotencyKey(ctx, idempotencyKey any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetSequenceForIdempotencyKey(idempotencyKey any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSequenceForIdempotencyKey", reflect.TypeOf((*MockStore)(nil).GetSequenceForIdempotencyKey), ctx, idempotencyKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSequenceForIdempotencyKey", reflect.TypeOf((*MockStore)(nil).GetSequenceForIdempotencyKey), idempotencyKey)
 }
 
 // GetSequenceForTransactionID mocks base method.
-func (m *MockStore) GetSequenceForTransactionID(ctx context.Context, ledgerID uint32, transactionID uint64) (uint64, error) {
+func (m *MockStore) GetSequenceForTransactionID(ledgerID uint32, transactionID uint64) (uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSequenceForTransactionID", ctx, ledgerID, transactionID)
+	ret := m.ctrl.Call(m, "GetSequenceForTransactionID", ledgerID, transactionID)
 	ret0, _ := ret[0].(uint64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetSequenceForTransactionID indicates an expected call of GetSequenceForTransactionID.
-func (mr *MockStoreMockRecorder) GetSequenceForTransactionID(ctx, ledgerID, transactionID any) *gomock.Call {
+func (mr *MockStoreMockRecorder) GetSequenceForTransactionID(ledgerID, transactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSequenceForTransactionID", reflect.TypeOf((*MockStore)(nil).GetSequenceForTransactionID), ctx, ledgerID, transactionID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSequenceForTransactionID", reflect.TypeOf((*MockStore)(nil).GetSequenceForTransactionID), ledgerID, transactionID)
 }
 
 // IsTransactionReverted mocks base method.
-func (m *MockStore) IsTransactionReverted(ctx context.Context, ledgerID uint32, transactionID uint64) (bool, error) {
+func (m *MockStore) IsTransactionReverted(ledgerID uint32, transactionID uint64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsTransactionReverted", ctx, ledgerID, transactionID)
+	ret := m.ctrl.Call(m, "IsTransactionReverted", ledgerID, transactionID)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // IsTransactionReverted indicates an expected call of IsTransactionReverted.
-func (mr *MockStoreMockRecorder) IsTransactionReverted(ctx, ledgerID, transactionID any) *gomock.Call {
+func (mr *MockStoreMockRecorder) IsTransactionReverted(ledgerID, transactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTransactionReverted", reflect.TypeOf((*MockStore)(nil).IsTransactionReverted), ctx, ledgerID, transactionID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTransactionReverted", reflect.TypeOf((*MockStore)(nil).IsTransactionReverted), ledgerID, transactionID)
 }
 
 // ListLedgers mocks base method.
-func (m *MockStore) ListLedgers(ctx context.Context) (Cursor[*commonpb.LedgerInfo], error) {
+func (m *MockStore) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLedgers", ctx)
+	ret := m.ctrl.Call(m, "ListLedgers")
 	ret0, _ := ret[0].(Cursor[*commonpb.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLedgers indicates an expected call of ListLedgers.
-func (mr *MockStoreMockRecorder) ListLedgers(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) ListLedgers() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockStore)(nil).ListLedgers), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockStore)(nil).ListLedgers))
 }
 
 // NewBatch mocks base method.

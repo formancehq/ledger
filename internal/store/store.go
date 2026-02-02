@@ -1,8 +1,6 @@
 package store
 
 import (
-	"context"
-
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
@@ -13,11 +11,26 @@ type MetricsProvider interface {
 	GetMetrics() any
 }
 
+// BalanceDiff represents a balance change for an account/asset pair (for writing).
+type BalanceDiff struct {
+	LedgerID  uint32
+	Account   string
+	Asset     string
+	Diff      *commonpb.BigInt
+	RaftIndex uint64
+}
+
+// StoredBalanceDiff represents a balance change retrieved from storage (for reading).
+type StoredBalanceDiff struct {
+	RaftIndex uint64
+	Diff      *commonpb.BigInt
+}
+
 type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs (global logs by sequence)
 	// from: optional sequence to start from (0 = from beginning)
 	// to: optional sequence to stop at (0 = until end, inclusive)
-	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[*commonpb.Log], error)
+	GetAllLogs(from uint64, to uint64) (Cursor[*commonpb.Log], error)
 }
 
 // LogReader handles log reading operations (global logs by sequence)
@@ -25,7 +38,7 @@ type LogStreamer interface {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated.go -package store . LogReader
 type LogReader interface {
 	LogStreamer
-	GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error)
+	GetLogBySequence(sequence uint64) (*commonpb.Log, error)
 }
 
 // Batch allows atomic operations on the store.
@@ -33,26 +46,32 @@ type LogReader interface {
 // Cancel must be called if the batch is not committed to release resources.
 type Batch interface {
 	// AppendLogs appends logs to the store
-	AppendLogs(ctx context.Context, logs ...*commonpb.Log) error
-	// RegisterLedger registers a new ledger in the store
-	RegisterLedger(ctx context.Context, info *commonpb.LedgerInfo) error
+	AppendLogs(logs ...*commonpb.Log) error
+	// SaveLedger saves or updates a ledger in the store
+	SaveLedger(info *commonpb.LedgerInfo) error
 	// DeleteLedger deletes all data for a ledger
-	DeleteLedger(ctx context.Context, id uint32) error
+	DeleteLedger(id uint32) error
 	// AppendBalanceDiff appends a balance diff for an account/asset pair
-	AppendBalanceDiff(ctx context.Context, ledger uint32, account, asset string, diff *commonpb.BigInt, raftIndex uint64) error
+	AppendBalanceDiff(diff BalanceDiff) error
 	// SaveAccountMetadata saves metadata for an account
-	SaveAccountMetadata(ctx context.Context, ledger uint32, account string, metadata *commonpb.Metadata) error
+	SaveAccountMetadata(ledger uint32, account string, metadata *commonpb.Metadata) error
 	// DeleteAccountMetadata deletes metadata keys for an account
-	DeleteAccountMetadata(ctx context.Context, ledger uint32, account string, keys []string) error
+	DeleteAccountMetadata(ledger uint32, account string, keys []string) error
 	// StoreTransactionID stores the sequence associated to a transaction ID
-	StoreTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error
+	StoreTransactionID(ledger uint32, transactionID uint64, sequence uint64) error
 	// StoreRevertedTransactionID stores the sequence associated to a transaction ID that has been reverted
-	StoreRevertedTransactionID(ctx context.Context, ledger uint32, transactionID uint64, sequence uint64) error
+	StoreRevertedTransactionID(ledger uint32, transactionID uint64, sequence uint64) error
 	// Cancel cancels the batch and releases resources
-	Cancel(ctx context.Context) error
+	Cancel() error
 	// Commit commits all buffered operations atomically
-	Commit(ctx context.Context) error
+	Commit() error
 }
+
+// BalanceDiffsQuery is a query for balance diffs: map[account][]asset
+type BalanceDiffsQuery = map[string][]string
+
+// BalanceDiffsResult is the result of GetBalanceDiffs: map[account][asset][]StoredBalanceDiff
+type BalanceDiffsResult = map[string]map[string][]StoredBalanceDiff
 
 // Store handles runtime queries and provides log access.
 //
@@ -60,26 +79,27 @@ type Batch interface {
 type Store interface {
 	LogReader
 	// ListLedgers lists all ledgers
-	ListLedgers(ctx context.Context) (Cursor[*commonpb.LedgerInfo], error)
-	GetLedgerByID(ctx context.Context, id uint32) (*commonpb.LedgerInfo, error)
-	GetBalances(ctx context.Context, ledgerID uint32, balanceQuery map[string][]string) (commonpb.Balances, error)
-	GetAccountMetadata(ctx context.Context, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
+	ListLedgers() (Cursor[*commonpb.LedgerInfo], error)
+	GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error)
+	// GetBalanceDiffs retrieves all balance diffs for the given account/asset combinations.
+	// The caller is responsible for computing the final balance by summing the diffs.
+	GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)
+	GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
 	// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
-	GetAccountVolumes(ctx context.Context, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
+	GetAccountVolumes(ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	// GetSequenceForIdempotencyKey retrieves the sequence of a log for its idempotency key (global)
-	GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error)
+	GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error)
 	// GetSequenceForTransactionID retrieves the sequence for a given transaction ID
-	GetSequenceForTransactionID(ctx context.Context, ledgerID uint32, transactionID uint64) (uint64, error)
+	GetSequenceForTransactionID(ledgerID uint32, transactionID uint64) (uint64, error)
 	// IsTransactionReverted checks if a transaction has been reverted
-	IsTransactionReverted(ctx context.Context, ledgerID uint32, transactionID uint64) (bool, error)
+	IsTransactionReverted(ledgerID uint32, transactionID uint64) (bool, error)
 	// NewBatch creates a new batch for atomic operations.
 	// lastAppliedIndex is the raft index that will be stored when the batch is committed.
 	NewBatch(lastAppliedIndex uint64) Batch
-	CreateSnapshot(ctx context.Context) error
+	CreateSnapshot() error
 	GetLastAppliedIndex() (uint64, error)
 	// GetLastSequence returns the last sequence number for logs
-	GetLastSequence(ctx context.Context) (uint64, error)
-	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
-	Close(ctx context.Context) error
-	GetBalance(ctx context.Context, id uint32, account string, asset string) (*commonpb.BigInt, error)
+	GetLastSequence() (uint64, error)
+	GetLedgerByName(name string) (*commonpb.LedgerInfo, error)
+	Close() error
 }

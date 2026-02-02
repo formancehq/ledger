@@ -13,7 +13,7 @@ import (
 type Cursor[T any] interface {
 	// Next returns the next item in the cursor
 	// Returns io.EOF when there are no more items
-	Next(ctx context.Context) (T, error)
+	Next() (T, error)
 	// Close closes the cursor and releases any resources
 	Close() error
 }
@@ -23,7 +23,7 @@ type GRPCStreamCursor[Res, To any] struct {
 	mapper func(*Res) (To, error)
 }
 
-func (cursor GRPCStreamCursor[Res, To]) Next(_ context.Context) (To, error) {
+func (cursor GRPCStreamCursor[Res, To]) Next() (To, error) {
 	next, err := cursor.client.Recv()
 	if err != nil {
 		if status.Code(err) == codes.Canceled {
@@ -51,7 +51,7 @@ type SliceCursor[T any] struct {
 	index int
 }
 
-func (c *SliceCursor[T]) Next(_ context.Context) (T, error) {
+func (c *SliceCursor[T]) Next() (T, error) {
 	if c.index >= len(c.items) {
 		var zero T
 		return zero, io.EOF

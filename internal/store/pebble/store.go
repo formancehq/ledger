@@ -2,7 +2,6 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -168,7 +167,7 @@ func NewStore(
 }
 
 // Close closes the Pebble database
-func (s *Store) Close(ctx context.Context) error {
+func (s *Store) Close() error {
 	var errs []error
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
@@ -187,7 +186,7 @@ type logCursor struct {
 	s    *Store
 }
 
-func (c *logCursor) Next(ctx context.Context) (*commonpb.Log, error) {
+func (c *logCursor) Next() (*commonpb.Log, error) {
 	if !c.iter.Valid() {
 		if err := c.iter.Error(); err != nil {
 			return nil, err
@@ -224,7 +223,7 @@ func (c *logCursor) Close() error {
 // Logs are returned in ascending order by sequence.
 // from: optional sequence to start from (0 = from beginning).
 // to: optional sequence to stop at (0 = until end, inclusive).
-func (s *Store) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+func (s *Store) GetAllLogs(from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
 	buf := bytes.NewBuffer(nil)
 	writeByte(buf, keyPrefixLog)
 	if from > 0 {
@@ -263,7 +262,7 @@ func (s *Store) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.C
 }
 
 // GetLogBySequence retrieves a log by its sequence number.
-func (s *Store) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 	buf := bytes.NewBuffer(nil)
 	writeByte(buf, keyPrefixLog)
 	writeUInt64(buf, sequence)
@@ -292,34 +291,32 @@ func (s *Store) GetLogBySequence(ctx context.Context, sequence uint64) (*commonp
 // Store Implementation
 // ============================================================================
 
-// GetBalances retrieves balances from Pebble for a specific ledger (implements store.Store)
-// Sums all balance diffs for each account/asset combination
-func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map[string][]string) (commonpb.Balances, error) {
-	result := make(commonpb.Balances)
+// GetBalanceDiffs retrieves all balance diffs for the given account/asset combinations.
+// Returns the raw diffs with their RaftIndex - the caller is responsible for computing the final balance.
+func (s *Store) GetBalanceDiffs(ledger uint32, query store.BalanceDiffsQuery) (store.BalanceDiffsResult, error) {
+	result := make(store.BalanceDiffsResult)
 
 	buf := bytes.NewBuffer(nil)
 
 	// Build query for each account/asset combination
-	for account, assets := range balanceQuery {
+	for account, assets := range query {
 		if len(assets) == 0 {
 			continue
 		}
-		buf.Reset()
 
 		// Initialize account map
-		result[account] = make(map[string]*big.Int)
+		result[account] = make(map[string][]store.StoredBalanceDiff)
 
 		// Query each asset
 		for _, asset := range assets {
-			// Initialize balance to zero
-			balance := big.NewInt(0)
+			buf.Reset()
 
 			// Iterate over all balance diffs for this ledger/account/asset combination
 			writeLedgerPrefix(buf, ledger)
 			writeByte(buf, keyPrefixBalanceDiff)
 			writeString(buf, account)
 			writeString(buf, asset)
-			lowerBound := buf.Bytes()
+			lowerBound := bytes.Clone(buf.Bytes())
 
 			writeByte(buf, 0xFF)
 			upperBound := buf.Bytes()
@@ -332,75 +329,50 @@ func (s *Store) GetBalances(ctx context.Context, ledger uint32, balanceQuery map
 				return nil, fmt.Errorf("creating iterator for balance diffs: %w", err)
 			}
 
-			// Sum all diffs
+			var diffs []store.StoredBalanceDiff
+
+			// Collect all diffs
 			for iter.First(); iter.Valid(); iter.Next() {
+				key := iter.Key()
 				valueBytes, err := iter.ValueAndErr()
 				if err != nil {
 					_ = iter.Close()
 					return nil, fmt.Errorf("reading balance diff value: %w", err)
 				}
 
+				// Extract RaftIndex from key (last 8 bytes after lowerBound prefix)
+				keyAfterPrefix := key[len(lowerBound):]
+				if len(keyAfterPrefix) < 8 {
+					_ = iter.Close()
+					return nil, fmt.Errorf("malformed balance diff key: expected at least 8 bytes for RaftIndex, got %d", len(keyAfterPrefix))
+				}
+				raftIndex := binary.BigEndian.Uint64(keyAfterPrefix[:8])
+
 				diff := &commonpb.BigInt{}
 				if err := proto.Unmarshal(valueBytes, diff); err != nil {
 					_ = iter.Close()
 					return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
 				}
-				balance = balance.Add(balance, diff.Value())
+
+				diffs = append(diffs, store.StoredBalanceDiff{
+					RaftIndex: raftIndex,
+					Diff:      diff,
+				})
 			}
 
 			if err := iter.Close(); err != nil {
 				return nil, fmt.Errorf("closing balance diff iterator: %w", err)
 			}
 
-			result[account][asset] = balance
+			result[account][asset] = diffs
 		}
 	}
 
 	return result, nil
 }
 
-// GetBalance retrieves the balance for a single account/asset combination (implements store.Store)
-func (s *Store) GetBalance(_ context.Context, ledger uint32, account string, asset string) (*commonpb.BigInt, error) {
-	balance := big.NewInt(0)
-
-	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
-	writeByte(buf, keyPrefixBalanceDiff)
-	writeString(buf, account)
-	writeString(buf, asset)
-	lowerBound := buf.Bytes()
-
-	writeByte(buf, 0xFF)
-	upperBound := buf.Bytes()
-
-	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating iterator for balance diffs: %w", err)
-	}
-	defer func() { _ = iter.Close() }()
-
-	// Sum all diffs
-	for iter.First(); iter.Valid(); iter.Next() {
-		valueBytes, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading balance diff value: %w", err)
-		}
-
-		diff := &commonpb.BigInt{}
-		if err := proto.Unmarshal(valueBytes, diff); err != nil {
-			return nil, fmt.Errorf("unmarshaling balance diff value: %w", err)
-		}
-		balance = balance.Add(balance, diff.Value())
-	}
-
-	return commonpb.NewBigInt(balance), nil
-}
-
 // GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)
-func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	// Initialize with empty metadata for all requested accounts
@@ -453,7 +425,7 @@ func (s *Store) GetAccountMetadata(ctx context.Context, ledger uint32, accounts 
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
 // Input is calculated as sum of positive balance diffs (when account receives funds)
 // Output is calculated as sum of absolute negative balance diffs (when account sends funds)
-func (s *Store) GetAccountVolumes(ctx context.Context, ledger uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func (s *Store) GetAccountVolumes(ledger uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
 
 	buf := bytes.NewBuffer(nil)
@@ -535,7 +507,7 @@ func (s *Store) GetAccountVolumes(ctx context.Context, ledger uint32, account st
 }
 
 // GetSequenceForIdempotencyKey retrieves the sequence for an idempotency key (global) (implements store.Store)
-func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey string) (uint64, error) {
+func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeByte(buf, keyPrefixIdempotency)
@@ -556,7 +528,7 @@ func (s *Store) GetSequenceForIdempotencyKey(ctx context.Context, idempotencyKey
 }
 
 // GetSequenceForTransactionID retrieves the sequence for a given transaction ID for a specific ledger (implements store.Store)
-func (s *Store) GetSequenceForTransactionID(ctx context.Context, ledger uint32, transactionID uint64) (uint64, error) {
+func (s *Store) GetSequenceForTransactionID(ledger uint32, transactionID uint64) (uint64, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -584,7 +556,7 @@ func (s *Store) GetSequenceForTransactionID(ctx context.Context, ledger uint32, 
 }
 
 // IsTransactionReverted checks if a transaction has been reverted for a specific ledger (implements store.Store)
-func (s *Store) IsTransactionReverted(ctx context.Context, ledger uint32, transactionID uint64) (bool, error) {
+func (s *Store) IsTransactionReverted(ledger uint32, transactionID uint64) (bool, error) {
 
 	buf := bytes.NewBuffer(nil)
 	writeLedgerPrefix(buf, ledger)
@@ -605,7 +577,7 @@ func (s *Store) IsTransactionReverted(ctx context.Context, ledger uint32, transa
 	return true, nil
 }
 
-func (s *Store) CreateSnapshot(ctx context.Context) error {
+func (s *Store) CreateSnapshot() error {
 
 	s.logger.Infof("Creating snapshot")
 
@@ -676,7 +648,7 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 }
 
 // GetLastSequence returns the last sequence number for system logs.
-func (s *Store) GetLastSequence(ctx context.Context) (uint64, error) {
+func (s *Store) GetLastSequence() (uint64, error) {
 	buf := bytes.NewBuffer(nil)
 	writeByte(buf, keyPrefixLog)
 	lowerBound := buf.Bytes()
@@ -736,7 +708,7 @@ func newCursor[T proto.Message](iter *pebble.Iterator) *cursor[T] {
 	}
 }
 
-func (c *cursor[T]) Next(_ context.Context) (T, error) {
+func (c *cursor[T]) Next() (T, error) {
 	var zero T
 	if !c.started {
 		c.started = true
@@ -775,7 +747,7 @@ func (c *cursor[T]) Close() error {
 }
 
 // ListLedgers returns a cursor over all registered ledgers.
-func (s *Store) ListLedgers(_ context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
+func (s *Store) ListLedgers() (store.Cursor[*commonpb.LedgerInfo], error) {
 	// Create bounds for ledger info prefix
 	lowerBound := []byte{keyPrefixLedgerInfo}
 	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -792,15 +764,15 @@ func (s *Store) ListLedgers(_ context.Context) (store.Cursor[*commonpb.LedgerInf
 }
 
 // GetLedgerByName retrieves a ledger by its name.
-func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
-	cursor, err := s.ListLedgers(ctx)
+func (s *Store) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
+	cursor, err := s.ListLedgers()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = cursor.Close() }()
 
 	for {
-		ledger, err := cursor.Next(ctx)
+		ledger, err := cursor.Next()
 		if err == io.EOF {
 			break
 		}
@@ -816,7 +788,7 @@ func (s *Store) GetLedgerByName(ctx context.Context, name string) (*commonpb.Led
 }
 
 // GetLedgerByID retrieves a ledger by its ID.
-func (s *Store) GetLedgerByID(_ context.Context, id uint32) (*commonpb.LedgerInfo, error) {
+func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	// Build key: [keyPrefixLedgerInfo][ledgerID]
 	key := make([]byte, 5)
 	key[0] = keyPrefixLedgerInfo

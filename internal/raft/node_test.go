@@ -21,16 +21,32 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
+// computeBalancesFromDiffs computes balances from balance diffs result
+func computeBalancesFromDiffs(diffs storepkg.BalanceDiffsResult) map[string]map[string]*big.Int {
+	result := make(map[string]map[string]*big.Int)
+	for account, assetDiffs := range diffs {
+		result[account] = make(map[string]*big.Int)
+		for asset, diffList := range assetDiffs {
+			balance := big.NewInt(0)
+			for _, d := range diffList {
+				balance = balance.Add(balance, d.Diff.Value())
+			}
+			result[account][asset] = balance
+		}
+	}
+	return result
+}
+
 // listLedgerContains checks if a ledger with the given name exists in the store
-func listLedgerContains(ctx context.Context, s storepkg.Store, name string) bool {
-	cursor, err := s.ListLedgers(ctx)
+func listLedgerContains(s storepkg.Store, name string) bool {
+	cursor, err := s.ListLedgers()
 	if err != nil {
 		return false
 	}
 	defer func() { _ = cursor.Close() }()
 
 	for {
-		ledger, err := cursor.Next(ctx)
+		ledger, err := cursor.Next()
 		if err == io.EOF {
 			break
 		}
@@ -272,7 +288,7 @@ func (c *Cluster) Stop() {
 			_ = clusterNode.Node.Stop(ctx)
 		}
 		if clusterNode.Store != nil {
-			_ = clusterNode.Store.Close(ctx)
+			_ = clusterNode.Store.Close()
 		}
 		if clusterNode.Spool != nil {
 			_ = clusterNode.Spool.Close()
@@ -421,7 +437,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 	// Close current resources
 	if clusterNode.Store != nil {
-		_ = clusterNode.Store.Close(ctx)
+		_ = clusterNode.Store.Close()
 	}
 	if clusterNode.Spool != nil {
 		_ = clusterNode.Spool.Close()
@@ -575,11 +591,12 @@ func TestClusterBasic(t *testing.T) {
 	}
 
 	// Verify balances on the leader's store
-	balances, err := leader.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+	diffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
 	require.NoError(t, err)
+	balances := computeBalancesFromDiffs(diffs)
 	require.Equal(t, big.NewInt(-500), balances["world"]["USD"])
 	require.Equal(t, big.NewInt(500), balances["bank"]["USD"])
 }
@@ -664,11 +681,12 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Verify balances recovered correctly (8 transactions * 100 = 800)
 	require.Eventually(t, func() bool {
-		balances, err := clusterNode.Store.GetBalances(ctx, 1, map[string][]string{
+		diffs, err := clusterNode.Store.GetBalanceDiffs(1, map[string][]string{
 			"world": {"USD"},
 		})
 		require.NoError(t, err)
 
+		balances := computeBalancesFromDiffs(diffs)
 		worldBalance := balances["world"]["USD"]
 		return worldBalance.Cmp(big.NewInt(-800)) == 0
 	}, 2*time.Second, 100*time.Millisecond)
@@ -712,7 +730,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		return listLedgerContains(ctx, follower.Store, "test-ledger")
+		return listLedgerContains(follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -761,11 +779,12 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	}
 
 	// Verify leader has the expected balance
-	leaderBalances, err := leader.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
 	require.NoError(t, err)
+	leaderBalances := computeBalancesFromDiffs(leaderDiffs)
 	expectedBalance := big.NewInt(int64(numTransactions * 100))
 	require.Equal(t, new(big.Int).Neg(expectedBalance), leaderBalances["world"]["USD"])
 	require.Equal(t, expectedBalance, leaderBalances["bank"]["USD"])
@@ -786,14 +805,15 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	// Wait for the follower to sync and verify its data matches the leader
 	t.Logf("Waiting for follower to sync data...")
 	require.Eventually(t, func() bool {
-		followerBalances, err := follower.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
 		if err != nil {
-			t.Logf("Follower GetBalances error: %v", err)
+			t.Logf("Follower GetBalanceDiffs error: %v", err)
 			return false
 		}
+		followerBalances := computeBalancesFromDiffs(followerDiffs)
 
 		worldMatch := followerBalances["world"]["USD"].Cmp(leaderBalances["world"]["USD"]) == 0
 		bankMatch := followerBalances["bank"]["USD"].Cmp(leaderBalances["bank"]["USD"]) == 0
@@ -815,7 +835,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Create a 3-node cluster with a low snapshot threshold
 	config := ClusterConfig{SnapshotThreshold: 5}
-	cluster := NewCluster(t, 5, config)
+	cluster := NewCluster(t, 3, config)
 
 	// Start the cluster
 	_ = cluster.Start(ctx)
@@ -850,7 +870,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		return listLedgerContains(ctx, follower.Store, "test-ledger")
+		return listLedgerContains(follower.Store, "test-ledger")
 	}, 10*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -888,7 +908,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
@@ -898,7 +918,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		t.Logf("Leader GetAllLogs called (from=%d, to=%d) - BLOCKING", from, to)
 		<-syncBlocked
 		t.Logf("Leader GetAllLogs UNBLOCKED")
-		return delegate.GetAllLogs(ctx, from, to)
+		return delegate.GetAllLogs(from, to)
 	})
 
 	// Track when the follower receives a snapshot
@@ -957,15 +977,16 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// Wait for the follower to fully sync (including spooled entries)
 	t.Logf("Waiting for follower to sync all data (including spooled entries)...")
 	require.Eventually(t, func() bool {
-		followerBalances, err := follower.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
 		if err != nil {
-			t.Logf("Follower GetBalances error: %v", err)
+			t.Logf("Follower GetBalanceDiffs error: %v", err)
 			return false
 		}
 
+		followerBalances := computeBalancesFromDiffs(followerDiffs)
 		worldBalance := followerBalances["world"]["USD"]
 		bankBalance := followerBalances["bank"]["USD"]
 
@@ -984,11 +1005,12 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond)
 
 	// Verify leader has the same balance
-	leaderBalances, err := leader.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
 	require.NoError(t, err)
+	leaderBalances := computeBalancesFromDiffs(leaderDiffs)
 	require.Equal(t, new(big.Int).Neg(expectedBalance), leaderBalances["world"]["USD"])
 	require.Equal(t, expectedBalance, leaderBalances["bank"]["USD"])
 
@@ -1035,7 +1057,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		return listLedgerContains(ctx, follower.Store, "test-ledger")
+		return listLedgerContains(follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Disconnect the follower
@@ -1085,7 +1107,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
 	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(ctx context.Context, delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
+	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate storepkg.Store, from, to uint64) (storepkg.Cursor[*commonpb.Log], error) {
 		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
 		return nil, errSyncFailed
 	})
@@ -1125,9 +1147,13 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	require.NotNil(t, follower)
 
 	// Wait for leader election (might change after restart)
-	_, err = cluster.WaitForLeader(5 * time.Second)
+	newLeaderID, err := cluster.WaitForLeader(5 * time.Second)
 	require.NoError(t, err)
-	t.Logf("Leader elected after restart")
+	t.Logf("Leader elected after restart: node %d", newLeaderID)
+
+	// Refresh leader reference (leader might have changed after restart)
+	leader = cluster.GetLeader()
+	require.NotNil(t, leader)
 
 	// Calculate expected balance
 	expectedBalance := big.NewInt(int64(numTransactions * 100))
@@ -1135,15 +1161,16 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Wait for the follower to sync and verify its data matches
 	t.Logf("Waiting for follower to sync data after restart...")
 	require.Eventually(t, func() bool {
-		followerBalances, err := follower.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
 		if err != nil {
-			t.Logf("Follower GetBalances error: %v", err)
+			t.Logf("Follower GetBalanceDiffs error: %v", err)
 			return false
 		}
 
+		followerBalances := computeBalancesFromDiffs(followerDiffs)
 		worldBalance := followerBalances["world"]["USD"]
 		bankBalance := followerBalances["bank"]["USD"]
 
@@ -1161,12 +1188,13 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		return false
 	}, 10*time.Second, 200*time.Millisecond)
 
-	// Verify leader still has correct balance
-	leaderBalances, err := leader.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+	// Verify leader still has correct balance (using refreshed leader reference)
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
 	require.NoError(t, err)
+	leaderBalances := computeBalancesFromDiffs(leaderDiffs)
 	require.Equal(t, new(big.Int).Neg(expectedBalance), leaderBalances["world"]["USD"])
 	require.Equal(t, expectedBalance, leaderBalances["bank"]["USD"])
 
@@ -1223,7 +1251,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
-		return listLedgerContains(ctx, follower.Store, "test-ledger")
+		return listLedgerContains(follower.Store, "test-ledger")
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to follower")
 
 	// Stop and restart the follower
@@ -1279,13 +1307,14 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	// Verify the transaction is replicated to the restarted follower
 	expectedBalance := big.NewInt(100)
 	require.Eventually(t, func() bool {
-		balances, err := follower.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+		diffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 			"bank": {"USD"},
 		})
 		if err != nil {
-			t.Logf("Follower GetBalances error: %v", err)
+			t.Logf("Follower GetBalanceDiffs error: %v", err)
 			return false
 		}
+		balances := computeBalancesFromDiffs(diffs)
 		bankBalance := balances["bank"]["USD"]
 		if bankBalance != nil && bankBalance.Cmp(expectedBalance) == 0 {
 			t.Logf("Follower synced: bank=%s", bankBalance)
@@ -1351,11 +1380,12 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 
 	// Verify initial balance
 	initialBalance := big.NewInt(int64(numInitialTransactions * 100))
-	balances, err := node.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+	diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
 	require.NoError(t, err)
+	balances := computeBalancesFromDiffs(diffs)
 	require.Equal(t, new(big.Int).Neg(initialBalance), balances["world"]["USD"])
 	require.Equal(t, initialBalance, balances["bank"]["USD"])
 	t.Logf("Initial balance verified: world=%s, bank=%s", balances["world"]["USD"], balances["bank"]["USD"])
@@ -1408,15 +1438,16 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	// Since the snapshot was not saved, all entries should be replayed
 	t.Logf("Verifying state after restart...")
 	require.Eventually(t, func() bool {
-		balances, err := node.Store.GetBalances(ctx, ledgerInfo.Id, map[string][]string{
+		diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
 		if err != nil {
-			t.Logf("GetBalances error: %v", err)
+			t.Logf("GetBalanceDiffs error: %v", err)
 			return false
 		}
 
+		balances := computeBalancesFromDiffs(diffs)
 		worldBalance := balances["world"]["USD"]
 		bankBalance := balances["bank"]["USD"]
 

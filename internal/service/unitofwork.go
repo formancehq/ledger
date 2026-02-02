@@ -32,16 +32,16 @@ func (s *unitOfWork) ReleaseLocks() {
 	}
 }
 
-func (s *unitOfWork) IsTransactionReverted(ctx context.Context, ledgerID uint32, id uint64) (bool, error) {
-	return s.Store.IsTransactionReverted(ctx, ledgerID, id)
+func (s *unitOfWork) IsTransactionReverted(_ context.Context, ledgerID uint32, id uint64) (bool, error) {
+	return s.Store.IsTransactionReverted(ledgerID, id)
 }
 
-func (s *unitOfWork) GetSequenceForTransactionID(ctx context.Context, ledgerID uint32, id uint64) (uint64, error) {
-	return s.Store.GetSequenceForTransactionID(ctx, ledgerID, id)
+func (s *unitOfWork) GetSequenceForTransactionID(_ context.Context, ledgerID uint32, id uint64) (uint64, error) {
+	return s.Store.GetSequenceForTransactionID(ledgerID, id)
 }
 
-func (s *unitOfWork) GetLogBySequence(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
-	return s.Store.GetLogBySequence(ctx, sequence)
+func (s *unitOfWork) GetLogBySequence(_ context.Context, sequence uint64) (*commonpb.Log, error) {
+	return s.Store.GetLogBySequence(sequence)
 }
 
 // numscriptStore wraps unitOfWork to implement numscript interfaces
@@ -53,7 +53,7 @@ type numscriptStore struct {
 
 func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
 	// Convert numscript.BalanceQuery to our format
-	balanceQuery := make(map[string][]string)
+	balanceQuery := make(store.BalanceDiffsQuery)
 	for account, assets := range q {
 		balanceQuery[account] = assets
 	}
@@ -64,16 +64,20 @@ func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQue
 		return nil, err
 	}
 
-	balances, err := s.Store.GetBalances(ctx, s.ledgerID, balanceQuery)
+	balanceDiffs, err := s.Store.GetBalanceDiffs(s.ledgerID, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert to numscript.Balances format
+	// Compute balances from diffs
 	result := make(numscript.Balances)
-	for account, accountBalances := range balances {
+	for account, assetDiffs := range balanceDiffs {
 		result[account] = make(map[string]*big.Int)
-		for asset, balance := range accountBalances {
+		for asset, diffs := range assetDiffs {
+			balance := big.NewInt(0)
+			for _, diff := range diffs {
+				balance = balance.Add(balance, diff.Diff.Value())
+			}
 			result[account][asset] = balance
 		}
 	}
@@ -82,7 +86,7 @@ func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQue
 }
 
 // GetAccountsMetadata retrieves account metadata for accounts in the query
-func (s *numscriptStore) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
+func (s *numscriptStore) GetAccountsMetadata(_ context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
 	// Convert numscript.MetadataQuery (map[string]struct{}) to []string
 	accounts := make([]string, 0, len(q))
 	for address := range q {
@@ -90,7 +94,7 @@ func (s *numscriptStore) GetAccountsMetadata(ctx context.Context, q numscript.Me
 	}
 
 	// Get metadata from the runtime store
-	metadataMap, err := s.GetAccountMetadata(ctx, s.ledgerID, accounts)
+	metadataMap, err := s.GetAccountMetadata(s.ledgerID, accounts)
 	if err != nil {
 		return nil, err
 	}

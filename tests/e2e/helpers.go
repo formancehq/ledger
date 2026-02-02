@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // serviceWithClient is a shared type used across e2e tests to hold a test service instance
@@ -26,11 +29,42 @@ type serviceWithClient struct {
 	grpcPort int
 }
 
-// newGRPCClient creates a new gRPC client connection for a given port.
+// retryUnaryInterceptor retries the request on Unavailable errors (e.g., no leader)
+func retryUnaryInterceptor(maxRetries int, retryDelay time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		var lastErr error
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			lastErr = invoker(ctx, method, req, reply, cc, opts...)
+			if lastErr == nil {
+				return nil
+			}
+
+			// Check if the error is retryable (Unavailable = no leader)
+			st, ok := status.FromError(lastErr)
+			if !ok || st.Code() != codes.Unavailable {
+				// Not a retryable error
+				return lastErr
+			}
+
+			// Wait before retrying (unless it's the last attempt)
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(retryDelay):
+				}
+			}
+		}
+		return lastErr
+	}
+}
+
+// newGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
 func newGRPCClient(grpcPort int) (servicepb.LedgerServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(retryUnaryInterceptor(10, 100*time.Millisecond)), // Retry up to 10 times with 100ms delay
 	)
 	if err != nil {
 		return nil, nil, err

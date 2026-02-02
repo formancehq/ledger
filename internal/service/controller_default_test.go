@@ -301,7 +301,7 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		}
 
 		runtimeStore.EXPECT().
-			GetSequenceForIdempotencyKey(gomock.Any(), idempotencyKey).
+			GetSequenceForIdempotencyKey(idempotencyKey).
 			Return(uint64(0), store.ErrNotFound)
 
 		expectApplyWithSequentialIDs(engine, 1)
@@ -317,10 +317,10 @@ func TestDefaultLedger_DeleteTransactionMetadata(t *testing.T) {
 		ledgerLog1 := logs1[0].Payload.GetApply().GetLog()
 
 		runtimeStore.EXPECT().
-			GetSequenceForIdempotencyKey(gomock.Any(), idempotencyKey).
+			GetSequenceForIdempotencyKey(idempotencyKey).
 			Return(ledgerLog1.Id, nil)
 		runtimeStore.EXPECT().
-			GetLogBySequence(gomock.Any(), ledgerLog1.Id).
+			GetLogBySequence( ledgerLog1.Id).
 			Return(wrapLedgerLogInLogWithIdempotency(ledgerLog1.Id, testLedgerID, ledgerLog1, idempotencyKey, deleteMetadataCmd), nil)
 
 		logs2, err := ledgerService.Apply(ctx, applyActionWithIdempotency(&servicepb.LedgerApplyRequest{
@@ -472,19 +472,19 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
+			IsTransactionReverted(testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetSequenceForTransactionID(gomock.Any(), testLedgerID, transactionID).
+			GetSequenceForTransactionID(testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogBySequence(gomock.Any(), logID).
+			GetLogBySequence(logID).
 			Return(wrapLedgerLogInLog(logID, testLedgerID, originalLog), nil)
 		runtimeStore.EXPECT().
-			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
-			Return(commonpb.Balances{
-				"account-1": map[string]*big.Int{
-					"USD": big.NewInt(100),
+			GetBalanceDiffs(testLedgerID, gomock.Any()).
+			Return(store.BalanceDiffsResult{
+				"account-1": map[string][]store.StoredBalanceDiff{
+					"USD": {{Diff: commonpb.NewBigInt(big.NewInt(100))}},
 				},
 			}, nil)
 
@@ -509,7 +509,7 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		transactionID := uint64(42)
 
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
+			IsTransactionReverted( testLedgerID, transactionID).
 			Return(true, nil)
 
 		log, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyRequest{
@@ -532,10 +532,10 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 		transactionID := uint64(999)
 
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
+			IsTransactionReverted( testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetSequenceForTransactionID(gomock.Any(), testLedgerID, transactionID).
+			GetSequenceForTransactionID(testLedgerID, transactionID).
 			Return(uint64(0), nil)
 
 		log, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyRequest{
@@ -595,13 +595,13 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations - with force=true, balance check should be skipped
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
+			IsTransactionReverted( testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetSequenceForTransactionID(gomock.Any(), testLedgerID, transactionID).
+			GetSequenceForTransactionID(testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogBySequence(gomock.Any(), logID).
+			GetLogBySequence( logID).
 			Return(wrapLedgerLogInLog(logID, testLedgerID, originalLog), nil)
 
 		expectApplyWithSequentialIDs(engine, 1)
@@ -648,19 +648,19 @@ func TestDefaultLedger_RevertTransaction(t *testing.T) {
 
 		// Mock expectations
 		runtimeStore.EXPECT().
-			IsTransactionReverted(gomock.Any(), testLedgerID, transactionID).
+			IsTransactionReverted(testLedgerID, transactionID).
 			Return(false, nil)
 		runtimeStore.EXPECT().
-			GetSequenceForTransactionID(gomock.Any(), testLedgerID, transactionID).
+			GetSequenceForTransactionID(testLedgerID, transactionID).
 			Return(logID, nil)
 		runtimeStore.EXPECT().
-			GetLogBySequence(gomock.Any(), logID).
+			GetLogBySequence(logID).
 			Return(wrapLedgerLogInLog(logID, testLedgerID, originalLog), nil)
 		runtimeStore.EXPECT().
-			GetBalances(gomock.Any(), testLedgerID, gomock.Any()).
-			Return(commonpb.Balances{
-				"account-1": map[string]*big.Int{
-					"USD": big.NewInt(100),
+			GetBalanceDiffs(testLedgerID, gomock.Any()).
+			Return(store.BalanceDiffsResult{
+				"account-1": map[string][]store.StoredBalanceDiff{
+					"USD": {{Diff: commonpb.NewBigInt(big.NewInt(100))}},
 				},
 			}, nil)
 

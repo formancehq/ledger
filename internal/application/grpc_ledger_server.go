@@ -59,7 +59,7 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest
 	}()
 
 	for {
-		log, err := cursor.Next(ctx)
+		log, err := cursor.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -106,7 +106,7 @@ func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedger
 	}()
 
 	for {
-		ledger, err := cursor.Next(ctx)
+		ledger, err := cursor.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -125,7 +125,7 @@ func (impl *LedgerServiceServerImpl) GetLedger(ctx context.Context, req *service
 	if req.Ledger.GetName() != "" {
 		return impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
 	}
-	return impl.store.GetLedgerByID(ctx, req.Ledger.GetId())
+	return impl.store.GetLedgerByID(req.Ledger.GetId())
 }
 
 func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {

@@ -48,13 +48,13 @@ func NewDefaultController(
 }
 
 // GetAllLedgersInfo returns a cursor over all ledgers
-func (ctrl *DefaultController) GetAllLedgersInfo(ctx context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
-	return ctrl.store.ListLedgers(ctx)
+func (ctrl *DefaultController) GetAllLedgersInfo(_ context.Context) (store.Cursor[*commonpb.LedgerInfo], error) {
+	return ctrl.store.ListLedgers()
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
 	// Get the sequence for the transaction ID
-	sequence, err := ctrl.store.GetSequenceForTransactionID(ctx, ledgerID, transactionID)
+	sequence, err := ctrl.store.GetSequenceForTransactionID(ledgerID, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting sequence for transaction %d: %w", transactionID, err)
 	}
@@ -63,7 +63,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 	}
 
 	// Get the system log containing the transaction
-	log, err := ctrl.store.GetLogBySequence(ctx, sequence)
+	log, err := ctrl.store.GetLogBySequence(sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
@@ -86,7 +86,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 		}
 		tx := payload.CreatedTransaction.Transaction
 		// Check if the transaction has been reverted
-		reverted, err := ctrl.store.IsTransactionReverted(ctx, ledgerID, transactionID)
+		reverted, err := ctrl.store.IsTransactionReverted(ledgerID, transactionID)
 		if err != nil {
 			return nil, fmt.Errorf("checking if transaction %d is reverted: %w", transactionID, err)
 		}
@@ -102,15 +102,15 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerID uint
 	}
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
+func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
 	// Get account metadata
-	metadataMap, err := ctrl.store.GetAccountMetadata(ctx, ledgerID, []string{address})
+	metadataMap, err := ctrl.store.GetAccountMetadata(ledgerID, []string{address})
 	if err != nil {
 		return nil, fmt.Errorf("getting account metadata: %w", err)
 	}
 
 	// Get account volumes
-	volumes, err := ctrl.store.GetAccountVolumes(ctx, ledgerID, address)
+	volumes, err := ctrl.store.GetAccountVolumes(ledgerID, address)
 	if err != nil {
 		return nil, fmt.Errorf("getting account volumes: %w", err)
 	}
@@ -130,12 +130,12 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerID uint32, 
 	return account, nil
 }
 
-func (ctrl *DefaultController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
-	return ctrl.store.GetAllLogs(ctx, from, to)
+func (ctrl *DefaultController) GetAllLogs(_ context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
+	return ctrl.store.GetAllLogs(from, to)
 }
 
-func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(ctx, name)
+func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
+	ledgerInfo, err := ctrl.store.GetLedgerByName(name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
@@ -360,7 +360,7 @@ func (ctrl *DefaultController) resolveLedgerID(ctx context.Context, ledger *serv
 		}
 
 		// Cache miss - fetch from store
-		ledgerInfo, err := ctrl.store.GetLedgerByName(ctx, t.Name)
+		ledgerInfo, err := ctrl.store.GetLedgerByName(t.Name)
 		if err != nil {
 			return 0, fmt.Errorf("resolving ledger name %q: %w", t.Name, err)
 		}
@@ -799,7 +799,7 @@ func (ctrl *DefaultController) deleteLedger(ctx context.Context, uow *unitOfWork
 		return nil, fmt.Errorf("locking ledger %d: %w", input.Id, err)
 	}
 
-	_, err = ctrl.store.GetLedgerByID(ctx, input.Id)
+	_, err = ctrl.store.GetLedgerByID(input.Id)
 	if err != nil {
 		return nil, fmt.Errorf("ledger %d does not exist: %w", input.Id, err)
 	}
@@ -876,22 +876,23 @@ func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWor
 		return err
 	}
 
-	balances, err := uow.GetBalances(ctx, ledgerID, balanceQueryList)
+	balanceDiffs, err := uow.GetBalanceDiffs(ledgerID, balanceQueryList)
 	if err != nil {
 		return err
 	}
 
-	// Check if accounts have sufficient funds
+	// Compute balances from diffs and check if accounts have sufficient funds
 	for account, assets := range requiredFunds {
-		accountBalances, ok := balances[account]
+		accountDiffs, ok := balanceDiffs[account]
 		if !ok {
-			accountBalances = make(map[string]*big.Int)
+			accountDiffs = make(map[string][]store.StoredBalanceDiff)
 		}
 
 		for asset, requiredAmount := range assets {
-			balance, ok := accountBalances[asset]
-			if !ok {
-				balance = big.NewInt(0)
+			// Compute balance from diffs
+			balance := big.NewInt(0)
+			for _, diff := range accountDiffs[asset] {
+				balance = balance.Add(balance, diff.Diff.Value())
 			}
 
 			if balance.Cmp(requiredAmount) < 0 {
