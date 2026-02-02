@@ -626,7 +626,7 @@ func TestRunQuery(t *testing.T) {
 				"FOO": {
 					Description: "Foo template",
 					Resource:    "accounts",
-					Vars: map[string]ledger.VarSpec{
+					Vars: map[string]resources.VarSpec{
 						"aaa": {
 							Type:    "string",
 							Default: nil,
@@ -634,7 +634,7 @@ func TestRunQuery(t *testing.T) {
 					},
 					Body: json.RawMessage(`{
 						"$match": {
-							"address": "<aaa>"
+							"address": "${aaa}"
 						}
 					}`),
 				},

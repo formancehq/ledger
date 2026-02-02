@@ -729,7 +729,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 			return ctrl.runQueryFromCursor(ctx, template, q)
 		} else {
 			var result *bunpaginate.Cursor[any]
-			builder, err := ledger.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
+			builder, err := resources.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
 			if err != nil {
 				return nil, nil, err
 			}

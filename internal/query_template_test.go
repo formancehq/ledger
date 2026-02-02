@@ -38,14 +38,14 @@ func TestQueryTemplateValidation(t *testing.T) {
 				"body": {
 	"$and": [
 		{"$match": {
-			"address": "banks:<iban>:"
+			"address": "banks:${iban}:"
 		}},
 		{"$or": [
 			{"$gt": {
-				"balance[COIN]": "<minimum_balance>"
+				"balance[COIN]": "${minimum_balance}"
 			}},
 			{"$exists": {
-				"metadata": "<metadata_field>"
+				"metadata": "${metadata_field}"
 			}}
 		]}
 	]
@@ -54,7 +54,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 				Description: "complex & valid",
 				Resource:    resources.ResourceKindAccount,
 				Params:      nil,
-				Vars: map[string]VarSpec{
+				Vars: map[string]resources.VarSpec{
 					"iban": {
 						Type: resources.ValueTypeString,
 					},
@@ -69,14 +69,14 @@ func TestQueryTemplateValidation(t *testing.T) {
 				Body: json.RawMessage(`{
 	"$and": [
 		{"$match": {
-			"address": "banks:<iban>:"
+			"address": "banks:${iban}:"
 		}},
 		{"$or": [
 			{"$gt": {
-				"balance[COIN]": "<minimum_balance>"
+				"balance[COIN]": "${minimum_balance}"
 			}},
 			{"$exists": {
-				"metadata": "<metadata_field>"
+				"metadata": "${metadata_field}"
 			}}
 		]}
 	]
@@ -127,7 +127,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 				Description: "all types",
 				Resource:    resources.ResourceKindAccount,
 				Params:      nil,
-				Vars: map[string]VarSpec{
+				Vars: map[string]resources.VarSpec{
 					"my_bool": {
 						Type:    resources.ValueTypeBoolean,
 						Default: false,
@@ -197,7 +197,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 				},
 				"body": {
 					"$match": {
-						"balance[COIN]": "<foo>"
+						"balance[COIN]": "${foo}"
 					}
 				}
 			}`,
@@ -210,7 +210,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 				"vars": {},
 				"body": {
 					"$match": {
-						"balance[COIN]": "<foo>"
+						"balance[COIN]": "${foo}"
 					}
 				}
 			}`,
@@ -236,7 +236,7 @@ func TestQueryResolution(t *testing.T) {
 	type testCase struct {
 		name            string
 		resource        resources.ResourceKind
-		varDeclarations map[string]VarSpec
+		varDeclarations map[string]resources.VarSpec
 		source          string
 		vars            map[string]any
 		expectedError   string
@@ -247,12 +247,12 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:     "simple int substitution",
 			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{
+			varDeclarations: map[string]resources.VarSpec{
 				"minimum_balance": {},
 			},
 			source: `{
 				"$gt": {
-					"balance[COIN]": "<minimum_balance>"
+					"balance[COIN]": "${minimum_balance}"
 				}
 			}`,
 			vars: map[string]any{
@@ -267,7 +267,7 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:     "complex",
 			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{
+			varDeclarations: map[string]resources.VarSpec{
 				"iban":            {},
 				"minimum_balance": {},
 				"metadata_field": {
@@ -277,14 +277,14 @@ func TestQueryResolution(t *testing.T) {
 			source: `{
 				"$and": [
 					{"$match": {
-						"address": "banks:<iban>:"
+						"address": "banks:${iban}:"
 					}},
 					{"$or": [
 						{"$gt": {
-							"balance[COIN]": "<minimum_balance>"
+							"balance[COIN]": "${minimum_balance}"
 						}},
 						{"$exists": {
-							"metadata": "<metadata_field>"
+							"metadata": "${metadata_field}"
 						}}
 					]}
 				]
@@ -312,7 +312,7 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:     "different types",
 			resource: resources.ResourceKindTransaction,
-			varDeclarations: map[string]VarSpec{
+			varDeclarations: map[string]resources.VarSpec{
 				"my_bool":   {},
 				"my_int":    {},
 				"my_string": {},
@@ -320,10 +320,10 @@ func TestQueryResolution(t *testing.T) {
 			},
 			source: `{
 				"$and": [
-					{"$match": {"reverted": "<my_bool>"}},
-					{"$match": {"account": "prefix:<my_string>:suffix"}},
-					{"$match": {"timestamp": "<my_date>"}},
-					{"$match": {"id": "<my_int>"}}
+					{"$match": {"reverted": "${my_bool}"}},
+					{"$match": {"account": "prefix:${my_string}:suffix"}},
+					{"$match": {"timestamp": "${my_date}"}},
+					{"$match": {"id": "${my_int}"}}
 				]
 			}`,
 			vars: map[string]any{
@@ -344,9 +344,9 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:            "invalid substitution syntax",
 			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{"minimum_balance": {}},
+			varDeclarations: map[string]resources.VarSpec{"minimum_balance": {}},
 			source: `{"$gt": {
-				"balance[COIN]": "<minimum_balance>000"
+				"balance[COIN]": "${minimum_balance}000"
 			}}`,
 			vars:          map[string]any{"minimum_balance": json.Number("42")},
 			expectedError: "string or a plain value",
@@ -355,9 +355,9 @@ func TestQueryResolution(t *testing.T) {
 			// should be elsewhere
 			name:            "invalid field access syntax",
 			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{"minimum_balance": {}},
+			varDeclarations: map[string]resources.VarSpec{"minimum_balance": {}},
 			source: `{"$gt": {
-				"balance[COIN][THING]": "<minimum_balance>"
+				"balance[COIN][THING]": "${minimum_balance}"
 			}}`,
 			vars:          map[string]any{"minimum_balance": json.Number("42")},
 			expectedError: "invalid field name",
@@ -365,9 +365,9 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:            "missing variable",
 			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{},
+			varDeclarations: map[string]resources.VarSpec{},
 			source: `{"$gt": {
-				"balance[COIN]": "<doesntexist>"
+				"balance[COIN]": "${doesntexist}"
 			}}`,
 			vars:          map[string]any{},
 			expectedError: "missing variable: doesntexist",
@@ -375,7 +375,7 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:            "unknown field",
 			resource:        resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{},
+			varDeclarations: map[string]resources.VarSpec{},
 			source: `{"$gt": {
 				"doesntexist": "test"
 			}}`,
@@ -385,20 +385,20 @@ func TestQueryResolution(t *testing.T) {
 		{
 			name:     "wrong variable type",
 			resource: resources.ResourceKindAccount,
-			varDeclarations: map[string]VarSpec{
+			varDeclarations: map[string]resources.VarSpec{
 				"wrongtype": {
 					Type:    "string",
 					Default: "test",
 				},
 			},
 			source: `{"$gt": {
-				"balance[COIN]": "<wrongtype>"
+				"balance[COIN]": "${wrongtype}"
 			}}`,
 			vars:          map[string]any{},
 			expectedError: "cannot use variable `wrongtype` as type `Number`",
 		},
 	} {
-		resolved, err := ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
+		resolved, err := resources.ResolveFilterTemplate(tc.resource, json.RawMessage(tc.source), tc.varDeclarations, tc.vars)
 
 		if tc.expectedError == "" {
 			require.NoError(t, err, tc.name)

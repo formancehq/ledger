@@ -59,12 +59,37 @@ type parserState struct {
 	index int
 }
 
-func (p *parserState) isEOF() bool {
+type ParsingError struct {
+	state     parserState
+	expecting string
+}
+
+func (p parserState) newParsingError(expecting string) *ParsingError {
+	return &ParsingError{
+		state:     p,
+		expecting: expecting,
+	}
+}
+
+var _ error = (*ParsingError)(nil)
+
+func (e ParsingError) Error() string {
+	var currentChar string
+	if e.state.isEOF() {
+		currentChar = "EOF"
+	} else {
+		currentChar = fmt.Sprintf("'%c'", e.state.peek())
+	}
+
+	return fmt.Sprintf("i was expecting %s, but I got %s instead", e.expecting, currentChar)
+}
+
+func (p parserState) isEOF() bool {
 	return len(p.str) <= p.index
 }
 
 // Panics on EOF
-func (p *parserState) peek() byte {
+func (p parserState) peek() byte {
 	return p.str[p.index]
 }
 
@@ -75,29 +100,90 @@ func (p *parserState) consume() byte {
 	return ch
 }
 
-// PRE: already consumed opening '<'
-// POST: closing '>' is consumed
-func (p *parserState) parseVar() (string, error) {
-	buf := ""
-	for !p.isEOF() {
-		b := p.consume()
-		switch b {
-		case '>':
-			return buf, nil
-		default:
-			// TODO maybe we want to allow other chars?
-			isValidVarChar := (b >= 'a' && b <= 'z') || b == '_'
-			if !isValidVarChar {
-				return "", fmt.Errorf("invalid var char: '%b'", b)
-			}
-
-			buf += string(b)
-		}
+// Returns whether the lookahead is matched by the predicat.
+// Consumes on match
+func (p *parserState) tryConsuming(pred func(byte) bool) (byte, bool) {
+	if p.isEOF() {
+		return 0x0, false
 	}
-	return buf, nil
+
+	ch := p.peek()
+	if pred(ch) {
+		p.consume()
+		return ch, true
+	}
+
+	return 0x0, false
 }
 
-func ParseTemplate(str string) ([]string, []string, error) {
+func (p *parserState) tryConsumingCh(lookup byte) bool {
+	_, ok := p.tryConsuming(func(b byte) bool {
+		return b == lookup
+	})
+
+	return ok
+}
+
+// lowercase chars
+func isVarHeadChar(b byte) bool {
+	return b >= 'a' && b <= 'z'
+}
+
+// alphanum chars or '_'
+func isVarTailChar(b byte) bool {
+	return isVarHeadChar(b) || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
+}
+
+// Parse and consume the var identifier until we get a non-identifier char
+func (p *parserState) parseVarIdent() (string, *ParsingError) {
+	var sb strings.Builder
+
+	ch, ok := p.tryConsuming(isVarHeadChar)
+	if !ok {
+		return "", p.newParsingError("a lowercase char")
+	}
+	sb.WriteByte(ch)
+
+	for {
+		ch, ok := p.tryConsuming(isVarTailChar)
+		if !ok {
+			// first non-identifier char means we are outside interpolation
+			break
+		}
+
+		sb.WriteByte(ch)
+	}
+
+	return sb.String(), nil
+}
+
+// parse the $abc syntax
+// PRE: already consumed opening '${'
+func (p *parserState) parseSimpleVar() (string, *ParsingError) {
+
+	if p.tryConsumingCh('{') {
+		return p.parseBracketVar()
+	}
+
+	return p.parseVarIdent()
+}
+
+// parse the ${abc} syntax
+// PRE: already consumed opening '${'
+func (p *parserState) parseBracketVar() (string, *ParsingError) {
+	ident, err := p.parseVarIdent()
+	if err != nil {
+		return "", err
+	}
+
+	if !p.tryConsumingCh('}') {
+		return "", p.newParsingError("'}'")
+	}
+
+	return ident, nil
+}
+
+func ParseTemplate(str string) ([]string, []string, *ParsingError) {
 	p := parserState{str: str}
 
 	// The following state is modelled as local scope by design
@@ -109,12 +195,12 @@ func ParseTemplate(str string) ([]string, []string, error) {
 		b := p.consume()
 
 		switch b {
-		case '<':
+		case '$':
 			// TODO do we append even empty str?
 			strs = append(strs, currentStr)
 			currentStr = ""
 
-			var_, err := p.parseVar()
+			var_, err := p.parseSimpleVar()
 			if err != nil {
 				return nil, nil, err
 			}
