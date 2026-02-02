@@ -458,36 +458,24 @@ Collision mitigation options are out-of-scope here but should be considered in i
 
 ```mermaid
 flowchart TD
-  C[Client] -->|AppendTransaction| A[Admission (Leader)
-Parallel path]
-  A -->|Numscript analysis
-MayNeedBase/Meta
-Optimistic per-account locks
-Build Preload@B(i)| P[Raft Propose Entry]
+  C[Client] -->|AppendTransaction| A[Admission - Leader<br/>Parallel path]
+  A -->|Numscript analysis<br/>Build Preload| P[Raft Propose Entry]
   P --> R[Raft Replication / Commit]
-  R -->|CommittedEntries| F[FSM Apply (all nodes)
-Sequential + deterministic
-RAM-only checks]
-  F -->|Flush (batch, no sync)
-Write diffs always
-Write base opportunistically| S[Pebble Storage
-Indexed bases + diffs]
-  S --> BG[Background compaction
-Merge base+diffs
-Delete obsolete diffs]
+  R -->|CommittedEntries| F[FSM Apply - all nodes<br/>Sequential + deterministic<br/>RAM-only checks]
+  F -->|Flush - batch, no sync<br/>Write diffs always<br/>Write base opportunistically| S[Pebble Storage<br/>Indexed bases + diffs]
+  S --> BG[Background compaction<br/>Merge base+diffs<br/>Delete obsolete diffs]
 ```
 
 ### 14.2 Generations and canonical boundary
 
 ```mermaid
 flowchart LR
-  subgraph Spec["Index/generation spec (Raft index starts at 1)"]
+  subgraph Spec["Index/generation spec - Raft index starts at 1"]
     K["K = generation size"]
-    G["gen(i) = (i-1)/K"]
-    GS["genStartIndex(g) = g*K + 1"]
-    GE["genEndIndex(g) = (g+1)*K"]
-    B["B(i) = genEndIndex(gen(i)-1)
-(end of gen1 when gen(i) >= 1)"]
+    G["gen - i = i-1 / K"]
+    GS["genStartIndex - g = g*K + 1"]
+    GE["genEndIndex - g = g+1 * K"]
+    B["B - i = genEndIndex gen i - 1<br/>end of gen1 when gen i >= 1"]
   end
 
   subgraph Timeline["Conceptual log timeline"]

@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	
 )
 
 const (
@@ -55,6 +54,7 @@ var (
 	// 0x09 was keyPrefixLogIndex - now unused, logs are accessed via Log
 	keyPrefixBalanceBase  byte = 0x0A // [ledger][keyPrefixBalanceBase][account][asset][raftIndex] -> BigInt
 	keyPrefixMetadataDiff byte = 0x0B // [ledger][keyPrefixMetadataDiff][account][key][raftIndex] -> value (string, empty = deleted)
+	keyPrefixMetadataBase byte = 0x0C // [ledger][keyPrefixMetadataBase][account][key][raftIndex] -> value (string, empty = deleted)
 )
 
 // NewStore creates a new Store instance
@@ -423,6 +423,63 @@ func (s *Store) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIn
 	return &StoredBalanceBase{
 		RaftIndex: raftIndex,
 		Balance:   balance,
+	}, nil
+}
+
+// GetMetadataBase retrieves the most recent metadata base for an account/key pair
+// whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
+func (s *Store) GetMetadataBase(ledgerID uint32, account, key string, maxRaftIndex uint64) (*StoredMetadataBase, error) {
+	buf := bytes.NewBuffer(nil)
+
+	// Build the prefix for this ledger/account/key
+	writeLedgerPrefix(buf, ledgerID)
+	writeByte(buf, keyPrefixMetadataBase)
+	writeString(buf, account)
+	writeString(buf, key)
+	lowerBound := bytes.Clone(buf.Bytes())
+
+	// Upper bound includes maxRaftIndex + 1 so we include entries at maxRaftIndex
+	writeUInt64(buf, maxRaftIndex+1)
+	upperBound := buf.Bytes()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for metadata base: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	// Seek to the last entry in the range (the one with the highest RaftIndex <= maxRaftIndex)
+	if !iter.Last() {
+		// No base found
+		return nil, nil
+	}
+
+	iterKey := iter.Key()
+	valueBytes, err := iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading metadata base value: %w", err)
+	}
+
+	// Extract RaftIndex from key (last 8 bytes after lowerBound prefix)
+	keyAfterPrefix := iterKey[len(lowerBound):]
+	if len(keyAfterPrefix) < 8 {
+		return nil, fmt.Errorf("malformed metadata base key: expected at least 8 bytes for RaftIndex, got %d", len(keyAfterPrefix))
+	}
+	raftIndex := binary.BigEndian.Uint64(keyAfterPrefix[:8])
+
+	// Empty value means deleted
+	var value *string
+	if len(valueBytes) > 0 {
+		v := string(valueBytes)
+		value = &v
+	}
+
+	return &StoredMetadataBase{
+		RaftIndex: raftIndex,
+		Value:     value,
 	}, nil
 }
 

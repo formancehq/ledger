@@ -169,6 +169,32 @@ func (b *Batch) AppendMetadataDiff(diff MetadataDiff) error {
 	return nil
 }
 
+// SetMetadataBase stores a metadata base (compacted snapshot) for an account/key pair.
+// If base.Value is nil, it represents a deletion of the key at this base index.
+func (b *Batch) SetMetadataBase(base MetadataBase) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	writeLedgerPrefix(b.keyBuffer, base.LedgerID)
+	writeByte(b.keyBuffer, keyPrefixMetadataBase)
+	writeString(b.keyBuffer, base.Account)
+	writeString(b.keyBuffer, base.Key)
+	writeUInt64(b.keyBuffer, base.RaftIndex)
+
+	var valueBytes []byte
+	if base.Value != nil {
+		valueBytes = []byte(*base.Value)
+	}
+	// nil Value means deletion, stored as empty value
+
+	if err := setOnBatch(b.batch, b.keyBuffer, valueBytes); err != nil {
+		return fmt.Errorf("storing metadata base for ledger %d account %s key %s: %w", base.LedgerID, base.Account, base.Key, err)
+	}
+
+	return nil
+}
+
 // StoreTransactionID stores the sequence associated to a transaction ID.
 func (b *Batch) StoreTransactionID(ledger uint32, transactionID uint64, sequence uint64) error {
 	if b.committed {

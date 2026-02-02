@@ -59,6 +59,23 @@ type StoredMetadataDiff struct {
 	Value     *string // nil means deleted
 }
 
+// MetadataBase represents a compacted metadata snapshot for an account/key pair.
+// It stores the metadata value at a specific Raft index, allowing efficient
+// metadata computation by applying the base and subsequent diffs.
+type MetadataBase struct {
+	LedgerID  uint32
+	Account   string
+	Key       string
+	Value     *string // nil means the key was deleted at this base
+	RaftIndex uint64
+}
+
+// StoredMetadataBase represents a metadata base retrieved from storage.
+type StoredMetadataBase struct {
+	RaftIndex uint64
+	Value     *string // nil means deleted
+}
+
 type LogStreamer interface {
 	// GetAllLogs returns a cursor over all logs (global logs by sequence)
 	// from: optional sequence to start from (0 = from beginning)
