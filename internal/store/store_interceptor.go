@@ -26,7 +26,7 @@ type StoreInterceptor struct {
 	OnGetSequenceForTransactionID  func(delegate *Store, ledgerName string, transactionID uint64) (uint64, error)
 	OnIsTransactionReverted        func(delegate *Store, ledgerName string, transactionID uint64) (bool, error)
 	OnNewBatch                     func(delegate *Store) *Batch
-	OnCreateSnapshot               func(delegate *Store) error
+	OnCreateSnapshot               func(delegate *Store) (uint64, error)
 	OnGetLastAppliedIndex          func(delegate *Store) (uint64, error)
 	OnGetLastSequence              func(delegate *Store) (uint64, error)
 	OnGetLedgerByName              func(delegate *Store, name string) (*commonpb.LedgerInfo, error)
@@ -155,7 +155,7 @@ func (s *StoreInterceptor) NewBatch() *Batch {
 	return s.delegate.NewBatch()
 }
 
-func (s *StoreInterceptor) CreateSnapshot() error {
+func (s *StoreInterceptor) CreateSnapshot() (uint64, error) {
 	s.mu.RLock()
 	interceptor := s.OnCreateSnapshot
 	s.mu.RUnlock()
@@ -241,7 +241,7 @@ func (s *StoreInterceptor) SetNewBatchInterceptor(fn func(delegate *Store) *Batc
 	s.mu.Unlock()
 }
 
-func (s *StoreInterceptor) SetCreateSnapshotInterceptor(fn func(delegate *Store) error) {
+func (s *StoreInterceptor) SetCreateSnapshotInterceptor(fn func(delegate *Store) (uint64, error)) {
 	s.mu.Lock()
 	s.OnCreateSnapshot = fn
 	s.mu.Unlock()

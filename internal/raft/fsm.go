@@ -396,9 +396,13 @@ func (fsm *FSM) GetAllLedgers() map[string]*commonpb.LedgerInfo {
 
 // CreateSnapshot creates a snapshot of the FSM state
 func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
-	if err := fsm.store.CreateSnapshot(); err != nil {
+	checkpointID, err := fsm.store.CreateSnapshot()
+	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}
+
+	// Store the checkpoint ID in the state for recovery
+	fsm.state.CheckpointId = checkpointID
 
 	return proto.Marshal(fsm.state)
 }

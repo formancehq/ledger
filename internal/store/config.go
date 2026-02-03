@@ -64,6 +64,11 @@ type Config struct {
 	// WARNING: This risks data loss on crash. Only use for testing or ephemeral data.
 	// Default: false
 	DisableWAL bool `yaml:"disableWAL"`
+
+	// MaxCheckpoints is the maximum number of checkpoints to keep.
+	// Older checkpoints beyond this limit are deleted during snapshot creation.
+	// Default: 10
+	MaxCheckpoints int `yaml:"maxCheckpoints"`
 }
 
 // DefaultConfig returns the default Pebble configuration.
@@ -82,5 +87,6 @@ func DefaultConfig() Config {
 		MaxConcurrentCompactions:    2,
 		WALMinSyncInterval:          0, // immediate sync
 		DisableWAL:                  false,
+		MaxCheckpoints:              10,
 	}
 }

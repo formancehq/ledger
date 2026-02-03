@@ -87,6 +87,7 @@ type State struct {
 	Ledgers       map[uint32]*LedgerState `protobuf:"bytes,1,rep,name=ledgers,proto3" json:"ledgers,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	NextLedgerId  uint32                  `protobuf:"varint,2,opt,name=next_ledger_id,json=nextLedgerId,proto3" json:"next_ledger_id,omitempty"` // Next available ledger ID (max ~4.3 billion)
 	NextSequence  uint64                  `protobuf:"varint,3,opt,name=next_sequence,json=nextSequence,proto3" json:"next_sequence,omitempty"`   // Next global sequence number for SystemLog
+	CheckpointId  uint64                  `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`   // ID of the last checkpoint (for snapshot recovery)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -138,6 +139,13 @@ func (x *State) GetNextLedgerId() uint32 {
 func (x *State) GetNextSequence() uint64 {
 	if x != nil {
 		return x.NextSequence
+	}
+	return 0
+}
+
+func (x *State) GetCheckpointId() uint64 {
+	if x != nil {
+		return x.CheckpointId
 	}
 	return 0
 }
@@ -1241,11 +1249,12 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\vledger_info\x18\x01 \x01(\v2\x12.common.LedgerInfoR\n" +
 	"ledgerInfo\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12.\n" +
-	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\"\xd5\x01\n" +
+	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\"\xfa\x01\n" +
 	"\x05State\x122\n" +
 	"\aledgers\x18\x01 \x03(\v2\x18.raft.State.LedgersEntryR\aledgers\x12$\n" +
 	"\x0enext_ledger_id\x18\x02 \x01(\rR\fnextLedgerId\x12#\n" +
-	"\rnext_sequence\x18\x03 \x01(\x04R\fnextSequence\x1aM\n" +
+	"\rnext_sequence\x18\x03 \x01(\x04R\fnextSequence\x12#\n" +
+	"\rcheckpoint_id\x18\x04 \x01(\x04R\fcheckpointId\x1aM\n" +
 	"\fLedgersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\rR\x03key\x12'\n" +
 	"\x05value\x18\x02 \x01(\v2\x11.raft.LedgerStateR\x05value:\x028\x01\"\xd6\x03\n" +

@@ -20,6 +20,7 @@ message State {
   map<uint32, LedgerState> ledgers = 1;
   uint32 next_ledger_id = 2;                // Next available ledger ID (max ~4.3 billion)
   uint64 next_sequence = 3;                 // Next global sequence number for SystemLog
+  uint64 checkpoint_id = 4;                 // ID of the last checkpoint (for snapshot recovery)
 }
 
 // ============================================================================

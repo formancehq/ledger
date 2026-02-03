@@ -31,12 +31,13 @@ const (
 
 // Store is a Pebble implementation of store.Store
 // It stores balances and account metadata
-// todo: add rotation of checkpoints
 type Store struct {
 	db                *pebble.DB
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
+	oldestCheckpoint  uint64
+	maxCheckpoints    int
 }
 
 // Key prefixes for Pebble storage
@@ -153,11 +154,20 @@ func NewStore(
 		}
 	}
 
+	// Calculate the oldest checkpoint that should exist
+	// based on current checkpoint and max checkpoints configuration
+	var oldestCheckpoint uint64
+	if currentCheckpoint >= uint64(cfg.MaxCheckpoints) {
+		oldestCheckpoint = currentCheckpoint - uint64(cfg.MaxCheckpoints) + 1
+	}
+
 	return &Store{
 		db:                db,
 		logger:            logger.WithField("cmp", "pebble"),
 		dataDir:           dataDir,
 		currentCheckPoint: currentCheckpoint,
+		oldestCheckpoint:  oldestCheckpoint,
+		maxCheckpoints:    cfg.MaxCheckpoints,
 	}, nil
 }
 
@@ -740,53 +750,84 @@ func (s *Store) GetTransactionUpdates(ledgerName string, transactionID uint64) (
 	return updates, nil
 }
 
-func (s *Store) CreateSnapshot() error {
-
+// CreateSnapshot creates a new checkpoint of the database and returns the checkpoint ID.
+func (s *Store) CreateSnapshot() (uint64, error) {
 	s.logger.Infof("Creating snapshot")
 
-	checkpointDir := filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", s.currentCheckPoint+1))
+	newCheckpointID := s.currentCheckPoint + 1
+	checkpointDir := filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", newCheckpointID))
 	if err := os.RemoveAll(checkpointDir); err != nil {
-		return fmt.Errorf("removing checkpoint directory: %w", err)
+		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
 	if err := s.db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
-		return fmt.Errorf("creating checkpoint: %w", err)
+		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
 	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"))
 	if err != nil {
-		return fmt.Errorf("creating checkpoint file: %w", err)
+		return 0, fmt.Errorf("creating checkpoint file: %w", err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 
-	if _, err := fmt.Fprintf(f, "%d", s.currentCheckPoint+1); err != nil {
-		return fmt.Errorf("writing checkpoint file: %w", err)
+	if _, err := fmt.Fprintf(f, "%d", newCheckpointID); err != nil {
+		return 0, fmt.Errorf("writing checkpoint file: %w", err)
 	}
 
 	if err := f.Sync(); err != nil {
-		return fmt.Errorf("syncing checkpoint file: %w", err)
+		return 0, fmt.Errorf("syncing checkpoint file: %w", err)
 	}
 
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("closing checkpoint file: %w", err)
+		return 0, fmt.Errorf("closing checkpoint file: %w", err)
 	}
 
 	if err := os.Rename(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"), filepath.Join(s.dataDir, currentCheckpointFile)); err != nil {
-		return fmt.Errorf("renaming checkpoint file: %w", err)
+		return 0, fmt.Errorf("renaming checkpoint file: %w", err)
 	}
 
-	// todo: it can fail, leaving an old checkpoint on disk
+	// Clean up old checkpoints beyond the configured maximum
+	// Note: it can fail, leaving old checkpoints on disk
 	// this is not critical, but we should fix it eventually
-	if err := os.RemoveAll(filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", s.currentCheckPoint))); err != nil {
-		return fmt.Errorf("removing old checkpoint directory: %w", err)
+	if err := s.cleanupOldCheckpoints(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Infof("Failed to cleanup old checkpoints")
 	}
 
 	s.logger.WithFields(map[string]any{
-		"checkpoint": s.currentCheckPoint + 1,
+		"checkpoint": newCheckpointID,
 	}).Infof("Snapshot created")
-	s.currentCheckPoint++
+	s.currentCheckPoint = newCheckpointID
+
+	return newCheckpointID, nil
+}
+
+// cleanupOldCheckpoints removes checkpoints older than the configured maximum.
+// It keeps the most recent maxCheckpoints checkpoints.
+func (s *Store) cleanupOldCheckpoints() error {
+	newCheckpoint := s.currentCheckPoint + 1
+
+	// Calculate the oldest checkpoint to keep
+	// If newCheckpoint is 15 and maxCheckpoints is 10, we keep checkpoints 6-15
+	// So we delete anything older than (newCheckpoint - maxCheckpoints + 1)
+	if newCheckpoint < uint64(s.maxCheckpoints) {
+		// Not enough checkpoints yet, nothing to delete
+		return nil
+	}
+
+	oldestToKeep := newCheckpoint - uint64(s.maxCheckpoints) + 1
+
+	// Delete checkpoints from oldestCheckpoint up to (but not including) oldestToKeep
+	for i := s.oldestCheckpoint; i < oldestToKeep; i++ {
+		checkpointPath := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", i))
+		if err := os.RemoveAll(checkpointPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("removing old checkpoint %d: %w", i, err)
+		}
+	}
+
+	// Update the oldest checkpoint tracker
+	s.oldestCheckpoint = oldestToKeep
 
 	return nil
 }

@@ -447,8 +447,9 @@ func TestStoreSnapshot(t *testing.T) {
 	appendLogs(t, s, 0, testLogs...)
 
 	// Create snapshot
-	err = s.CreateSnapshot()
+	checkpointID, err := s.CreateSnapshot()
 	require.NoError(t, err)
+	require.Equal(t, uint64(1), checkpointID)
 
 	// Verify data still accessible after snapshot
 	lastSequence, err := s.GetLastSequence()
