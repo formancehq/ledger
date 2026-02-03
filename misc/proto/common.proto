@@ -51,19 +51,6 @@ message Transaction {
   Timestamp reverted_at = 9;
 }
 
-// TransactionData represents transaction data without ID and timestamps
-message TransactionData {
-  repeated Posting postings = 1;
-  MetadataSet metadata = 2;
-  Timestamp timestamp = 3;
-  string reference = 4;
-}
-
-// Transactions represents a collection of transactions
-message Transactions {
-  repeated TransactionData transactions = 1;
-}
-
 message Script {
   string plain = 1;
   map<string, string> vars = 2;
@@ -94,18 +81,6 @@ message VolumesByAssets {
 // PostCommitVolumes represents volumes after commit, grouped by account and asset
 message PostCommitVolumes {
   map<string, VolumesByAssets> volumes_by_account = 1;
-}
-
-// VolumesWithBalanceByAssetByAccount represents volumes with balance grouped by asset and account
-message VolumesWithBalanceByAssetByAccount {
-  string account = 1;
-  string asset = 2;
-  VolumesWithBalance volumes_with_balance = 3;
-}
-
-// AggregatedVolumes represents aggregated volumes
-message AggregatedVolumes {
-  VolumesByAssets aggregated = 1;
 }
 
 // ============================================================================
@@ -155,7 +130,6 @@ message Target {
 
 message Idempotency {
   string key = 1;
-  bytes hash = 2;
 }
 
 // IdempotencyEntry represents an idempotency key entry stored in Pebble
@@ -191,7 +165,7 @@ message DeleteLedgerLog {
 }
 
 message ApplyLedgerLog {
-  uint32 ledger_id = 1;
+  string ledger_name = 1;
   LedgerLog log = 2;
 }
 
@@ -237,10 +211,9 @@ message DeletedMetadata {
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
   string name = 1;                          // Ledger name
-  MetadataSet metadata = 2;         // Optional metadata
-  Timestamp created_at = 3;                 // Creation timestamp
-  uint32 id = 4;                            // Numeric ledger ID (auto-assigned, max 65535)
-  Timestamp deleted_at = 5;                 // Soft delete timestamp (nil if not deleted)
+  Timestamp created_at = 2;                 // Creation timestamp
+  uint32 id = 3;                            // Numeric ledger ID (auto-assigned, max 65535)
+  Timestamp deleted_at = 4;                 // Soft delete timestamp (nil if not deleted)
 }
 
 // ============================================================================
@@ -278,8 +251,7 @@ message TransactionUpdateRevert {
 }
 
 message TransactionUpdateAddMetadata {
-  string key = 1;
-  string value = 2;
+  Metadata metadata = 1;
 }
 
 message TransactionUpdateDeleteMetadata {
@@ -287,3 +259,14 @@ message TransactionUpdateDeleteMetadata {
 }
 
 message TransactionInit {}
+
+// RevertedValue is used to track the reversion status of a transaction.
+message RevertedValue {
+  bool reverted = 1;
+}
+
+// IdempotencyKeyValue stores the log sequence associated with an idempotency key.
+message IdempotencyKeyValue {
+  uint64 log_sequence = 1;
+  bytes hash = 2;
+}

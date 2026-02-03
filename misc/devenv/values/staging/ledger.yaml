@@ -4,7 +4,6 @@ config:
   walDir: /data/wal
   debug: false
   httpPort: 9000
-  storageType: pebble
   # Pebble storage configuration
   pebble:
     memTableSize: 268435456         # 256MB

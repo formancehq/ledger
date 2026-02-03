@@ -1,0 +1,702 @@
+# CLI Reference (ledgerctl)
+
+`ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
+
+## Installation
+
+```bash
+# Build from source
+just build-client
+
+# Or directly with Go
+go build -o build/ledgerctl ./cmd/client
+```
+
+## Global Flags
+
+These flags are available for all commands:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server` | `localhost:8888` | gRPC server address |
+| `--insecure` | `false` | Use insecure connection (no TLS) |
+
+## Commands
+
+### ledgers
+
+Manage ledgers in the cluster.
+
+**Aliases:** `ledger`, `lg`
+
+#### ledgers list
+
+List all ledgers in the cluster.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl ledgers list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# List all ledgers
+ledgerctl ledgers list
+
+# Output as JSON
+ledgerctl ledgers list --json
+```
+
+#### ledgers get
+
+Get detailed information about a ledger.
+
+**Aliases:** `g`, `show`, `describe`
+
+```bash
+ledgerctl ledgers get <name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+ledgerctl ledgers get my-ledger
+```
+
+#### ledgers create
+
+Create a new ledger.
+
+**Aliases:** `new`, `add`
+
+```bash
+ledgerctl ledgers create [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Name of the ledger to create |
+| `--metadata` | | Metadata key=value pairs |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Create a ledger with a name
+ledgerctl ledgers create --name my-ledger
+
+# Create with metadata
+ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --metadata env=prod
+
+# Interactive mode (will prompt for name)
+ledgerctl ledgers create
+```
+
+#### ledgers delete
+
+Delete a ledger (soft-delete).
+
+**Aliases:** `rm`, `del`, `remove`
+
+```bash
+ledgerctl ledgers delete [name] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Name of the ledger to delete |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Delete a ledger (will prompt for confirmation)
+ledgerctl ledgers delete my-ledger
+
+# Delete without confirmation
+ledgerctl ledgers delete my-ledger -y
+
+# Interactive mode (will prompt for ledger selection)
+ledgerctl ledgers delete
+```
+
+---
+
+### accounts
+
+Manage accounts in a ledger.
+
+**Aliases:** `account`, `acc`, `a`
+
+#### accounts get
+
+Get detailed information about an account including its volumes.
+
+**Aliases:** `g`, `show`, `describe`
+
+```bash
+ledgerctl accounts get [address] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- If `--ledger` is not provided and only one ledger exists, it will be used automatically
+- If multiple ledgers exist, you will be prompted to select one
+- If address is not provided, you will be prompted to enter it
+
+**Example:**
+
+```bash
+# Get account with explicit ledger
+ledgerctl accounts get bank --ledger my-ledger
+
+# Auto-select ledger if only one exists
+ledgerctl accounts get bank
+
+# Interactive mode
+ledgerctl accounts get
+```
+
+#### accounts set-metadata
+
+Set metadata on an account.
+
+**Aliases:** `set-meta`, `sm`
+
+```bash
+ledgerctl accounts set-metadata [address] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Set single metadata
+ledgerctl accounts set-metadata bank --ledger my-ledger --metadata type=asset
+
+# Set multiple metadata
+ledgerctl accounts set-metadata users:alice -m role=admin -m tier=premium
+
+# Interactive mode (will prompt for metadata)
+ledgerctl accounts set-metadata bank --ledger my-ledger
+```
+
+#### accounts delete-metadata
+
+Delete a metadata key from an account.
+
+**Aliases:** `del-meta`, `dm`, `rm-meta`
+
+```bash
+ledgerctl accounts delete-metadata [address] [key] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Delete metadata key
+ledgerctl accounts delete-metadata bank type --ledger my-ledger
+
+# Delete without confirmation
+ledgerctl accounts delete-metadata users:alice role -y
+
+# Interactive mode
+ledgerctl accounts delete-metadata
+```
+
+---
+
+### transactions
+
+Manage transactions in a ledger.
+
+**Aliases:** `transaction`, `tx`, `t`
+
+#### transactions list
+
+List transactions in a ledger with pagination.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl transactions list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--page-size` | `10` | Number of transactions per page |
+| `--all` | `false` | Fetch all transactions at once (no pagination) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Transactions are displayed **newest first**
+- Interactive pagination: press Enter to load the next page, or 'q' to quit
+- In JSON mode, only the first page is output (no interactive pagination)
+
+**Example:**
+
+```bash
+# List transactions with interactive pagination
+ledgerctl transactions list --ledger my-ledger
+
+# Custom page size
+ledgerctl transactions list --ledger my-ledger --page-size 20
+
+# Fetch all transactions at once
+ledgerctl transactions list --ledger my-ledger --all
+
+# Output as JSON
+ledgerctl transactions list --ledger my-ledger --json
+
+# Interactive mode (will prompt for ledger selection)
+ledgerctl transactions list
+```
+
+#### transactions get
+
+Get detailed information about a transaction.
+
+**Aliases:** `g`, `show`, `describe`
+
+```bash
+ledgerctl transactions get [transaction-id] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Get transaction by ID
+ledgerctl transactions get 42 --ledger my-ledger
+
+# Interactive mode
+ledgerctl transactions get
+```
+
+#### transactions create
+
+Create a new transaction.
+
+**Aliases:** `new`, `add`
+
+```bash
+ledgerctl transactions create [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--posting` | | Posting in format: `source,destination,amount,asset` (can be repeated) |
+| `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
+| `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
+| `--reference` | | Transaction reference |
+| `--metadata` | | Metadata key=value pairs |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Creating transactions with postings:**
+
+```bash
+# Single posting
+ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD"
+
+# Multiple postings
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,bank,1000,USD" \
+  --posting "bank,user,500,USD"
+
+# With reference and metadata
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,bank,1000,USD" \
+  --reference "order-123" \
+  --metadata type=deposit --metadata source=api
+```
+
+**Creating transactions with Numscript:**
+
+```bash
+# Simple script
+ledgerctl transactions create --ledger my-ledger \
+  --script transfer.num \
+  --var "source=users:alice" \
+  --var "destination=users:bob" \
+  --var "amount=USD/2 100"
+
+# Using example scripts
+ledgerctl transactions create --ledger my-ledger \
+  --script numscript/examples/world_funding.num \
+  --var "destination=bank" \
+  --var "amount=USD/2 10000"
+```
+
+**Interactive mode:**
+
+```bash
+# Will prompt for ledger and postings
+ledgerctl transactions create
+
+# With script - will prompt for missing variables
+ledgerctl transactions create --ledger my-ledger \
+  --script numscript/examples/simple_transfer.num
+# -> Prompts for: $source (account), $destination (account), $amount (monetary)
+
+# Partial variables - will prompt only for missing ones
+ledgerctl transactions create --ledger my-ledger \
+  --script numscript/examples/simple_transfer.num \
+  --var "source=users:alice"
+# -> Prompts for: $destination (account), $amount (monetary)
+```
+
+**Interactive variable prompting:**
+
+When using `--script`, the CLI parses the Numscript file and detects required variables. For any variable not provided via `--var`, it will interactively prompt you with the expected type and format hints:
+
+- **account**: e.g., `users:alice`, `merchants:shop`
+- **monetary**: e.g., `USD/2 1000`, `EUR/2 50`
+- **string**: e.g., `order-123`, `ref-abc`
+- **number**: e.g., `42`, `100`
+- **portion**: e.g., `1/4`, `25%`, `0.25`
+
+#### transactions revert
+
+Revert a transaction by creating a counter-transaction that reverses all postings.
+
+**Aliases:** `undo`, `reverse`
+
+```bash
+ledgerctl transactions revert [transaction-id] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--force` | `false` | Force revert even if funds have been spent |
+| `--at-effective-date` | `false` | Use the original transaction timestamp for the revert |
+| `--metadata` | | Metadata for the revert transaction (key=value) |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Creates a new transaction that reverses all postings from the original
+- By default, prompts for confirmation before reverting
+- Use `-y` or `--yes` to skip the confirmation prompt
+- Use `--force` to revert even if funds have already been spent from receiving accounts
+
+**Example:**
+
+```bash
+# Revert a transaction (will prompt for confirmation)
+ledgerctl transactions revert 42 --ledger my-ledger
+
+# Force revert even if funds have been spent
+ledgerctl transactions revert 42 --ledger my-ledger --force
+
+# Revert at the original transaction timestamp
+ledgerctl transactions revert 42 --ledger my-ledger --at-effective-date
+
+# Skip confirmation prompt
+ledgerctl transactions revert 42 --ledger my-ledger -y
+
+# Add metadata to the revert transaction
+ledgerctl transactions revert 42 --ledger my-ledger \
+  --metadata reason="customer refund" \
+  --metadata ticket="JIRA-123"
+
+# Interactive mode (will prompt for ledger and transaction ID)
+ledgerctl transactions revert
+```
+
+#### transactions set-metadata
+
+Set metadata on a transaction.
+
+**Aliases:** `set-meta`, `sm`
+
+```bash
+ledgerctl transactions set-metadata [transaction-id] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Set single metadata
+ledgerctl transactions set-metadata 42 --ledger my-ledger --metadata status=processed
+
+# Set multiple metadata
+ledgerctl tx sm 42 -m reason="refund" -m ticket=JIRA-123
+
+# Interactive mode (will prompt for metadata)
+ledgerctl transactions set-metadata 42 --ledger my-ledger
+```
+
+#### transactions delete-metadata
+
+Delete a metadata key from a transaction.
+
+**Aliases:** `del-meta`, `dm`, `rm-meta`
+
+```bash
+ledgerctl transactions delete-metadata [transaction-id] [key] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Delete metadata key
+ledgerctl transactions delete-metadata 42 status --ledger my-ledger
+
+# Delete without confirmation
+ledgerctl tx dm 42 reason -y
+
+# Interactive mode
+ledgerctl transactions delete-metadata
+```
+
+---
+
+### store
+
+Storage operations.
+
+**Aliases:** `s`
+
+#### store metrics
+
+Get metrics from the Pebble storage engine.
+
+**Aliases:** `m`, `stats`
+
+```bash
+ledgerctl store metrics [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Display formatted metrics
+ledgerctl store metrics
+
+# Output as JSON
+ledgerctl store metrics --json
+```
+
+---
+
+## Connection Examples
+
+### Local Development
+
+```bash
+# Connect to local server (default)
+ledgerctl ledgers list
+
+# Explicit local connection
+ledgerctl --server localhost:8888 --insecure ledgers list
+```
+
+### Remote Server with TLS
+
+```bash
+# Connect to remote server with TLS (default)
+ledgerctl --server ledger.example.com:443 ledgers list
+```
+
+### Remote Server without TLS
+
+```bash
+# Connect to remote server without TLS
+ledgerctl --server ledger.example.com:8888 --insecure ledgers list
+```
+
+---
+
+## Numscript Support
+
+The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
+
+For complete documentation, see:
+- [Numscript Guide](./numscript.md) - Complete guide with all features
+- [Numscript Examples](../numscript/examples/README.md) - Ready-to-use scripts
+
+### Enabled Features
+
+| Feature | Description |
+|---------|-------------|
+| Account Interpolation | Dynamic addresses like `@escrow:$order_id` |
+| Asset Colors | Track fund origins with colored assets |
+| Get Amount/Asset | Extract components from monetary values |
+| Mid-Script Calls | Query balances during execution |
+| OneOf Selector | Conditional routing based on availability |
+| Overdraft Function | Dynamic overdraft calculation |
+
+### Variable Types
+
+| Type | Format | Example |
+|------|--------|---------|
+| Account | `segment:segment:...` (without @) | `users:alice`, `bank` |
+| Monetary | `ASSET/PRECISION AMOUNT` | `USD/2 100`, `EUR/2 5000` |
+| String | Plain text | `order123` |
+
+### Example Workflow
+
+```bash
+# 1. Create a ledger
+ledgerctl ledgers create --name demo
+
+# 2. Fund the bank from world
+ledgerctl transactions create --ledger demo \
+  --script numscript/examples/world_funding.num \
+  --var "destination=bank" \
+  --var "amount=USD/2 100000"
+
+# 3. Transfer to a user
+ledgerctl transactions create --ledger demo \
+  --script numscript/examples/simple_transfer.num \
+  --var "source=bank" \
+  --var "destination=users:alice" \
+  --var "amount=USD/2 1000"
+
+# 4. Check balances
+ledgerctl accounts get bank --ledger demo
+ledgerctl accounts get users:alice --ledger demo
+```
+
+---
+
+## Output Formats
+
+### Table (default)
+
+Human-readable tabular format, suitable for interactive use.
+
+```bash
+ledgerctl ledgers list
+```
+
+```
+ID  NAME        CREATED AT
+--  ----        ----------
+1   my-ledger   2026-02-06T10:30:00Z
+2   test        2026-02-06T11:00:00Z
+```
+
+### JSON
+
+Machine-readable JSON format, suitable for scripting.
+
+```bash
+ledgerctl ledgers list --json
+```
+
+```json
+{
+  "my-ledger": {
+    "id": 1,
+    "name": "my-ledger",
+    "createdAt": "2026-02-06T10:30:00Z"
+  }
+}
+```
+
+---
+
+## Environment Variables
+
+Global flags can be set via environment variables:
+
+| Environment Variable | Flag |
+|---------------------|------|
+| `SERVER` | `--server` |
+| `INSECURE` | `--insecure` |
+
+```bash
+export SERVER=ledger.example.com:443
+export INSECURE=false
+ledgerctl ledgers list
+```

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
@@ -17,19 +17,6 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 		VolumesByAccount map[string]*VolumesByAssets `json:"volumesByAccount,omitempty"`
 	}{
 		VolumesByAccount: x.VolumesByAccount,
-	})
-}
-
-// MarshalJSON implements json.Marshaler for VolumesWithBalanceByAssetByAccount
-func (x *VolumesWithBalanceByAssetByAccount) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Account            string              `json:"account,omitempty"`
-		Asset              string              `json:"asset,omitempty"`
-		VolumesWithBalance *VolumesWithBalance `json:"volumesWithBalance,omitempty"`
-	}{
-		Account:            x.Account,
-		Asset:              x.Asset,
-		VolumesWithBalance: x.VolumesWithBalance,
 	})
 }
 
@@ -60,7 +47,7 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 		accountMeta[k] = MetadataSetToMap(v)
 	}
 	return json.Marshal(&struct {
-		Transaction     *Transaction              `json:"transaction,omitempty"`
+		Transaction     *Transaction                 `json:"transaction,omitempty"`
 		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 	}{
 		Transaction:     x.Transaction,

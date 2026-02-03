@@ -1,0 +1,17 @@
+// Allow unlimited overdraft (useful for credit accounts)
+// Usage: ledgerctl transactions create --ledger my-ledger --script unbounded_overdraft.num \
+//        --var "credit_line=@credit:alice" --var "destination=@bank" \
+//        --var "amount=USD/2 5000"
+
+vars {
+  account $credit_line
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = {
+    $credit_line allowing unbounded overdraft
+  }
+  destination = $destination
+)

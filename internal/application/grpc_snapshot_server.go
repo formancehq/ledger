@@ -12,7 +12,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
 )
 
@@ -25,11 +25,11 @@ const (
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 	logger logging.Logger
-	store  *store.Store
+	store  *data.Store
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *store.Store) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 	return &SnapshotServiceServerImpl{
 		logger: logger.WithField("component", "snapshot-server"),
 		store:  s,

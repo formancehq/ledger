@@ -1,17 +1,17 @@
 package application
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
 type Config struct {
-	RaftConfig      raft.NodeConfig
+	RaftConfig      node.NodeConfig
 	Debug           bool
 	HTTPPort        int
-	TransportConfig raft.TransportConfig
+	TransportConfig node.TransportConfig
 	DataDir         string
-	PebbleConfig    store.Config
+	PebbleConfig    data.Config
 }
 
 func (c Config) Validate() error {

@@ -3,7 +3,7 @@ package servicepb
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -53,20 +53,6 @@ const (
 	LedgerActionTypeRevertTransaction = "REVERT_TRANSACTION"
 	LedgerActionTypeDeleteMetadata    = "DELETE_METADATA"
 )
-
-// LedgerID creates a LedgerNameOrId with an ID
-func LedgerID(id uint32) *LedgerNameOrId {
-	return &LedgerNameOrId{
-		Type: &LedgerNameOrId_Id{Id: id},
-	}
-}
-
-// LedgerName creates a LedgerNameOrId with a name
-func LedgerName(name string) *LedgerNameOrId {
-	return &LedgerNameOrId{
-		Type: &LedgerNameOrId_Name{Name: name},
-	}
-}
 
 // BulkElement represents a bulk element with idempotency key
 type BulkElement struct {

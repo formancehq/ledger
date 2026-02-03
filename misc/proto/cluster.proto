@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package cluster;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb";
+
+// ============================================================================
+// gRPC Service
+// ============================================================================
+
+// ClusterService provides cluster operations
+service ClusterService {
+  // GetClusterState returns the current state of the Raft cluster
+  rpc GetClusterState(GetClusterStateRequest) returns (ClusterState);
+}
+
+message GetClusterStateRequest {}
+
+// ============================================================================
+// Cluster State Messages
+// ============================================================================
+
+// NodeInfo represents information about a node in the cluster
+message NodeInfo {
+  uint32 id = 1;
+  string address = 2;
+  string suffrage = 3;  // Voter or Nonvoter
+}
+
+// ProgressInfo represents the progress information for a node
+message ProgressInfo {
+  uint64 match = 1;             // Match index: highest log entry known to be replicated to this node
+  uint64 next = 2;              // Next index: index of the next log entry to send to this node
+  string state = 3;             // State: Probe, Replicate, or Snapshot
+  uint64 pending_snapshot = 4;  // Index of pending snapshot (0 if none)
+  bool recent_active = 5;       // Whether this node is recently active
+  bool probe_sent = 6;          // Whether probe message was sent (paused)
+  bool is_paused = 7;           // Whether this node is paused
+}
+
+// RaftStatus represents the complete Raft status information
+message RaftStatus {
+  string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
+  uint64 term = 2;              // Current term
+  uint64 leader = 3;            // ID of the current leader (0 if no leader)
+  uint64 applied = 4;           // Index of the last applied entry
+  uint64 commit = 5;            // Index of the last committed entry
+  uint64 last_index = 6;        // Index of the last entry in the log
+  uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
+  map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
+}
+
+// ClusterState represents the state of the Raft cluster
+message ClusterState {
+  string state = 1;             // Leader, Follower, Candidate, Shutdown
+  uint32 leader = 2;            // ID of the current leader (0 if no leader)
+  repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
+  uint32 local_node = 4;        // ID of the local node
+  RaftStatus raft_status = 5;   // Complete Raft status information
+}

@@ -6,40 +6,36 @@ import (
 	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
 )
 
-type LedgerServiceServerImpl struct {
-	servicepb.UnimplementedLedgerServiceServer
+type BucketServiceServerImpl struct {
+	servicepb.UnimplementedBucketServiceServer
 	logger logging.Logger
-	ctrl   service.Controller
-	store  *store.Store
-	node   *raft.Node
+	ctrl   ctrl.Controller
+	store  *data.Store
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ctrl service.Controller, s *store.Store, node *raft.Node) servicepb.LedgerServiceServer {
-	return &LedgerServiceServerImpl{
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store) servicepb.BucketServiceServer {
+	return &BucketServiceServerImpl{
 		logger: logger,
 		ctrl:   ctrl,
 		store:  s,
-		node:   node,
 	}
 }
 
-func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
-	if len(req.Actions) == 0 {
-		return nil, fmt.Errorf("at least one action is required")
+func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+	if len(req.Requests) == 0 {
+		return nil, fmt.Errorf("at least one request is required")
 	}
 
-	impl.logger.Debugf("Apply request received with %d actions", len(req.Actions))
+	impl.logger.Debugf("Apply request received with %d requests", len(req.Requests))
 
-	logs, err := impl.ctrl.Apply(ctx, req.Actions...)
+	logs, err := impl.ctrl.Apply(ctx, req.Requests...)
 	if err != nil {
 		return nil, err
 	}
@@ -47,54 +43,48 @@ func (impl *LedgerServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	return &servicepb.ApplyResponse{Logs: logs}, nil
 }
 
-func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
-	ctx := stream.Context()
+func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
 
-	cursor, err := impl.ctrl.GetAllLogs(ctx, req.FromSequence, req.ToSequence)
+	return impl.ctrl.GetTransaction(ctx, req.Ledger, req.TransactionId)
+}
+
+func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
+	if req.Ledger == "" {
+		return fmt.Errorf("ledger name is required")
+	}
+
+	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d)",
+		req.Ledger, req.PageSize, req.AfterTxId)
+
+	ctx := stream.Context()
+	cursor, err := impl.ctrl.ListTransactions(ctx, req.Ledger, req.PageSize, req.AfterTxId)
 	if err != nil {
-		return err
+		return fmt.Errorf("listing transactions: %w", err)
 	}
 	defer func() {
 		_ = cursor.Close()
 	}()
 
 	for {
-		log, err := cursor.Next()
+		tx, err := cursor.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("reading log from store: %w", err)
+			return fmt.Errorf("reading transaction: %w", err)
 		}
-
-		if err := stream.Send(&servicepb.StreamLogsResponse{
-			Log: log,
-		}); err != nil {
-			return fmt.Errorf("sending log: %w", err)
+		if err := stream.Send(tx); err != nil {
+			return fmt.Errorf("sending transaction: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
-	// Get ledger name from request
-	var ledgerName string
-	if req.Ledger.GetName() != "" {
-		ledgerName = req.Ledger.GetName()
-	} else {
-		// Resolve ledger name from ID
-		ledger, err := impl.store.GetLedgerByID(req.Ledger.GetId())
-		if err != nil {
-			return nil, fmt.Errorf("getting ledger: %w", err)
-		}
-		ledgerName = ledger.Name
-	}
-
-	return impl.ctrl.GetTransaction(ctx, ledgerName, req.TransactionId)
-}
-
-func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedgersRequest, stream servicepb.LedgerService_GetAllLedgersInfoServer) error {
+func (impl *BucketServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedgersRequest, stream servicepb.BucketService_GetAllLedgersInfoServer) error {
 	impl.logger.Debugf("GetAllLedgersInfo request received")
 
 	ctx := stream.Context()
@@ -122,31 +112,22 @@ func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedger
 	return nil
 }
 
-func (impl *LedgerServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
-	if req.Ledger.GetName() != "" {
-		return impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
 	}
-	return impl.store.GetLedgerByID(req.Ledger.GetId())
+	return impl.ctrl.GetLedgerByName(ctx, req.Ledger)
 }
 
-func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	// Get ledger name from request
-	var ledgerName string
-	if req.Ledger.GetName() != "" {
-		ledgerName = req.Ledger.GetName()
-	} else {
-		// Resolve ledger name from ID
-		ledger, err := impl.store.GetLedgerByID(req.Ledger.GetId())
-		if err != nil {
-			return nil, fmt.Errorf("getting ledger: %w", err)
-		}
-		ledgerName = ledger.Name
+func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	return impl.ctrl.GetAccount(ctx, ledgerName, req.Address)
+	return impl.ctrl.GetAccount(ctx, req.Ledger, req.Address)
 }
 
-func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
 	// Get metrics from the Pebble store directly
 	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
 	if !ok {
@@ -161,10 +142,6 @@ func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *ser
 	}, nil
 }
 
-func (impl *LedgerServiceServerImpl) GetClusterState(ctx context.Context, _ *servicepb.GetClusterStateRequest) (*raftcmdpb.ClusterState, error) {
-	return impl.node.GetClusterState(ctx)
-}
-
-func RegisterLedgerService(server *grpc.Server, ledgerServiceServer servicepb.LedgerServiceServer) {
-	servicepb.RegisterLedgerServiceServer(server, ledgerServiceServer)
+func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {
+	servicepb.RegisterBucketServiceServer(server, ledgerServiceServer)
 }

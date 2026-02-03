@@ -1,0 +1,13 @@
+// Fund an account from the world (money creation)
+// Usage: ledgerctl transactions create --ledger my-ledger --script world_funding.num \
+//        --var "destination=@bank" --var "amount=USD/2 10000"
+
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)

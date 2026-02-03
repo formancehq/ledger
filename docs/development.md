@@ -10,25 +10,49 @@ This guide provides the information needed to contribute to the Ledger v3 POC pr
 ledger-v3-poc/
 ├── cmd/                    # Entry points of the application
 │   ├── server/            # Main server
-│   └── client/             # CLI client
+│   └── client/            # CLI client (ledgerctl)
+├── numscript/              # Numscript resources
+│   └── examples/          # Example Numscript files
 ├── internal/               # Internal code (not exported)
-│   ├── application/       # Application module main
+│   ├── application/       # Application module (fx wiring, gRPC servers)
 │   ├── raft/              # Raft implementation (single group)
+│   ├── ctrl/              # Controller layer (transaction processing)
 │   ├── service/           # Business services
-│   ├── http/              # HTTP handlers
-│   ├── grpc/              # gRPC server
-│   ├── transport/         # gRPC transport
-│   ├── ledgerpb/          # Ledger protobuf types
-│   └── otlplogs/          # OpenTelemetry logs
+│   │   ├── admission/     # Admission service (preload computation, AttributeLoader)
+│   │   ├── attributes/    # Attribute types, U128 hashing, collision detection
+│   │   ├── cache/         # FSM attribute cache (generation-based)
+│   │   ├── commands/      # Raft command builders
+│   │   ├── futures/       # Async futures for proposal results
+│   │   ├── kv/            # Key-value map utilities
+│   │   ├── node/          # Raft node lifecycle and transport
+│   │   ├── processing/    # Transaction/log processing
+│   │   ├── state/         # FSM state machine and snapshots
+│   │   └── transport/     # gRPC connection pool
+│   ├── compat/            # Compatibility layer
+│   │   ├── http/          # HTTP handlers
+│   │   └── json/          # JSON utilities
+│   ├── storage/           # Storage layer
+│   │   ├── data/          # Main data store (Pebble)
+│   │   ├── spool/         # Spool for sync buffering
+│   │   └── wal/           # Write-ahead log
+│   ├── transport/         # gRPC transport and connection pool
+│   ├── monitoring/        # Observability modules
+│   │   ├── otlplogs/      # OpenTelemetry logs
+│   │   ├── pyroscope/     # Continuous profiling
+│   │   └── tracesampling/ # Trace sampling
+│   ├── proto/             # Generated protobuf types
+│   │   ├── commonpb/      # Common types (Posting, Transaction, Log, etc.)
+│   │   ├── raftcmdpb/     # FSM command types
+│   │   ├── servicepb/     # gRPC service definitions
+│   │   ├── clusterpb/     # Cluster state types
+│   │   └── snapshotpb/    # Snapshot service types
+│   └── utils/             # Utility functions
 ├── pkg/                    # Exported packages
-│   ├── client/            # Generated client SDK
 │   └── testserver/        # Test helpers
-├── proto/                 # Protocol Buffer definitions
-│   └── commands/          # FSM command definitions
+├── misc/                   # Miscellaneous files
+│   └── proto/             # Protocol Buffer definitions
 ├── tests/                 # Tests
 │   └── e2e/               # End-to-end tests
-├── deployments/           # Deployment configurations
-│   └── chart/             # Helm chart
 └── docs/                  # Technical documentation
 ```
 
@@ -50,15 +74,20 @@ Each HTTP handler has its own file:
 - `handlers_bulk.go`
 - etc.
 
-#### CLI Commands
+#### CLI Commands (`cmd/client/`)
 
 Each CLI command has its own file:
-- `ledgers_create.go`
-- `ledgers_list.go`
-- `ledgers_get.go`
-- `ledgers_delete.go`
-- `ledgers_raft_state.go`
-- `cluster.go` (contains snapshot and cluster-state commands)
+- `ledgers.go` - Parent command for ledger operations
+- `ledgers_create.go` - Create a ledger
+- `ledgers_list.go` - List all ledgers
+- `ledgers_get.go` - Get a specific ledger
+- `accounts.go` - Parent command for account operations
+- `accounts_get.go` - Get an account with volumes
+- `transactions.go` - Parent command for transaction operations
+- `transactions_create.go` - Create a transaction
+- `transactions_get.go` - Get a transaction by ID
+- `store.go` - Parent command for store operations
+- `store_metrics.go` - Get Pebble storage metrics
 
 ### Naming
 
@@ -88,13 +117,13 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 ### Example: Adding an HTTP Endpoint
 
-1. **Create the handler** in `internal/http/handlers_*.go`
-2. **Register the route** in `internal/http/handler.go`
+1. **Create the handler** in `internal/compat/http/handlers_*.go`
+2. **Register the route** in `internal/compat/http/handler.go`
 3. **Add to OpenAPI** in `openapi.yml`
 
 ### Example: Adding an FSM Command
 
-1. **Define the protobuf** in `internal/ledgerpb/` (or update existing definitions)
+1. **Define the protobuf** in `misc/proto/raftcmd.proto`
 
 2. **Regenerate protobufs** using `just generate-proto`
 
@@ -128,7 +157,11 @@ The package `pkg/testserver` provides helpers for creating test servers with con
 
 ### Structure
 
-- **`misc/proto/ledger.proto`**: All ledger types (Posting, Transaction, Log, Commands, etc.)
+- **`misc/proto/common.proto`**: Common types (Posting, Transaction, Log, etc.)
+- **`misc/proto/raftcmd.proto`**: FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
+- **`misc/proto/service.proto`**: gRPC service definitions (LedgerService)
+- **`misc/proto/cluster.proto`**: Cluster state messages
+- **`misc/proto/snapshot.proto`**: Snapshot service definitions
 - **`misc/proto/raft_transport.proto`**: Raft transport messages
 
 ### Regenerate protobufs
@@ -226,9 +259,11 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 ## References
 
 - [AGENTS.md](../AGENTS.md): Project structure and conventions
-- [Architecture](./architecture.md): General architecture
-- [Raft Consensus](./raft-consensus.md): Raft details
-- [API](./api.md): API documentation
+- [Architecture](./architecture/architecture.md): General architecture
+- [Raft Consensus](./architecture/raft-consensus.md): Raft details
+- [API](./architecture/api.md): API documentation
+- [CLI Reference](./cli.md): CLI client documentation
+- [Numscript Examples](../numscript/examples/README.md): Example Numscript files
 
 ## Next Steps
 

@@ -4,21 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"text/tabwriter"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
 // newLedgersGetCommand creates the ledgers get command.
 func newLedgersGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <name>",
-		Short: "Get a ledger by name",
-		Long:  "Get detailed information about a ledger by its name via gRPC",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runLedgersGet,
+		Use:     "get <name>",
+		Aliases: []string{"g", "show", "describe"},
+		Short:   "Get a ledger by name",
+		Long:    "Get detailed information about a ledger by its name via gRPC",
+		Args:    cobra.ExactArgs(1),
+		RunE:    runLedgersGet,
 	}
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
@@ -39,12 +40,17 @@ func runLedgersGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := getContext(cmd)
 	defer cancel()
 
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching ledger %s...", ledgerName))
+
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-		Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName}},
+		Ledger: ledgerName,
 	})
 	if err != nil {
+		spinner.Fail("Failed to get ledger")
 		return fmt.Errorf("failed to get ledger: %w", err)
 	}
+
+	_ = spinner.Stop()
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
@@ -53,20 +59,19 @@ func runLedgersGet(cmd *cobra.Command, args []string) error {
 		return encoder.Encode(ledger)
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "ID:\t%d\n", ledger.Id)
-	_, _ = fmt.Fprintf(w, "Name:\t%s\n", ledger.Name)
+	pterm.Println()
 
+	// Display ledger details
+	pterm.Printf("Ledger: %s\n", ledger.Name)
+	pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+	pterm.Printf("ID:         %d\n", ledger.Id)
+	pterm.Printf("Name:       %s\n", ledger.Name)
+	createdAt := "-"
 	if ledger.CreatedAt != nil {
-		_, _ = fmt.Fprintf(w, "Created At:\t%s\n", ledger.CreatedAt.AsTime().Format(time.RFC3339))
+		createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
 	}
+	pterm.Printf("Created At: %s\n", createdAt)
 
-	if ledger.Metadata != nil && len(ledger.Metadata.Metadata) > 0 {
-		_, _ = fmt.Fprintf(w, "\nMetadata:\n")
-		for _, md := range ledger.Metadata.Metadata {
-			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", md.Key, md.Value.Value)
-		}
-	}
-
-	return w.Flush()
+	return nil
 }

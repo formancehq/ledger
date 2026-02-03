@@ -9,7 +9,6 @@ package servicepb
 import (
 	context "context"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -21,22 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_GetAllLedgersInfo_FullMethodName = "/ledger.LedgerService/GetAllLedgersInfo"
-	LedgerService_GetLedger_FullMethodName         = "/ledger.LedgerService/GetLedger"
-	LedgerService_GetAccount_FullMethodName        = "/ledger.LedgerService/GetAccount"
-	LedgerService_GetTransaction_FullMethodName    = "/ledger.LedgerService/GetTransaction"
-	LedgerService_StreamLogs_FullMethodName        = "/ledger.LedgerService/StreamLogs"
-	LedgerService_Apply_FullMethodName             = "/ledger.LedgerService/Apply"
-	LedgerService_GetStoreMetrics_FullMethodName   = "/ledger.LedgerService/GetStoreMetrics"
-	LedgerService_GetClusterState_FullMethodName   = "/ledger.LedgerService/GetClusterState"
+	BucketService_GetAllLedgersInfo_FullMethodName = "/ledger.BucketService/GetAllLedgersInfo"
+	BucketService_GetLedger_FullMethodName         = "/ledger.BucketService/GetLedger"
+	BucketService_GetAccount_FullMethodName        = "/ledger.BucketService/GetAccount"
+	BucketService_GetTransaction_FullMethodName    = "/ledger.BucketService/GetTransaction"
+	BucketService_ListTransactions_FullMethodName  = "/ledger.BucketService/ListTransactions"
+	BucketService_Apply_FullMethodName             = "/ledger.BucketService/Apply"
+	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
 )
 
-// LedgerServiceClient is the client API for LedgerService service.
+// BucketServiceClient is the client API for BucketService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// LedgerService provides ledger operations
-type LedgerServiceClient interface {
+// BucketService provides ledger operations
+type BucketServiceClient interface {
 	// GetAllLedgersInfo streams all ledgers info in the cluster
 	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)
 	// GetLedger returns a ledger info by its name or ID
@@ -45,27 +43,25 @@ type LedgerServiceClient interface {
 	GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
 	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error)
-	// StreamLogs streams logs, optionally starting from a sequence
-	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
+	// ListTransactions streams all transactions for a ledger (newest first)
+	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error)
-	// GetClusterState returns the current state of the Raft cluster
-	GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*raftcmdpb.ClusterState, error)
 }
 
-type ledgerServiceClient struct {
+type bucketServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewLedgerServiceClient(cc grpc.ClientConnInterface) LedgerServiceClient {
-	return &ledgerServiceClient{cc}
+func NewBucketServiceClient(cc grpc.ClientConnInterface) BucketServiceClient {
+	return &bucketServiceClient{cc}
 }
 
-func (c *ledgerServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
+func (c *bucketServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[0], LedgerService_GetAllLedgersInfo_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[0], BucketService_GetAllLedgersInfo_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,45 +76,45 @@ func (c *ledgerServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllL
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LedgerService_GetAllLedgersInfoClient = grpc.ServerStreamingClient[commonpb.LedgerInfo]
+type BucketService_GetAllLedgersInfoClient = grpc.ServerStreamingClient[commonpb.LedgerInfo]
 
-func (c *ledgerServiceClient) GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
+func (c *bucketServiceClient) GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.LedgerInfo)
-	err := c.cc.Invoke(ctx, LedgerService_GetLedger_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BucketService_GetLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *ledgerServiceClient) GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error) {
+func (c *bucketServiceClient) GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.Account)
-	err := c.cc.Invoke(ctx, LedgerService_GetAccount_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BucketService_GetAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *ledgerServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error) {
+func (c *bucketServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.Transaction)
-	err := c.cc.Invoke(ctx, LedgerService_GetTransaction_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BucketService_GetTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *ledgerServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error) {
+func (c *bucketServiceClient) ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LedgerService_ServiceDesc.Streams[1], LedgerService_StreamLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[1], BucketService_ListTransactions_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[StreamLogsRequest, StreamLogsResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ListTransactionsRequest, commonpb.Transaction]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -129,44 +125,34 @@ func (c *ledgerServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequ
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LedgerService_StreamLogsClient = grpc.ServerStreamingClient[StreamLogsResponse]
+type BucketService_ListTransactionsClient = grpc.ServerStreamingClient[commonpb.Transaction]
 
-func (c *ledgerServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
+func (c *bucketServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ApplyResponse)
-	err := c.cc.Invoke(ctx, LedgerService_Apply_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BucketService_Apply_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *ledgerServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error) {
+func (c *bucketServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetStoreMetricsResponse)
-	err := c.cc.Invoke(ctx, LedgerService_GetStoreMetrics_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BucketService_GetStoreMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *ledgerServiceClient) GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*raftcmdpb.ClusterState, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(raftcmdpb.ClusterState)
-	err := c.cc.Invoke(ctx, LedgerService_GetClusterState_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// LedgerServiceServer is the server API for LedgerService service.
-// All implementations must embed UnimplementedLedgerServiceServer
+// BucketServiceServer is the server API for BucketService service.
+// All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
 //
-// LedgerService provides ledger operations
-type LedgerServiceServer interface {
+// BucketService provides ledger operations
+type BucketServiceServer interface {
 	// GetAllLedgersInfo streams all ledgers info in the cluster
 	GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error
 	// GetLedger returns a ledger info by its name or ID
@@ -175,240 +161,213 @@ type LedgerServiceServer interface {
 	GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
 	GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error)
-	// StreamLogs streams logs, optionally starting from a sequence
-	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
+	// ListTransactions streams all transactions for a ledger (newest first)
+	ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error)
-	// GetClusterState returns the current state of the Raft cluster
-	GetClusterState(context.Context, *GetClusterStateRequest) (*raftcmdpb.ClusterState, error)
-	mustEmbedUnimplementedLedgerServiceServer()
+	mustEmbedUnimplementedBucketServiceServer()
 }
 
-// UnimplementedLedgerServiceServer must be embedded to have
+// UnimplementedBucketServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedLedgerServiceServer struct{}
+type UnimplementedBucketServiceServer struct{}
 
-func (UnimplementedLedgerServiceServer) GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
+func (UnimplementedBucketServiceServer) GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
 	return status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
 }
-func (UnimplementedLedgerServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLedger not implemented")
 }
-func (UnimplementedLedgerServiceServer) GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error) {
+func (UnimplementedBucketServiceServer) GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAccount not implemented")
 }
-func (UnimplementedLedgerServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error) {
+func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransaction not implemented")
 }
-func (UnimplementedLedgerServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
+func (UnimplementedBucketServiceServer) ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error {
+	return status.Errorf(codes.Unimplemented, "method ListTransactions not implemented")
 }
-func (UnimplementedLedgerServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
+func (UnimplementedBucketServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
 }
-func (UnimplementedLedgerServiceServer) GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error) {
+func (UnimplementedBucketServiceServer) GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStoreMetrics not implemented")
 }
-func (UnimplementedLedgerServiceServer) GetClusterState(context.Context, *GetClusterStateRequest) (*raftcmdpb.ClusterState, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetClusterState not implemented")
-}
-func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
-func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
+func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
+func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
 
-// UnsafeLedgerServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to LedgerServiceServer will
+// UnsafeBucketServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to BucketServiceServer will
 // result in compilation errors.
-type UnsafeLedgerServiceServer interface {
-	mustEmbedUnimplementedLedgerServiceServer()
+type UnsafeBucketServiceServer interface {
+	mustEmbedUnimplementedBucketServiceServer()
 }
 
-func RegisterLedgerServiceServer(s grpc.ServiceRegistrar, srv LedgerServiceServer) {
-	// If the following call pancis, it indicates UnimplementedLedgerServiceServer was
+func RegisterBucketServiceServer(s grpc.ServiceRegistrar, srv BucketServiceServer) {
+	// If the following call pancis, it indicates UnimplementedBucketServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&LedgerService_ServiceDesc, srv)
+	s.RegisterService(&BucketService_ServiceDesc, srv)
 }
 
-func _LedgerService_GetAllLedgersInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _BucketService_GetAllLedgersInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(GetAllLedgersRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(LedgerServiceServer).GetAllLedgersInfo(m, &grpc.GenericServerStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ServerStream: stream})
+	return srv.(BucketServiceServer).GetAllLedgersInfo(m, &grpc.GenericServerStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LedgerService_GetAllLedgersInfoServer = grpc.ServerStreamingServer[commonpb.LedgerInfo]
+type BucketService_GetAllLedgersInfoServer = grpc.ServerStreamingServer[commonpb.LedgerInfo]
 
-func _LedgerService_GetLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BucketService_GetLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLedgerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetLedger(ctx, in)
+		return srv.(BucketServiceServer).GetLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LedgerService_GetLedger_FullMethodName,
+		FullMethod: BucketService_GetLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetLedger(ctx, req.(*GetLedgerRequest))
+		return srv.(BucketServiceServer).GetLedger(ctx, req.(*GetLedgerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LedgerService_GetAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BucketService_GetAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAccountRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetAccount(ctx, in)
+		return srv.(BucketServiceServer).GetAccount(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LedgerService_GetAccount_FullMethodName,
+		FullMethod: BucketService_GetAccount_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetAccount(ctx, req.(*GetAccountRequest))
+		return srv.(BucketServiceServer).GetAccount(ctx, req.(*GetAccountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LedgerService_GetTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BucketService_GetTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetTransactionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetTransaction(ctx, in)
+		return srv.(BucketServiceServer).GetTransaction(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LedgerService_GetTransaction_FullMethodName,
+		FullMethod: BucketService_GetTransaction_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetTransaction(ctx, req.(*GetTransactionRequest))
+		return srv.(BucketServiceServer).GetTransaction(ctx, req.(*GetTransactionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LedgerService_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(StreamLogsRequest)
+func _BucketService_ListTransactions_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListTransactionsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(LedgerServiceServer).StreamLogs(m, &grpc.GenericServerStream[StreamLogsRequest, StreamLogsResponse]{ServerStream: stream})
+	return srv.(BucketServiceServer).ListTransactions(m, &grpc.GenericServerStream[ListTransactionsRequest, commonpb.Transaction]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LedgerService_StreamLogsServer = grpc.ServerStreamingServer[StreamLogsResponse]
+type BucketService_ListTransactionsServer = grpc.ServerStreamingServer[commonpb.Transaction]
 
-func _LedgerService_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BucketService_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LedgerServiceServer).Apply(ctx, in)
+		return srv.(BucketServiceServer).Apply(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LedgerService_Apply_FullMethodName,
+		FullMethod: BucketService_Apply_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).Apply(ctx, req.(*ApplyRequest))
+		return srv.(BucketServiceServer).Apply(ctx, req.(*ApplyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LedgerService_GetStoreMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BucketService_GetStoreMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetStoreMetricsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetStoreMetrics(ctx, in)
+		return srv.(BucketServiceServer).GetStoreMetrics(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LedgerService_GetStoreMetrics_FullMethodName,
+		FullMethod: BucketService_GetStoreMetrics_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetStoreMetrics(ctx, req.(*GetStoreMetricsRequest))
+		return srv.(BucketServiceServer).GetStoreMetrics(ctx, req.(*GetStoreMetricsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LedgerService_GetClusterState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetClusterStateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LedgerServiceServer).GetClusterState(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LedgerService_GetClusterState_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LedgerServiceServer).GetClusterState(ctx, req.(*GetClusterStateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
+// BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var LedgerService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "ledger.LedgerService",
-	HandlerType: (*LedgerServiceServer)(nil),
+var BucketService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ledger.BucketService",
+	HandlerType: (*BucketServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GetLedger",
-			Handler:    _LedgerService_GetLedger_Handler,
+			Handler:    _BucketService_GetLedger_Handler,
 		},
 		{
 			MethodName: "GetAccount",
-			Handler:    _LedgerService_GetAccount_Handler,
+			Handler:    _BucketService_GetAccount_Handler,
 		},
 		{
 			MethodName: "GetTransaction",
-			Handler:    _LedgerService_GetTransaction_Handler,
+			Handler:    _BucketService_GetTransaction_Handler,
 		},
 		{
 			MethodName: "Apply",
-			Handler:    _LedgerService_Apply_Handler,
+			Handler:    _BucketService_Apply_Handler,
 		},
 		{
 			MethodName: "GetStoreMetrics",
-			Handler:    _LedgerService_GetStoreMetrics_Handler,
-		},
-		{
-			MethodName: "GetClusterState",
-			Handler:    _LedgerService_GetClusterState_Handler,
+			Handler:    _BucketService_GetStoreMetrics_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "GetAllLedgersInfo",
-			Handler:       _LedgerService_GetAllLedgersInfo_Handler,
+			Handler:       _BucketService_GetAllLedgersInfo_Handler,
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "StreamLogs",
-			Handler:       _LedgerService_StreamLogs_Handler,
+			StreamName:    "ListTransactions",
+			Handler:       _BucketService_ListTransactions_Handler,
 			ServerStreams: true,
 		},
 	},

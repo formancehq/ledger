@@ -1,0 +1,19 @@
+// Pay from multiple sources (fallback pattern)
+// Usage: ledgerctl transactions create --ledger my-ledger --script multi_source.num \
+//        --var "wallet=@users:alice:wallet" --var "bank=@users:alice:bank" \
+//        --var "destination=@merchants:shop" --var "amount=USD/2 150"
+
+vars {
+  account $wallet
+  account $bank
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = {
+    $wallet
+    $bank
+  }
+  destination = $destination
+)

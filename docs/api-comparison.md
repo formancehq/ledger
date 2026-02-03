@@ -15,7 +15,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Create transaction with `force` | ❌ | ✅ | Not implemented |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ❌ | ✅ | Not implemented |
+| List transactions | ✅ | ✅ | gRPC stream with pagination |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -71,6 +71,16 @@ This document compares the POC's API with the original Formance ledger API and d
 - ✅ Transaction reference
 - ✅ Custom timestamp
 - ✅ Idempotency key
+
+**Numscript Experimental Features (all enabled by default):**
+- ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)
+- ✅ Asset colors (fund origin tracking)
+- ✅ `get_amount()` / `get_asset()` functions
+- ✅ Mid-script function calls (balance queries during execution)
+- ✅ `oneof` selector (conditional routing)
+- ✅ `overdraft()` function (dynamic overdraft calculation)
+
+See [Numscript Guide](./numscript.md) for complete documentation.
 
 ### 2. Transaction Revert
 
@@ -134,7 +144,7 @@ This document compares the POC's API with the original Formance ledger API and d
 
 **CLI command:**
 ```bash
-ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
+ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 ```
 
 ---
@@ -146,7 +156,7 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 **Description:** Import logs from another ledger for migration or synchronization.
 
 **Current status:** 
-- Interface defined in `Ledger.Import(ctx, stream chan *ledgerpb.Log) error`
+- Interface defined in `Ledger.Import(ctx, stream chan *commonpb.Log) error`
 - Implementation returns `ErrNotFound`
 
 **To implement:**
@@ -280,12 +290,16 @@ ledger-poc-client transactions get --ledger <ledger-name> --id <transaction-id>
 ### 4. Idempotency
 
 **POC:** 
-- Supported via `Idempotency-Key` header or field in body
-- Stored in runtime store
+- Supported via `Idempotency-Key` header (HTTP) or `idempotency_key` field (gRPC)
+- System-level scope (not per-ledger)
+- Hash-based content verification (BLAKE3)
+- Stored in generation-based cache and persisted to Pebble
 
 **Original:** Same mechanism.
 
 **Status:** ✅ Compliant
+
+See [Idempotency](./architecture/idempotency.md) for detailed documentation.
 
 ---
 
@@ -296,7 +310,7 @@ Read endpoints comparison with the original ledger:
 | Endpoint | POC | Original | Notes |
 |----------|-----|----------|-------|
 | `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
-| `GET /{ledgerName}/transactions` | ❌ | ✅ | List transactions |
+| `GET /{ledgerName}/transactions` | ✅ | ✅ | List transactions (gRPC stream) |
 | `GET /{ledgerName}/accounts` | ❌ | ✅ | List accounts |
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |

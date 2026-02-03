@@ -9,9 +9,9 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -113,21 +113,21 @@ func (g *Gateway) Start(ctx context.Context) error {
 		server := grpc.NewServer()
 
 		// Register all services with forwarding implementations
-		raft.RegisterRaftTransportServiceServer(server, &raftTransportGateway{
+		rafttransportpb.RegisterRaftTransportServiceServer(server, &raftTransportGateway{
 			logger: g.logger.WithFields(map[string]any{
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client:  raft.NewRaftTransportServiceClient(conn),
+			client:  rafttransportpb.NewRaftTransportServiceClient(conn),
 			gateway: g,
 		})
 
-		servicepb.RegisterLedgerServiceServer(server, &ledgerServiceGateway{
+		servicepb.RegisterBucketServiceServer(server, &bucketServiceGateway{
 			logger: g.logger.WithFields(map[string]any{
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: servicepb.NewLedgerServiceClient(conn),
+			client: servicepb.NewBucketServiceClient(conn),
 		})
 
 		snapshotpb.RegisterSnapshotServiceServer(server, &snapshotServiceGateway{
@@ -202,13 +202,13 @@ func (g *Gateway) Stop(ctx context.Context) error {
 
 // raftTransportGateway forwards RaftTransportService calls
 type raftTransportGateway struct {
-	raft.UnimplementedRaftTransportServiceServer
+	rafttransportpb.UnimplementedRaftTransportServiceServer
 	logger  logging.Logger
-	client  raft.RaftTransportServiceClient
+	client  rafttransportpb.RaftTransportServiceClient
 	gateway *Gateway
 }
 
-func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[raft.SendMessageRequest, raft.SendMessageResponse]) error {
+func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse]) error {
 	ctx := stream.Context()
 
 	md, _ := metadata.FromIncomingContext(ctx)
@@ -264,7 +264,7 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 			}
 
 			// Apply interceptor to each message in the batch
-			filteredMessages := make([]*raft.RaftRequestMessage, 0, len(req.GetRaft().Messages))
+			filteredMessages := make([]*rafttransportpb.RaftRequestMessage, 0, len(req.GetRaft().Messages))
 			for _, raftReqMsg := range req.GetRaft().Messages {
 				raftMsg := &raftpb.Message{}
 				if err := raftMsg.Unmarshal(raftReqMsg.Message); err != nil {
@@ -294,9 +294,9 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 			}
 
 			// Send filtered batch
-			filteredReq := &raft.SendMessageRequest{
-				Message: &raft.SendMessageRequest_Raft{
-					Raft: &raft.RaftRequestBatch{
+			filteredReq := &rafttransportpb.SendMessageRequest{
+				Message: &rafttransportpb.SendMessageRequest_Raft{
+					Raft: &rafttransportpb.RaftRequestBatch{
 						Messages: filteredMessages,
 					},
 				},
@@ -343,20 +343,20 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 	return err2
 }
 
-// ledgerServiceGateway forwards LedgerService calls
-type ledgerServiceGateway struct {
-	servicepb.UnimplementedLedgerServiceServer
+// bucketServiceGateway forwards BucketService calls
+type bucketServiceGateway struct {
+	servicepb.UnimplementedBucketServiceServer
 	logger logging.Logger
-	client servicepb.LedgerServiceClient
+	client servicepb.BucketServiceClient
 }
 
-func (g *ledgerServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (g *bucketServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	return g.client.Apply(ctx, req)
 }
 
-func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (g *bucketServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Actions: []*servicepb.Request{
+		Requests: []*servicepb.Request{
 			{
 				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: req,
@@ -373,9 +373,9 @@ func (g *ledgerServiceGateway) CreateLedger(ctx context.Context, req *servicepb.
 	return resp.Logs[0].Payload.GetCreateLedger().GetInfo(), nil
 }
 
-func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
+func (g *bucketServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
 	_, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Actions: []*servicepb.Request{
+		Requests: []*servicepb.Request{
 			{
 				Type: &servicepb.Request_DeleteLedger{
 					DeleteLedger: req,
@@ -389,7 +389,7 @@ func (g *ledgerServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.
 	return &servicepb.DeleteLedgerResponse{}, nil
 }
 
-func (g *ledgerServiceGateway) GetAllLedgersInfo(req *servicepb.GetAllLedgersRequest, stream servicepb.LedgerService_GetAllLedgersInfoServer) error {
+func (g *bucketServiceGateway) GetAllLedgersInfo(req *servicepb.GetAllLedgersRequest, stream servicepb.BucketService_GetAllLedgersInfoServer) error {
 	ctx := stream.Context()
 
 	clientStream, err := g.client.GetAllLedgersInfo(ctx, req)
@@ -411,36 +411,12 @@ func (g *ledgerServiceGateway) GetAllLedgersInfo(req *servicepb.GetAllLedgersReq
 	}
 }
 
-func (g *ledgerServiceGateway) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (g *bucketServiceGateway) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return g.client.GetLedger(ctx, req)
 }
 
-func (g *ledgerServiceGateway) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
+func (g *bucketServiceGateway) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
 	return g.client.GetTransaction(ctx, req)
-}
-
-func (g *ledgerServiceGateway) StreamLogs(req *servicepb.StreamLogsRequest, stream servicepb.LedgerService_StreamLogsServer) error {
-	ctx := stream.Context()
-
-	// Create client stream to backend
-	clientStream, err := g.client.StreamLogs(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to create client stream: %w", err)
-	}
-
-	// Forward messages from backend to client
-	for {
-		msg, err := clientStream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return fmt.Errorf("failed to receive from backend: %w", err)
-		}
-		if err := stream.Send(msg); err != nil {
-			return fmt.Errorf("failed to send to client: %w", err)
-		}
-	}
 }
 
 // snapshotServiceGateway forwards SnapshotService calls

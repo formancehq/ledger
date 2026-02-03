@@ -1,0 +1,302 @@
+package state
+
+import (
+	"fmt"
+	"math/big"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"google.golang.org/protobuf/proto"
+)
+
+type Buffered struct {
+	fsm                 *Machine
+	attrs               *attributes.Attributes
+	Date                *commonpb.Timestamp
+	NextLedgerID        uint32
+	NextSequenceID      uint64
+	Ledgers             *kv.Copier[string, *commonpb.LedgerInfo]
+	Boundaries          *kv.Copier[string, *raftcmdpb.LedgerBoundaries]
+	Input               *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
+	Output              *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
+	AccountMetadata     *attributes.DerivedKeyStore[data.MetadataKey, *commonpb.MetadataValue]
+	LedgerMetadata      *attributes.DerivedKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
+	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
+	IdempotencyKeys     *attributes.DerivedKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	TransactionsUpdates map[data.TransactionKey][]*commonpb.TransactionUpdate
+	PendingLogs         []*commonpb.Log
+}
+
+func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
+	for _, update := range b.Ledgers.Updates() {
+		if err := batch.SaveLedger(update.New); err != nil {
+			return fmt.Errorf("failed to save ledger: %w", err)
+		}
+	}
+
+	// Process Input updates
+	volumeUpdates, err := b.Input.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge input: %w", err)
+	}
+	for _, update := range volumeUpdates {
+		if update.Old.IsDefined() && update.Old.Value().Known == nil {
+			delta := balanceHolderDelta(update.Old.Value(), update.New)
+			if err := b.attrs.Input.AddDiff(batch, index, update.ID, delta); err != nil {
+				return fmt.Errorf("failed adding input diff: %w", err)
+			}
+		} else {
+			if err := b.attrs.Input.SetBase(batch, index, update.ID, update.New.Known); err != nil {
+				return fmt.Errorf("could not set input base: %w", err)
+			}
+			if err := b.attrs.Input.DeleteOldest(batch, index, update.ID); err != nil {
+				return fmt.Errorf("compacting old input base/delta: %w", err)
+			}
+		}
+
+		// Register the key in the mapping for listing
+		if err := b.attrs.Input.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
+			return fmt.Errorf("failed to touch input key: %w", err)
+		}
+	}
+
+	// Process Output updates
+	volumeUpdates, err = b.Output.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge output: %w", err)
+	}
+	for _, update := range volumeUpdates {
+		if update.Old.IsDefined() && update.Old.Value().Known == nil {
+			delta := balanceHolderDelta(update.Old.Value(), update.New)
+			if err := b.attrs.Output.AddDiff(batch, index, update.ID, delta); err != nil {
+				return fmt.Errorf("failed adding output diff: %w", err)
+			}
+		} else {
+			if err := b.attrs.Output.SetBase(batch, index, update.ID, update.New.Known); err != nil {
+				return fmt.Errorf("could not set output base: %w", err)
+			}
+			if err := b.attrs.Output.DeleteOldest(batch, index, update.ID); err != nil {
+				return fmt.Errorf("compacting old output base/delta: %w", err)
+			}
+		}
+
+		// Register the key in the mapping for listing
+		if err := b.attrs.Output.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
+			return fmt.Errorf("failed to touch output key: %w", err)
+		}
+	}
+
+	accountMetadataUpdates, err := b.AccountMetadata.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge account metadata: %w", err)
+	}
+	for _, update := range accountMetadataUpdates {
+		err := b.attrs.Metadata.AddDiff(batch, index, update.ID, update.New)
+		if err != nil {
+			return fmt.Errorf("failed adding diff between old and new attribute: %v", err)
+		}
+
+		// Register the key in the mapping for listing
+		if err := b.attrs.Metadata.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
+			return fmt.Errorf("failed to touch metadata key: %w", err)
+		}
+	}
+
+	ledgerMetadataUpdates, err := b.LedgerMetadata.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge ledger metadata: %w", err)
+	}
+	for _, update := range ledgerMetadataUpdates {
+		err := b.attrs.LedgerMetadata.AddDiff(batch, index, update.ID, update.New)
+		if err != nil {
+			return fmt.Errorf("failed adding diff for ledger metadata: %v", err)
+		}
+
+		// Register the key in the mapping for listing
+		if err := b.attrs.LedgerMetadata.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
+			return fmt.Errorf("failed to touch ledger metadata key: %w", err)
+		}
+	}
+
+	// Process Reversions updates
+	reversionUpdates, err := b.Reversions.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge reversions: %w", err)
+	}
+	for _, update := range reversionUpdates {
+		// Reverted status is a simple boolean, we store it as a base value
+		err := b.attrs.Reverted.SetBase(batch, index, update.ID, &commonpb.RevertedValue{Reverted: update.New})
+		if err != nil {
+			return fmt.Errorf("failed setting reverted base: %w", err)
+		}
+		if err := b.attrs.Reverted.DeleteOldest(batch, index, update.ID); err != nil {
+			return fmt.Errorf("compacting old reverted base: %w", err)
+		}
+	}
+
+	// Process IdempotencyKeys updates
+	idempotencyUpdates, err := b.IdempotencyKeys.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge idempotency keys: %w", err)
+	}
+	for _, update := range idempotencyUpdates {
+		// Idempotency keys are immutable once set, store as base value
+		err := b.attrs.IdempotencyKeys.SetBase(batch, index, update.ID, update.New)
+		if err != nil {
+			return fmt.Errorf("failed setting idempotency key base: %w", err)
+		}
+		if err := b.attrs.IdempotencyKeys.DeleteOldest(batch, index, update.ID); err != nil {
+			return fmt.Errorf("compacting old idempotency key base: %w", err)
+		}
+	}
+
+	for key, updates := range b.TransactionsUpdates {
+		for _, update := range updates {
+			err := batch.StoreTransactionUpdate(key, update)
+			if err != nil {
+				return fmt.Errorf("failed storing transaction update for ledger %s: %w", key.LedgerName, err)
+			}
+		}
+	}
+
+	err = batch.AppendLogs(b.PendingLogs...)
+	if err != nil {
+		return fmt.Errorf("failed appending pending logs: %w", err)
+	}
+
+	b.PendingLogs = nil
+	b.fsm.nextLedgerID = b.NextLedgerID
+	b.fsm.nextSequenceID = b.NextSequenceID
+	b.Ledgers.Merge()
+	b.Boundaries.Merge()
+
+	return nil
+}
+
+func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
+	return &Buffered{
+		fsm:                 fsm,
+		attrs:               fsm.Attrs,
+		Date:                at,
+		Ledgers:             kv.NewCopier(proto.CloneOf, fsm.ledgers),
+		Boundaries:          kv.NewCopier(proto.CloneOf, fsm.boundaries),
+		NextLedgerID:        fsm.nextLedgerID,
+		NextSequenceID:      fsm.nextSequenceID,
+		Input:               attributes.NewDerivedKeyStore(fsm.Input),
+		Output:              attributes.NewDerivedKeyStore(fsm.Output),
+		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata),
+		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata),
+		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions),
+		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys),
+		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
+	}
+}
+
+func balanceHolderDelta(from, to *raftcmdpb.VolumeHolder) *commonpb.BigInt {
+	if from == nil {
+		return to.DiffSinceBaseIndex
+	}
+	if from.Known != nil {
+		return commonpb.NewBigInt(new(big.Int).Sub(to.Known.Value(), from.Known.Value()))
+	}
+
+	return commonpb.NewBigInt(new(big.Int).Sub(to.DiffSinceBaseIndex.Value(), from.DiffSinceBaseIndex.Value()))
+}
+
+// Store interface implementation for Buffered
+
+func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
+	return b.Ledgers.Get(name)
+}
+
+func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo, boundaries *raftcmdpb.LedgerBoundaries) {
+	b.Ledgers.Put(name, info)
+	b.Boundaries.Put(name, boundaries)
+}
+
+func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
+	return b.Boundaries.Get(ledger)
+}
+
+func (b *Buffered) GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
+	return b.Input.Get(key)
+}
+
+func (b *Buffered) PutInput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	b.Input.Put(key, value)
+}
+
+func (b *Buffered) GetOutput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
+	return b.Output.Get(key)
+}
+
+func (b *Buffered) PutOutput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	b.Output.Put(key, value)
+}
+
+func (b *Buffered) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {
+	return b.AccountMetadata.Get(key)
+}
+
+func (b *Buffered) PutAccountMetadata(key data.MetadataKey, value *commonpb.MetadataValue) {
+	b.AccountMetadata.Put(key, value)
+}
+
+func (b *Buffered) DeleteAccountMetadata(key data.MetadataKey) {
+	b.AccountMetadata.Delete(key)
+}
+
+func (b *Buffered) PutLedgerMetadata(key data.LedgerMetadataKey, value *commonpb.MetadataValue) {
+	b.LedgerMetadata.Put(key, value)
+}
+
+func (b *Buffered) GetReverted(key data.TransactionKey) (bool, error) {
+	return b.Reversions.Get(key)
+}
+
+func (b *Buffered) PutReverted(key data.TransactionKey, reverted bool) {
+	b.Reversions.Put(key, reverted)
+}
+
+func (b *Buffered) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+	return b.IdempotencyKeys.Get(key)
+}
+
+func (b *Buffered) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+	b.IdempotencyKeys.Put(key, value)
+}
+
+func (b *Buffered) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
+	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
+}
+
+func (b *Buffered) GetNextLedgerID() uint32 {
+	return b.NextLedgerID
+}
+
+func (b *Buffered) IncrementNextLedgerID() uint32 {
+	id := b.NextLedgerID
+	b.NextLedgerID++
+	return id
+}
+
+func (b *Buffered) GetNextSequenceID() uint64 {
+	return b.NextSequenceID
+}
+
+func (b *Buffered) IncrementNextSequenceID() uint64 {
+	id := b.NextSequenceID
+	b.NextSequenceID++
+	return id
+}
+
+func (b *Buffered) GetDate() *commonpb.Timestamp {
+	return b.Date
+}
+
+// Ensure Buffered implements Store
+var _ processing.Store = (*Buffered)(nil)

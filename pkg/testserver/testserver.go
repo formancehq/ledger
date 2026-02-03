@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
+	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 )
 
 // Option functions
@@ -53,7 +53,7 @@ func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
 	}
 }
 
-func WithPeers(peers ...raft.Peer) testservice.InstrumentationFunc {
+func WithPeers(peers ...node.Peer) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		for _, peer := range peers {
 			cfg.AppendArgs("--peers", fmt.Sprintf("%d/%s", peer.ID, peer.Address))

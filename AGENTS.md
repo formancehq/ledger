@@ -23,6 +23,7 @@ When implementing new features, fixing bugs, or refactoring code:
 - **Update relevant documentation files** in the `docs/` directory
 - **Update API documentation** in `openapi.yml` if endpoints change
 - **Update `docs/api-comparison.md`** when adding, modifying, or removing API endpoints to track feature parity with the original ledger
+- **Update `docs/cli.md`** when adding, modifying, or removing CLI commands, flags, or behavior
 - **Update code comments** if interfaces or behavior change
 - **Update examples** if usage patterns change
 - **Keep documentation in English** - all technical documentation must be in English
@@ -38,22 +39,38 @@ The `docs/api-comparison.md` file tracks feature parity between this POC and the
 3. **Update Read Features table** - If it's a read endpoint, update the comparison table
 4. **Remove from Missing Features** - If the feature was previously listed as missing, remove or update it
 
+### CLI Documentation
+
+The `docs/cli.md` file documents all CLI commands and their usage. When modifying the CLI (`cmd/client/`):
+
+1. **Update command documentation** - Add or modify the command section with usage, flags, and examples
+2. **Update global flags** - If adding new persistent flags, document them in the Global Flags section
+3. **Update examples** - Ensure examples are accurate and demonstrate common use cases
+4. **Update Numscript examples** - If adding new Numscript-related features, update `numscript/examples/`
+
 ## Mock Generation
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, you MUST regenerate the mocks immediately.
 
 Interfaces annotated with mockgen:
-- `LogWriter`, `LogReader`, `LogStore`, `RuntimeStore` in `internal/service/store.go`
-- `LogFactory` in `internal/service/ledger_default.go`
+- `WAL` in `internal/raft/node.go`
+- `Transport` in `internal/raft/transport.go`
+- `Controller` in `internal/ctrl/controller.go`
+- `Engine` in `internal/ctrl/controller_default.go`
+- `Spool` in `internal/storage/spool/spool.go`
+- `WAL` in `internal/storage/wal/wal.go`
+- `Store` in `internal/service/processing/processor.go`
 
-To regenerate mocks, run:
+To regenerate all mocks, run:
 ```bash
-go generate ./internal/service/store.go
-go generate ./internal/service/ledger_default.go
+go generate ./...
 ```
 
-Or regenerate all mocks in the service package:
+Or regenerate mocks for a specific package:
 ```bash
+go generate ./internal/raft/...
+go generate ./internal/ctrl/...
+go generate ./internal/storage/...
 go generate ./internal/service/...
 ```
 
@@ -85,6 +102,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`ledgers_list.go`** : `ledgers list` command to list all ledgers via gRPC
 - **`ledgers_get.go`** : `ledgers get` command to retrieve a specific ledger via gRPC
 - **`ledgers_create.go`** : `ledgers create` command to create a new ledger via gRPC
+- **`ledgers_delete.go`** : `ledgers delete` command to delete a ledger via gRPC
 
 **Account commands:**
 - **`accounts.go`** : Parent command for account operations
@@ -102,6 +120,39 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
+### Numscript Examples (`numscript/examples/`)
+
+Example Numscript files for use with the CLI:
+- **`simple_transfer.num`** : Basic transfer between two accounts
+- **`world_funding.num`** : Create money by funding from `@world`
+- **`multi_destination.num`** : Split payment to multiple destinations
+- **`multi_source.num`** : Pay from multiple sources (fallback pattern)
+- **`bounded_overdraft.num`** : Allow overdraft up to a specific limit
+- **`unbounded_overdraft.num`** : Allow unlimited overdraft
+- **`payment_with_fees.num`** : Payment with platform fee calculation
+- **`escrow_funding.num`** : Fund an escrow account with dynamic address
+- **`README.md`** : Documentation and usage examples
+
+### Numscript Features
+
+All experimental Numscript features are **enabled by default** in this implementation. The feature flags are defined in `internal/service/processing/processor.go` in the `numscriptFeatureFlags` variable.
+
+**Enabled features:**
+- **`experimental-account-interpolation`** : Dynamic account addresses using variable interpolation (e.g., `@escrow:$order_id`)
+- **`experimental-asset-colors`** : Asset coloring for tracking fund origins
+- **`experimental-get-amount-function`** : `get_amount()` function to extract amount from monetary values
+- **`experimental-get-asset-function`** : `get_asset()` function to extract asset from monetary values
+- **`experimental-mid-script-function-call`** : Mid-script function calls (e.g., balance queries during execution)
+- **`experimental-oneof`** : `oneof` source/destination selector for conditional routing
+- **`experimental-overdraft-function`** : `overdraft()` function for dynamic overdraft calculation
+
+**Updating features:**
+
+When new Numscript features are added to the `github.com/formancehq/numscript` library:
+1. Update the `numscriptFeatureFlags` map in `internal/service/processing/processor.go`
+2. Update this documentation section
+3. Add appropriate tests if needed
+
 **Building the client:**
 ```bash
 # Using just
@@ -117,37 +168,45 @@ All generated files and build artifacts are stored in the `build/` directory at 
 
 Any script or tool that generates files should place them in the `build/` directory to keep the repository clean.
 
-### HTTP Handlers
+**CRITICAL**: Never leave built binaries in the repository root or any tracked directory. Always either:
+- Build binaries into the `build/` directory: `go build -o build/ledgerctl ./cmd/client`
+- Delete binaries after testing: `rm -f ledgerctl ledger-v3-poc`
+- Use `just build-client` or `just build-server` which output to `build/`
+
+Built binaries pollute the repository and should never be committed.
+
+### HTTP Handlers (`internal/compat/http/`)
 
 HTTP handlers are organized into separate files, with **one handler per file**. This convention ensures clear separation of concerns and makes it easy to locate and maintain individual handlers.
 
-- **`server.go`** : Main file that defines the `Server` struct, routes, and middleware
+- **`server.go`** : Main file that defines the `Server` struct
 - **`handler.go`** : Main router file that registers all routes and middleware
 - **`error_handler.go`** : Shared error handling utilities
-- **`handlers_types.go`** : Shared types (e.g., `LedgerResponse`)
-- **`handlers_snapshot.go`** : `handleSnapshot` handler for POST /snapshot
+- **`response.go`** : Response helper functions
 - **`handlers_health.go`** : `handleHealth` handler for GET /health
-- **`handlers_cluster_state.go`** : `handleClusterState` handler for GET /cluster/state
 - **`handlers_create_ledger.go`** : `handleCreateLedger` handler for POST /{ledgerName}
 - **`handlers_get_ledger.go`** : `handleGetLedger` handler for GET /{ledgerName}
 - **`handlers_delete_ledger.go`** : `handleDeleteLedger` handler for DELETE /{ledgerName}
-- **`handlers_get_ledger_raft_state.go`** : `handleGetLedgerRaftState` handler for GET /{ledgerName}/raft/state
 - **`handlers_list_all_ledgers.go`** : `handleListAllLedgers` handler for GET /
 - **`handlers_create_transaction.go`** : `handleCreateTransaction` handler for POST /{ledgerName}/transactions
+- **`handlers_get_transaction.go`** : `handleGetTransaction` handler for GET /{ledgerName}/transactions/{id}
+- **`handlers_get_account.go`** : `handleGetAccount` handler for GET /{ledgerName}/accounts/{address}
 - **`handlers_save_account_metadata.go`** : `handleSaveAccountMetadata` handler for POST /{ledgerName}/accounts/{address}/metadata
-- **`handlers_bulk.go`** : `handleBulk` handler for POST /{ledgerName}/bulk and POST /{ledgerName}/_bulk
-- **`bulking/`** : Directory containing bulk operation implementation files
+- **`handlers_delete_account_metadata.go`** : `handleDeleteAccountMetadata` handler for DELETE /{ledgerName}/accounts/{address}/metadata/{key}
+- **`handlers_save_transaction_metadata.go`** : `handleSaveTransactionMetadata` handler for POST /{ledgerName}/transactions/{id}/metadata
+- **`handlers_delete_transaction_metadata.go`** : `handleDeleteTransactionMetadata` handler for DELETE /{ledgerName}/transactions/{id}/metadata/{key}
+- **`handlers_revert_transaction.go`** : `handleRevertTransaction` handler for POST /{ledgerName}/transactions/{id}/revert
+- **`handlers_bulk.go`** : `handleBulk` handler for POST /{ledgerName}/_bulk
 
 ## Conventions
 
 1. **One file per command** : Each sub-command (create, list, get, delete) has its own file
 2. **One file per HTTP handler** : Each HTTP handler has its own file. This ensures clear separation of concerns and makes it easy to locate and maintain individual handlers.
-3. **Parent file** : Each command group (buckets, ledgers) has a main file that defines the parent command and calls `init()` for each sub-command
-4. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
-5. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
-6. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
-7. **No type aliases** : Never use type aliases (e.g., `type X = Y`). Always use the original type directly. This improves code clarity and avoids confusion about which type is actually being used.
-8. **Never ignore errors** : Always handle errors explicitly. Use `_` to discard an error only when there is genuinely nothing to do with it, but never silently ignore errors.
+3. **Parent file** : Each command group (ledgers, accounts, transactions) has a main file that defines the parent command
+4. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function.
+5. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
+6. **No type aliases** : Never use type aliases (e.g., `type X = Y`). Always use the original type directly. This improves code clarity and avoids confusion about which type is actually being used.
+7. **Never ignore errors** : Always handle errors explicitly. Use `_` to discard an error only when there is genuinely nothing to do with it, but never silently ignore errors.
 
    **Example**:
    ```go
@@ -188,57 +247,46 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
    var volumesJSON string
    ```
 
-## Example: Adding a New Command
+## Example: Adding a New CLI Command
 
-To add a new `ledgers update` command:
+To add a new `ledgers delete` command:
 
-1. Create `ledgers_update.go` with:
-   - A struct to hold command options (e.g., `updateLedgerOptions`)
-   - Definition of `ledgersUpdateCmd`
-   - `init()` function to configure flags (bind flags to a local variable in `init()`, not a global)
-   - `runUpdateLedger()` function that extracts flag values and uses the options struct
+1. Create `cmd/client/ledgers_delete.go` with:
+   - Definition of `ledgersDeleteCmd`
+   - `init()` function to configure flags
+   - `runDeleteLedger()` function that implements the command logic
 
    Example structure:
    ```go
-   type updateLedgerOptions struct {
-       name   string
-       driver string
-   }
-
-   var ledgersUpdateCmd = &cobra.Command{
-       Use:   "update",
-       RunE:  runUpdateLedger,
+   var ledgersDeleteCmd = &cobra.Command{
+       Use:   "delete <ledger-name>",
+       Short: "Delete a ledger",
+       Args:  cobra.ExactArgs(1),
+       RunE:  runDeleteLedger,
    }
 
    func init() {
-       opts := &updateLedgerOptions{}
-       ledgersUpdateCmd.Flags().StringVar(&opts.name, "name", "", "Ledger name")
-       ledgersUpdateCmd.Flags().StringVar(&opts.driver, "driver", "", "Driver name")
+       ledgersCmd.AddCommand(ledgersDeleteCmd)
    }
 
-   func runUpdateLedger(cmd *cobra.Command, args []string) error {
-       opts := &updateLedgerOptions{}
-       opts.name, _ = cmd.Flags().GetString("name")
-       opts.driver, _ = cmd.Flags().GetString("driver")
-       // Use opts...
+   func runDeleteLedger(cmd *cobra.Command, args []string) error {
+       ledgerName := args[0]
+       // Implementation...
    }
    ```
 
-2. Modify `ledgers.go` to add:
-   ```go
-   ledgersCmd.AddCommand(ledgersUpdateCmd)
-   ```
+2. The command is automatically added via `init()` function
 
 ## Example: Adding a New HTTP Handler
 
 To add a new `handleUpdateLedger` handler:
 
-1. Create `handlers_update_ledger.go` with:
+1. Create `internal/compat/http/handlers_update_ledger.go` with:
    - `handleUpdateLedger` function implementation
-   - Any request/response structures specific to this handler (or add to `handlers_types.go` if shared)
+   - Any request/response structures specific to this handler
    - All necessary imports for the handler
 
-2. Modify `handler.go` in the route registration section to register the route:
+2. Modify `internal/compat/http/handler.go` in the route registration section to register the route:
    ```go
    r.With(contentTypeMiddleware).Group(func(r chi.Router) {
        // ... existing routes ...
@@ -246,11 +294,7 @@ To add a new `handleUpdateLedger` handler:
    })
    ```
 
-**Important**: Follow the "one handler per file" convention. If a handler file contains multiple handlers, split them into separate files. For example, if `handlers_get_ledger.go` contains both `handleGetLedger` and `handleGetLedgerRaftState`, create separate files:
-- `handlers_get_ledger.go` for `handleGetLedger`
-- `handlers_get_ledger_raft_state.go` for `handleGetLedgerRaftState`
-
-This structure enables easy maintenance and clear separation of responsibilities.
+**Important**: Follow the "one handler per file" convention. Each handler should have its own file to ensure clear separation of concerns and easy maintenance.
 
 ## Protocol Buffers and gRPC Code Generation
 
@@ -260,10 +304,18 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 
 - **Protocol definitions**: 
   - `misc/proto/raft_transport.proto` - Raft transport messages
-  - `misc/proto/ledger.proto` - Ledger service messages and FSM command types (contains Posting, Transaction, Log, Command types)
+  - `misc/proto/common.proto` - Common types (Posting, Transaction, Log, etc.)
+  - `misc/proto/raftcmd.proto` - FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
+  - `misc/proto/service.proto` - gRPC service definitions (LedgerService)
+  - `misc/proto/cluster.proto` - Cluster state messages
+  - `misc/proto/snapshot.proto` - Snapshot service definitions
 - **Generated code**: 
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
-  - `internal/ledgerpb/` - Directory containing ledger protobuf types (ledger.pb.go, ledger_grpc.pb.go, etc.)
+  - `internal/proto/commonpb/` - Common types (common.pb.go, etc.)
+  - `internal/proto/raftcmdpb/` - FSM command types (raftcmd.pb.go, etc.)
+  - `internal/proto/servicepb/` - gRPC service (service.pb.go, service_grpc.pb.go, etc.)
+  - `internal/proto/clusterpb/` - Cluster state (cluster.pb.go, etc.)
+  - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go)
 
 ### Regenerating Code
 
@@ -306,7 +358,7 @@ When modifying any `.proto` file:
 
 To add a new command model (e.g., for a new FSM command):
 
-1. **Add the message definition to `misc/proto/ledger.proto`**
+1. **Add the message definition to `misc/proto/raftcmd.proto`**
 
 2. **Example**: Adding a new `UpdateLedgerCommand`:
    ```protobuf
@@ -325,21 +377,21 @@ To add a new command model (e.g., for a new FSM command):
    - Create a `NewUpdateLedgerCommand` function in `internal/raft/command.go` that:
      - Creates the protobuf command
      - Marshals the protobuf message
-     - Returns a `*ledgerpb.Command`
+     - Returns a `*raftcmdpb.Command`
    - Update `UnmarshalCommandData` in `internal/raft/command.go` to handle the new command type
    - Add a handler method in `internal/raft/fsm.go` (e.g., `handleUpdateLedger`)
 
 5. **Example implementation**:
    ```go
    // In internal/raft/command.go
-   func NewUpdateLedgerCommand(cmd *ledgerpb.UpdateLedgerCommand) *ledgerpb.Command {
+   func NewUpdateLedgerCommand(cmd *raftcmdpb.UpdateLedgerCommand) *raftcmdpb.Command {
        data, err := proto.Marshal(cmd)
        if err != nil {
            panic(err)
        }
-       return &ledgerpb.Command{
+       return &raftcmdpb.Command{
            Id:   generateRandomID(),
-           Type: ledgerpb.ActionType_UpdateLedger,
+           Type: raftcmdpb.ActionType_UpdateLedger,
            Data: data,
            Date: timestamppb.Now(),
        }
@@ -409,7 +461,9 @@ The application is structured using fx modules:
 
 - **`internal/application/module.go`**: Main application module that provides all core dependencies (logger, Raft cluster, ledger service, HTTP server, gRPC server)
 - **`internal/transport/module.go`**: Transport module that provides gRPC connection pool
-- **`internal/otlplogs/module.go`**: OpenTelemetry logs module for structured logging
+- **`internal/monitoring/otlplogs/module.go`**: OpenTelemetry logs module for structured logging
+- **`internal/monitoring/pyroscope/module.go`**: Pyroscope continuous profiling module
+- **`internal/monitoring/tracesampling/module.go`**: Trace sampling module
 
 ### Module Pattern
 
@@ -617,7 +671,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 }
 ```
 
-The Pyroscope module (`internal/pyroscope/`) provides:
+The Pyroscope module (`internal/monitoring/pyroscope/`) provides:
 - `Config` struct with all Pyroscope configuration options
 - `Module(cfg Config) fx.Option` to integrate with fx lifecycle
 - Automatic profiler start/stop with application lifecycle
@@ -636,7 +690,7 @@ The HTTP server is configured using `github.com/formancehq/go-libs/v3/httpserver
 // In internal/application/module.go
 import (
     "github.com/formancehq/go-libs/v3/httpserver"
-    httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
+    httphandler "github.com/formancehq/ledger-v3-poc/internal/compat/http"
 )
 
 func StartHTTPServerHook(lc fx.Lifecycle, cfg *config.Config, handler http.Handler) {
@@ -749,5 +803,50 @@ ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
     Ledger: &servicepb.LedgerNameOrId{Type: &servicepb.LedgerNameOrId_Name{Name: "ledger1"}},
 })
 ```
+
+### Parallel Tests
+
+**CRITICAL**: Always use `t.Parallel()` in unit tests to enable parallel execution and reduce test suite runtime.
+
+**Rules**:
+- **Add `t.Parallel()` at the beginning of every test function** that doesn't share state with other tests
+- **Add `t.Parallel()` to subtests** (`t.Run()`) when they are independent of each other
+- **Do NOT call `t.Parallel()` twice** on the same test (e.g., if a helper function already calls it)
+- **Tests that share global state** (rare) should not use `t.Parallel()`
+
+**Example**:
+```go
+// ✅ Good: Parallel test
+func TestMyFeature(t *testing.T) {
+    t.Parallel()
+
+    // Test code...
+}
+
+// ✅ Good: Parallel subtests
+func TestMyFeature(t *testing.T) {
+    t.Parallel()
+
+    t.Run("subtest1", func(t *testing.T) {
+        t.Parallel()
+        // Test code...
+    })
+
+    t.Run("subtest2", func(t *testing.T) {
+        t.Parallel()
+        // Test code...
+    })
+}
+
+// ❌ Bad: Missing t.Parallel()
+func TestMyFeature(t *testing.T) {
+    // Test code runs sequentially...
+}
+```
+
+**Benefits**:
+- **Faster test execution**: Tests run concurrently on multiple CPU cores
+- **Better resource utilization**: CI/CD pipelines complete faster
+- **Identifies race conditions**: Parallel tests help detect hidden concurrency bugs
 
 - I would like you to respect the concepts of DRY (Don't Repeat Yourself).

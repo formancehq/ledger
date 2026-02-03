@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -28,7 +27,7 @@ var ErrNoLedgers = fmt.Errorf("no ledgers found")
 // If only one ledger exists, it returns that ledger's name automatically.
 // If multiple ledgers exist, it prompts the user to select one.
 // If no ledgers exist, it returns an error with a hint to create one.
-func selectLedger(cmd *cobra.Command, client servicepb.LedgerServiceClient, reader *bufio.Reader, ledgerFlag string) (string, error) {
+func selectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerFlag string) (string, error) {
 	// If a ledger was specified via flag, use it directly
 	if ledgerFlag != "" {
 		return ledgerFlag, nil
@@ -55,53 +54,28 @@ func selectLedger(cmd *cobra.Command, client servicepb.LedgerServiceClient, read
 
 	// No ledgers exist
 	if len(ledgerNames) == 0 {
-		fmt.Println("\nNo ledgers found.")
-		fmt.Println("Hint: Create a ledger first using:")
-		fmt.Println("  ledgerctl ledgers create --name <ledger-name>")
+		pterm.Println("No ledgers found.")
+		pterm.Println(pterm.Gray("Hint: Create a ledger first using:"))
+		pterm.FgCyan.Println("  ledgerctl ledgers create --name <ledger-name>")
 		return "", ErrNoLedgers
 	}
 
 	// Only one ledger exists, use it automatically
 	if len(ledgerNames) == 1 {
-		fmt.Printf("Using ledger: %s\n", ledgerNames[0])
+		pterm.Info.Printfln("Using ledger: %s", pterm.Cyan(ledgerNames[0]))
 		return ledgerNames[0], nil
 	}
 
-	// Multiple ledgers exist, prompt for selection
-	return promptLedgerSelection(reader, ledgerNames)
-}
-
-// promptLedgerSelection prompts the user to select a ledger from a list.
-func promptLedgerSelection(reader *bufio.Reader, ledgerNames []string) (string, error) {
-	fmt.Println("\nAvailable ledgers:")
-	for i, name := range ledgerNames {
-		fmt.Printf("  [%d] %s\n", i+1, name)
+	// Multiple ledgers exist, prompt for selection using interactive select
+	selectedLedger, err := pterm.DefaultInteractiveSelect.
+		WithOptions(ledgerNames).
+		WithDefaultText("Select a ledger").
+		Show()
+	if err != nil {
+		return "", fmt.Errorf("failed to select ledger: %w", err)
 	}
 
-	for {
-		fmt.Printf("\nSelect a ledger (1-%d): ", len(ledgerNames))
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			return "", fmt.Errorf("failed to read input: %w", err)
-		}
-
-		input = strings.TrimSpace(input)
-
-		// Try to parse as a number
-		num, err := strconv.Atoi(input)
-		if err == nil && num >= 1 && num <= len(ledgerNames) {
-			return ledgerNames[num-1], nil
-		}
-
-		// Try to match by name
-		for _, name := range ledgerNames {
-			if name == input {
-				return name, nil
-			}
-		}
-
-		fmt.Printf("Invalid selection. Please enter a number between 1 and %d, or a ledger name.\n", len(ledgerNames))
-	}
+	return selectedLedger, nil
 }
 
 // sortStrings sorts a slice of strings in place.
@@ -117,7 +91,7 @@ func sortStrings(s []string) {
 
 // getClient creates a gRPC client connection and returns the client.
 // The caller is responsible for closing the connection.
-func getClient(cmd *cobra.Command) (servicepb.LedgerServiceClient, *grpc.ClientConn, error) {
+func getClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
 	insecureMode, _ := cmd.Flags().GetBool("insecure")
 
@@ -144,7 +118,7 @@ func getClient(cmd *cobra.Command) (servicepb.LedgerServiceClient, *grpc.ClientC
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
 
-	return servicepb.NewLedgerServiceClient(conn), conn, nil
+	return servicepb.NewBucketServiceClient(conn), conn, nil
 }
 
 // getContext returns a context with the configured timeout.
@@ -157,7 +131,7 @@ func getContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 }
 
 // getAllLedgersInfo collects all ledgers from the streaming RPC into a map
-func getAllLedgersInfo(ctx context.Context, client servicepb.LedgerServiceClient) (map[string]*commonpb.LedgerInfo, error) {
+func getAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient) (map[string]*commonpb.LedgerInfo, error) {
 	stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 	if err != nil {
 		return nil, err
@@ -176,6 +150,15 @@ func getAllLedgersInfo(ctx context.Context, client servicepb.LedgerServiceClient
 	}
 
 	return ledgers, nil
+}
+
+// parseKeyValue parses a string in the format "key=value" and returns the key and value.
+func parseKeyValue(s string) (string, string, error) {
+	parts := strings.SplitN(s, "=", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("expected key=value format")
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
 }
 
 // formatBytes formats a byte count as a human-readable string.

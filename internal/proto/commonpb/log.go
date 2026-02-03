@@ -3,7 +3,7 @@ package commonpb
 import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
 // NewLedgerLog creates a new LedgerLog from a LedgerLogPayload
@@ -90,10 +90,10 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler for LedgerLog
 func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 	type auxLog struct {
-		Type LogType     `json:"type"`
+		Type LogType           `json:"type"`
 		Data *LedgerLogPayload `json:"data"`
-		Date *time.Time  `json:"date,omitempty"`
-		ID   *uint64     `json:"id,omitempty"`
+		Date *time.Time        `json:"date,omitempty"`
+		ID   *uint64           `json:"id,omitempty"`
 	}
 
 	aux := auxLog{

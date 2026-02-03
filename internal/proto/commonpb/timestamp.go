@@ -5,7 +5,7 @@ import (
 	libtime "time"
 
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
 func NewTimestamp(time time.Time) *Timestamp {

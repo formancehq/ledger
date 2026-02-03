@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger-v3-poc/internal/pyroscope"
+	"github.com/formancehq/ledger-v3-poc/internal/monitoring/pyroscope"
 	gopyscope "github.com/grafana/pyroscope-go"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"

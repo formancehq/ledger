@@ -3,7 +3,7 @@ package commonpb
 import (
 	"database/sql/driver"
 
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
 type LogType int16
@@ -61,7 +61,6 @@ func LogTypeFromString(logType string) LogType {
 
 	panic("invalid log type")
 }
-
 
 // GetLogType extracts the log type from a LedgerLogPayload
 func GetLogType(payload *LedgerLogPayload) LogType {

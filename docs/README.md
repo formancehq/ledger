@@ -20,62 +20,51 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 
 ## Documentation Structure
 
-### 📚 [General Architecture](./architecture.md)
-Overview of the system architecture, main components, and their interactions.
+### 📁 [Architecture](./architecture/)
+Core design and technical architecture documentation.
 
-### 🎯 [Raft Consensus](./raft-consensus.md)
-In-depth details on the Raft consensus implementation and leader management.
+- [Overview](./architecture/architecture.md) - System architecture and component interactions
+- [Raft Consensus](./architecture/raft-consensus.md) - Raft consensus implementation details
+- [Deterministic FSM](./architecture/deterministic-fsm.md) - FSM design with generation-based caching and AttributeLoader
+- [Attributes](./architecture/attributes.md) - System attributes (volumes, metadata, reversions, idempotency)
+- [Ledgers](./architecture/buckets-ledgers.md) - Ledger system and transaction management
+- [Global Log](./architecture/global-log.md) - Two-level log architecture
+- [Storage](./architecture/storage.md) - Storage systems and persistence
+- [HTTP API](./architecture/api.md) - REST API documentation
+- [gRPC API](./architecture/grpc-api.md) - gRPC service and client examples
+- [Idempotency](./architecture/idempotency.md) - Safe request retries with hash-based conflict detection
 
-### 📖 [Ledgers](./buckets-ledgers.md)
-Explanation of the ledger system, transaction management, and data organization.
+### 📁 [Benchmarks](./benchmarks/)
+Performance benchmarks and analysis.
 
-### 🔌 [API and Interfaces](./api.md)
-Documentation of HTTP and gRPC APIs, service interfaces, and data formats.
+- [2026-01-29 Staging](./benchmarks/2026-01-29-staging.md) - Staging environment benchmark
 
-### 🔄 [API Comparison](./api-comparison.md)
-Comparison of the write API between this POC and the original ledger (`github.com/formancehq/ledger`), including missing and intentionally removed features.
+### 📁 [Drafts](./drafts/)
+Draft documents, RFCs, and exploratory designs.
 
-### ✅ [Problems Solved from v2](./v2-problems-solved.md)
-Summary of key problems and limitations from Ledger v2 that have been addressed in this v3 POC, including PostgreSQL elimination, Raft consensus, pure Go builds, and improved observability.
+- [Problems Solved from v2](./drafts/v2-problems-solved.md) - Issues addressed from v2
+- [Limitations](./drafts/limitations.md) - Current system limitations
+- [Numscript Static Inputs RFC](./drafts/numscript-static-inputs-rfc.md) - RFC for static inputs
 
-### 📋 [Global Log Architecture](./global-log.md)
-Explanation of the two-level log architecture (global log vs ledger log) and how it enables system-level atomic bulk operations across multiple ledgers.
+### Operations & Development
 
-### 💾 [Storage and Persistence](./storage.md)
-Details on storage systems (WAL, snapshots, runtime stores), data persistence, and recovery after failures.
+| Document | Description |
+|----------|-------------|
+| [CLI Reference](./cli.md) | CLI client (ledgerctl) documentation |
+| [API Comparison](./api-comparison.md) | Feature parity comparison with original ledger |
+| [Deployment](./deployment.md) | Deployment guide and Kubernetes configuration |
+| [Development](./development.md) | Developer guide and contribution |
+| [Dev Environment](./devenv-ledger-exp.md) | Development environment URLs and endpoints |
+| [Testing](./testing.md) | Testing strategy and guidelines |
+| [Metrics](./metrics.md) | Application metrics reference |
+| [Sanity Check](./sanity-check.md) | Storage verification and troubleshooting |
 
-### 🗄️ [Storage Drivers](./storage-drivers.md)
-Detailed documentation on the Pebble storage driver, its characteristics, configuration, and use cases.
+### Numscript
 
-### 🚀 [Deployment](./deployment.md)
-Deployment guide, Kubernetes/Helm configuration, and environment management.
-
-### 🌐 [Dev Environment URLs](./devenv-ledger-exp.md)
-Useful URLs and endpoints for the `ledger-exp` development environment.
-
-### 🛠️ [Development](./development.md)
-Developer guide: code structure, conventions, testing, and contribution.
-
-### 🔄 [Data Flows](./data-flows.md)
-Diagrams and explanations of data flows for main operations (ledger creation, transactions, etc.).
-
-### 🧪 [Testing](./testing.md)
-Testing strategy, unit tests, integration, and end-to-end tests.
-
-### 📊 [Metrics](./metrics.md)
-Application metrics reference: Raft, transport, storage, Pyroscope continuous profiling, and alerting recommendations.
-
-### 📝 [Spool](./spool.md)
-Technical documentation for the Spool component (committed entry buffer).
-
-### 🔗 [gRPC Connections](./grpc-connections.md)
-gRPC connection mechanics, reconnection strategies, and optimizations for rolling deployments.
-
-### 🔍 [Storage Sanity Check](./sanity-check.md)
-Local storage verification, integrity checks, and troubleshooting node-specific storage issues.
-
-### ⚠️ [System Limitations](./limitations.md)
-Current system limitations based on ID types: maximum ledgers, transactions, and logs.
+| Resource | Description |
+|----------|-------------|
+| [Numscript Guide](./numscript.md) | Complete guide to Numscript support and features |
+| [Numscript Examples](../numscript/examples/README.md) | Example Numscript files for common patterns |
 
 ## Key Concepts
 
@@ -134,10 +123,10 @@ type Store interface {
 }
 ```
 
-See [Storage Drivers](./storage-drivers.md) for detailed backend comparison.
+See [Storage Drivers](./architecture/storage-drivers.md) for detailed backend comparison.
 
 ## Quick Start
 
 To get started quickly with the project, see the [main README](../README.md).
 
-To understand the architecture in depth, start with [General Architecture](./architecture.md).
+To understand the architecture in depth, start with [Architecture Overview](./architecture/architecture.md).

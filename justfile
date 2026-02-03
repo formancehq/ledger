@@ -37,6 +37,7 @@ test:
 # Clean build artifacts
 clean:
     rm -rf ledgerctl ledger-v3-poc
+    rm $(find ./ -name '*.test') || true
 
 clean-benchmarks-data:
     rm -rf build
@@ -49,13 +50,15 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/raft/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go || true
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
+        misc/proto/cluster.proto \
         misc/proto/service.proto \
         misc/proto/raftcmd.proto \
         misc/proto/snapshot.proto

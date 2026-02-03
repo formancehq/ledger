@@ -5,19 +5,20 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"text/tabwriter"
 	"time"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
 // newLedgersListCommand creates the ledgers list command.
 func newLedgersListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all ledgers",
-		Long:  "List all ledgers in the cluster via gRPC",
-		RunE:  runLedgersList,
+		Use:     "list",
+		Aliases: []string{"ls", "l"},
+		Short:   "List all ledgers",
+		Long:    "List all ledgers in the cluster via gRPC",
+		RunE:    runLedgersList,
 	}
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
@@ -36,10 +37,15 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := getContext(cmd)
 	defer cancel()
 
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledgers...")
+
 	ledgers, err := getAllLedgersInfo(ctx, client)
 	if err != nil {
+		spinner.Fail("Failed to fetch ledgers")
 		return fmt.Errorf("failed to list ledgers: %w", err)
 	}
+
+	_ = spinner.Stop()
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
@@ -56,22 +62,29 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	if len(names) == 0 {
-		fmt.Println("No ledgers found.")
+		pterm.Println("No ledgers found.")
+		pterm.Println(pterm.Gray("Create one with: ledgerctl ledgers create --name <name>"))
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "ID\tNAME\tCREATED AT\n")
-	_, _ = fmt.Fprintf(w, "--\t----\t----------\n")
+	// Build table data
+	tableData := pterm.TableData{
+		{"ID", "NAME", "CREATED AT"},
+	}
 
 	for _, name := range names {
 		ledger := ledgers[name]
-		createdAt := "N/A"
+		createdAt := "-"
 		if ledger.CreatedAt != nil {
 			createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
 		}
-		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\n", ledger.Id, ledger.Name, createdAt)
+		tableData = append(tableData, []string{
+			fmt.Sprintf("%d", ledger.Id),
+			ledger.Name,
+			createdAt,
+		})
 	}
 
-	return w.Flush()
+	pterm.Println()
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }

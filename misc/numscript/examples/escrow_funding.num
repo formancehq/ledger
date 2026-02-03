@@ -1,0 +1,18 @@
+// Fund an escrow account for a transaction
+// Usage: ledgerctl transactions create --ledger my-ledger --script escrow_funding.num \
+//        --var "buyer=@users:alice" --var "order_id=order123" \
+//        --var "amount=USD/2 500"
+
+vars {
+  account $buyer
+  string $order_id
+  monetary $amount
+}
+
+set_tx_meta("escrow_order", $order_id)
+set_tx_meta("type", "escrow_funding")
+
+send $amount (
+  source = $buyer
+  destination = @escrow:$order_id
+)

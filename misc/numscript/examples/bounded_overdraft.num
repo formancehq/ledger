@@ -1,0 +1,18 @@
+// Allow overdraft up to a limit
+// Usage: ledgerctl transactions create --ledger my-ledger --script bounded_overdraft.num \
+//        --var "source=@users:alice" --var "destination=@merchants:shop" \
+//        --var "amount=EUR/2 500" --var "overdraft_limit=EUR/2 1000"
+
+vars {
+  account $source
+  account $destination
+  monetary $amount
+  monetary $overdraft_limit
+}
+
+send $amount (
+  source = {
+    $source allowing overdraft up to $overdraft_limit
+  }
+  destination = $destination
+)

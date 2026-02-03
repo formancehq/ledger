@@ -8,26 +8,10 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
-// NewTransactionData creates a new TransactionData with empty metadata
-func NewTransactionData() *TransactionData {
-	return &TransactionData{
-		Metadata: &MetadataSet{},
-	}
-}
-
-// WithPostings adds postings to TransactionData
-func (td *TransactionData) WithPostings(postings ...*Posting) *TransactionData {
-	if td == nil {
-		td = NewTransactionData()
-	}
-	td.Postings = append(td.Postings, postings...)
-	return td
-}
-
-// NewTransaction creates a new Transaction with empty TransactionData
+// NewTransaction creates a new Transaction with empty metadata
 func NewTransaction() *Transaction {
 	return &Transaction{
 		Metadata: &MetadataSet{},

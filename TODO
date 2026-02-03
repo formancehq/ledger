@@ -1,9 +1,18 @@
 * Register failed transactions
 * Import/Export logs
+* Infinite data storage
+* Idempotency limits
 * Export/Compaction data
 * Cold storage
 * Short circuit log ingestion
 * Idempotency rotation
+* Add DB size metric
+* Test https://connectrpc.com/
+* Checkpoint + exposed api to read at PIT
+* Separated GRPC conn (raft transport / service)
+* Attributes compaction
+* Metadata deletion
+* Attribute types
 
 Explore:
 * Account hash

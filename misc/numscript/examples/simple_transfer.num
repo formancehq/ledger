@@ -1,0 +1,15 @@
+// Simple transfer between two accounts
+// Usage: ledgerctl transactions create --ledger my-ledger --script simple_transfer.num \
+//        --var "source=@users:alice" --var "destination=@users:bob" \
+//        --var "amount=USD/2 100"
+
+vars {
+  account $source
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = $source
+  destination = $destination
+)

@@ -212,6 +212,46 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 > - Reducing write rate
 > - Scaling horizontally
 
+## Caching & Attributes Metrics
+
+### Numscript Cache Metrics
+
+The Numscript cache stores parsed Numscript programs to avoid re-parsing identical scripts.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `numscript.cache.hits` | Counter | 1 | Number of cache hits (script found in cache) |
+| `numscript.cache.misses` | Counter | 1 | Number of cache misses (script parsed and cached) |
+| `numscript.cache.size` | Gauge | 1 | Number of scripts currently in the cache |
+
+**Key Insight**: A high hit rate indicates effective script reuse. A low hit rate may indicate many unique scripts or script variations.
+
+### Attribute Cache Metrics
+
+The attribute cache stores computed attribute values (volumes, metadata) in memory to avoid disk lookups.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `cache.hits` | Counter | 1 | Number of cache hits by attribute type |
+| `cache.misses` | Counter | 1 | Number of cache misses by attribute type |
+| `cache.rotations` | Counter | 1 | Number of cache generation rotations |
+| `cache.generation` | Gauge | 1 | Current cache generation number |
+
+**Attributes**:
+- `type`: Attribute type (`input`, `output`, `account_metadata`, `ledger_metadata`, `reversions`, `idempotency_keys`)
+
+**Attribute Types**:
+| Type | Description |
+|------|-------------|
+| `input` | Account input volumes (credits) |
+| `output` | Account output volumes (debits) |
+| `account_metadata` | Account metadata key/value pairs |
+| `ledger_metadata` | Ledger metadata key/value pairs |
+| `reversions` | Transaction reversion status |
+| `idempotency_keys` | Idempotency key mappings |
+
+**Cache Generations**: The cache uses a dual-generation system where old data is gradually evicted. Each "rotation" promotes Gen0 to Gen1 and discards the old Gen1, triggered by raft index thresholds.
+
 ## Configuration
 
 ### Enabling Metrics Export
@@ -346,6 +386,14 @@ The dashboard is organized into the following sections:
 - Write Stall Active (max)
 - Write Stalls / Second
 - Write Stall Duration
+
+**Caching & Attributes Section**:
+- Numscript Cache Hit Rate
+- Numscript Cache Size
+- Numscript Cache Hits/Misses
+- Attribute Cache Hit Rate by Type
+- Cache Generation & Rotations
+- Cache Hits/Misses by Type
 
 ### k6 Dashboard
 

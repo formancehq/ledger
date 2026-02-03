@@ -13,10 +13,10 @@ import (
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger-v3-poc/internal/application"
-	"github.com/formancehq/ledger-v3-poc/internal/pyroscope"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/tracesampling"
+	"github.com/formancehq/ledger-v3-poc/internal/monitoring/pyroscope"
+	"github.com/formancehq/ledger-v3-poc/internal/monitoring/tracesampling"
+	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -75,6 +75,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<address>, e.g., \"1/node-1:8888,2/node-2:8888\")")
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	runCmd.Flags().Uint64("snapshot-threshold", 5000, "Number of logs before triggering a snapshot (0 = use Raft default)")
+	// todo: remove
 	runCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
 	runCmd.Flags().Int("raft-election-tick", 10, "Election timeout in ticks (0 = use default 10)")
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
@@ -99,6 +100,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("pebble-max-concurrent-compactions", 0, "Pebble max concurrent compactions (default: 2)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
+	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 
 	return runCmd
 }
@@ -256,7 +258,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
 	cfg.RaftConfig.WalDir = getString("wal-dir", "./wal")
 	cfg.DataDir = getString("data-dir", "./data")
-	cfg.RaftConfig.Peers = make([]raft.Peer, 0)
+	cfg.RaftConfig.Peers = make([]node.Peer, 0)
 	for _, peer := range getStringSlice("peers") {
 		parts := strings.SplitN(peer, "/", 2)
 
@@ -265,7 +267,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 			return nil, fmt.Errorf("invalid peer ID: %w", err)
 		}
 
-		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, raft.Peer{
+		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, node.Peer{
 			ID:      id,
 			Address: parts[1],
 		})
@@ -307,12 +309,14 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 		cfg.RaftConfig.AdvertiseAddr = cfg.RaftConfig.BindAddr
 	}
 
+	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
+
 	return cfg, nil
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.
-func loadPebbleConfig(cmd *cobra.Command) store.Config {
-	cfg := store.DefaultConfig()
+func loadPebbleConfig(cmd *cobra.Command) data.Config {
+	cfg := data.DefaultConfig()
 
 	// Helper to get uint64 with default
 	getUint64 := func(flagName string, defaultValue uint64) uint64 {

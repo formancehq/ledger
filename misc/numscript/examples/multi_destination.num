@@ -1,0 +1,19 @@
+// Split a payment to multiple destinations
+// Usage: ledgerctl transactions create --ledger my-ledger --script multi_destination.num \
+//        --var "source=@sales:revenue" --var "tax_account=@taxes:vat" \
+//        --var "main_account=@bank:main" --var "amount=EUR/2 1000"
+
+vars {
+  account $source
+  account $tax_account
+  account $main_account
+  monetary $amount
+}
+
+send $amount (
+  source = $source
+  destination = {
+    20% to $tax_account
+    remaining to $main_account
+  }
+)

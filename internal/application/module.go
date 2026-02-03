@@ -11,16 +11,21 @@ import (
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
-	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
-	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
+	http2 "github.com/formancehq/ledger-v3-poc/internal/compat/http"
+	"github.com/formancehq/ledger-v3-poc/internal/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"github.com/formancehq/ledger-v3-poc/internal/store"
-	"github.com/formancehq/ledger-v3-poc/internal/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/wal"
+	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
+	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -31,14 +36,15 @@ import (
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
+		attributes.Module(),
 		fx.Provide(
 			func(
 				cfg Config,
 				logger logging.Logger,
 				connectionPool *transport.ConnectionPool,
 				meterProvider metric.MeterProvider,
-			) *raft.DefaultTransport {
-				return raft.NewTransport(
+			) *node.DefaultTransport {
+				return node.NewTransport(
 					logger,
 					connectionPool,
 					meterProvider,
@@ -46,92 +52,120 @@ func Module() fx.Option {
 					cfg.TransportConfig,
 				)
 			},
-		func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*store.Store, error) {
-			return store.NewStore(
-				cfg.DataDir,
-				logger,
-				meterProvider.Meter("pebble.runtime_store"),
-				cfg.PebbleConfig,
-			)
-		},
-			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.WAL, error) {
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*data.Store, error) {
+				return data.NewStore(
+					cfg.DataDir,
+					logger,
+					meterProvider.Meter("pebble.runtime_store"),
+					cfg.PebbleConfig,
+				)
+			},
+			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
 					"cmp": "wal",
 				}), meterProvider.Meter("wal"))
 			},
-			func(cfg Config) (*raft.DefaultSpool, error) {
-				return raft.NewDefaultSpool(raft.DefaultSpoolConfig{
+			func(cfg Config) (*spool.Default, error) {
+				return spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
 				})
 			},
-		func(transport *raft.DefaultTransport) raft.SnapshotFetcherProvider {
-			return service.GRPCSnapshotFetcherProvider(transport)
-		},
-		func(
-			params struct {
-				fx.In
-				Config                  raft.NodeConfig
-				Logger                  logging.Logger
-				Transport               *raft.DefaultTransport
-				MeterProvider           metric.MeterProvider
-				Store                   *store.Store
-				WAL                     *wal.WAL
-				Spool                   *raft.DefaultSpool
-				SnapshotFetcherProvider raft.SnapshotFetcherProvider
+			func(transport *node.DefaultTransport) state.SnapshotFetcherProvider {
+				return ctrl.GRPCSnapshotFetcherProvider(transport)
 			},
-		) (*raft.Node, error) {
-			return raft.NewNode(
-				params.Config,
-				params.Transport,
-				params.Store,
-				params.Logger,
-				params.MeterProvider.Meter("raft.node"),
-				params.Spool,
-				params.WAL,
-				params.SnapshotFetcherProvider,
-			)
-		},
-			func(cfg Config) raft.NodeConfig {
+			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
+				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
+			},
+			func(
+				params struct {
+					fx.In
+					Config                  node.NodeConfig
+					Logger                  logging.Logger
+					Transport               *node.DefaultTransport
+					MeterProvider           metric.MeterProvider
+					Store                   *data.Store
+					WAL                     *wal.DefaultWAL
+					Spool                   *spool.Default
+					SnapshotFetcherProvider state.SnapshotFetcherProvider
+					Cache                   *cache.Cache
+					Attrs                   *attributes.Attributes
+				},
+			) (*node.Node, error) {
+				return node.NewNode(
+					params.Config,
+					params.Transport,
+					params.Store,
+					params.Logger,
+					params.MeterProvider.Meter("raft.node"),
+					params.Spool,
+					params.WAL,
+					params.SnapshotFetcherProvider,
+					params.Cache,
+					params.Attrs,
+				)
+			},
+			func(cfg Config) node.NodeConfig {
+				cfg.RaftConfig.SetDefaults()
 				return cfg.RaftConfig
 			},
-			func(cfg Config) raft.TransportConfig {
+			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
-		func(cfg Config, logger logging.Logger) (*grpcserver.Server, error) {
-			_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
-			if err != nil {
-				return nil, fmt.Errorf("invalid bind address format: %w", err)
-			}
-			grpcPort, err := strconv.Atoi(raftPort)
-			if err != nil {
-				return nil, fmt.Errorf("invalid port in bind address: %w", err)
-			}
+			func(cfg Config, logger logging.Logger) (*Server, error) {
+				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid bind address format: %w", err)
+				}
+				grpcPort, err := strconv.Atoi(raftPort)
+				if err != nil {
+					return nil, fmt.Errorf("invalid port in bind address: %w", err)
+				}
 
-			return grpcserver.NewServer(grpcPort, logger, cfg.Debug), nil
-		},
-		func(logger logging.Logger, ctrl service.Controller, s *store.Store, node *raft.Node) servicepb.LedgerServiceServer {
-			return NewLedgerServiceServer(logger, ctrl, s, node)
-		},
-		func(logger logging.Logger, s *store.Store) snapshotpb.SnapshotServiceServer {
-			return NewSnapshotServiceServer(logger, s)
-		},
-			httphandler.NewServer,
-			httphandler.NewHandler,
-			func(node *raft.Node, ctrl service.Controller) httphandler.Backend {
-				return httphandler.NewDefaultBackend(node, ctrl)
+				return NewServer(grpcPort, logger, cfg.Debug), nil
 			},
-			func(node *raft.Node) service.Engine {
-				return node
+			func(logger logging.Logger, ctrl ctrl.Controller, s *data.Store) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s)
 			},
-		func(
-			raftNode *raft.Node,
-			connectionPool *transport.ConnectionPool,
-			engine service.Engine,
-			store *store.Store,
-			logger logging.Logger,
-		) service.Controller {
-				return service.NewRoutedController(
-					service.NewDefaultController(engine, store, logger),
+			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
+				return NewSnapshotServiceServer(logger, s)
+			},
+			func(node *node.Node) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node)
+			},
+			http2.NewServer,
+			http2.NewHandler,
+			func(node *node.Node, ctrl ctrl.Controller) http2.Backend {
+				return http2.NewDefaultBackend(node, ctrl)
+			},
+			func(
+				node *node.Node,
+				cache *cache.Cache,
+				store *data.Store,
+				logger logging.Logger,
+				attrs *attributes.Attributes,
+			) ctrl.Admission {
+				return admission.NewAdmission(
+					cache,
+					store,
+					logger,
+					node,
+					attrs,
+					node.CommandDurationHistogram(),
+					node.ProposeQueueLoadHistogram(),
+					node.ProposeQueueInflight(),
+					node.ProposeQueueFullCounter(),
+				)
+			},
+			func(
+				raftNode *node.Node,
+				connectionPool *transport.ConnectionPool,
+				admission ctrl.Admission,
+				store *data.Store,
+				logger logging.Logger,
+				attrs *attributes.Attributes,
+			) ctrl.Controller {
+				return NewRoutedController(
+					ctrl.NewDefaultController(admission, store, logger, attrs),
 					raftNode,
 					connectionPool,
 				)
@@ -158,12 +192,12 @@ func Module() fx.Option {
 			return params.Handler
 		}),
 		fx.Invoke(
-		func(
-			lc fx.Lifecycle,
-			runtime *store.Store,
-			wal *wal.WAL,
-			logger logging.Logger,
-		) {
+			func(
+				lc fx.Lifecycle,
+				runtime *data.Store,
+				wal *wal.DefaultWAL,
+				logger logging.Logger,
+			) {
 				lc.Append(fx.Hook{
 					OnStop: func(ctx context.Context) error {
 						return wal.Close()
@@ -177,7 +211,7 @@ func Module() fx.Option {
 			},
 			func(
 				lc fx.Lifecycle,
-				t *raft.DefaultTransport,
+				t *node.DefaultTransport,
 				logger logging.Logger,
 			) {
 				lc.Append(fx.Hook{
@@ -193,27 +227,31 @@ func Module() fx.Option {
 					},
 				})
 			},
-			func(grpcServer *grpcserver.Server, transport *raft.DefaultTransport) error {
+			func(grpcServer *Server, transport *node.DefaultTransport) error {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(grpcServer.GetServer(), hs)
-				raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
+				node.RegisterRaftTransportService(grpcServer.GetServer(), transport)
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
-		func(grpcServer *grpcserver.Server, ledgerServiceServer servicepb.LedgerServiceServer) error {
-			RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
-			return nil
-		},
-		func(grpcServer *grpcserver.Server, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
-			RegisterSnapshotService(grpcServer.GetServer(), snapshotServiceServer)
-			return nil
-		},
+			func(grpcServer *Server, bucketServiceServer servicepb.BucketServiceServer) error {
+				RegisterBucketService(grpcServer.GetServer(), bucketServiceServer)
+				return nil
+			},
+			func(grpcServer *Server, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
+				RegisterSnapshotService(grpcServer.GetServer(), snapshotServiceServer)
+				return nil
+			},
+			func(grpcServer *Server, clusterServiceServer clusterpb.ClusterServiceServer) error {
+				RegisterClusterService(grpcServer.GetServer(), clusterServiceServer)
+				return nil
+			},
 			func(
 				lc fx.Lifecycle,
-				grpcServer *grpcserver.Server,
+				grpcServer *Server,
 				logger logging.Logger,
-				defaultTransport *raft.DefaultTransport,
-				cfg raft.NodeConfig,
+				defaultTransport *node.DefaultTransport,
+				cfg node.NodeConfig,
 			) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -246,16 +284,22 @@ func Module() fx.Option {
 					},
 				})
 			},
-			func(lc fx.Lifecycle, node *raft.Node, logger logging.Logger) (*raft.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
+						ready := make(chan struct{})
 						otlplogs.Go(func() {
-							if err := node.Run(context.WithoutCancel(ctx)); err != nil {
+							if err := node.Run(context.WithoutCancel(ctx), ready); err != nil {
 								panic(err)
 							}
 						}, logger)
-						logger.Infof("Raft cluster started successfully")
-						return nil
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-ready:
+							logger.Infof("Raft cluster started successfully")
+							return nil
+						}
 					},
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Shutting down raft cluster")

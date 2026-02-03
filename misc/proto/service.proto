@@ -5,14 +5,13 @@ package ledger;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb";
 
 import "common.proto";
-import "raftcmd.proto";
 
 // ============================================================================
 // gRPC Service
 // ============================================================================
 
-// LedgerService provides ledger operations
-service LedgerService {
+// BucketService provides ledger operations
+service BucketService {
   // GetAllLedgersInfo streams all ledgers info in the cluster
   rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (stream common.LedgerInfo);
   // GetLedger returns a ledger info by its name or ID
@@ -21,14 +20,12 @@ service LedgerService {
   rpc GetAccount(GetAccountRequest) returns (common.Account);
   // GetTransaction retrieves a transaction by ID
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
-  // StreamLogs streams logs, optionally starting from a sequence
-  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+  // ListTransactions streams all transactions for a ledger (newest first)
+  rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction);
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   // GetStoreMetrics returns metrics from the local store (Pebble only)
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
-  // GetClusterState returns the current state of the Raft cluster
-  rpc GetClusterState(GetClusterStateRequest) returns (raft.ClusterState);
 }
 
 // ============================================================================
@@ -36,22 +33,22 @@ service LedgerService {
 // ============================================================================
 
 message GetAccountRequest {
-  LedgerNameOrId ledger = 1;
+  string ledger = 1;
   string address = 2;
 }
 
 message GetTransactionRequest {
-  LedgerNameOrId ledger = 1;
+  string ledger = 1;
   uint64 transaction_id = 2;
 }
 
-message StreamLogsRequest {
-  uint64 from_sequence = 1; // Optional: start streaming from this sequence (inclusive). If 0, streams from the beginning
-  uint64 to_sequence = 2;   // Optional: stop streaming at this sequence (inclusive). If 0, streams until the end
-}
-
-message StreamLogsResponse {
-  common.Log log = 1;
+message ListTransactionsRequest {
+  string ledger = 1;
+  // page_size is the maximum number of transactions to return (0 = default)
+  uint32 page_size = 2;
+  // after_tx_id is the transaction ID to start after (for pagination, exclusive)
+  // Use 0 or omit to start from the latest transaction
+  uint64 after_tx_id = 3;
 }
 
 message CreateLedgerRequest {
@@ -60,7 +57,7 @@ message CreateLedgerRequest {
 }
 
 message DeleteLedgerRequest {
-  uint32 id = 1;
+  string name = 1;
 }
 
 message DeleteLedgerResponse {}
@@ -68,13 +65,11 @@ message DeleteLedgerResponse {}
 message GetAllLedgersRequest {}
 
 message GetLedgerRequest {
-  LedgerNameOrId ledger = 1;
+  string ledger = 1;
 }
 
-message GetClusterStateRequest {}
-
 message ApplyRequest {
-  repeated Request actions = 1;
+  repeated Request requests = 1;
 }
 
 message ApplyResponse {
@@ -112,16 +107,9 @@ message RevertTransactionPayload {
   common.MetadataSet metadata = 4;
 }
 
-message LedgerNameOrId {
-  oneof Type {
-    string name = 1;
-    uint32 id = 2;
-  }
-}
-
 // LedgerAction represents a single ledger action
 message LedgerApplyRequest {
-  LedgerNameOrId ledger = 1;
+  string ledger = 1;
   oneof data {
     CreateTransactionPayload create_transaction = 2;
     common.SaveMetadataCommand add_metadata = 3;

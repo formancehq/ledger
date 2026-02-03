@@ -58,10 +58,10 @@ ingress:
     - grafana-ledger-exp.staging.formance.cloud
   path: /
   pathType: Prefix
-  tls:
-    - hosts:
-        - grafana-ledger-exp.staging.formance.cloud
-      secretName: grafana-tls
+#  tls:
+#    - hosts:
+#        - grafana-ledger-exp.staging.formance.cloud
+#      secretName: grafana-tls
 persistence:
   accessModes:
     - ReadWriteOnce

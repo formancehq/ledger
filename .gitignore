@@ -26,7 +26,6 @@ go.work
 *~
 
 # Data directories
-data/
 *.db
 
 # Environment files
@@ -38,7 +37,6 @@ data/
 Thumbs.db
 
 # Binaries
-client
 performance
 
 # PProf

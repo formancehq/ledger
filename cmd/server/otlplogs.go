@@ -4,7 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/service"
-	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )
