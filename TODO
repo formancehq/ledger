@@ -1,6 +1,9 @@
 * Register failed transactions
 * Import/Export logs
-
+* Export/Compaction data
+* Cold storage
+* Short circuit log ingestion
+* Idempotency rotation
 
 Explore:
-* ULID
+* Account hash
