@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/json"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
 )
@@ -36,7 +37,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:     ledgerName,
-				Metadata: metadata,
+				Metadata: commonpb.MetadataSetFromMap(metadata),
 			},
 		},
 	})

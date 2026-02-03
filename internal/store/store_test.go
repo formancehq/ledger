@@ -99,10 +99,10 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, testLedgerName, testLedgerID)
 		batch := s.NewBatch()
-		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "world", RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-100))))
-		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "bank", RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(100))))
-		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "user", RaftIndex: 2}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(50))))
-		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "bank", RaftIndex: 2}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-50))))
+		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "world"}, RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-100))))
+		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "bank"}, RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(100))))
+		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "user"}, RaftIndex: 2}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(50))))
+		require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "bank"}, RaftIndex: 2}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-50))))
 		require.NoError(t, batch.Commit())
 
 		diffs, err := s.GetBalanceDiffs(testLedgerName, map[string][]string{
@@ -182,9 +182,9 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, testLedgerName, testLedgerID)
 		batch := s.NewBatch()
-		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "bank", RaftIndex: 1}, Key: "account_type"}, &commonpb.MetadataValue{Value: "asset"}))
-		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "bank", RaftIndex: 2}, Key: "label"}, &commonpb.MetadataValue{Value: "Bank Account"}))
-		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: testLedgerName, Account: "bank", RaftIndex: 3}, Key: "old_key"}, nil))
+		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "bank"}, RaftIndex: 1}, Key: "account_type"}, &commonpb.MetadataValue{Value: "asset"}))
+		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "bank"}, RaftIndex: 2}, Key: "label"}, &commonpb.MetadataValue{Value: "Bank Account"}))
+		require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: testLedgerName, Account: "bank"}, RaftIndex: 3}, Key: "old_key"}, nil))
 		require.NoError(t, batch.Commit())
 
 		accountsMetadata, err := s.GetAccountMetadata(testLedgerName, []string{"bank", "user", "world", "non-existing"})
@@ -650,8 +650,8 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: ledgerName, Account: "world", RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-100))))
-	require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: ledgerName, Account: "bank", RaftIndex: 1}, Key: "key"}, &commonpb.MetadataValue{Value: "value"}))
+	require.NoError(t, batch.AppendBalanceDiff(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: ledgerName, Account: "world"}, RaftIndex: 1}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(-100))))
+	require.NoError(t, batch.AppendMetadataDiff(TimestampedMetadataKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: ledgerName, Account: "bank"}, RaftIndex: 1}, Key: "key"}, &commonpb.MetadataValue{Value: "value"}))
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerName, 1, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -723,7 +723,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store balance base at raft index 10
 	batch := s.NewBatch()
-	require.NoError(t, batch.SetBalanceBase(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: ledgerName, Account: "bank", RaftIndex: 10}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(1000))))
+	require.NoError(t, batch.SetBalanceBase(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: ledgerName, Account: "bank"}, RaftIndex: 10}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(1000))))
 	require.NoError(t, batch.Commit())
 
 	// Query with maxRaftIndex >= 10 should return the base
@@ -746,7 +746,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store another balance base at raft index 20
 	batch = s.NewBatch()
-	require.NoError(t, batch.SetBalanceBase(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{LedgerName: ledgerName, Account: "bank", RaftIndex: 20}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(2000))))
+	require.NoError(t, batch.SetBalanceBase(TimestampedBalanceKey{TimestampedAccountKey: TimestampedAccountKey{AccountKey: AccountKey{LedgerName: ledgerName, Account: "bank"}, RaftIndex: 20}, Asset: "USD"}, commonpb.NewBigInt(big.NewInt(2000))))
 	require.NoError(t, batch.Commit())
 
 	// Query with maxRaftIndex = 15 should return base at index 10

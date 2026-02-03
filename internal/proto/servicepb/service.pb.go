@@ -226,7 +226,7 @@ func (x *StreamLogsResponse) GetLog() *commonpb.Log {
 type CreateLedgerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Metadata      map[string]string      `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Metadata      *commonpb.MetadataSet  `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -268,7 +268,7 @@ func (x *CreateLedgerRequest) GetName() string {
 	return ""
 }
 
-func (x *CreateLedgerRequest) GetMetadata() map[string]string {
+func (x *CreateLedgerRequest) GetMetadata() *commonpb.MetadataSet {
 	if x != nil {
 		return x.Metadata
 	}
@@ -672,7 +672,7 @@ type CreateTransactionPayload struct {
 	Script          *commonpb.Script                 `protobuf:"bytes,2,opt,name=script,proto3" json:"script,omitempty"`
 	Timestamp       *commonpb.Timestamp              `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Reference       string                           `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Metadata        map[string]string                `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Metadata        *commonpb.MetadataSet            `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	AccountMetadata map[string]*commonpb.MetadataSet `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -736,7 +736,7 @@ func (x *CreateTransactionPayload) GetReference() string {
 	return ""
 }
 
-func (x *CreateTransactionPayload) GetMetadata() map[string]string {
+func (x *CreateTransactionPayload) GetMetadata() *commonpb.MetadataSet {
 	if x != nil {
 		return x.Metadata
 	}
@@ -756,7 +756,7 @@ type RevertTransactionPayload struct {
 	TransactionId   uint64                 `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Force           bool                   `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	AtEffectiveDate bool                   `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
-	Metadata        map[string]string      `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Metadata        *commonpb.MetadataSet  `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -812,7 +812,7 @@ func (x *RevertTransactionPayload) GetAtEffectiveDate() bool {
 	return false
 }
 
-func (x *RevertTransactionPayload) GetMetadata() map[string]string {
+func (x *RevertTransactionPayload) GetMetadata() *commonpb.MetadataSet {
 	if x != nil {
 		return x.Metadata
 	}
@@ -2079,13 +2079,10 @@ const file_service_proto_rawDesc = "" +
 	"\vto_sequence\x18\x02 \x01(\x04R\n" +
 	"toSequence\"3\n" +
 	"\x12StreamLogsResponse\x12\x1d\n" +
-	"\x03log\x18\x01 \x01(\v2\v.common.LogR\x03log\"\xad\x01\n" +
+	"\x03log\x18\x01 \x01(\v2\v.common.LogR\x03log\"Z\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
-	"\bmetadata\x18\x02 \x03(\v2).ledger.CreateLedgerRequest.MetadataEntryR\bmetadata\x1a;\n" +
-	"\rMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"%\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12/\n" +
+	"\bmetadata\x18\x02 \x01(\v2\x13.common.MetadataSetR\bmetadata\"%\n" +
 	"\x13DeleteLedgerRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\"\x16\n" +
 	"\x14DeleteLedgerResponse\"\x16\n" +
@@ -2102,28 +2099,22 @@ const file_service_proto_rawDesc = "" +
 	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
 	"\rdelete_ledger\x18\x04 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedgerB\x06\n" +
-	"\x04type\"\x82\x04\n" +
+	"\x04type\"\xaa\x03\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1c\n" +
-	"\treference\x18\x04 \x01(\tR\treference\x12J\n" +
-	"\bmetadata\x18\x05 \x03(\v2..ledger.CreateTransactionPayload.MetadataEntryR\bmetadata\x12`\n" +
-	"\x10account_metadata\x18\x06 \x03(\v25.ledger.CreateTransactionPayload.AccountMetadataEntryR\x0faccountMetadata\x1a;\n" +
-	"\rMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aW\n" +
+	"\treference\x18\x04 \x01(\tR\treference\x12/\n" +
+	"\bmetadata\x18\x05 \x01(\v2\x13.common.MetadataSetR\bmetadata\x12`\n" +
+	"\x10account_metadata\x18\x06 \x03(\v25.ledger.CreateTransactionPayload.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x8c\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\xb4\x01\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
-	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12J\n" +
-	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1a;\n" +
-	"\rMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"@\n" +
+	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12/\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x13.common.MetadataSetR\bmetadata\"@\n" +
 	"\x0eLedgerNameOrId\x12\x14\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x12\x10\n" +
 	"\x02id\x18\x02 \x01(\rH\x00R\x02idB\x06\n" +
@@ -2257,7 +2248,7 @@ func file_service_proto_rawDescGZIP() []byte {
 	return file_service_proto_rawDescData
 }
 
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_service_proto_goTypes = []any{
 	(*GetAccountRequest)(nil),              // 0: ledger.GetAccountRequest
 	(*GetTransactionRequest)(nil),          // 1: ledger.GetTransactionRequest
@@ -2289,44 +2280,41 @@ var file_service_proto_goTypes = []any{
 	(*WALMetrics)(nil),                     // 27: ledger.WALMetrics
 	(*KeysMetrics)(nil),                    // 28: ledger.KeysMetrics
 	(*LevelMetrics)(nil),                   // 29: ledger.LevelMetrics
-	nil,                                    // 30: ledger.CreateLedgerRequest.MetadataEntry
-	nil,                                    // 31: ledger.CreateTransactionPayload.MetadataEntry
-	nil,                                    // 32: ledger.CreateTransactionPayload.AccountMetadataEntry
-	nil,                                    // 33: ledger.RevertTransactionPayload.MetadataEntry
-	(*commonpb.Log)(nil),                   // 34: common.Log
-	(*commonpb.Posting)(nil),               // 35: common.Posting
-	(*commonpb.Script)(nil),                // 36: common.Script
-	(*commonpb.Timestamp)(nil),             // 37: common.Timestamp
-	(*commonpb.SaveMetadataCommand)(nil),   // 38: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil), // 39: common.DeleteMetadataCommand
-	(*commonpb.MetadataSet)(nil),           // 40: common.MetadataSet
-	(*commonpb.LedgerInfo)(nil),            // 41: common.LedgerInfo
-	(*commonpb.Account)(nil),               // 42: common.Account
-	(*commonpb.Transaction)(nil),           // 43: common.Transaction
-	(*raftcmdpb.ClusterState)(nil),         // 44: raft.ClusterState
+	nil,                                    // 30: ledger.CreateTransactionPayload.AccountMetadataEntry
+	(*commonpb.Log)(nil),                   // 31: common.Log
+	(*commonpb.MetadataSet)(nil),           // 32: common.MetadataSet
+	(*commonpb.Posting)(nil),               // 33: common.Posting
+	(*commonpb.Script)(nil),                // 34: common.Script
+	(*commonpb.Timestamp)(nil),             // 35: common.Timestamp
+	(*commonpb.SaveMetadataCommand)(nil),   // 36: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil), // 37: common.DeleteMetadataCommand
+	(*commonpb.LedgerInfo)(nil),            // 38: common.LedgerInfo
+	(*commonpb.Account)(nil),               // 39: common.Account
+	(*commonpb.Transaction)(nil),           // 40: common.Transaction
+	(*raftcmdpb.ClusterState)(nil),         // 41: raft.ClusterState
 }
 var file_service_proto_depIdxs = []int32{
 	15, // 0: ledger.GetAccountRequest.ledger:type_name -> ledger.LedgerNameOrId
 	15, // 1: ledger.GetTransactionRequest.ledger:type_name -> ledger.LedgerNameOrId
-	34, // 2: ledger.StreamLogsResponse.log:type_name -> common.Log
-	30, // 3: ledger.CreateLedgerRequest.metadata:type_name -> ledger.CreateLedgerRequest.MetadataEntry
+	31, // 2: ledger.StreamLogsResponse.log:type_name -> common.Log
+	32, // 3: ledger.CreateLedgerRequest.metadata:type_name -> common.MetadataSet
 	15, // 4: ledger.GetLedgerRequest.ledger:type_name -> ledger.LedgerNameOrId
 	12, // 5: ledger.ApplyRequest.actions:type_name -> ledger.Request
-	34, // 6: ledger.ApplyResponse.logs:type_name -> common.Log
+	31, // 6: ledger.ApplyResponse.logs:type_name -> common.Log
 	16, // 7: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	4,  // 8: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
 	5,  // 9: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
-	35, // 10: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	36, // 11: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	37, // 12: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	31, // 13: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
-	32, // 14: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	33, // 15: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
+	33, // 10: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	34, // 11: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	35, // 12: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	32, // 13: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
+	30, // 14: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	32, // 15: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
 	15, // 16: ledger.LedgerApplyRequest.ledger:type_name -> ledger.LedgerNameOrId
 	13, // 17: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
-	38, // 18: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
+	36, // 18: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
 	14, // 19: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	39, // 20: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
+	37, // 20: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
 	19, // 21: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
 	20, // 22: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
 	21, // 23: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
@@ -2338,7 +2326,7 @@ var file_service_proto_depIdxs = []int32{
 	27, // 29: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
 	28, // 30: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
 	29, // 31: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
-	40, // 32: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	32, // 32: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
 	7,  // 33: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
 	8,  // 34: ledger.LedgerService.GetLedger:input_type -> ledger.GetLedgerRequest
 	0,  // 35: ledger.LedgerService.GetAccount:input_type -> ledger.GetAccountRequest
@@ -2347,14 +2335,14 @@ var file_service_proto_depIdxs = []int32{
 	10, // 38: ledger.LedgerService.Apply:input_type -> ledger.ApplyRequest
 	17, // 39: ledger.LedgerService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
 	9,  // 40: ledger.LedgerService.GetClusterState:input_type -> ledger.GetClusterStateRequest
-	41, // 41: ledger.LedgerService.GetAllLedgersInfo:output_type -> common.LedgerInfo
-	41, // 42: ledger.LedgerService.GetLedger:output_type -> common.LedgerInfo
-	42, // 43: ledger.LedgerService.GetAccount:output_type -> common.Account
-	43, // 44: ledger.LedgerService.GetTransaction:output_type -> common.Transaction
+	38, // 41: ledger.LedgerService.GetAllLedgersInfo:output_type -> common.LedgerInfo
+	38, // 42: ledger.LedgerService.GetLedger:output_type -> common.LedgerInfo
+	39, // 43: ledger.LedgerService.GetAccount:output_type -> common.Account
+	40, // 44: ledger.LedgerService.GetTransaction:output_type -> common.Transaction
 	3,  // 45: ledger.LedgerService.StreamLogs:output_type -> ledger.StreamLogsResponse
 	11, // 46: ledger.LedgerService.Apply:output_type -> ledger.ApplyResponse
 	18, // 47: ledger.LedgerService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	44, // 48: ledger.LedgerService.GetClusterState:output_type -> raft.ClusterState
+	41, // 48: ledger.LedgerService.GetClusterState:output_type -> raft.ClusterState
 	41, // [41:49] is the sub-list for method output_type
 	33, // [33:41] is the sub-list for method input_type
 	33, // [33:33] is the sub-list for extension type_name
@@ -2388,7 +2376,7 @@ func file_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_proto_rawDesc), len(file_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

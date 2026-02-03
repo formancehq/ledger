@@ -23,7 +23,7 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Script          *commonpb.Script             `json:"script,omitempty"`
 	}{
 		AccountMetadata: accountMeta,
-		Metadata:        x.Metadata,
+		Metadata:        commonpb.MetadataSetToMap(x.Metadata),
 		Timestamp:       x.Timestamp,
 		Reference:       x.Reference,
 		Postings:        x.Postings,
@@ -42,7 +42,7 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		TransactionId:   x.TransactionId,
 		Force:           x.Force,
 		AtEffectiveDate: x.AtEffectiveDate,
-		Metadata:        x.Metadata,
+		Metadata:        commonpb.MetadataSetToMap(x.Metadata),
 	})
 }
 
@@ -227,7 +227,7 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 		TransactionId:   raw.ID,
 		Force:           raw.Force,
 		AtEffectiveDate: raw.AtEffectiveDate,
-		Metadata:        raw.Metadata,
+		Metadata:        commonpb.MetadataSetFromMap(raw.Metadata),
 	}, nil
 }
 

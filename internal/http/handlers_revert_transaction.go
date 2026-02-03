@@ -49,12 +49,13 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	// Extract optional fields from request body
 	if reqBody != nil {
 		if metadata, ok := reqBody["metadata"].(map[string]interface{}); ok {
-			payload.Metadata = make(map[string]string)
+			metadataMap := make(map[string]string)
 			for k, v := range metadata {
 				if strVal, ok := v.(string); ok {
-					payload.Metadata[k] = strVal
+					metadataMap[k] = strVal
 				}
 			}
+			payload.Metadata = commonpb.MetadataSetFromMap(metadataMap)
 		}
 		if force, ok := reqBody["force"].(bool); ok {
 			payload.Force = force

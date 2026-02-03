@@ -80,7 +80,7 @@ func createLedgerAction(name string, metadata map[string]string) *servicepb.Requ
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:     name,
-				Metadata: metadata,
+				Metadata: commonpb.MetadataSetFromMap(metadata),
 			},
 		},
 	}
@@ -108,7 +108,7 @@ func createTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:        postings,
-						Metadata:        metadata,
+						Metadata:        commonpb.MetadataSetFromMap(metadata),
 						AccountMetadata: accountMetadata,
 					},
 				},
@@ -222,7 +222,7 @@ func revertTransactionAction(ledgerName string, transactionID uint64, force, atE
 						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
-						Metadata:        metadata,
+						Metadata:        commonpb.MetadataSetFromMap(metadata),
 					},
 				},
 			},

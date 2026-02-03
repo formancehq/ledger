@@ -61,10 +61,10 @@ func runLedgersGet(cmd *cobra.Command, args []string) error {
 		_, _ = fmt.Fprintf(w, "Created At:\t%s\n", ledger.CreatedAt.AsTime().Format(time.RFC3339))
 	}
 
-	if len(ledger.Metadata) > 0 {
+	if ledger.Metadata != nil && len(ledger.Metadata.Metadata) > 0 {
 		_, _ = fmt.Fprintf(w, "\nMetadata:\n")
-		for key, value := range ledger.Metadata {
-			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", key, value)
+		for _, md := range ledger.Metadata.Metadata {
+			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", md.Key, md.Value.Value)
 		}
 	}
 

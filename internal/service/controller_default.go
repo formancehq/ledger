@@ -442,7 +442,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 	// Merge script metadata with input metadata
 	var finalMetadata metadata.Metadata
 	if input.Metadata != nil {
-		finalMetadata = input.Metadata
+		finalMetadata = commonpb.MetadataSetToMap(input.Metadata)
 	}
 	if scriptMetadata != nil {
 		if finalMetadata == nil {
@@ -674,7 +674,8 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 		}
 	}
 	if input.Metadata != nil {
-		for k, v := range input.Metadata {
+		inputMd := commonpb.MetadataSetToMap(input.Metadata)
+		for k, v := range inputMd {
 			revertMetadata[k] = v
 		}
 	}
@@ -814,7 +815,7 @@ func (ctrl *DefaultController) createLedger(_ context.Context, _ *unitOfWork, in
 	return &raftcmdpb.AnyCommand{Command: &raftcmdpb.AnyCommand_CreateLedger{
 		CreateLedger: &raftcmdpb.CreateLedgerCommand{
 			Name:     input.Name,
-			Metadata: input.Metadata,
+			Metadata: commonpb.MetadataSetToMap(input.Metadata),
 		},
 	}}, nil
 }
