@@ -265,10 +265,11 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 		return nil, fmt.Errorf("last snapshot index is %d, expecting lower than %d, node out of sync", fsm.snapshotIndex, fsm.storeLastAppliedIndex)
 	}
 
-	batch := fsm.store.NewBatch(entries[len(entries)-1].Index)
+	batch := fsm.store.NewBatch()
 	defer func() {
 		_ = batch.Cancel()
 	}()
+	lastIndex := entries[len(entries)-1].Index
 	cmd := &raftcmdpb.CommandBatch{}
 
 	ret := make([]ApplyResult, 0, len(entries))
@@ -300,6 +301,9 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]Ap
 		ret = append(ret, *result)
 	}
 
+	if err := batch.SetAppliedIndex(lastIndex); err != nil {
+		return nil, fmt.Errorf("setting applied index: %w", err)
+	}
 	if err := batch.Commit(); err != nil {
 		return nil, fmt.Errorf("committing batch: %w", err)
 	}
@@ -559,7 +563,7 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 		return 0, fmt.Errorf("streaming system logs from peer: %w", err)
 	}
 
-	batch := fsm.store.NewBatch(fsm.snapshotIndex)
+	batch := fsm.store.NewBatch()
 	defer func() {
 		_ = batch.Cancel()
 	}()
@@ -590,6 +594,9 @@ func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStream
 		"logsWritten": count,
 	}).Infof("Synced system logs from leader")
 
+	if err := batch.SetAppliedIndex(fsm.snapshotIndex); err != nil {
+		return 0, fmt.Errorf("setting applied index: %w", err)
+	}
 	if err := batch.Commit(); err != nil {
 		return 0, fmt.Errorf("committing batch: %w", err)
 	}

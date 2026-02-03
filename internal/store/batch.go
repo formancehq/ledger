@@ -15,24 +15,37 @@ import (
 // All operations are buffered until Commit is called.
 // Cancel must be called if the batch is not committed to release resources.
 type Batch struct {
-	store            *Store
-	batch            *pebble.Batch
-	lastAppliedIndex uint64
-	keyBuffer        *bytes.Buffer
-	protoBuffer      []byte
-	committed        bool
-	marshalOptions   proto.MarshalOptions
+	store          *Store
+	batch          *pebble.Batch
+	keyBuffer      *bytes.Buffer
+	protoBuffer    []byte
+	committed      bool
+	marshalOptions proto.MarshalOptions
 }
 
 // NewBatch creates a new Batch for atomic operations.
-func (s *Store) NewBatch(lastAppliedIndex uint64) *Batch {
+func (s *Store) NewBatch() *Batch {
 	return &Batch{
-		store:            s,
-		batch:            s.db.NewBatch(),
-		lastAppliedIndex: lastAppliedIndex,
-		keyBuffer:        bytes.NewBuffer(make([]byte, 0, 1024)),
-		protoBuffer:      make([]byte, 0, 1024),
+		store:       s,
+		batch:       s.db.NewBatch(),
+		keyBuffer:   bytes.NewBuffer(make([]byte, 0, 1024)),
+		protoBuffer: make([]byte, 0, 1024),
 	}
+}
+
+// SetAppliedIndex writes the last applied Raft index to the batch.
+func (b *Batch) SetAppliedIndex(index uint64) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	writeByte(b.keyBuffer, keyPrefixLastAppliedIndex)
+	lastAppliedIndexValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(lastAppliedIndexValue, index)
+	if err := setOnBatch(b.batch, b.keyBuffer, lastAppliedIndexValue); err != nil {
+		return fmt.Errorf("updating last applied index: %w", err)
+	}
+	return nil
 }
 
 // AppendLogs appends system logs to the batch.
@@ -237,17 +250,7 @@ func (b *Batch) Commit() error {
 		return fmt.Errorf("batch already committed")
 	}
 
-	// Write lastAppliedIndex
-	if b.lastAppliedIndex > 0 {
-		writeByte(b.keyBuffer, keyPrefixLastAppliedIndex)
-		lastAppliedIndexValue := make([]byte, 8)
-		binary.BigEndian.PutUint64(lastAppliedIndexValue, b.lastAppliedIndex)
-		if err := setOnBatch(b.batch, b.keyBuffer, lastAppliedIndexValue); err != nil {
-			return fmt.Errorf("updating last applied index: %w", err)
-		}
-	}
-
-	// Commit with NoSync for performance
+// Commit with NoSync for performance
 	if err := b.batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}

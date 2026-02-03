@@ -25,7 +25,7 @@ type StoreInterceptor struct {
 	OnGetSequenceForIdempotencyKey func(delegate *Store, idempotencyKey string) (uint64, error)
 	OnGetSequenceForTransactionID  func(delegate *Store, ledgerID uint32, transactionID uint64) (uint64, error)
 	OnIsTransactionReverted        func(delegate *Store, ledgerID uint32, transactionID uint64) (bool, error)
-	OnNewBatch                     func(delegate *Store, lastAppliedIndex uint64) *Batch
+	OnNewBatch                     func(delegate *Store) *Batch
 	OnCreateSnapshot               func(delegate *Store) error
 	OnGetLastAppliedIndex          func(delegate *Store) (uint64, error)
 	OnGetLastSequence              func(delegate *Store) (uint64, error)
@@ -144,15 +144,15 @@ func (s *StoreInterceptor) IsTransactionReverted(ledgerID uint32, transactionID 
 	return s.delegate.IsTransactionReverted(ledgerID, transactionID)
 }
 
-func (s *StoreInterceptor) NewBatch(lastAppliedIndex uint64) *Batch {
+func (s *StoreInterceptor) NewBatch() *Batch {
 	s.mu.RLock()
 	interceptor := s.OnNewBatch
 	s.mu.RUnlock()
 
 	if interceptor != nil {
-		return interceptor(s.delegate, lastAppliedIndex)
+		return interceptor(s.delegate)
 	}
-	return s.delegate.NewBatch(lastAppliedIndex)
+	return s.delegate.NewBatch()
 }
 
 func (s *StoreInterceptor) CreateSnapshot() error {
@@ -235,7 +235,7 @@ func (s *StoreInterceptor) SetGetBalanceDiffsInterceptor(fn func(delegate *Store
 	s.mu.Unlock()
 }
 
-func (s *StoreInterceptor) SetNewBatchInterceptor(fn func(delegate *Store, lastAppliedIndex uint64) *Batch) {
+func (s *StoreInterceptor) SetNewBatchInterceptor(fn func(delegate *Store) *Batch) {
 	s.mu.Lock()
 	s.OnNewBatch = fn
 	s.mu.Unlock()

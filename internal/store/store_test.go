@@ -55,7 +55,7 @@ func TestPebbleStore(t *testing.T) {
 // registerLedger is a helper function to register a ledger and return its ID
 func registerLedger(t *testing.T, s *Store, name string, id uint32) {
 	t.Helper()
-	batch := s.NewBatch(0)
+	batch := s.NewBatch()
 	err := batch.SaveLedger(&commonpb.LedgerInfo{
 		Id:        id,
 		Name:      name,
@@ -69,11 +69,11 @@ func registerLedger(t *testing.T, s *Store, name string, id uint32) {
 // appendLogs is a helper function to append logs using the batch pattern
 func appendLogs(t *testing.T, s *Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
-	batch := s.NewBatch(lastAppliedIndex)
+	batch := s.NewBatch()
 	err := batch.AppendLogs(logs...)
 	require.NoError(t, err)
-	err = batch.Commit()
-	require.NoError(t, err)
+	require.NoError(t, batch.SetAppliedIndex(lastAppliedIndex))
+	require.NoError(t, batch.Commit())
 }
 
 func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
@@ -95,7 +95,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 		s := createStore(t)
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
-		batch := s.NewBatch(0)
+		batch := s.NewBatch()
 		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
 		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(100)), RaftIndex: 1}))
 		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "user", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(50)), RaftIndex: 2}))
@@ -178,7 +178,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 		s := createStore(t)
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
-		batch := s.NewBatch(0)
+		batch := s.NewBatch()
 		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
 			LedgerID:  testLedgerID,
 			Account:   "bank",
@@ -489,11 +489,12 @@ func TestStoreLastAppliedIndex(t *testing.T) {
 	require.Equal(t, uint64(0), lastIndex)
 
 	// Create batch with index 5
-	batch := s.NewBatch(5)
+	batch := s.NewBatch()
 	require.NoError(t, batch.SaveLedger(&commonpb.LedgerInfo{
 		Id:   1,
 		Name: "test",
 	}))
+	require.NoError(t, batch.SetAppliedIndex(5))
 	require.NoError(t, batch.Commit())
 
 	// Verify last applied index updated
@@ -502,11 +503,12 @@ func TestStoreLastAppliedIndex(t *testing.T) {
 	require.Equal(t, uint64(5), lastIndex)
 
 	// Create another batch with index 10
-	batch = s.NewBatch(10)
+	batch = s.NewBatch()
 	require.NoError(t, batch.SaveLedger(&commonpb.LedgerInfo{
 		Id:   2,
 		Name: "test2",
 	}))
+	require.NoError(t, batch.SetAppliedIndex(10))
 	require.NoError(t, batch.Commit())
 
 	lastIndex, err = s.GetLastAppliedIndex()
@@ -530,7 +532,7 @@ func TestStoreTransactionIDIndex(t *testing.T) {
 	registerLedger(t, s, "test-ledger", ledgerID)
 
 	// Store transaction updates (init)
-	batch := s.NewBatch(1)
+	batch := s.NewBatch()
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -584,7 +586,7 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	registerLedger(t, s, "test-ledger", ledgerID)
 
 	// Store transaction init first
-	batch := s.NewBatch(1)
+	batch := s.NewBatch()
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -603,7 +605,7 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	require.False(t, reverted)
 
 	// Mark as reverted
-	batch = s.NewBatch(2)
+	batch = s.NewBatch()
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 2,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -643,7 +645,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 
 	var ledgerID uint32 = 1
 	createdAt := commonpb.NewTimestamp(time.Now())
-	batch := s.NewBatch(0)
+	batch := s.NewBatch()
 	err = batch.SaveLedger(&commonpb.LedgerInfo{
 		Id:        ledgerID,
 		Name:      "test-ledger",
@@ -653,7 +655,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Add some data
-	batch = s.NewBatch(1)
+	batch = s.NewBatch()
 	require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: ledgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
 	require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
 		LedgerID:  ledgerID,
@@ -684,7 +686,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 
 	// Soft delete ledger
 	deletedAt := commonpb.NewTimestamp(time.Now())
-	batch = s.NewBatch(2)
+	batch = s.NewBatch()
 	require.NoError(t, batch.SaveLedger(&commonpb.LedgerInfo{
 		Id:        ledgerID,
 		Name:      "test-ledger",
@@ -729,7 +731,7 @@ func TestStoreBalanceBase(t *testing.T) {
 	require.Nil(t, base)
 
 	// Store balance base at raft index 10
-	batch := s.NewBatch(10)
+	batch := s.NewBatch()
 	require.NoError(t, batch.SetBalanceBase(BalanceBase{
 		LedgerID:  ledgerID,
 		Account:   "bank",
@@ -758,7 +760,7 @@ func TestStoreBalanceBase(t *testing.T) {
 	require.Nil(t, base)
 
 	// Store another balance base at raft index 20
-	batch = s.NewBatch(20)
+	batch = s.NewBatch()
 	require.NoError(t, batch.SetBalanceBase(BalanceBase{
 		LedgerID:  ledgerID,
 		Account:   "bank",
