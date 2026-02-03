@@ -110,7 +110,7 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(key BalanceKey, diff *commonpb.BigInt) error {
+func (b *Batch) AppendBalanceDiff(key TimestampedBalanceKey, diff *commonpb.BigInt) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -135,7 +135,7 @@ func (b *Batch) AppendBalanceDiff(key BalanceKey, diff *commonpb.BigInt) error {
 }
 
 // SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair.
-func (b *Batch) SetBalanceBase(key BalanceKey, balance *commonpb.BigInt) error {
+func (b *Batch) SetBalanceBase(key TimestampedBalanceKey, balance *commonpb.BigInt) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -161,7 +161,7 @@ func (b *Batch) SetBalanceBase(key BalanceKey, balance *commonpb.BigInt) error {
 
 // AppendMetadataDiff appends a metadata diff for an account key.
 // If value is nil, it represents a deletion of the key (stored as empty value).
-func (b *Batch) AppendMetadataDiff(key MetadataKey, value *commonpb.MetadataValue) error {
+func (b *Batch) AppendMetadataDiff(key TimestampedMetadataKey, value *commonpb.MetadataValue) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
@@ -192,7 +192,7 @@ func (b *Batch) AppendMetadataDiff(key MetadataKey, value *commonpb.MetadataValu
 
 // SetMetadataBase stores a metadata base (compacted snapshot) for an account/key pair.
 // If value is nil, it represents a deletion of the key at this base index.
-func (b *Batch) SetMetadataBase(key MetadataKey, value *commonpb.MetadataValue) error {
+func (b *Batch) SetMetadataBase(key TimestampedMetadataKey, value *commonpb.MetadataValue) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}

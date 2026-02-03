@@ -424,16 +424,16 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 
 		projectTransaction := func(batch *store.Batch, tx *commonpb.Transaction) error {
 			for _, posting := range tx.Postings {
-				sourceKey := store.BalanceKey{
-					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: posting.Source, RaftIndex: index},
-					Asset:      posting.Asset,
+				sourceKey := store.TimestampedBalanceKey{
+					TimestampedAccountKey: store.TimestampedAccountKey{LedgerName: ledgerName, Account: posting.Source, RaftIndex: index},
+					Asset:                 posting.Asset,
 				}
 				if err := batch.AppendBalanceDiff(sourceKey, posting.Amount.Neg()); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
-				destKey := store.BalanceKey{
-					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: posting.Destination, RaftIndex: index},
-					Asset:      posting.Asset,
+				destKey := store.TimestampedBalanceKey{
+					TimestampedAccountKey: store.TimestampedAccountKey{LedgerName: ledgerName, Account: posting.Destination, RaftIndex: index},
+					Asset:                 posting.Asset,
 				}
 				if err := batch.AppendBalanceDiff(destKey, posting.Amount); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
@@ -466,9 +466,9 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 					if metadataSet != nil {
 						for _, md := range metadataSet.Metadata {
 							if md != nil && md.Value != nil {
-								key := store.MetadataKey{
-									AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account, RaftIndex: log.Sequence},
-									Key:        md.Key,
+								key := store.TimestampedMetadataKey{
+									TimestampedAccountKey: store.TimestampedAccountKey{LedgerName: ledgerName, Account: account, RaftIndex: log.Sequence},
+									Key:                   md.Key,
 								}
 								if err := batch.AppendMetadataDiff(key, md.Value); err != nil {
 									return err
@@ -516,9 +516,9 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				if payload.SavedMetadata.Metadata != nil {
 					for _, md := range payload.SavedMetadata.Metadata.Metadata {
 						if md != nil && md.Value != nil {
-							key := store.MetadataKey{
-								AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
-								Key:        md.Key,
+							key := store.TimestampedMetadataKey{
+								TimestampedAccountKey: store.TimestampedAccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
+								Key:                   md.Key,
 							}
 							if err := batch.AppendMetadataDiff(key, md.Value); err != nil {
 								return err
@@ -529,9 +529,9 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			}
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
-				key := store.MetadataKey{
-					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
-					Key:        payload.DeletedMetadata.Key,
+				key := store.TimestampedMetadataKey{
+					TimestampedAccountKey: store.TimestampedAccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
+					Key:                   payload.DeletedMetadata.Key,
 				}
 				if err := batch.AppendMetadataDiff(key, nil); err != nil { // nil means deletion
 					return err

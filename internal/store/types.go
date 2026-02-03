@@ -7,16 +7,20 @@ import (
 type AccountKey struct {
 	LedgerName string
 	Account    string
-	RaftIndex  uint64
 }
 
-type BalanceKey struct {
+type TimestampedAccountKey struct {
 	AccountKey
+	RaftIndex uint64
+}
+
+type TimestampedBalanceKey struct {
+	TimestampedAccountKey
 	Asset string
 }
 
-type MetadataKey struct {
-	AccountKey
+type TimestampedMetadataKey struct {
+	TimestampedAccountKey
 	Key string
 }
 
