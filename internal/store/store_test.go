@@ -96,10 +96,10 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch()
-		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
-		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(100)), RaftIndex: 1}))
-		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "user", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(50)), RaftIndex: 2}))
-		require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: testLedgerID, Account: "bank", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-50)), RaftIndex: 2}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "world", RaftIndex: 1}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(-100))}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 1}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(100))}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "user", RaftIndex: 2}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(50))}))
+		require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 2}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(-50))}))
 		require.NoError(t, batch.Commit())
 
 		diffs, err := s.GetBalanceDiffs(testLedgerID, map[string][]string{
@@ -179,27 +179,9 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch()
-		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
-			LedgerID:  testLedgerID,
-			Account:   "bank",
-			Key:       "account_type",
-			Value:     ptr("asset"),
-			RaftIndex: 1,
-		}))
-		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
-			LedgerID:  testLedgerID,
-			Account:   "bank",
-			Key:       "label",
-			Value:     ptr("Bank Account"),
-			RaftIndex: 2,
-		}))
-		require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
-			LedgerID:  testLedgerID,
-			Account:   "bank",
-			Key:       "old_key",
-			Value:     nil, // nil means deletion
-			RaftIndex: 3,
-		}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 1}, Key: "account_type"}, MetadataDiff{Value: ptr("asset")}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 2}, Key: "label"}, MetadataDiff{Value: ptr("Bank Account")}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 3}, Key: "old_key"}, MetadataDiff{Value: nil}))
 		require.NoError(t, batch.Commit())
 
 		accountsMetadata, err := s.GetAccountMetadata(testLedgerID, []string{"bank", "user", "world", "non-existing"})
@@ -656,14 +638,8 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	require.NoError(t, batch.AppendBalanceDiff(BalanceDiff{LedgerID: ledgerID, Account: "world", Asset: "USD", Diff: commonpb.NewBigInt(big.NewInt(-100)), RaftIndex: 1}))
-	require.NoError(t, batch.AppendMetadataDiff(MetadataDiff{
-		LedgerID:  ledgerID,
-		Account:   "bank",
-		Key:       "key",
-		Value:     ptr("value"),
-		RaftIndex: 1,
-	}))
+	require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "world", RaftIndex: 1}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(-100))}))
+	require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "bank", RaftIndex: 1}, Key: "key"}, MetadataDiff{Value: ptr("value")}))
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 1, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -732,13 +708,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store balance base at raft index 10
 	batch := s.NewBatch()
-	require.NoError(t, batch.SetBalanceBase(BalanceBase{
-		LedgerID:  ledgerID,
-		Account:   "bank",
-		Asset:     "USD",
-		Balance:   commonpb.NewBigInt(big.NewInt(1000)),
-		RaftIndex: 10,
-	}))
+	require.NoError(t, batch.SetBalanceBase(BalanceKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "bank", RaftIndex: 10}, Asset: "USD"}, BalanceBase{Balance: commonpb.NewBigInt(big.NewInt(1000))}))
 	require.NoError(t, batch.Commit())
 
 	// Query with maxRaftIndex >= 10 should return the base
@@ -761,13 +731,7 @@ func TestStoreBalanceBase(t *testing.T) {
 
 	// Store another balance base at raft index 20
 	batch = s.NewBatch()
-	require.NoError(t, batch.SetBalanceBase(BalanceBase{
-		LedgerID:  ledgerID,
-		Account:   "bank",
-		Asset:     "USD",
-		Balance:   commonpb.NewBigInt(big.NewInt(2000)),
-		RaftIndex: 20,
-	}))
+	require.NoError(t, batch.SetBalanceBase(BalanceKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "bank", RaftIndex: 20}, Asset: "USD"}, BalanceBase{Balance: commonpb.NewBigInt(big.NewInt(2000))}))
 	require.NoError(t, batch.Commit())
 
 	// Query with maxRaftIndex = 15 should return base at index 10

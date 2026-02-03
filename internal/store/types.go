@@ -4,19 +4,25 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-// MetricsProvider is an optional interface for stores that provide metrics.
-type MetricsProvider interface {
-	// GetMetrics returns store-specific metrics as proto message.
-	GetMetrics() any
+type AccountKey struct {
+	LedgerID uint32
+	Account  string
+	RaftIndex uint64
+}
+
+type BalanceKey struct {
+	AccountKey
+	Asset string
+}
+
+type MetadataKey struct {
+	AccountKey
+	Key string
 }
 
 // BalanceDiff represents a balance change for an account/asset pair (for writing).
 type BalanceDiff struct {
-	LedgerID  uint32
-	Account   string
-	Asset     string
 	Diff      *commonpb.BigInt
-	RaftIndex uint64
 }
 
 // StoredBalanceDiff represents a balance change retrieved from storage (for reading).
@@ -29,11 +35,7 @@ type StoredBalanceDiff struct {
 // It stores the cumulative balance at a specific Raft index, allowing efficient
 // balance computation by summing the base with subsequent diffs.
 type BalanceBase struct {
-	LedgerID  uint32
-	Account   string
-	Asset     string
 	Balance   *commonpb.BigInt
-	RaftIndex uint64
 }
 
 // StoredBalanceBase represents a balance base retrieved from storage.
@@ -46,11 +48,7 @@ type StoredBalanceBase struct {
 // Each entry stores a single key-value pair with its associated raft index.
 // If Value is nil, it represents a deletion of the key.
 type MetadataDiff struct {
-	LedgerID  uint32
-	Account   string
-	Key       string
 	Value     *string // nil means deletion
-	RaftIndex uint64
 }
 
 // StoredMetadataDiff represents a metadata entry retrieved from storage (for reading).
@@ -63,11 +61,7 @@ type StoredMetadataDiff struct {
 // It stores the metadata value at a specific Raft index, allowing efficient
 // metadata computation by applying the base and subsequent diffs.
 type MetadataBase struct {
-	LedgerID  uint32
-	Account   string
-	Key       string
 	Value     *string // nil means the key was deleted at this base
-	RaftIndex uint64
 }
 
 // StoredMetadataBase represents a metadata base retrieved from storage.

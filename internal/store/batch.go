@@ -109,16 +109,16 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(diff BalanceDiff) error {
+func (b *Batch) AppendBalanceDiff(key BalanceKey, diff BalanceDiff) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, diff.LedgerID)
+	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
 	writeByte(b.keyBuffer, keyPrefixBalanceDiff)
-	writeString(b.keyBuffer, diff.Account)
-	writeString(b.keyBuffer, diff.Asset)
-	writeUInt64(b.keyBuffer, diff.RaftIndex)
+	writeString(b.keyBuffer, key.Account)
+	writeString(b.keyBuffer, key.Asset)
+	writeUInt64(b.keyBuffer, key.RaftIndex)
 
 	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff.Diff)
 	if err != nil {
@@ -126,23 +126,23 @@ func (b *Batch) AppendBalanceDiff(diff BalanceDiff) error {
 	}
 
 	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
-		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", diff.LedgerID, diff.Account, diff.Asset, err)
+		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", key.LedgerID, key.Account, key.Asset, err)
 	}
 
 	return nil
 }
 
 // SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair.
-func (b *Batch) SetBalanceBase(base BalanceBase) error {
+func (b *Batch) SetBalanceBase(key BalanceKey, base BalanceBase) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, base.LedgerID)
+	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
 	writeByte(b.keyBuffer, keyPrefixBalanceBase)
-	writeString(b.keyBuffer, base.Account)
-	writeString(b.keyBuffer, base.Asset)
-	writeUInt64(b.keyBuffer, base.RaftIndex)
+	writeString(b.keyBuffer, key.Account)
+	writeString(b.keyBuffer, key.Asset)
+	writeUInt64(b.keyBuffer, key.RaftIndex)
 
 	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, base.Balance)
 	if err != nil {
@@ -150,7 +150,7 @@ func (b *Batch) SetBalanceBase(base BalanceBase) error {
 	}
 
 	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
-		return fmt.Errorf("storing balance base for ledger %d account %s asset %s: %w", base.LedgerID, base.Account, base.Asset, err)
+		return fmt.Errorf("storing balance base for ledger %d account %s asset %s: %w", key.LedgerID, key.Account, key.Asset, err)
 	}
 
 	return nil
@@ -158,16 +158,16 @@ func (b *Batch) SetBalanceBase(base BalanceBase) error {
 
 // AppendMetadataDiff appends a metadata diff for an account key.
 // If diff.Value is nil, it represents a deletion of the key (stored as empty value).
-func (b *Batch) AppendMetadataDiff(diff MetadataDiff) error {
+func (b *Batch) AppendMetadataDiff(key MetadataKey, diff MetadataDiff) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, diff.LedgerID)
+	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
 	writeByte(b.keyBuffer, keyPrefixMetadataDiff)
-	writeString(b.keyBuffer, diff.Account)
-	writeString(b.keyBuffer, diff.Key)
-	writeUInt64(b.keyBuffer, diff.RaftIndex)
+	writeString(b.keyBuffer, key.Account)
+	writeString(b.keyBuffer, key.Key)
+	writeUInt64(b.keyBuffer, key.RaftIndex)
 
 	var valueBytes []byte
 	if diff.Value != nil {
@@ -184,16 +184,16 @@ func (b *Batch) AppendMetadataDiff(diff MetadataDiff) error {
 
 // SetMetadataBase stores a metadata base (compacted snapshot) for an account/key pair.
 // If base.Value is nil, it represents a deletion of the key at this base index.
-func (b *Batch) SetMetadataBase(base MetadataBase) error {
+func (b *Batch) SetMetadataBase(key MetadataKey, base MetadataBase) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, base.LedgerID)
+	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
 	writeByte(b.keyBuffer, keyPrefixMetadataBase)
-	writeString(b.keyBuffer, base.Account)
-	writeString(b.keyBuffer, base.Key)
-	writeUInt64(b.keyBuffer, base.RaftIndex)
+	writeString(b.keyBuffer, key.Account)
+	writeString(b.keyBuffer, key.Key)
+	writeUInt64(b.keyBuffer, key.RaftIndex)
 
 	var valueBytes []byte
 	if base.Value != nil {
@@ -202,7 +202,7 @@ func (b *Batch) SetMetadataBase(base MetadataBase) error {
 	// nil Value means deletion, stored as empty value
 
 	if err := setOnBatch(b.batch, b.keyBuffer, valueBytes); err != nil {
-		return fmt.Errorf("storing metadata base for ledger %d account %s key %s: %w", base.LedgerID, base.Account, base.Key, err)
+		return fmt.Errorf("storing metadata base for ledger %d account %s key %s: %w", key.LedgerID, key.Account, key.Key, err)
 	}
 
 	return nil
