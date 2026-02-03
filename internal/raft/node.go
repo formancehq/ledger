@@ -26,10 +26,6 @@ const (
 	statusOutOfSync
 )
 
-type LogStreamer interface {
-	store.LogStreamer
-}
-
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source node.go -destination node_generated_test.go -typed -package raft . WAL
 type WAL interface {
 	raft.Storage
@@ -40,8 +36,16 @@ type WAL interface {
 	Close() error
 }
 
-type LogStreamerProvider interface {
-	GetForPeer(id uint64) (LogStreamer, error)
+// SnapshotFetcher fetches a snapshot from a peer.
+type SnapshotFetcher interface {
+	// FetchSnapshot fetches a snapshot by ID and writes it to the given directory.
+	// Returns the total size in bytes and SHA256 hash of the content.
+	FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string) (size uint64, hash string, err error)
+}
+
+// SnapshotFetcherProvider provides snapshot fetchers for peers.
+type SnapshotFetcherProvider interface {
+	GetForPeer(id uint64) (SnapshotFetcher, error)
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
@@ -55,8 +59,8 @@ type Node struct {
 	proposeCh           chan *proposal
 	confState           *raftpb.ConfState
 	futures             utils.SyncMap[uint64, *future]
-	lastSoftState       atomic.Pointer[raft.SoftState]
-	logStreamerProvider LogStreamerProvider
+	lastSoftState           atomic.Pointer[raft.SoftState]
+	snapshotFetcherProvider SnapshotFetcherProvider
 
 	store             *store.Store
 	spool             Spool
@@ -96,7 +100,7 @@ func NewNode(
 	meter metric.Meter,
 	spool Spool,
 	wal WAL,
-	logStreamerProvider LogStreamerProvider,
+	snapshotFetcherProvider SnapshotFetcherProvider,
 ) (*Node, error) {
 
 	cfg.SetDefaults()
@@ -168,9 +172,9 @@ func NewNode(
 		compactionMargin:    cfg.CompactionMargin,
 		status:              &initialStatus,
 		taskExecutor:        newSingleTaskExecutor(logger),
-		confState:           &initialConfState,
-		logStreamerProvider: logStreamerProvider,
-		readies:             make(chan raft.Ready, 1),
+		confState:               &initialConfState,
+		snapshotFetcherProvider: snapshotFetcherProvider,
+		readies:                 make(chan raft.Ready, 1),
 		readyTerminated:     make(chan raft.Ready, 1),
 		tasks:               newTaskSet(),
 		stopChannel:         make(chan chan struct{}),
@@ -717,11 +721,11 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 	node.status.Store(statusSyncing)
 
 	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		logStreamer, err := node.logStreamerProvider.GetForPeer(leader)
+		snapshotFetcher, err := node.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
-			return 0, fmt.Errorf("getting log streamer for leader %d: %w", leader, err)
+			return 0, fmt.Errorf("getting snapshot fetcher for leader %d: %w", leader, err)
 		}
-		return node.fsm.SynchronizeWithLeader(ctx, logStreamer)
+		return node.fsm.SynchronizeWithLeader(ctx, snapshotFetcher)
 	})
 
 	return nil

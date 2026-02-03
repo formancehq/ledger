@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
@@ -127,6 +128,14 @@ func (g *Gateway) Start(ctx context.Context) error {
 				"node_addr":    nodeAddr,
 			}),
 			client: servicepb.NewLedgerServiceClient(conn),
+		})
+
+		snapshotpb.RegisterSnapshotServiceServer(server, &snapshotServiceGateway{
+			logger: g.logger.WithFields(map[string]any{
+				"gateway_port": port,
+				"node_addr":    nodeAddr,
+			}),
+			client: snapshotpb.NewSnapshotServiceClient(conn),
 		})
 
 		// Start listening
@@ -415,6 +424,41 @@ func (g *ledgerServiceGateway) StreamLogs(req *servicepb.StreamLogsRequest, stre
 
 	// Create client stream to backend
 	clientStream, err := g.client.StreamLogs(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to create client stream: %w", err)
+	}
+
+	// Forward messages from backend to client
+	for {
+		msg, err := clientStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("failed to receive from backend: %w", err)
+		}
+		if err := stream.Send(msg); err != nil {
+			return fmt.Errorf("failed to send to client: %w", err)
+		}
+	}
+}
+
+// snapshotServiceGateway forwards SnapshotService calls
+type snapshotServiceGateway struct {
+	snapshotpb.UnimplementedSnapshotServiceServer
+	logger logging.Logger
+	client snapshotpb.SnapshotServiceClient
+}
+
+func (g *snapshotServiceGateway) DescribeSnapshot(ctx context.Context, req *snapshotpb.DescribeSnapshotRequest) (*snapshotpb.DescribeSnapshotResponse, error) {
+	return g.client.DescribeSnapshot(ctx, req)
+}
+
+func (g *snapshotServiceGateway) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream grpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
+	ctx := stream.Context()
+
+	// Create client stream to backend
+	clientStream, err := g.client.FetchSnapshot(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to create client stream: %w", err)
 	}

@@ -33,6 +33,7 @@ const (
 // It stores balances and account metadata
 type Store struct {
 	db                *pebble.DB
+	opts              *pebble.Options
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
@@ -163,6 +164,7 @@ func NewStore(
 
 	return &Store{
 		db:                db,
+		opts:              opts,
 		logger:            logger.WithField("cmp", "pebble"),
 		dataDir:           dataDir,
 		currentCheckPoint: currentCheckpoint,
@@ -848,6 +850,85 @@ func (s *Store) GetCheckpointPath(checkpointID uint64) (string, error) {
 // GetCurrentCheckpointID returns the current checkpoint ID.
 func (s *Store) GetCurrentCheckpointID() uint64 {
 	return s.currentCheckPoint
+}
+
+// PrepareCheckpointRestore prepares a directory for restoring a checkpoint from a remote peer.
+// It returns the path to the directory where the checkpoint should be extracted.
+func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+
+	// Remove any existing directory at this path
+	if err := os.RemoveAll(checkpointDir); err != nil {
+		return "", fmt.Errorf("removing existing checkpoint directory: %w", err)
+	}
+
+	// Create the directory
+	if err := os.MkdirAll(checkpointDir, 0755); err != nil {
+		return "", fmt.Errorf("creating checkpoint directory: %w", err)
+	}
+
+	return checkpointDir, nil
+}
+
+// RestoreCheckpoint restores the database from a checkpoint.
+// This closes the current database, replaces it with the checkpoint, and reopens.
+func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+
+	// Verify the checkpoint exists
+	if _, err := os.Stat(checkpointDir); err != nil {
+		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
+	}
+
+	// Close the current database
+	if err := s.db.Close(); err != nil {
+		return fmt.Errorf("closing current database: %w", err)
+	}
+
+	// Remove the live directory
+	liveDirectory := filepath.Join(s.dataDir, liveDir)
+	if err := os.RemoveAll(liveDirectory); err != nil {
+		return fmt.Errorf("removing live directory: %w", err)
+	}
+
+	// Hard link the checkpoint to the live directory
+	if err := HardLink(checkpointDir, liveDirectory); err != nil {
+		return fmt.Errorf("hard linking checkpoint to live directory: %w", err)
+	}
+
+	// Reopen the database with the same options
+	db, err := pebble.Open(liveDirectory, s.opts)
+	if err != nil {
+		return fmt.Errorf("reopening database: %w", err)
+	}
+	s.db = db
+
+	// Update the current checkpoint file
+	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile))
+	if err != nil {
+		return fmt.Errorf("creating checkpoint file: %w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if _, err := fmt.Fprintf(f, "%d", checkpointID); err != nil {
+		return fmt.Errorf("writing checkpoint file: %w", err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("syncing checkpoint file: %w", err)
+	}
+
+	// Update internal state
+	s.currentCheckPoint = checkpointID
+	s.oldestCheckpoint = checkpointID
+
+	s.logger.WithFields(map[string]any{
+		"checkpointId": checkpointID,
+	}).Infof("Database restored from checkpoint")
+
+	return nil
 }
 
 func (s *Store) GetLastAppliedIndex() (uint64, error) {

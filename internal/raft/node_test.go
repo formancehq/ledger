@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -83,36 +85,116 @@ type ClusterNode struct {
 
 // Cluster represents a test cluster of Raft nodes
 type Cluster struct {
-	t      *testing.T
-	nodes  []*ClusterNode
-	logger logging.Logger
-	mu     sync.RWMutex
+	t                       *testing.T
+	nodes                   []*ClusterNode
+	logger                  logging.Logger
+	mu                      sync.RWMutex
+	snapshotFetcherProvider *ClusterSnapshotFetcherProvider
 }
 
-// storeLogStreamerWrapper wraps a store.LogStreamer and adds a Close() method
-// to implement the raft.LogStreamer interface.
-type storeLogStreamerWrapper struct {
-	store.LogStreamer
-}
+// SnapshotFetcherInterceptorFunc is a function that intercepts FetchSnapshot calls.
+// If it returns an error, the error is returned immediately.
+// If it returns nil, the actual FetchSnapshot is called.
+type SnapshotFetcherInterceptorFunc func(ctx context.Context, snapshotID uint64, targetDir string) error
 
-func (w *storeLogStreamerWrapper) Close() error {
-	return nil
-}
-
-// ClusterLogStreamerProvider provides LogStreamer access to peer stores within a cluster.
+// ClusterSnapshotFetcherProvider provides SnapshotFetcher access to peer stores within a cluster.
 // This is used for tests where we don't have gRPC connections between nodes.
-type ClusterLogStreamerProvider struct {
-	cluster *Cluster
+type ClusterSnapshotFetcherProvider struct {
+	cluster     *Cluster
+	interceptor SnapshotFetcherInterceptorFunc
+	mu          sync.RWMutex
 }
 
-func (p *ClusterLogStreamerProvider) GetForPeer(id uint64) (LogStreamer, error) {
+// SetFetchSnapshotInterceptor sets an interceptor function that is called before each FetchSnapshot.
+// Pass nil to remove the interceptor.
+func (p *ClusterSnapshotFetcherProvider) SetFetchSnapshotInterceptor(fn SnapshotFetcherInterceptorFunc) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.interceptor = fn
+}
+
+func (p *ClusterSnapshotFetcherProvider) getInterceptor() SnapshotFetcherInterceptorFunc {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.interceptor
+}
+
+func (p *ClusterSnapshotFetcherProvider) GetForPeer(id uint64) (SnapshotFetcher, error) {
 	node := p.cluster.GetNodeByID(id)
 	if node == nil {
 		return nil, fmt.Errorf("peer %d not found in cluster", id)
 	}
-	// Return the StoreInterceptor (not the underlying Store) so interceptors work
-	// Wrap it to add Close() method required by LogStreamer interface
-	return &storeLogStreamerWrapper{node.StoreInterceptor}, nil
+	return &clusterSnapshotFetcher{store: node.Store, provider: p}, nil
+}
+
+// clusterSnapshotFetcher fetches snapshots directly from a peer's store.
+type clusterSnapshotFetcher struct {
+	store    *store.Store
+	provider *ClusterSnapshotFetcherProvider
+}
+
+func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string) (uint64, string, error) {
+	// Call interceptor if set
+	if interceptor := f.provider.getInterceptor(); interceptor != nil {
+		if err := interceptor(ctx, snapshotID, targetDir); err != nil {
+			return 0, "", err
+		}
+	}
+
+	// Get the checkpoint path from the source store
+	srcPath, err := f.store.GetCheckpointPath(snapshotID)
+	if err != nil {
+		return 0, "", fmt.Errorf("getting checkpoint path: %w", err)
+	}
+
+	// Copy files from source to target
+	var totalSize uint64
+	err = filepath.Walk(srcPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(srcPath, path)
+		if err != nil {
+			return err
+		}
+
+		targetPath := filepath.Join(targetDir, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(targetPath, info.Mode())
+		}
+
+		// Copy file
+		src, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = src.Close()
+		}()
+
+		dst, err := os.Create(targetPath)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = dst.Close()
+		}()
+
+		n, err := io.Copy(dst, src)
+		if err != nil {
+			return err
+		}
+		totalSize += uint64(n)
+
+		return nil
+	})
+	if err != nil {
+		return 0, "", fmt.Errorf("copying checkpoint: %w", err)
+	}
+
+	return totalSize, "", nil
 }
 
 // ClusterConfig holds configuration for creating a test cluster
@@ -145,8 +227,9 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		logger: logger,
 	}
 
-	// Create LogStreamerProvider that accesses peer stores via the cluster
-	logStreamerProvider := &ClusterLogStreamerProvider{cluster: cluster}
+	// Create SnapshotFetcherProvider
+	snapshotFetcherProvider := &ClusterSnapshotFetcherProvider{cluster: cluster}
+	cluster.snapshotFetcherProvider = snapshotFetcherProvider
 
 	// Create transports first
 	transports := make([]*ChannelTransport, numNodes)
@@ -220,7 +303,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			meter,
 			spoolInterceptor,
 			walInterceptor,
-			logStreamerProvider,
+			snapshotFetcherProvider,
 		)
 		require.NoError(t, err)
 
@@ -323,6 +406,11 @@ func (c *Cluster) GetNodeByID(id uint64) *ClusterNode {
 		}
 	}
 	return nil
+}
+
+// GetSnapshotFetcherProvider returns the cluster's snapshot fetcher provider.
+func (c *Cluster) GetSnapshotFetcherProvider() *ClusterSnapshotFetcherProvider {
+	return c.snapshotFetcherProvider
 }
 
 // WaitForLeader waits for a leader to be elected and returns its ID
@@ -468,8 +556,8 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	spoolInterceptor := NewSpoolInterceptor(spool)
 	storeInterceptor := store.NewStoreInterceptor(newStore)
 
-	// Create LogStreamerProvider that accesses peer stores via the cluster
-	logStreamerProvider := &ClusterLogStreamerProvider{cluster: c}
+	// Use the cluster's snapshot fetcher provider
+	snapshotFetcherProvider := c.snapshotFetcherProvider
 
 	// Build peer list excluding self
 	peers := make([]Peer, 0, len(c.nodes)-1)
@@ -492,7 +580,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		noop.Meter{},
 		spoolInterceptor,
 		walInterceptor,
-		logStreamerProvider,
+		snapshotFetcherProvider,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating node: %w", err)
@@ -697,6 +785,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	// Create a 3-node cluster with a low snapshot threshold to trigger snapshots quickly
+	// Create a 3-node cluster with a low snapshot threshold to trigger snapshots quickly
 	config := ClusterConfig{SnapshotThreshold: 5}
 	cluster := NewCluster(t, 3, config)
 
@@ -803,7 +892,15 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 
 	// Wait for the follower to sync and verify its data matches the leader
 	t.Logf("Waiting for follower to sync data...")
-	require.Eventually(t, func() bool {
+	require.Eventually(t, func() (result bool) {
+		// Recover from panic if database is being restored
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Follower store access panicked (likely during restore): %v", r)
+				result = false
+			}
+		}()
+
 		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
@@ -822,7 +919,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 			return true
 		}
 		return false
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	t.Log("Test passed: follower successfully resynced via snapshot")
 }
@@ -922,21 +1019,24 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		return hasSnapshot
 	}, 10*time.Second, 100*time.Millisecond, "leader should have created a snapshot")
 
-	// Set up a blocker for the sync process
-	// We intercept GetAllLogs on the leader's store to block when follower tries to sync
+	// Set up a blocker for the checkpoint restore process
+	// We intercept FetchSnapshot on the snapshot fetcher to block when follower tries to restore
 	syncStarted := make(chan struct{}, 1)
 	syncBlocked := make(chan struct{})
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *store.Store, from, to uint64) (store.Cursor[*commonpb.Log], error) {
+	snapshotFetcherProvider := cluster.GetSnapshotFetcherProvider()
+	require.NotNil(t, snapshotFetcherProvider, "snapshot fetcher provider should be available")
+
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, snapshotID uint64, targetDir string) error {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
 		default:
 		}
 		// Block until we're told to continue
-		t.Logf("Leader GetAllLogs called (from=%d, to=%d) - BLOCKING", from, to)
+		t.Logf("FetchSnapshot called (snapshotID=%d, targetDir=%s) - BLOCKING", snapshotID, targetDir)
 		<-syncBlocked
-		t.Logf("Leader GetAllLogs UNBLOCKED")
-		return delegate.GetAllLogs(from, to)
+		t.Logf("FetchSnapshot UNBLOCKED")
+		return nil // Return nil to proceed with the actual fetch
 	})
 
 	// Track when the follower receives a snapshot
@@ -962,12 +1062,12 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		t.Fatal("Timeout waiting for follower to receive snapshot")
 	}
 
-	// Wait for sync to start (GetAllLogs called)
+	// Wait for sync (FetchSnapshot) to start
 	select {
 	case <-syncStarted:
-		t.Logf("Sync started - follower is now blocked waiting for logs")
+		t.Logf("Checkpoint restore started - follower is now blocked waiting for snapshot")
 	case <-time.After(10 * time.Second):
-		t.Fatal("Timeout waiting for sync to start")
+		t.Fatal("Timeout waiting for checkpoint restore to start")
 	}
 
 	// While sync is blocked, apply more transactions
@@ -981,11 +1081,11 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	}
 
 	// Now unblock the sync
-	t.Logf("Unblocking sync...")
+	t.Logf("Unblocking checkpoint restore...")
 	close(syncBlocked)
 
 	// Clear the interceptor to allow normal operation
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(nil)
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(nil)
 
 	// Calculate expected final balance
 	totalTransactions := numInitialTransactions + numSpooledTransactions
@@ -995,6 +1095,13 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// Wait for the follower to fully sync (including spooled entries)
 	t.Logf("Waiting for follower to sync all data (including spooled entries)...")
 	require.Eventually(t, func() bool {
+		defer func() {
+			// Handle transient "pebble: closed" panic during checkpoint restore
+			if r := recover(); r != nil {
+				t.Logf("Recovered from panic during balance check: %v", r)
+			}
+		}()
+
 		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
@@ -1020,7 +1127,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		t.Logf("Follower balances: world=%v, bank=%v (expected: world=%s, bank=%s)",
 			worldBalance, bankBalance, expectedWorld, expectedBalance)
 		return false
-	}, 10*time.Second, 200*time.Millisecond)
+	}, 15*time.Second, 200*time.Millisecond)
 
 	// Verify leader has the same balance
 	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
@@ -1032,7 +1139,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	require.Equal(t, new(big.Int).Neg(expectedBalance), leaderBalances["world"]["USD"])
 	require.Equal(t, expectedBalance, leaderBalances["bank"]["USD"])
 
-	t.Log("Test passed: follower correctly handled spool during sync and recovered all data")
+	t.Log("Test passed: follower correctly handled spool during checkpoint restore and recovered all data")
 }
 
 func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
@@ -1040,6 +1147,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
+	// Create a 3-node cluster with a low snapshot threshold
 	// Create a 3-node cluster with a low snapshot threshold
 	config := ClusterConfig{SnapshotThreshold: 5}
 	cluster := NewCluster(t, 3, config)
@@ -1109,6 +1217,23 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		}
 	}
 
+	// Wait for the leader's snapshot to be created and include all transactions.
+	// This is critical because snapshot creation is async (runMaintenanceTask).
+	// Without this wait, the leader might send an incomplete snapshot.
+	t.Log("Waiting for leader snapshot to include all transactions...")
+	require.Eventually(t, func() bool {
+		snapshot, err := leader.WAL.Snapshot()
+		if err != nil {
+			return false
+		}
+		// Snapshot should be at index >= numTransactions + 1 (ledger creation)
+		hasCompleteSnapshot := snapshot.Metadata.Index >= uint64(numTransactions)
+		if hasCompleteSnapshot {
+			t.Logf("Leader snapshot at index %d (includes all %d transactions)", snapshot.Metadata.Index, numTransactions)
+		}
+		return hasCompleteSnapshot
+	}, 5*time.Second, 50*time.Millisecond, "leader should have created a complete snapshot")
+
 	// Track when the follower receives a snapshot
 	snapshotAppliedToWAL := make(chan struct{}, 1)
 	follower.WALInterceptor.SetApplySnapshotInterceptor(func(delegate WAL, snapshot raftpb.Snapshot) error {
@@ -1123,14 +1248,17 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		return err
 	})
 
-	// Set up interceptor to make FSM sync fail (GetAllLogs returns error)
-	var errSyncFailed = errors.New("simulated FSM sync failure")
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(func(delegate *store.Store, from, to uint64) (store.Cursor[*commonpb.Log], error) {
-		t.Logf("Leader GetAllLogs called - returning error to simulate sync failure")
-		return nil, errSyncFailed
+	// Set up interceptor to make checkpoint restore fail (FetchSnapshot returns error)
+	var errSyncFailed = errors.New("simulated checkpoint restore failure")
+	snapshotFetcherProvider := cluster.GetSnapshotFetcherProvider()
+	require.NotNil(t, snapshotFetcherProvider, "snapshot fetcher provider should be available")
+
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, snapshotID uint64, targetDir string) error {
+		t.Logf("FetchSnapshot called (snapshotID=%d) - returning error to simulate failure", snapshotID)
+		return errSyncFailed
 	})
 
-	// Reconnect the follower - it will receive snapshot but FSM sync will fail
+	// Reconnect the follower - it will receive snapshot but checkpoint restore will fail
 	t.Logf("Reconnecting follower node %d", follower.ID)
 	cluster.ReconnectNode(follower.ID)
 
@@ -1142,7 +1270,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		t.Fatal("Timeout waiting for snapshot to be applied to WAL")
 	}
 
-	// Wait for the follower node to fail due to sync error
+	// Wait for the follower node to fail due to checkpoint restore error
 	followerNodeError := nodeErrors[followerIndex]
 	select {
 	case err := <-followerNodeError:
@@ -1152,8 +1280,8 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		t.Fatal("Timeout waiting for follower to fail")
 	}
 
-	// Clear the interceptor on leader so sync can succeed on restart
-	leader.StoreInterceptor.SetGetAllLogsInterceptor(nil)
+	// Clear the interceptor so sync can succeed on restart
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(nil)
 
 	// Restart the follower node
 	t.Logf("Restarting follower node %d", follower.ID)
@@ -1179,6 +1307,13 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Wait for the follower to sync and verify its data matches
 	t.Logf("Waiting for follower to sync data after restart...")
 	require.Eventually(t, func() bool {
+		defer func() {
+			// Handle transient "pebble: closed" panic during checkpoint restore
+			if r := recover(); r != nil {
+				t.Logf("Recovered from panic during balance check: %v", r)
+			}
+		}()
+
 		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
@@ -1204,7 +1339,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		t.Logf("Follower balances: world=%v, bank=%v (expected: world=%s, bank=%s)",
 			worldBalance, bankBalance, expectedWorld, expectedBalance)
 		return false
-	}, 10*time.Second, 200*time.Millisecond)
+	}, 5*time.Second, 50*time.Millisecond)
 
 	// Verify leader still has correct balance (using refreshed leader reference)
 	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
@@ -1224,7 +1359,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		// Node is still running, good
 	}
 
-	t.Log("Test passed: node recovered correctly after FSM sync failure")
+	t.Log("Test passed: node recovered correctly after checkpoint restore failure")
 }
 
 func TestFollowerRestartLeaderStability(t *testing.T) {

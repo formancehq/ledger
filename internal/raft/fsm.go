@@ -3,7 +3,6 @@ package raft
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/time"
@@ -354,26 +353,6 @@ func (fsm *FSM) applyAction(ctx context.Context, batch *store.Batch, action *raf
 	return log, nil
 }
 
-// GetLedgerByName returns the ledger node for a given name (including deleted ledgers)
-func (fsm *FSM) GetLedgerByName(name string) (*commonpb.LedgerInfo, error) {
-	for _, state := range fsm.state.Ledgers {
-		if state.LedgerInfo.Name == name {
-			return proto.CloneOf(state.LedgerInfo), nil
-		}
-	}
-
-	return nil, commonpb.NewNotFoundError("ledger %s does not exist", name)
-}
-
-func (fsm *FSM) GetLedgerInfo(id uint32) (*commonpb.LedgerInfo, error) {
-	ledger, ok := fsm.state.Ledgers[id]
-	if !ok {
-		return nil, commonpb.NewNotFoundError("ledger %d does not exist", id)
-	}
-
-	return proto.CloneOf(ledger.LedgerInfo), nil
-}
-
 // getLedgerNameByID returns the ledger name for a given ID.
 // This is an internal helper used during log projection.
 func (fsm *FSM) getLedgerNameByID(id uint32) (string, error) {
@@ -382,16 +361,6 @@ func (fsm *FSM) getLedgerNameByID(id uint32) (string, error) {
 		return "", fmt.Errorf("ledger %d does not exist", id)
 	}
 	return ledger.LedgerInfo.Name, nil
-}
-
-// GetAllLedgers returns all ledgers (including deleted ones)
-func (fsm *FSM) GetAllLedgers() map[string]*commonpb.LedgerInfo {
-	ret := make(map[string]*commonpb.LedgerInfo, len(fsm.state.Ledgers))
-	for _, state := range fsm.state.Ledgers {
-		ret[state.LedgerInfo.Name] = proto.CloneOf(state.LedgerInfo)
-	}
-
-	return ret
 }
 
 // CreateSnapshot creates a snapshot of the FSM state
@@ -570,69 +539,58 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 	}
 }
 
-func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, logStreamer LogStreamer) (uint64, error) {
-	lastSequence, err := fsm.store.GetLastSequence()
-	if err != nil {
-		return 0, err
-	}
-
-	// If we're already up to date, nothing to do
-	if lastSequence >= fsm.state.NextSequence-1 {
-		fsm.storeLastAppliedIndex = fsm.snapshotIndex
-		return fsm.snapshotIndex, nil
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"lastSequence":    lastSequence,
-		"newNextSequence": fsm.state.NextSequence,
-	}).Infof("Syncing system logs from leader")
-
-	logStream, err := logStreamer.GetAllLogs(lastSequence, fsm.state.NextSequence-1)
-	if err != nil {
-		return 0, fmt.Errorf("streaming system logs from peer: %w", err)
-	}
-
-	batch := fsm.store.NewBatch()
-	defer func() {
-		_ = batch.Cancel()
-	}()
-
-	count := 0
-	for {
-		log, err := logStream.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
+func (fsm *FSM) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher) (uint64, error) {
+	// Restore checkpoint from the leader if needed
+	// The checkpoint ID is stored in the FSM state from the snapshot
+	if fsm.state.CheckpointId > 0 {
+		currentCheckpointID := fsm.store.GetCurrentCheckpointID()
+		if currentCheckpointID < fsm.state.CheckpointId {
+			if err := fsm.restoreCheckpoint(ctx, snapshotFetcher); err != nil {
+				return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 			}
-			return 0, fmt.Errorf("reading system log during catch-up: %w", err)
 		}
-		count++
-
-		// Project the log using the log's sequence as the index for balance diff keys
-		// (during sync we don't have the original raft index, so we use sequence which is globally unique)
-		if err := fsm.projectLog(ctx, batch, log, log.Sequence); err != nil {
-			return 0, fmt.Errorf("projecting log %d: %w", log.Sequence, err)
-		}
-
-		if err := batch.AppendLogs(log); err != nil {
-			return 0, fmt.Errorf("writing catch-up system logs to runtime store: %w", err)
-		}
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"logsWritten": count,
-	}).Infof("Synced system logs from leader")
-
-	if err := batch.SetAppliedIndex(fsm.snapshotIndex); err != nil {
-		return 0, fmt.Errorf("setting applied index: %w", err)
-	}
-	if err := batch.Commit(); err != nil {
-		return 0, fmt.Errorf("committing batch: %w", err)
 	}
 
 	fsm.storeLastAppliedIndex = fsm.snapshotIndex
 
 	return fsm.snapshotIndex, nil
+}
+
+// restoreCheckpoint restores a checkpoint from the leader.
+func (fsm *FSM) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher) error {
+	fsm.logger.WithFields(map[string]any{
+		"currentCheckpointId": fsm.store.GetCurrentCheckpointID(),
+		"targetCheckpointId":  fsm.state.CheckpointId,
+	}).Infof("Fetching checkpoint from leader")
+
+	// Prepare the checkpoint directory
+	checkpointDir, err := fsm.store.PrepareCheckpointRestore(fsm.state.CheckpointId)
+	if err != nil {
+		return fmt.Errorf("preparing checkpoint restore: %w", err)
+	}
+
+	// Fetch the checkpoint from the leader
+	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.state.CheckpointId, checkpointDir)
+	if err != nil {
+		return fmt.Errorf("fetching snapshot from leader: %w", err)
+	}
+
+	fsm.logger.WithFields(map[string]any{
+		"checkpointId": fsm.state.CheckpointId,
+		"size":         size,
+		"hash":         hash,
+	}).Infof("Checkpoint fetched from leader")
+
+	// Restore the checkpoint
+	if err := fsm.store.RestoreCheckpoint(fsm.state.CheckpointId); err != nil {
+		return fmt.Errorf("restoring checkpoint: %w", err)
+	}
+
+	fsm.logger.WithFields(map[string]any{
+		"checkpointId": fsm.state.CheckpointId,
+	}).Infof("Checkpoint restored successfully")
+
+	return nil
 }
 
 func (fsm *FSM) IsStoreUpToDate(ctx context.Context) (bool, error) {

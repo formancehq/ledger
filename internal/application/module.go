@@ -64,20 +64,20 @@ func Module() fx.Option {
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
 				})
 			},
-		func(transport *raft.DefaultTransport) raft.LogStreamerProvider {
-			return service.GRPCLogStreamerProvider(transport)
+		func(transport *raft.DefaultTransport) raft.SnapshotFetcherProvider {
+			return service.GRPCSnapshotFetcherProvider(transport)
 		},
 		func(
 			params struct {
 				fx.In
-				Config              raft.NodeConfig
-				Logger              logging.Logger
-				Transport           *raft.DefaultTransport
-				MeterProvider       metric.MeterProvider
-				Store               *store.Store
-				WAL                 *wal.WAL
-				Spool               *raft.DefaultSpool
-				LogStreamerProvider raft.LogStreamerProvider
+				Config                  raft.NodeConfig
+				Logger                  logging.Logger
+				Transport               *raft.DefaultTransport
+				MeterProvider           metric.MeterProvider
+				Store                   *store.Store
+				WAL                     *wal.WAL
+				Spool                   *raft.DefaultSpool
+				SnapshotFetcherProvider raft.SnapshotFetcherProvider
 			},
 		) (*raft.Node, error) {
 			return raft.NewNode(
@@ -88,7 +88,7 @@ func Module() fx.Option {
 				params.MeterProvider.Meter("raft.node"),
 				params.Spool,
 				params.WAL,
-				params.LogStreamerProvider,
+				params.SnapshotFetcherProvider,
 			)
 		},
 			func(cfg Config) raft.NodeConfig {
