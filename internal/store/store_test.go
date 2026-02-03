@@ -179,8 +179,8 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *Store) {
 
 		registerLedger(t, s, "test-ledger", testLedgerID)
 		batch := s.NewBatch()
-		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 1}, Key: "account_type"}, MetadataDiff{Value: ptr("asset")}))
-		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 2}, Key: "label"}, MetadataDiff{Value: ptr("Bank Account")}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 1}, Key: "account_type"}, MetadataDiff{Value: &commonpb.MetadataValue{Value: "asset"}}))
+		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 2}, Key: "label"}, MetadataDiff{Value: &commonpb.MetadataValue{Value: "Bank Account"}}))
 		require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: testLedgerID, Account: "bank", RaftIndex: 3}, Key: "old_key"}, MetadataDiff{Value: nil}))
 		require.NoError(t, batch.Commit())
 
@@ -639,7 +639,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	// Add some data
 	batch = s.NewBatch()
 	require.NoError(t, batch.AppendBalanceDiff(BalanceKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "world", RaftIndex: 1}, Asset: "USD"}, BalanceDiff{Diff: commonpb.NewBigInt(big.NewInt(-100))}))
-	require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "bank", RaftIndex: 1}, Key: "key"}, MetadataDiff{Value: ptr("value")}))
+	require.NoError(t, batch.AppendMetadataDiff(MetadataKey{AccountKey: AccountKey{LedgerID: ledgerID, Account: "bank", RaftIndex: 1}, Key: "key"}, MetadataDiff{Value: &commonpb.MetadataValue{Value: "value"}}))
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 1, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{

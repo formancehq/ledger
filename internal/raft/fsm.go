@@ -457,13 +457,12 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 					if metadataSet != nil {
 						for _, md := range metadataSet.Metadata {
 							if md != nil && md.Value != nil {
-								v := md.Value.Value // capture for pointer
 								key := store.MetadataKey{
 									AccountKey: store.AccountKey{LedgerID: ledgerID, Account: account, RaftIndex: log.Sequence},
 									Key:        md.Key,
 								}
 								if err := batch.AppendMetadataDiff(key, store.MetadataDiff{
-									Value: &v,
+									Value: md.Value,
 								}); err != nil {
 									return err
 								}
@@ -511,13 +510,12 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 					ledgerID := log.Payload.GetApply().LedgerId
 					for _, md := range payload.SavedMetadata.Metadata.Metadata {
 						if md != nil && md.Value != nil {
-							v := md.Value.Value // capture for pointer
 							key := store.MetadataKey{
 								AccountKey: store.AccountKey{LedgerID: ledgerID, Account: account.Addr, RaftIndex: log.Sequence},
 								Key:        md.Key,
 							}
 							if err := batch.AppendMetadataDiff(key, store.MetadataDiff{
-								Value: &v,
+								Value: md.Value,
 							}); err != nil {
 								return err
 							}

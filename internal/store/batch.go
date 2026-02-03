@@ -171,7 +171,11 @@ func (b *Batch) AppendMetadataDiff(key MetadataKey, diff MetadataDiff) error {
 
 	var valueBytes []byte
 	if diff.Value != nil {
-		valueBytes = []byte(*diff.Value)
+		var err error
+		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, diff.Value)
+		if err != nil {
+			return fmt.Errorf("marshaling metadata diff value: %w", err)
+		}
 	}
 	// nil Value means deletion, stored as empty value
 
@@ -197,7 +201,11 @@ func (b *Batch) SetMetadataBase(key MetadataKey, base MetadataBase) error {
 
 	var valueBytes []byte
 	if base.Value != nil {
-		valueBytes = []byte(*base.Value)
+		var err error
+		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, base.Value)
+		if err != nil {
+			return fmt.Errorf("marshaling metadata base value: %w", err)
+		}
 	}
 	// nil Value means deletion, stored as empty value
 

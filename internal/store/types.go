@@ -5,8 +5,8 @@ import (
 )
 
 type AccountKey struct {
-	LedgerID uint32
-	Account  string
+	LedgerID  uint32
+	Account   string
 	RaftIndex uint64
 }
 
@@ -22,7 +22,7 @@ type MetadataKey struct {
 
 // BalanceDiff represents a balance change for an account/asset pair (for writing).
 type BalanceDiff struct {
-	Diff      *commonpb.BigInt
+	Diff *commonpb.BigInt
 }
 
 // StoredBalanceDiff represents a balance change retrieved from storage (for reading).
@@ -35,7 +35,7 @@ type StoredBalanceDiff struct {
 // It stores the cumulative balance at a specific Raft index, allowing efficient
 // balance computation by summing the base with subsequent diffs.
 type BalanceBase struct {
-	Balance   *commonpb.BigInt
+	Balance *commonpb.BigInt
 }
 
 // StoredBalanceBase represents a balance base retrieved from storage.
@@ -48,26 +48,26 @@ type StoredBalanceBase struct {
 // Each entry stores a single key-value pair with its associated raft index.
 // If Value is nil, it represents a deletion of the key.
 type MetadataDiff struct {
-	Value     *string // nil means deletion
+	Value *commonpb.MetadataValue // nil means deletion
 }
 
 // StoredMetadataDiff represents a metadata entry retrieved from storage (for reading).
 type StoredMetadataDiff struct {
 	RaftIndex uint64
-	Value     *string // nil means deleted
+	Value     *commonpb.MetadataValue // nil means deleted
 }
 
 // MetadataBase represents a compacted metadata snapshot for an account/key pair.
 // It stores the metadata value at a specific Raft index, allowing efficient
 // metadata computation by applying the base and subsequent diffs.
 type MetadataBase struct {
-	Value     *string // nil means the key was deleted at this base
+	Value *commonpb.MetadataValue // nil means the key was deleted at this base
 }
 
 // StoredMetadataBase represents a metadata base retrieved from storage.
 type StoredMetadataBase struct {
 	RaftIndex uint64
-	Value     *string // nil means deleted
+	Value     *commonpb.MetadataValue // nil means deleted
 }
 
 type LogStreamer interface {

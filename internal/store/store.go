@@ -467,10 +467,12 @@ func (s *Store) GetMetadataBase(ledgerID uint32, account, key string, maxRaftInd
 	raftIndex := binary.BigEndian.Uint64(keyAfterPrefix[:8])
 
 	// Empty value means deleted
-	var value *string
+	var value *commonpb.MetadataValue
 	if len(valueBytes) > 0 {
-		v := string(valueBytes)
-		value = &v
+		value = &commonpb.MetadataValue{}
+		if err := proto.Unmarshal(valueBytes, value); err != nil {
+			return nil, fmt.Errorf("unmarshaling metadata base value: %w", err)
+		}
 	}
 
 	return &StoredMetadataBase{
@@ -493,10 +495,10 @@ func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string
 	// For each account, we need to find the latest value for each key
 	for _, account := range accounts {
 		// Track the latest state for each key: map[key] -> (raftIndex, value)
-		// Empty value means deletion
+		// nil value means deletion
 		keyStates := make(map[string]struct {
 			raftIndex uint64
-			value     string
+			value     *commonpb.MetadataValue
 		})
 
 		// Read metadata diffs (empty value = deletion)
@@ -534,20 +536,29 @@ func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string
 				return nil, fmt.Errorf("reading metadata diff value: %w", err)
 			}
 
+			var metadataValue *commonpb.MetadataValue
+			if len(valueBytes) > 0 {
+				metadataValue = &commonpb.MetadataValue{}
+				if err := proto.Unmarshal(valueBytes, metadataValue); err != nil {
+					_ = iter.Close()
+					return nil, fmt.Errorf("unmarshaling metadata diff value: %w", err)
+				}
+			}
+
 			state, exists := keyStates[metadataKey]
 			if !exists || raftIndex > state.raftIndex {
 				keyStates[metadataKey] = struct {
 					raftIndex uint64
-					value     string
-				}{raftIndex: raftIndex, value: string(valueBytes)}
+					value     *commonpb.MetadataValue
+				}{raftIndex: raftIndex, value: metadataValue}
 			}
 		}
 		_ = iter.Close()
 
-		// Build final metadata from key states (excluding deleted keys - empty value)
+		// Build final metadata from key states (excluding deleted keys - nil value)
 		for metadataKey, state := range keyStates {
-			if state.value != "" {
-				result[account][metadataKey] = state.value
+			if state.value != nil {
+				result[account][metadataKey] = state.value.Value
 			}
 		}
 	}
