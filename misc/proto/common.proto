@@ -252,11 +252,15 @@ message DeleteMetadataCommand {
 
 message TransactionUpdate {
   uint64 by_log = 1;
-  oneof transaction_modification_type {
-    TransactionUpdateRevert transaction_modification_revert = 2;
-    TransactionUpdateAddMetadata transaction_modification_add_metadata = 3;
-    TransactionUpdateDeleteMetadata transaction_modification_delete_metadata = 4;
-    TransactionInit transaction_init = 5;
+  repeated TransactionUpdateType updates = 2;
+}
+
+message TransactionUpdateType {
+  oneof transaction_modification_type_payload {
+    TransactionUpdateRevert transaction_modification_revert = 1;
+    TransactionUpdateAddMetadata transaction_modification_add_metadata = 2;
+    TransactionUpdateDeleteMetadata transaction_modification_delete_metadata = 3;
+    TransactionInit transaction_init = 4;
   }
 }
 

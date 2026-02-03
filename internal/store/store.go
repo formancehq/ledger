@@ -670,8 +670,10 @@ func (s *Store) GetSequenceForTransactionID(ledger uint32, transactionID uint64)
 
 	// Find the TransactionInit update
 	for _, update := range updates {
-		if update.GetTransactionInit() != nil {
-			return update.ByLog, nil
+		for _, updateType := range update.Updates {
+			if updateType.GetTransactionInit() != nil {
+				return update.ByLog, nil
+			}
 		}
 	}
 
@@ -688,8 +690,10 @@ func (s *Store) IsTransactionReverted(ledger uint32, transactionID uint64) (bool
 
 	// Check for any revert update
 	for _, update := range updates {
-		if update.GetTransactionModificationRevert() != nil {
-			return true, nil
+		for _, updateType := range update.Updates {
+			if updateType.GetTransactionModificationRevert() != nil {
+				return true, nil
+			}
 		}
 	}
 

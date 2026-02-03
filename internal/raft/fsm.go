@@ -436,8 +436,12 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			// Store transaction init update
 			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
-				TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
+				Updates: []*commonpb.TransactionUpdateType{
+					{
+						TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+							TransactionInit: &commonpb.TransactionInit{},
+						},
+					},
 				},
 			}); err != nil {
 				return err
@@ -467,9 +471,13 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			// Store transaction revert update for the original transaction
 			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
-				TransactionModificationType: &commonpb.TransactionUpdate_TransactionModificationRevert{
-					TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
-						ByTransaction: payload.RevertedTransaction.RevertTransaction.Id,
+				Updates: []*commonpb.TransactionUpdateType{
+					{
+						TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
+							TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
+								ByTransaction: payload.RevertedTransaction.RevertTransaction.Id,
+							},
+						},
 					},
 				},
 			}); err != nil {
@@ -478,8 +486,12 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			// Store transaction init for the revert transaction itself
 			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertTransaction.Id, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
-				TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
+				Updates: []*commonpb.TransactionUpdateType{
+					{
+						TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+							TransactionInit: &commonpb.TransactionInit{},
+						},
+					},
 				},
 			}); err != nil {
 				return err

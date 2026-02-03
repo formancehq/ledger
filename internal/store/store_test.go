@@ -533,14 +533,22 @@ func TestStoreTransactionIDIndex(t *testing.T) {
 	batch := s.NewBatch(1)
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 1,
-		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-			TransactionInit: &commonpb.TransactionInit{},
+		Updates: []*commonpb.TransactionUpdateType{
+			{
+				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			},
 		},
 	}))
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 200, &commonpb.TransactionUpdate{
 		ByLog: 2,
-		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-			TransactionInit: &commonpb.TransactionInit{},
+		Updates: []*commonpb.TransactionUpdateType{
+			{
+				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			},
 		},
 	}))
 	require.NoError(t, batch.Commit())
@@ -579,8 +587,12 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	batch := s.NewBatch(1)
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 1,
-		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-			TransactionInit: &commonpb.TransactionInit{},
+		Updates: []*commonpb.TransactionUpdateType{
+			{
+				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			},
 		},
 	}))
 	require.NoError(t, batch.Commit())
@@ -594,9 +606,13 @@ func TestStoreRevertedTransactionIndex(t *testing.T) {
 	batch = s.NewBatch(2)
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 100, &commonpb.TransactionUpdate{
 		ByLog: 2,
-		TransactionModificationType: &commonpb.TransactionUpdate_TransactionModificationRevert{
-			TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
-				ByTransaction: 101, // ID of the revert transaction
+		Updates: []*commonpb.TransactionUpdateType{
+			{
+				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
+					TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
+						ByTransaction: 101, // ID of the revert transaction
+					},
+				},
 			},
 		},
 	}))
@@ -648,8 +664,12 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	}))
 	require.NoError(t, batch.StoreTransactionUpdate(ledgerID, 1, &commonpb.TransactionUpdate{
 		ByLog: 1,
-		TransactionModificationType: &commonpb.TransactionUpdate_TransactionInit{
-			TransactionInit: &commonpb.TransactionInit{},
+		Updates: []*commonpb.TransactionUpdateType{
+			{
+				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
+					TransactionInit: &commonpb.TransactionInit{},
+				},
+			},
 		},
 	}))
 	require.NoError(t, batch.Commit())
