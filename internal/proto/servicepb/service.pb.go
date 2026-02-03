@@ -667,13 +667,13 @@ func (*Request_DeleteLedger) isRequest_Type() {}
 
 // CreateTransactionPayload contains the data for creating a transaction
 type CreateTransactionPayload struct {
-	state           protoimpl.MessageState        `protogen:"open.v1"`
-	Postings        []*commonpb.Posting           `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Script          *commonpb.Script              `protobuf:"bytes,2,opt,name=script,proto3" json:"script,omitempty"`
-	Timestamp       *commonpb.Timestamp           `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference       string                        `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Metadata        map[string]string             `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	AccountMetadata map[string]*commonpb.Metadata `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState           `protogen:"open.v1"`
+	Postings        []*commonpb.Posting              `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Script          *commonpb.Script                 `protobuf:"bytes,2,opt,name=script,proto3" json:"script,omitempty"`
+	Timestamp       *commonpb.Timestamp              `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference       string                           `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	Metadata        map[string]string                `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AccountMetadata map[string]*commonpb.MetadataSet `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -743,7 +743,7 @@ func (x *CreateTransactionPayload) GetMetadata() map[string]string {
 	return nil
 }
 
-func (x *CreateTransactionPayload) GetAccountMetadata() map[string]*commonpb.Metadata {
+func (x *CreateTransactionPayload) GetAccountMetadata() map[string]*commonpb.MetadataSet {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -2102,7 +2102,7 @@ const file_service_proto_rawDesc = "" +
 	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
 	"\rdelete_ledger\x18\x04 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedgerB\x06\n" +
-	"\x04type\"\xff\x03\n" +
+	"\x04type\"\x82\x04\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -2112,10 +2112,10 @@ const file_service_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x06 \x03(\v25.ledger.CreateTransactionPayload.AccountMetadataEntryR\x0faccountMetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aT\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
-	"\x05value\x18\x02 \x01(\v2\x10.common.MetadataR\x05value:\x028\x01\"\x8c\x02\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x8c\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
@@ -2299,7 +2299,7 @@ var file_service_proto_goTypes = []any{
 	(*commonpb.Timestamp)(nil),             // 37: common.Timestamp
 	(*commonpb.SaveMetadataCommand)(nil),   // 38: common.SaveMetadataCommand
 	(*commonpb.DeleteMetadataCommand)(nil), // 39: common.DeleteMetadataCommand
-	(*commonpb.Metadata)(nil),              // 40: common.Metadata
+	(*commonpb.MetadataSet)(nil),           // 40: common.MetadataSet
 	(*commonpb.LedgerInfo)(nil),            // 41: common.LedgerInfo
 	(*commonpb.Account)(nil),               // 42: common.Account
 	(*commonpb.Transaction)(nil),           // 43: common.Transaction
@@ -2338,7 +2338,7 @@ var file_service_proto_depIdxs = []int32{
 	27, // 29: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
 	28, // 30: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
 	29, // 31: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
-	40, // 32: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.Metadata
+	40, // 32: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
 	7,  // 33: ledger.LedgerService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
 	8,  // 34: ledger.LedgerService.GetLedger:input_type -> ledger.GetLedgerRequest
 	0,  // 35: ledger.LedgerService.GetAccount:input_type -> ledger.GetAccountRequest

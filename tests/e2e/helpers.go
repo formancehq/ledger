@@ -98,7 +98,7 @@ func deleteLedgerAction(ledgerID uint32) *servicepb.Request {
 }
 
 // createTransactionAction creates an action for creating a transaction
-func createTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.Metadata) *servicepb.Request {
+func createTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.MetadataSet) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -132,7 +132,7 @@ func saveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 								Account: &commonpb.TargetAccount{Addr: address},
 							},
 						},
-						Metadata: &commonpb.Metadata{Entries: metadata},
+						Metadata: commonpb.MetadataSetFromMap(metadata),
 					},
 				},
 			},
@@ -178,7 +178,7 @@ func saveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 								Transaction: &commonpb.TargetTransaction{Id: transactionID},
 							},
 						},
-						Metadata: &commonpb.Metadata{Entries: metadata},
+						Metadata: commonpb.MetadataSetFromMap(metadata),
 					},
 				},
 			},

@@ -350,11 +350,11 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 									).
 									WithID(1).
 									WithTimestamp(now),
-								AccountMetadata: map[string]*commonpb.Metadata{
-									"bank": {Entries: metadata.Metadata{
-										"account_type": "asset",
-									}},
-								},
+							AccountMetadata: map[string]*commonpb.MetadataSet{
+								"bank": commonpb.MetadataSetFromMap(metadata.Metadata{
+									"account_type": "asset",
+								}),
+							},
 							},
 						},
 					}).
@@ -406,9 +406,9 @@ func createTestLogsForLedger(ledgerID uint32, startSequence uint64) []*commonpb.
 										Addr: "bank",
 									}},
 								},
-								Metadata: &commonpb.Metadata{Entries: metadata.Metadata{
-									"label": "Bank Account",
-								}},
+							Metadata: commonpb.MetadataSetFromMap(metadata.Metadata{
+								"label": "Bank Account",
+							}),
 							},
 						},
 					}).

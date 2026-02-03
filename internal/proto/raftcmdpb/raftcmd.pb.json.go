@@ -34,12 +34,17 @@ func (state *State) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler for CreatedTransactionMemento
 func (x *CreatedTransactionMemento) MarshalJSON() ([]byte, error) {
+	// Convert account metadata to map[string]map[string]string for JSON
+	accountMeta := make(map[string]map[string]string)
+	for k, v := range x.AccountMetadata {
+		accountMeta[k] = commonpb.MetadataSetToMap(v)
+	}
 	return json.Marshal(&struct {
-		Transaction     *TransactionResume            `json:"transaction,omitempty"`
-		AccountMetadata map[string]*commonpb.Metadata `json:"accountMetadata,omitempty"`
+		Transaction     *TransactionResume           `json:"transaction,omitempty"`
+		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 	}{
 		Transaction:     x.Transaction,
-		AccountMetadata: x.AccountMetadata,
+		AccountMetadata: accountMeta,
 	})
 }
 

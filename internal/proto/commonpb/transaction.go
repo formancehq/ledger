@@ -14,7 +14,7 @@ import (
 // NewTransactionData creates a new TransactionData with empty metadata
 func NewTransactionData() *TransactionData {
 	return &TransactionData{
-		Metadata: make(map[string]string),
+		Metadata: &MetadataSet{},
 	}
 }
 
@@ -30,7 +30,7 @@ func (td *TransactionData) WithPostings(postings ...*Posting) *TransactionData {
 // NewTransaction creates a new Transaction with empty TransactionData
 func NewTransaction() *Transaction {
 	return &Transaction{
-		Metadata: make(map[string]string),
+		Metadata: &MetadataSet{},
 	}
 }
 
@@ -75,7 +75,7 @@ func (tx *Transaction) WithMetadata(m metadata.Metadata) *Transaction {
 	if tx == nil {
 		tx = NewTransaction()
 	}
-	tx.Metadata = m
+	tx.Metadata = MetadataSetFromMap(m)
 	return tx
 }
 
@@ -123,10 +123,8 @@ func (tx *Transaction) Reverse() *Transaction {
 	postings := Postings(tx.Postings).Reverse()
 	ret := NewTransaction().WithPostings(postings...)
 
-	// Copy other fields
-	if tx.Metadata != nil {
-		ret.Metadata = tx.Metadata
-	}
+	// Copy other fields - copy the MetadataSet reference
+	ret.Metadata = tx.Metadata
 	if tx.Timestamp != nil {
 		ret.Timestamp = tx.Timestamp
 	}
@@ -262,7 +260,7 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 
 	aux := Aux{
 		Postings:  tx.Postings,
-		Metadata:  tx.Metadata,
+		Metadata:  MetadataSetToMap(tx.Metadata),
 		Reference: tx.Reference,
 		Reverted:  tx.IsReverted(),
 	}

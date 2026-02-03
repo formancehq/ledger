@@ -60,7 +60,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 							Account: &commonpb.TargetAccount{Addr: "test-account"},
 						},
 					},
-					Metadata: &commonpb.Metadata{Entries: md},
+					Metadata: commonpb.MetadataSetFromMap(md),
 				},
 			},
 		}))
@@ -83,7 +83,7 @@ func TestDefaultLedger_SaveAccountMetadata(t *testing.T) {
 							Account: &commonpb.TargetAccount{Addr: ""},
 						},
 					},
-					Metadata: &commonpb.Metadata{Entries: md1},
+					Metadata: commonpb.MetadataSetFromMap(md1),
 				},
 			},
 		}))
@@ -123,11 +123,9 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 
 		expectApplyWithSequentialIDs(engine, 1)
 
-		md := commonpb.Metadata{
-			Entries: metadata.Metadata{
-				"tx_label": "Test Transaction",
-			},
-		}
+		md := commonpb.MetadataSetFromMap(metadata.Metadata{
+			"tx_label": "Test Transaction",
+		})
 
 		log, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyRequest{
 			Ledger: servicepb.LedgerID(testLedgerID),
@@ -138,7 +136,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 							Transaction: &commonpb.TargetTransaction{Id: 42},
 						},
 					},
-					Metadata: &md,
+					Metadata: md,
 				},
 			},
 		}))
@@ -150,9 +148,7 @@ func TestDefaultLedger_SaveTransactionMetadata(t *testing.T) {
 		t.Parallel()
 		ledgerService, _, _ := newTestLedgerService(t, ctx)
 
-		md := &commonpb.Metadata{
-			Entries: metadata.Metadata{"key": "value"},
-		}
+		md := commonpb.MetadataSetFromMap(metadata.Metadata{"key": "value"})
 		log, err := ledgerService.Apply(ctx, applyAction(&servicepb.LedgerApplyRequest{
 			Ledger: servicepb.LedgerID(testLedgerID),
 			Data: &servicepb.LedgerApplyRequest_AddMetadata{

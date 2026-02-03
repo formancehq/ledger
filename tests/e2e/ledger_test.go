@@ -167,11 +167,11 @@ var _ = Describe("Ledger", func() {
 				Actions: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
 						newPosting("world", "merge-account", big.NewInt(50), "USD"),
-					}, nil, map[string]*commonpb.Metadata{
-						"merge-account": {Entries: map[string]string{
+					}, nil, map[string]*commonpb.MetadataSet{
+						"merge-account": commonpb.MetadataSetFromMap(map[string]string{
 							"key1": "value1",
 							"key2": "value2",
-						}},
+						}),
 					}),
 				},
 			})
@@ -370,11 +370,11 @@ var _ = Describe("Ledger", func() {
 					}, map[string]string{
 						"description": "Test transaction",
 						"category":    "test",
-					}, map[string]*commonpb.Metadata{
-						"account-with-metadata": {Entries: map[string]string{
+					}, map[string]*commonpb.MetadataSet{
+						"account-with-metadata": commonpb.MetadataSetFromMap(map[string]string{
 							"account_type": "asset",
 							"label":        "Account with Metadata",
-						}},
+						}),
 					}),
 				},
 			})

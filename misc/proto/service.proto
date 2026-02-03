@@ -101,7 +101,7 @@ message CreateTransactionPayload {
   common.Timestamp timestamp = 3;
   string reference = 4;
   map<string, string> metadata = 5;
-  map<string, common.Metadata> account_metadata = 6;
+  map<string, common.MetadataSet> account_metadata = 6;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction

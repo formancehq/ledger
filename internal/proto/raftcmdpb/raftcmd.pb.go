@@ -143,12 +143,12 @@ func (x *State) GetNextSequence() uint64 {
 }
 
 type AppendTransactionCommand struct {
-	state           protoimpl.MessageState        `protogen:"open.v1"`
-	Postings        []*commonpb.Posting           `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata        map[string]string             `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Timestamp       *commonpb.Timestamp           `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference       string                        `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	AccountMetadata map[string]*commonpb.Metadata `protobuf:"bytes,5,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState           `protogen:"open.v1"`
+	Postings        []*commonpb.Posting              `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Metadata        map[string]string                `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp       *commonpb.Timestamp              `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference       string                           `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	AccountMetadata map[string]*commonpb.MetadataSet `protobuf:"bytes,5,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -211,7 +211,7 @@ func (x *AppendTransactionCommand) GetReference() string {
 	return ""
 }
 
-func (x *AppendTransactionCommand) GetAccountMetadata() map[string]*commonpb.Metadata {
+func (x *AppendTransactionCommand) GetAccountMetadata() map[string]*commonpb.MetadataSet {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -788,9 +788,9 @@ func (x *TransactionResume) GetReverted() bool {
 
 // CreatedTransactionMemento represents the memento structure for CreatedTransaction
 type CreatedTransactionMemento struct {
-	state           protoimpl.MessageState        `protogen:"open.v1"`
-	Transaction     *TransactionResume            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata map[string]*commonpb.Metadata `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState           `protogen:"open.v1"`
+	Transaction     *TransactionResume               `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata map[string]*commonpb.MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -832,7 +832,7 @@ func (x *CreatedTransactionMemento) GetTransaction() *TransactionResume {
 	return nil
 }
 
-func (x *CreatedTransactionMemento) GetAccountMetadata() map[string]*commonpb.Metadata {
+func (x *CreatedTransactionMemento) GetAccountMetadata() map[string]*commonpb.MetadataSet {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -1248,7 +1248,7 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\rnext_sequence\x18\x03 \x01(\x04R\fnextSequence\x1aM\n" +
 	"\fLedgersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\rR\x03key\x12'\n" +
-	"\x05value\x18\x02 \x01(\v2\x11.raft.LedgerStateR\x05value:\x028\x01\"\xd3\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x11.raft.LedgerStateR\x05value:\x028\x01\"\xd6\x03\n" +
 	"\x18AppendTransactionCommand\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12H\n" +
 	"\bmetadata\x18\x02 \x03(\v2,.raft.AppendTransactionCommand.MetadataEntryR\bmetadata\x12/\n" +
@@ -1257,10 +1257,10 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x05 \x03(\v23.raft.AppendTransactionCommand.AccountMetadataEntryR\x0faccountMetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aT\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
-	"\x05value\x18\x02 \x01(\v2\x10.common.MetadataR\x05value:\x028\x01\"\x90\x01\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x90\x01\n" +
 	"\x18RevertTransactionCommand\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12M\n" +
 	"\x12revert_transaction\x18\x02 \x01(\v2\x1e.raft.AppendTransactionCommandR\x11revertTransaction\"\xf0\x02\n" +
@@ -1301,13 +1301,13 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\breverted\x18\x06 \x01(\bR\breverted\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8d\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x02\n" +
 	"\x19CreatedTransactionMemento\x129\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x17.raft.TransactionResumeR\vtransaction\x12_\n" +
-	"\x10account_metadata\x18\x02 \x03(\v24.raft.CreatedTransactionMemento.AccountMetadataEntryR\x0faccountMetadata\x1aT\n" +
+	"\x10account_metadata\x18\x02 \x03(\v24.raft.CreatedTransactionMemento.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
-	"\x05value\x18\x02 \x01(\v2\x10.common.MetadataR\x05value:\x028\x01\"\x9c\x01\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\x1aRevertedTransactionMemento\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12F\n" +
 	"\x12revert_transaction\x18\x02 \x01(\v2\x17.raft.TransactionResumeR\x11revertTransaction\"P\n" +
@@ -1393,7 +1393,7 @@ var file_raftcmd_proto_goTypes = []any{
 	(*commonpb.SaveMetadataCommand)(nil),   // 27: common.SaveMetadataCommand
 	(*commonpb.DeleteMetadataCommand)(nil), // 28: common.DeleteMetadataCommand
 	(*commonpb.Idempotency)(nil),           // 29: common.Idempotency
-	(*commonpb.Metadata)(nil),              // 30: common.Metadata
+	(*commonpb.MetadataSet)(nil),           // 30: common.MetadataSet
 }
 var file_raftcmd_proto_depIdxs = []int32{
 	24, // 0: raft.LedgerState.ledger_info:type_name -> common.LedgerInfo
@@ -1426,8 +1426,8 @@ var file_raftcmd_proto_depIdxs = []int32{
 	15, // 27: raft.ClusterState.raft_status:type_name -> raft.RaftStatus
 	1,  // 28: raft.ClusterState.inner_state:type_name -> raft.State
 	0,  // 29: raft.State.LedgersEntry.value:type_name -> raft.LedgerState
-	30, // 30: raft.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> common.Metadata
-	30, // 31: raft.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> common.Metadata
+	30, // 30: raft.AppendTransactionCommand.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	30, // 31: raft.CreatedTransactionMemento.AccountMetadataEntry.value:type_name -> common.MetadataSet
 	14, // 32: raft.RaftStatus.ProgressEntry.value:type_name -> raft.ProgressInfo
 	33, // [33:33] is the sub-list for method output_type
 	33, // [33:33] is the sub-list for method input_type

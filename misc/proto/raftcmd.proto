@@ -31,7 +31,7 @@ message AppendTransactionCommand {
   map<string, string> metadata = 2;
   common.Timestamp timestamp = 3;
   string reference = 4;
-  map<string, common.Metadata> account_metadata = 5;
+  map<string, common.MetadataSet> account_metadata = 5;
 }
 
 message RevertTransactionCommand {
@@ -101,7 +101,7 @@ message TransactionResume {
 // CreatedTransactionMemento represents the memento structure for CreatedTransaction
 message CreatedTransactionMemento {
   TransactionResume transaction = 1;
-  map<string, common.Metadata> account_metadata = 2;
+  map<string, common.MetadataSet> account_metadata = 2;
 }
 
 // RevertedTransactionMemento represents the memento structure for RevertedTransaction

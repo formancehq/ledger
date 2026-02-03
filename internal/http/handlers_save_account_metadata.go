@@ -46,7 +46,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 								},
 							},
 						},
-						Metadata: &commonpb.Metadata{Entries: inputMetadata},
+						Metadata: commonpb.MetadataSetFromMap(inputMetadata),
 					},
 				},
 			},

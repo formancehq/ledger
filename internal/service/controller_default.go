@@ -125,13 +125,13 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerID uint32, ad
 	// Build the account response
 	account := &commonpb.Account{
 		Address:  address,
-		Metadata: make(map[string]string),
+		Metadata: &commonpb.MetadataSet{},
 		Volumes:  volumes,
 	}
 
 	// Add metadata if it exists
 	if md, exists := metadataMap[address]; exists {
-		account.Metadata = md
+		account.Metadata = commonpb.MetadataSetFromMap(md)
 	}
 
 	return account, nil
@@ -444,9 +444,12 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 
 	// Merge script account metadata with input account metadata
 	finalAccountMetadata := make(map[string]metadata.Metadata)
-	for addr, md := range input.AccountMetadata {
-		if md != nil && md.Entries != nil {
-			finalAccountMetadata[addr] = md.Entries
+	for addr, ms := range input.AccountMetadata {
+		if ms != nil {
+			md := commonpb.MetadataSetToMap(ms)
+			if md != nil {
+				finalAccountMetadata[addr] = md
+			}
 		}
 	}
 	for account, accountMeta := range scriptAccountMetadata {
@@ -465,10 +468,10 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 	}
 
 	// Convert account metadata to protobuf
-	accountMetadataProto := make(map[string]*commonpb.Metadata)
+	accountMetadataProto := make(map[string]*commonpb.MetadataSet)
 	for addr, md := range finalAccountMetadata {
 		if len(md) > 0 {
-			accountMetadataProto[addr] = &commonpb.Metadata{Entries: md}
+			accountMetadataProto[addr] = commonpb.MetadataSetFromMap(md)
 		}
 	}
 
@@ -644,7 +647,8 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	// Merge metadata: original transaction metadata + revert metadata
 	revertMetadata := make(map[string]string)
 	if originalTx.Metadata != nil {
-		for k, v := range originalTx.Metadata {
+		originalMd := commonpb.MetadataSetToMap(originalTx.Metadata)
+		for k, v := range originalMd {
 			revertMetadata[k] = v
 		}
 	}

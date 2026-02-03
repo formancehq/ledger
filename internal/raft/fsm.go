@@ -90,7 +90,7 @@ func (fsm *FSM) handleCreateLedger(createCmd *raftcmdpb.CreateLedgerCommand, cmd
 	// Create ledger info using protobuf types directly
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name:      createCmd.Name,
-		Metadata:  createCmd.Metadata,
+		Metadata:  commonpb.MetadataSetFromMap(createCmd.Metadata),
 		CreatedAt: cmdDate,
 		Id:        ledgerID,
 	}
@@ -177,7 +177,7 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 					CreatedTransaction: &commonpb.CreatedTransaction{
 						Transaction: &commonpb.Transaction{
 							Postings:   cmd.AppendTransaction.Postings,
-							Metadata:   cmd.AppendTransaction.Metadata,
+							Metadata:   commonpb.MetadataSetFromMap(cmd.AppendTransaction.Metadata),
 							Timestamp:  timestamp,
 							Reference:  cmd.AppendTransaction.Reference,
 							Id:         fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID(),
@@ -217,7 +217,7 @@ func (fsm *FSM) createLog(action *raftcmdpb.Action, cmdDate *commonpb.Timestamp)
 			// Create a new transaction with the assigned ID and timestamps
 			revertTx := &commonpb.Transaction{
 				Postings:   revertCmd.Postings,
-				Metadata:   revertCmd.Metadata,
+				Metadata:   commonpb.MetadataSetFromMap(revertCmd.Metadata),
 				Timestamp:  timestamp,
 				Reference:  revertCmd.Reference,
 				Id:         fsm.state.Ledgers[createCmd.LedgerId].GetNextTransactionID(),
@@ -451,18 +451,22 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				return err
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
-				for account, metadata := range payload.CreatedTransaction.AccountMetadata {
-					for key, value := range metadata.Entries {
-						v := value // capture for pointer
-						err := batch.AppendMetadataDiff(store.MetadataDiff{
-							LedgerID:  log.Payload.GetApply().LedgerId,
-							Account:   account,
-							Key:       key,
-							Value:     &v,
-							RaftIndex: log.Sequence,
-						})
-						if err != nil {
-							return err
+				for account, metadataSet := range payload.CreatedTransaction.AccountMetadata {
+					if metadataSet != nil {
+						for _, md := range metadataSet.Metadata {
+							if md != nil {
+								v := md.Value // capture for pointer
+								err := batch.AppendMetadataDiff(store.MetadataDiff{
+									LedgerID:  log.Payload.GetApply().LedgerId,
+									Account:   account,
+									Key:       md.Key,
+									Value:     &v,
+									RaftIndex: log.Sequence,
+								})
+								if err != nil {
+									return err
+								}
+							}
 						}
 					}
 				}
@@ -502,16 +506,20 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			}
 		case *commonpb.LedgerLogPayload_SavedMetadata:
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
-				for key, value := range payload.SavedMetadata.Metadata.Entries {
-					v := value // capture for pointer
-					if err := batch.AppendMetadataDiff(store.MetadataDiff{
-						LedgerID:  log.Payload.GetApply().LedgerId,
-						Account:   account.Addr,
-						Key:       key,
-						Value:     &v,
-						RaftIndex: log.Sequence,
-					}); err != nil {
-						return err
+				if payload.SavedMetadata.Metadata != nil {
+					for _, md := range payload.SavedMetadata.Metadata.Metadata {
+						if md != nil {
+							v := md.Value // capture for pointer
+							if err := batch.AppendMetadataDiff(store.MetadataDiff{
+								LedgerID:  log.Payload.GetApply().LedgerId,
+								Account:   account.Addr,
+								Key:       md.Key,
+								Value:     &v,
+								RaftIndex: log.Sequence,
+							}); err != nil {
+								return err
+							}
+						}
 					}
 				}
 			}

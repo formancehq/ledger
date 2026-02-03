@@ -250,7 +250,7 @@ func (b *Batch) Commit() error {
 		return fmt.Errorf("batch already committed")
 	}
 
-// Commit with NoSync for performance
+	// Commit with NoSync for performance
 	if err := b.batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}

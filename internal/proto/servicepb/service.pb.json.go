@@ -9,15 +9,20 @@ import (
 
 // MarshalJSON implements json.Marshaler for CreateTransactionPayload
 func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
+	// Convert account metadata to map[string]map[string]string for JSON
+	accountMeta := make(map[string]map[string]string)
+	for k, v := range x.AccountMetadata {
+		accountMeta[k] = commonpb.MetadataSetToMap(v)
+	}
 	return json.Marshal(&struct {
-		AccountMetadata map[string]*commonpb.Metadata `json:"accountMetadata,omitempty"`
-		Metadata        map[string]string             `json:"metadata,omitempty"`
-		Timestamp       *commonpb.Timestamp           `json:"timestamp,omitempty"`
-		Reference       string                        `json:"reference,omitempty"`
-		Postings        []*commonpb.Posting           `json:"postings,omitempty"`
-		Script          *commonpb.Script              `json:"script,omitempty"`
+		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
+		Metadata        map[string]string            `json:"metadata,omitempty"`
+		Timestamp       *commonpb.Timestamp          `json:"timestamp,omitempty"`
+		Reference       string                       `json:"reference,omitempty"`
+		Postings        []*commonpb.Posting          `json:"postings,omitempty"`
+		Script          *commonpb.Script             `json:"script,omitempty"`
 	}{
-		AccountMetadata: x.AccountMetadata,
+		AccountMetadata: accountMeta,
 		Metadata:        x.Metadata,
 		Timestamp:       x.Timestamp,
 		Reference:       x.Reference,
@@ -201,7 +206,7 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 
 	return &commonpb.SaveMetadataCommand{
 		Target:   commonpb.ParseTarget(raw.TargetType, raw.TargetID),
-		Metadata: &commonpb.Metadata{Entries: raw.Metadata},
+		Metadata: commonpb.MetadataSetFromMap(raw.Metadata),
 	}, nil
 }
 

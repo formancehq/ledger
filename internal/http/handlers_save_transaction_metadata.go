@@ -52,7 +52,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 								},
 							},
 						},
-						Metadata: &commonpb.Metadata{Entries: inputMetadata},
+						Metadata: commonpb.MetadataSetFromMap(inputMetadata),
 					},
 				},
 			},

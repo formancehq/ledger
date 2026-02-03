@@ -43,7 +43,7 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 		UpdatedAt     *Timestamp        `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.Address,
-		Metadata:      x.Metadata,
+		Metadata:      MetadataSetToMap(x.Metadata),
 		FirstUsage:    x.FirstUsage,
 		InsertionDate: x.InsertionDate,
 		UpdatedAt:     x.UpdatedAt,
@@ -54,12 +54,17 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler for CreatedTransaction
 func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
+	// Convert account metadata to map[string]map[string]string for JSON
+	accountMeta := make(map[string]map[string]string)
+	for k, v := range x.AccountMetadata {
+		accountMeta[k] = MetadataSetToMap(v)
+	}
 	return json.Marshal(&struct {
-		Transaction     *Transaction         `json:"transaction,omitempty"`
-		AccountMetadata map[string]*Metadata `json:"accountMetadata,omitempty"`
+		Transaction     *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 	}{
 		Transaction:     x.Transaction,
-		AccountMetadata: x.AccountMetadata,
+		AccountMetadata: accountMeta,
 	})
 }
 
@@ -83,7 +88,7 @@ func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 		Metadata      map[string]string `json:"metadata,omitempty"`
 	}{
 		TargetType: x.Target.AsConst(),
-		Metadata:   x.Metadata.Entries,
+		Metadata:   MetadataSetToMap(x.Metadata),
 	}
 
 	// Handle oneof target_id
@@ -181,9 +186,7 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	sm.Metadata = &Metadata{
-		Entries: x.Metadata,
-	}
+	sm.Metadata = MetadataSetFromMap(x.Metadata)
 
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):

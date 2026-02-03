@@ -14,7 +14,12 @@ message Timestamp {
 
 // Metadata represents account or transaction metadata as a map of string key-value pairs
 message Metadata {
-  map<string, string> entries = 1;
+  string key = 1;
+  string value = 2;
+}
+
+message MetadataSet {
+  repeated Metadata metadata = 1;
 }
 
 message BigInt {
@@ -32,7 +37,7 @@ message Posting {
 // Transaction represents a transaction
 message Transaction {
   repeated Posting postings = 1;
-  map<string, string> metadata = 2;
+  MetadataSet metadata = 2;
   Timestamp timestamp = 3;
   string reference = 4;
   uint64 id = 5;
@@ -45,7 +50,7 @@ message Transaction {
 // TransactionData represents transaction data without ID and timestamps
 message TransactionData {
   repeated Posting postings = 1;
-  map<string, string> metadata = 2;
+  MetadataSet metadata = 2;
   Timestamp timestamp = 3;
   string reference = 4;
 }
@@ -106,7 +111,7 @@ message AggregatedVolumes {
 // Account represents an account in the ledger
 message Account {
   string address = 1;
-  map<string, string> metadata = 2;
+  MetadataSet metadata = 2;
   Timestamp first_usage = 3;
   Timestamp insertion_date = 4;
   Timestamp updated_at = 5;
@@ -203,7 +208,7 @@ message LedgerLogPayload {
 
 message CreatedTransaction {
   Transaction transaction = 1;
-  map<string, Metadata> account_metadata = 2;
+  map<string, MetadataSet> account_metadata = 2;
 }
 
 message RevertedTransaction {
@@ -213,7 +218,7 @@ message RevertedTransaction {
 
 message SavedMetadata {
   Target target = 1;
-  Metadata metadata = 2;
+  MetadataSet metadata = 2;
 }
 
 message DeletedMetadata {
@@ -228,7 +233,7 @@ message DeletedMetadata {
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
   string name = 1;                          // Ledger name
-  map<string, string> metadata = 2;         // Optional metadata
+  MetadataSet metadata = 2;         // Optional metadata
   Timestamp created_at = 3;                 // Creation timestamp
   uint32 id = 4;                            // Numeric ledger ID (auto-assigned, max 65535)
   Timestamp deleted_at = 5;                 // Soft delete timestamp (nil if not deleted)
@@ -241,7 +246,7 @@ message LedgerInfo {
 // SaveMetadataCommand is used for adding metadata
 message SaveMetadataCommand {
   Target target = 1;
-  Metadata metadata = 2;
+  MetadataSet metadata = 2;
 }
 
 // DeleteMetadataCommand is used for deleting metadata
