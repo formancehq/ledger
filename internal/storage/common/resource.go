@@ -122,11 +122,11 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 				return NewErrInvalidQuery("operator '%s' is not allowed for property '%s'", operator, name)
 			}
 
-			if err := property.Type.ValidateValue(operator, value); err != nil {
-				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", value, name, err)
+			if err := property.Type.ValidateValue(operator, *value); err != nil {
+				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", *value, name, err)
 			}
 
-			ret[name] = append(ret[name], value)
+			ret[name] = append(ret[name], *value)
 
 			return nil
 		}

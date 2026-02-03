@@ -1555,9 +1555,9 @@ func (p Postings) Validate() (int, error)
 type QueryTemplate struct {
     Description string                     `json:"description,omitempty"`
     Resource    queries.ResourceKind       `json:"resource"`
-    Params      json.RawMessage            `json:"params"`
-    Vars        map[string]queries.VarSpec `json:"vars"`
-    Body        json.RawMessage            `json:"body"`
+    Params      json.RawMessage            `json:"params,omitempty"`
+    Vars        map[string]queries.VarSpec `json:"vars,omitempty"`
+    Body        json.RawMessage            `json:"body,omitempty"`
 }
 ```
 

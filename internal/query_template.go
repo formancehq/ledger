@@ -84,7 +84,7 @@ func unmarshalWithNumber(data []byte, v any) error {
 
 func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryTemplateParams[Opts], error) {
 	for _, other := range others {
-		if len(other) != 0 {
+		if len(other) != 0 && bytes.Equal(bytes.TrimSpace(other), []byte("null")) {
 			err := unmarshalWithNumber(other, &q)
 			if err != nil {
 				return nil, err
@@ -101,9 +101,9 @@ func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryT
 type QueryTemplate struct {
 	Description string                     `json:"description,omitempty"`
 	Resource    queries.ResourceKind       `json:"resource"`
-	Params      json.RawMessage            `json:"params"`
-	Vars        map[string]queries.VarSpec `json:"vars"`
-	Body        json.RawMessage            `json:"body"`
+	Params      json.RawMessage            `json:"params,omitempty"`
+	Vars        map[string]queries.VarSpec `json:"vars,omitempty"`
+	Body        json.RawMessage            `json:"body,omitempty"`
 }
 
 // Validate a query template

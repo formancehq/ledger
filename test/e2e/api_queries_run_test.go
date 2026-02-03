@@ -104,12 +104,12 @@ var _ = Context("Ledger query API tests", func() {
 									"$and": []any{
 										map[string]any{
 											"$match": map[string]any{
-												"address": "<category>:",
+												"address": "$category:",
 											},
 										},
 										map[string]any{
 											"$match": map[string]any{
-												"metadata[hat_type]": "<hat_type>",
+												"metadata[hat_type]": "$hat_type",
 											},
 										},
 									},

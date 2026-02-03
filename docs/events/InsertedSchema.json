@@ -132,10 +132,7 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "resource",
-        "params",
-        "vars",
-        "body"
+        "resource"
       ]
     },
     "QueryTemplates": {
