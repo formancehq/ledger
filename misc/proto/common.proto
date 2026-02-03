@@ -15,7 +15,11 @@ message Timestamp {
 // Metadata represents account or transaction metadata as a map of string key-value pairs
 message Metadata {
   string key = 1;
-  string value = 2;
+  MetadataValue value = 2;
+}
+
+message MetadataValue {
+  string value = 1;
 }
 
 message MetadataSet {

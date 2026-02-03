@@ -454,8 +454,8 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				for account, metadataSet := range payload.CreatedTransaction.AccountMetadata {
 					if metadataSet != nil {
 						for _, md := range metadataSet.Metadata {
-							if md != nil {
-								v := md.Value // capture for pointer
+							if md != nil && md.Value != nil {
+								v := md.Value.Value // capture for pointer
 								err := batch.AppendMetadataDiff(store.MetadataDiff{
 									LedgerID:  log.Payload.GetApply().LedgerId,
 									Account:   account,
@@ -508,8 +508,8 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
 				if payload.SavedMetadata.Metadata != nil {
 					for _, md := range payload.SavedMetadata.Metadata.Metadata {
-						if md != nil {
-							v := md.Value // capture for pointer
+						if md != nil && md.Value != nil {
+							v := md.Value.Value // capture for pointer
 							if err := batch.AppendMetadataDiff(store.MetadataDiff{
 								LedgerID:  log.Payload.GetApply().LedgerId,
 								Account:   account.Addr,

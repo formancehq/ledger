@@ -19,7 +19,7 @@ func MetadataFromMap(m metadata.Metadata) []*Metadata {
 	}
 	result := make([]*Metadata, 0, len(m))
 	for k, v := range m {
-		result = append(result, &Metadata{Key: k, Value: v})
+		result = append(result, &Metadata{Key: k, Value: &MetadataValue{Value: v}})
 	}
 	// Sort by key for deterministic output
 	sort.Slice(result, func(i, j int) bool {
@@ -45,8 +45,8 @@ func MetadataToMap(m []*Metadata) metadata.Metadata {
 	}
 	result := make(metadata.Metadata, len(m))
 	for _, md := range m {
-		if md != nil {
-			result[md.Key] = md.Value
+		if md != nil && md.Value != nil {
+			result[md.Key] = md.Value.Value
 		}
 	}
 	return result
