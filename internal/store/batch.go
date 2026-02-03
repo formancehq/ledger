@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -17,7 +16,7 @@ import (
 type Batch struct {
 	store          *Store
 	batch          *pebble.Batch
-	keyBuffer      *bytes.Buffer
+	KeyBuilder     *KeyBuilder
 	protoBuffer    []byte
 	committed      bool
 	marshalOptions proto.MarshalOptions
@@ -28,7 +27,7 @@ func (s *Store) NewBatch() *Batch {
 	return &Batch{
 		store:       s,
 		batch:       s.db.NewBatch(),
-		keyBuffer:   bytes.NewBuffer(make([]byte, 0, 1024)),
+		KeyBuilder:  NewKeyBuilder(),
 		protoBuffer: make([]byte, 0, 1024),
 	}
 }
@@ -39,10 +38,10 @@ func (b *Batch) SetAppliedIndex(index uint64) error {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeByte(b.keyBuffer, keyPrefixLastAppliedIndex)
+	b.KeyBuilder.PutByte(keyPrefixLastAppliedIndex)
 	lastAppliedIndexValue := make([]byte, 8)
 	binary.BigEndian.PutUint64(lastAppliedIndexValue, index)
-	if err := setOnBatch(b.batch, b.keyBuffer, lastAppliedIndexValue); err != nil {
+	if err := b.batch.Set(b.KeyBuilder.Build(), lastAppliedIndexValue, pebble.NoSync); err != nil {
 		return fmt.Errorf("updating last applied index: %w", err)
 	}
 	return nil
@@ -61,10 +60,11 @@ func (b *Batch) AppendLogs(logs ...*commonpb.Log) error {
 			return fmt.Errorf("marshaling system log to protobuf: %w", err)
 		}
 
-		writeByte(b.keyBuffer, keyPrefixLog)
-		writeUInt64(b.keyBuffer, log.Sequence)
+		b.KeyBuilder.
+			PutByte(keyPrefixLog).
+			PutUInt64(log.Sequence)
 
-		if err := setOnBatch(b.batch, b.keyBuffer, logBinary); err != nil {
+		if err := b.batch.Set(b.KeyBuilder.Build(), logBinary, pebble.NoSync); err != nil {
 			return fmt.Errorf("inserting system log: %w", err)
 		}
 
@@ -72,9 +72,11 @@ func (b *Batch) AppendLogs(logs ...*commonpb.Log) error {
 		if log.Idempotency != nil && log.Idempotency.Key != "" {
 			seqValue := make([]byte, 8)
 			binary.BigEndian.PutUint64(seqValue, log.Sequence)
-			writeByte(b.keyBuffer, keyPrefixIdempotency)
-			writeString(b.keyBuffer, log.Idempotency.Key)
-			if err := setOnBatch(b.batch, b.keyBuffer, seqValue); err != nil {
+
+			b.KeyBuilder.
+				PutByte(keyPrefixIdempotency).
+				PutString(log.Idempotency.Key)
+			if err := b.batch.Set(b.KeyBuilder.Build(), seqValue, pebble.NoSync); err != nil {
 				return fmt.Errorf("inserting idempotency index: %w", err)
 			}
 		}
@@ -96,12 +98,11 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 	}
 
 	// Store with key: prefix + ledger ID (4 bytes big-endian)
-	writeByte(b.keyBuffer, keyPrefixLedgerInfo)
-	if err := binary.Write(b.keyBuffer, binary.BigEndian, info.Id); err != nil {
-		return fmt.Errorf("writing ledger ID: %w", err)
-	}
+	b.KeyBuilder.
+		PutByte(keyPrefixLedgerInfo).
+		PutUInt32(info.Id)
 
-	if err := setOnBatch(b.batch, b.keyBuffer, infoBinary); err != nil {
+	if err := b.batch.Set(b.KeyBuilder.Build(), infoBinary, pebble.NoSync); err != nil {
 		return fmt.Errorf("inserting ledger info: %w", err)
 	}
 
@@ -109,77 +110,80 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // AppendBalanceDiff appends a balance diff for an account/asset pair.
-func (b *Batch) AppendBalanceDiff(key BalanceKey, diff BalanceDiff) error {
+func (b *Batch) AppendBalanceDiff(key BalanceKey, diff *commonpb.BigInt) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
-	writeByte(b.keyBuffer, keyPrefixBalanceDiff)
-	writeString(b.keyBuffer, key.Account)
-	writeString(b.keyBuffer, key.Asset)
-	writeUInt64(b.keyBuffer, key.RaftIndex)
+	b.KeyBuilder.
+		PutLedgerPrefix(key.LedgerName).
+		PutByte(keyPrefixBalanceDiff).
+		PutString(key.Account).
+		PutString(key.Asset).
+		PutUInt64(key.RaftIndex)
 
-	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff.Diff)
+	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, diff)
 	if err != nil {
 		return fmt.Errorf("marshaling balance diff: %w", err)
 	}
 
-	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
-		return fmt.Errorf("storing balance diff for ledger %d account %s asset %s: %w", key.LedgerID, key.Account, key.Asset, err)
+	if err := b.batch.Set(b.KeyBuilder.Build(), bigIntData, pebble.NoSync); err != nil {
+		return fmt.Errorf("storing balance diff for ledger %s account %s asset %s: %w", key.LedgerName, key.Account, key.Asset, err)
 	}
 
 	return nil
 }
 
 // SetBalanceBase stores a balance base (compacted snapshot) for an account/asset pair.
-func (b *Batch) SetBalanceBase(key BalanceKey, base BalanceBase) error {
+func (b *Batch) SetBalanceBase(key BalanceKey, balance *commonpb.BigInt) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
-	writeByte(b.keyBuffer, keyPrefixBalanceBase)
-	writeString(b.keyBuffer, key.Account)
-	writeString(b.keyBuffer, key.Asset)
-	writeUInt64(b.keyBuffer, key.RaftIndex)
+	b.KeyBuilder.
+		PutLedgerPrefix(key.LedgerName).
+		PutByte(keyPrefixBalanceBase).
+		PutString(key.Account).
+		PutString(key.Asset).
+		PutUInt64(key.RaftIndex)
 
-	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, base.Balance)
+	bigIntData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, balance)
 	if err != nil {
 		return fmt.Errorf("marshaling balance base: %w", err)
 	}
 
-	if err := setOnBatch(b.batch, b.keyBuffer, bigIntData); err != nil {
-		return fmt.Errorf("storing balance base for ledger %d account %s asset %s: %w", key.LedgerID, key.Account, key.Asset, err)
+	if err := b.batch.Set(b.KeyBuilder.Build(), bigIntData, pebble.NoSync); err != nil {
+		return fmt.Errorf("storing balance base for ledger %s account %s asset %s: %w", key.LedgerName, key.Account, key.Asset, err)
 	}
 
 	return nil
 }
 
 // AppendMetadataDiff appends a metadata diff for an account key.
-// If diff.Value is nil, it represents a deletion of the key (stored as empty value).
-func (b *Batch) AppendMetadataDiff(key MetadataKey, diff MetadataDiff) error {
+// If value is nil, it represents a deletion of the key (stored as empty value).
+func (b *Batch) AppendMetadataDiff(key MetadataKey, value *commonpb.MetadataValue) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
-	writeByte(b.keyBuffer, keyPrefixMetadataDiff)
-	writeString(b.keyBuffer, key.Account)
-	writeString(b.keyBuffer, key.Key)
-	writeUInt64(b.keyBuffer, key.RaftIndex)
+	b.KeyBuilder.
+		PutLedgerPrefix(key.LedgerName).
+		PutByte(keyPrefixMetadataDiff).
+		PutString(key.Account).
+		PutString(key.Key).
+		PutUInt64(key.RaftIndex)
 
 	var valueBytes []byte
-	if diff.Value != nil {
+	if value != nil {
 		var err error
-		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, diff.Value)
+		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, value)
 		if err != nil {
 			return fmt.Errorf("marshaling metadata diff value: %w", err)
 		}
 	}
-	// nil Value means deletion, stored as empty value
+	// nil value means deletion, stored as empty value
 
-	if err := setOnBatch(b.batch, b.keyBuffer, valueBytes); err != nil {
+	if err := b.batch.Set(b.KeyBuilder.Build(), valueBytes, pebble.NoSync); err != nil {
 		return fmt.Errorf("appending metadata diff: %w", err)
 	}
 
@@ -187,30 +191,31 @@ func (b *Batch) AppendMetadataDiff(key MetadataKey, diff MetadataDiff) error {
 }
 
 // SetMetadataBase stores a metadata base (compacted snapshot) for an account/key pair.
-// If base.Value is nil, it represents a deletion of the key at this base index.
-func (b *Batch) SetMetadataBase(key MetadataKey, base MetadataBase) error {
+// If value is nil, it represents a deletion of the key at this base index.
+func (b *Batch) SetMetadataBase(key MetadataKey, value *commonpb.MetadataValue) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, key.LedgerID)
-	writeByte(b.keyBuffer, keyPrefixMetadataBase)
-	writeString(b.keyBuffer, key.Account)
-	writeString(b.keyBuffer, key.Key)
-	writeUInt64(b.keyBuffer, key.RaftIndex)
+	b.KeyBuilder.
+		PutLedgerPrefix(key.LedgerName).
+		PutByte(keyPrefixMetadataBase).
+		PutString(key.Account).
+		PutString(key.Key).
+		PutUInt64(key.RaftIndex)
 
 	var valueBytes []byte
-	if base.Value != nil {
+	if value != nil {
 		var err error
-		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, base.Value)
+		valueBytes, err = b.marshalOptions.MarshalAppend(b.protoBuffer, value)
 		if err != nil {
 			return fmt.Errorf("marshaling metadata base value: %w", err)
 		}
 	}
-	// nil Value means deletion, stored as empty value
+	// nil value means deletion, stored as empty value
 
-	if err := setOnBatch(b.batch, b.keyBuffer, valueBytes); err != nil {
-		return fmt.Errorf("storing metadata base for ledger %d account %s key %s: %w", key.LedgerID, key.Account, key.Key, err)
+	if err := b.batch.Set(b.KeyBuilder.Build(), valueBytes, pebble.NoSync); err != nil {
+		return fmt.Errorf("storing metadata base for ledger %s account %s key %s: %w", key.LedgerName, key.Account, key.Key, err)
 	}
 
 	return nil
@@ -218,22 +223,23 @@ func (b *Batch) SetMetadataBase(key MetadataKey, base MetadataBase) error {
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
 // Key: [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
-func (b *Batch) StoreTransactionUpdate(ledger uint32, transactionID uint64, update *commonpb.TransactionUpdate) error {
+func (b *Batch) StoreTransactionUpdate(ledgerName string, transactionID uint64, update *commonpb.TransactionUpdate) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
-	writeLedgerPrefix(b.keyBuffer, ledger)
-	writeByte(b.keyBuffer, keyPrefixTransactionUpdate)
-	writeUInt64(b.keyBuffer, transactionID)
-	writeUInt64(b.keyBuffer, update.ByLog)
+	b.KeyBuilder.
+		PutLedgerPrefix(ledgerName).
+		PutByte(keyPrefixTransactionUpdate).
+		PutUInt64(transactionID).
+		PutUInt64(update.ByLog)
 
 	updateData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, update)
 	if err != nil {
 		return fmt.Errorf("marshaling transaction update: %w", err)
 	}
 
-	if err := setOnBatch(b.batch, b.keyBuffer, updateData); err != nil {
+	if err := b.batch.Set(b.KeyBuilder.Build(), updateData, pebble.NoSync); err != nil {
 		return fmt.Errorf("storing transaction update: %w", err)
 	}
 

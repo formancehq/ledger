@@ -590,7 +590,7 @@ func TestClusterBasic(t *testing.T) {
 	}
 
 	// Verify balances on the leader's store
-	diffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+	diffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
@@ -680,7 +680,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Verify balances recovered correctly (8 transactions * 100 = 800)
 	require.Eventually(t, func() bool {
-		diffs, err := clusterNode.Store.GetBalanceDiffs(1, map[string][]string{
+		diffs, err := clusterNode.Store.GetBalanceDiffs("default", map[string][]string{
 			"world": {"USD"},
 		})
 		require.NoError(t, err)
@@ -778,7 +778,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	}
 
 	// Verify leader has the expected balance
-	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
@@ -804,7 +804,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	// Wait for the follower to sync and verify its data matches the leader
 	t.Logf("Waiting for follower to sync data...")
 	require.Eventually(t, func() bool {
-		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
@@ -995,7 +995,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// Wait for the follower to fully sync (including spooled entries)
 	t.Logf("Waiting for follower to sync all data (including spooled entries)...")
 	require.Eventually(t, func() bool {
-		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
@@ -1023,7 +1023,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond)
 
 	// Verify leader has the same balance
-	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
@@ -1179,7 +1179,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Wait for the follower to sync and verify its data matches
 	t.Logf("Waiting for follower to sync data after restart...")
 	require.Eventually(t, func() bool {
-		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+		followerDiffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})
@@ -1207,7 +1207,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond)
 
 	// Verify leader still has correct balance (using refreshed leader reference)
-	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+	leaderDiffs, err := leader.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
@@ -1325,7 +1325,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	// Verify the transaction is replicated to the restarted follower
 	expectedBalance := big.NewInt(100)
 	require.Eventually(t, func() bool {
-		diffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+		diffs, err := follower.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"bank": {"USD"},
 		})
 		if err != nil {
@@ -1398,7 +1398,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 
 	// Verify initial balance
 	initialBalance := big.NewInt(int64(numInitialTransactions * 100))
-	diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+	diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 		"world": {"USD"},
 		"bank":  {"USD"},
 	})
@@ -1456,7 +1456,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	// Since the snapshot was not saved, all entries should be replayed
 	t.Logf("Verifying state after restart...")
 	require.Eventually(t, func() bool {
-		diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Id, map[string][]string{
+		diffs, err := node.Store.GetBalanceDiffs(ledgerInfo.Name, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 		})

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -220,25 +219,22 @@ func (c *logCursor) Close() error {
 // from: optional sequence to start from (0 = from beginning).
 // to: optional sequence to stop at (0 = until end, inclusive).
 func (s *Store) GetAllLogs(from uint64, to uint64) (Cursor[*commonpb.Log], error) {
-	buf := bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixLog)
-	if from > 0 {
-		writeUInt64(buf, from)
-	}
-	lowerBound := buf.Bytes()
+	kb := NewKeyBuilder()
 
-	buf = bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixLog)
-	if to > 0 {
-		writeUInt64(buf, to+1)
-	} else {
-		if _, err := buf.Write([]byte{
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		}); err != nil {
-			return nil, err
-		}
+	kb.PutByte(keyPrefixLog)
+	if from > 0 {
+		kb.PutUInt64(from)
 	}
-	upperBound := buf.Bytes()
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutByte(keyPrefixLog)
+	if to > 0 {
+		kb.PutUInt64(to + 1)
+	} else {
+		kb.PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	}
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -259,11 +255,11 @@ func (s *Store) GetAllLogs(from uint64, to uint64) (Cursor[*commonpb.Log], error
 
 // GetLogBySequence retrieves a log by its sequence number.
 func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
-	buf := bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixLog)
-	writeUInt64(buf, sequence)
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixLog).
+		PutUInt64(sequence)
 
-	value, closer, err := s.db.Get(buf.Bytes())
+	value, closer, err := s.db.Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -289,10 +285,9 @@ func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 
 // GetBalanceDiffs retrieves all balance diffs for the given account/asset combinations.
 // Returns the raw diffs with their RaftIndex - the caller is responsible for computing the final balance.
-func (s *Store) GetBalanceDiffs(ledger uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error) {
+func (s *Store) GetBalanceDiffs(ledgerName string, query BalanceDiffsQuery) (BalanceDiffsResult, error) {
 	result := make(BalanceDiffsResult)
-
-	buf := bytes.NewBuffer(nil)
+	kb := NewKeyBuilder()
 
 	// Build query for each account/asset combination
 	for account, assets := range query {
@@ -305,17 +300,15 @@ func (s *Store) GetBalanceDiffs(ledger uint32, query BalanceDiffsQuery) (Balance
 
 		// Query each asset
 		for _, asset := range assets {
-			buf.Reset()
-
 			// Iterate over all balance diffs for this ledger/account/asset combination
-			writeLedgerPrefix(buf, ledger)
-			writeByte(buf, keyPrefixBalanceDiff)
-			writeString(buf, account)
-			writeString(buf, asset)
-			lowerBound := bytes.Clone(buf.Bytes())
+			kb.PutLedgerPrefix(ledgerName).
+				PutByte(keyPrefixBalanceDiff).
+				PutString(account).
+				PutString(asset)
+			lowerBound := kb.Snapshot()
 
-			writeByte(buf, 0xFF)
-			upperBound := buf.Bytes()
+			kb.PutByte(0xFF)
+			upperBound := kb.Build()
 
 			iter, err := s.db.NewIter(&pebble.IterOptions{
 				LowerBound: lowerBound,
@@ -369,19 +362,19 @@ func (s *Store) GetBalanceDiffs(ledger uint32, query BalanceDiffsQuery) (Balance
 
 // GetBalanceBase retrieves the most recent balance base for an account/asset pair
 // whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
-func (s *Store) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
-	buf := bytes.NewBuffer(nil)
+func (s *Store) GetBalanceBase(ledgerName string, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
+	kb := NewKeyBuilder()
 
 	// Build the prefix for this ledger/account/asset
-	writeLedgerPrefix(buf, ledgerID)
-	writeByte(buf, keyPrefixBalanceBase)
-	writeString(buf, account)
-	writeString(buf, asset)
-	lowerBound := bytes.Clone(buf.Bytes())
+	kb.PutLedgerPrefix(ledgerName).
+		PutByte(keyPrefixBalanceBase).
+		PutString(account).
+		PutString(asset)
+	lowerBound := kb.Snapshot()
 
 	// Upper bound includes maxRaftIndex + 1 so we include entries at maxRaftIndex
-	writeUInt64(buf, maxRaftIndex+1)
-	upperBound := buf.Bytes()
+	kb.PutUInt64(maxRaftIndex + 1)
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -424,19 +417,19 @@ func (s *Store) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIn
 
 // GetMetadataBase retrieves the most recent metadata base for an account/key pair
 // whose RaftIndex is <= the given maxRaftIndex. Returns nil if no base exists.
-func (s *Store) GetMetadataBase(ledgerID uint32, account, key string, maxRaftIndex uint64) (*StoredMetadataBase, error) {
-	buf := bytes.NewBuffer(nil)
+func (s *Store) GetMetadataBase(ledgerName string, account, key string, maxRaftIndex uint64) (*StoredMetadataBase, error) {
+	kb := NewKeyBuilder()
 
 	// Build the prefix for this ledger/account/key
-	writeLedgerPrefix(buf, ledgerID)
-	writeByte(buf, keyPrefixMetadataBase)
-	writeString(buf, account)
-	writeString(buf, key)
-	lowerBound := bytes.Clone(buf.Bytes())
+	kb.PutLedgerPrefix(ledgerName).
+		PutByte(keyPrefixMetadataBase).
+		PutString(account).
+		PutString(key)
+	lowerBound := kb.Snapshot()
 
 	// Upper bound includes maxRaftIndex + 1 so we include entries at maxRaftIndex
-	writeUInt64(buf, maxRaftIndex+1)
-	upperBound := buf.Bytes()
+	kb.PutUInt64(maxRaftIndex + 1)
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -482,15 +475,14 @@ func (s *Store) GetMetadataBase(ledgerID uint32, account, key string, maxRaftInd
 }
 
 // GetAccountMetadata retrieves account metadata for multiple accounts from Pebble for a specific ledger (implements store.Store)
-func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *Store) GetAccountMetadata(ledgerName string, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
+	kb := NewKeyBuilder()
 
 	// Initialize with empty metadata for all requested accounts
 	for _, account := range accounts {
 		result[account] = make(metadata.Metadata)
 	}
-
-	buf := bytes.NewBuffer(nil)
 
 	// For each account, we need to find the latest value for each key
 	for _, account := range accounts {
@@ -502,20 +494,19 @@ func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string
 		})
 
 		// Read metadata diffs (empty value = deletion)
-		buf.Reset()
-		writeLedgerPrefix(buf, ledger)
-		writeByte(buf, keyPrefixMetadataDiff)
-		writeString(buf, account)
-		lowerBound := bytes.Clone(buf.Bytes())
-		writeByte(buf, 0xFF)
-		upperBound := buf.Bytes()
+		kb.PutLedgerPrefix(ledgerName).
+			PutByte(keyPrefixMetadataDiff).
+			PutString(account)
+		lowerBound := kb.Snapshot()
+		kb.PutByte(0xFF)
+		upperBound := kb.Build()
 
 		iter, err := s.db.NewIter(&pebble.IterOptions{
 			LowerBound: lowerBound,
 			UpperBound: upperBound,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("creating metadata iterator for ledger %d account %s: %w", ledger, account, err)
+			return nil, fmt.Errorf("creating metadata iterator for ledger %s account %s: %w", ledgerName, account, err)
 		}
 
 		for iter.First(); iter.Valid(); iter.Next() {
@@ -569,19 +560,18 @@ func (s *Store) GetAccountMetadata(ledger uint32, accounts []string) (map[string
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account
 // Input is calculated as sum of positive balance diffs (when account receives funds)
 // Output is calculated as sum of absolute negative balance diffs (when account sends funds)
-func (s *Store) GetAccountVolumes(ledger uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func (s *Store) GetAccountVolumes(ledgerName string, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
-
-	buf := bytes.NewBuffer(nil)
+	kb := NewKeyBuilder()
 
 	// Build prefix for all balance diffs for this account (across all assets)
-	writeLedgerPrefix(buf, ledger)
-	writeByte(buf, keyPrefixBalanceDiff)
-	writeString(buf, account)
-	lowerBound := bytes.Clone(buf.Bytes())
+	kb.PutLedgerPrefix(ledgerName).
+		PutByte(keyPrefixBalanceDiff).
+		PutString(account)
+	lowerBound := kb.Snapshot()
 
-	writeByte(buf, 0xFF)
-	upperBound := buf.Bytes()
+	kb.PutByte(0xFF)
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -652,12 +642,11 @@ func (s *Store) GetAccountVolumes(ledger uint32, account string) (map[string]*co
 
 // GetSequenceForIdempotencyKey retrieves the sequence for an idempotency key (global) (implements store.Store)
 func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixIdempotency).
+		PutString(idempotencyKey)
 
-	buf := bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixIdempotency)
-	writeString(buf, idempotencyKey)
-
-	value, closer, err := s.db.Get(buf.Bytes())
+	value, closer, err := s.db.Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -673,8 +662,8 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 
 // GetSequenceForTransactionID retrieves the sequence (ByLog of TransactionInit) for a given transaction ID.
 // Returns 0 if no TransactionInit is found.
-func (s *Store) GetSequenceForTransactionID(ledger uint32, transactionID uint64) (uint64, error) {
-	updates, err := s.GetTransactionUpdates(ledger, transactionID)
+func (s *Store) GetSequenceForTransactionID(ledgerName string, transactionID uint64) (uint64, error) {
+	updates, err := s.GetTransactionUpdates(ledgerName, transactionID)
 	if err != nil {
 		return 0, err
 	}
@@ -693,8 +682,8 @@ func (s *Store) GetSequenceForTransactionID(ledger uint32, transactionID uint64)
 
 // IsTransactionReverted checks if a transaction has been reverted for a specific ledger.
 // Returns true if a TransactionUpdateRevert exists for this transaction.
-func (s *Store) IsTransactionReverted(ledger uint32, transactionID uint64) (bool, error) {
-	updates, err := s.GetTransactionUpdates(ledger, transactionID)
+func (s *Store) IsTransactionReverted(ledgerName string, transactionID uint64) (bool, error) {
+	updates, err := s.GetTransactionUpdates(ledgerName, transactionID)
 	if err != nil {
 		return false, err
 	}
@@ -712,16 +701,16 @@ func (s *Store) IsTransactionReverted(ledger uint32, transactionID uint64) (bool
 }
 
 // GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
-func (s *Store) GetTransactionUpdates(ledger uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
-	buf := bytes.NewBuffer(nil)
-	writeLedgerPrefix(buf, ledger)
-	writeByte(buf, keyPrefixTransactionUpdate)
-	writeUInt64(buf, transactionID)
-	lowerBound := bytes.Clone(buf.Bytes())
+func (s *Store) GetTransactionUpdates(ledgerName string, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+	kb := NewKeyBuilder()
+	kb.PutLedgerPrefix(ledgerName).
+		PutByte(keyPrefixTransactionUpdate).
+		PutUInt64(transactionID)
+	lowerBound := kb.Snapshot()
 
 	// Upper bound: add 0xFF to get all entries for this transaction
-	writeByte(buf, 0xFF)
-	upperBound := buf.Bytes()
+	kb.PutByte(0xFF)
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -823,18 +812,15 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 
 // GetLastSequence returns the last sequence number for system logs.
 func (s *Store) GetLastSequence() (uint64, error) {
-	buf := bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixLog)
-	lowerBound := buf.Bytes()
+	kb := NewKeyBuilder()
 
-	buf = bytes.NewBuffer(nil)
-	writeByte(buf, keyPrefixLog)
-	if _, err := buf.Write([]byte{
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	}); err != nil {
-		return 0, err
-	}
-	upperBound := buf.Bytes()
+	kb.PutByte(keyPrefixLog)
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutByte(keyPrefixLog).
+		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	upperBound := kb.Build()
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -994,52 +980,6 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	}
 
 	return info, nil
-}
-
-func writeLedgerPrefix(buf *bytes.Buffer, ledgerID uint32) {
-	writeUInt32(buf, ledgerID)
-}
-
-func writeUInt32(buf *bytes.Buffer, value uint32) {
-	if err := binary.Write(buf, binary.BigEndian, value); err != nil {
-		panic(err)
-	}
-}
-
-func writeUInt64(buf *bytes.Buffer, value uint64) {
-	if err := binary.Write(buf, binary.BigEndian, value); err != nil {
-		panic(err)
-	}
-}
-
-func writeString(buf *bytes.Buffer, value string) {
-	if _, err := buf.WriteString(value); err != nil {
-		panic(err)
-	}
-}
-
-func writeByte(buf *bytes.Buffer, value byte) {
-	if err := buf.WriteByte(value); err != nil {
-		panic(err)
-	}
-}
-
-func setOnBatch(batch *pebble.Batch, buf *bytes.Buffer, value []byte) error {
-	if err := batch.Set(buf.Bytes(), value, pebble.NoSync); err != nil {
-		return fmt.Errorf("inserting log: %w", err)
-	}
-	buf.Reset()
-
-	return nil
-}
-
-func deleteOnBatch(batch *pebble.Batch, buf *bytes.Buffer) error {
-	if err := batch.Delete(buf.Bytes(), pebble.NoSync); err != nil {
-		return fmt.Errorf("inserting log: %w", err)
-	}
-	buf.Reset()
-
-	return nil
 }
 
 func HardLink(srcDir, dstDir string) error {

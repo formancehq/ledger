@@ -29,13 +29,14 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	// Verify ledger exists
+	_, err = s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
-	transaction, err := s.backend.GetTransaction(r.Context(), ledgerInfo.Id, transactionID)
+	transaction, err := s.backend.GetTransaction(r.Context(), ledgerName, transactionID)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

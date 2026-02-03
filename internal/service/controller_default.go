@@ -59,9 +59,9 @@ func (ctrl *DefaultController) GetAllLedgersInfo(_ context.Context) (store.Curso
 	}), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	// Get the sequence for the transaction ID
-	sequence, err := ctrl.store.GetSequenceForTransactionID(ledgerID, transactionID)
+	sequence, err := ctrl.store.GetSequenceForTransactionID(ledgerName, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting sequence for transaction %d: %w", transactionID, err)
 	}
@@ -93,7 +93,7 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerID uint32
 		}
 		tx := payload.CreatedTransaction.Transaction
 		// Check if the transaction has been reverted
-		reverted, err := ctrl.store.IsTransactionReverted(ledgerID, transactionID)
+		reverted, err := ctrl.store.IsTransactionReverted(ledgerName, transactionID)
 		if err != nil {
 			return nil, fmt.Errorf("checking if transaction %d is reverted: %w", transactionID, err)
 		}
@@ -109,15 +109,15 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerID uint32
 	}
 }
 
-func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
+func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// Get account metadata
-	metadataMap, err := ctrl.store.GetAccountMetadata(ledgerID, []string{address})
+	metadataMap, err := ctrl.store.GetAccountMetadata(ledgerName, []string{address})
 	if err != nil {
 		return nil, fmt.Errorf("getting account metadata: %w", err)
 	}
 
 	// Get account volumes
-	volumes, err := ctrl.store.GetAccountVolumes(ledgerID, address)
+	volumes, err := ctrl.store.GetAccountVolumes(ledgerName, address)
 	if err != nil {
 		return nil, fmt.Errorf("getting account volumes: %w", err)
 	}
@@ -380,8 +380,23 @@ func (ctrl *DefaultController) resolveLedgerID(ctx context.Context, ledger *serv
 	}
 }
 
+// getLedgerNameByID resolves a ledger ID to a ledger name
+func (ctrl *DefaultController) getLedgerNameByID(ledgerID uint32) (string, error) {
+	ledgerInfo, err := ctrl.store.GetLedgerByID(ledgerID)
+	if err != nil {
+		return "", fmt.Errorf("resolving ledger ID %d: %w", ledgerID, err)
+	}
+	return ledgerInfo.Name, nil
+}
+
 func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
 	ctrl.logger.Debugf("Creating transaction")
+
+	// Get ledger name for store operations
+	ledgerName, err := ctrl.getLedgerNameByID(ledgerID)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger name: %w", err)
+	}
 
 	input := in.(*servicepb.CreateTransactionPayload)
 
@@ -397,7 +412,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 	}
 
 	if input.Reference != "" {
-		_, err := unitOfWork.LockKeys(ctx, fmt.Sprintf("%d/tx/references/%s", ledgerID, input.Reference))
+		_, err := unitOfWork.LockKeys(ctx, fmt.Sprintf("%s/tx/references/%s", ledgerName, input.Reference))
 		if err != nil {
 			return nil, fmt.Errorf("locking reference %s: %w", input.Reference, err)
 		}
@@ -412,14 +427,14 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 	if hasScript {
 		script := input.Script
 		var err error
-		postings, scriptMetadata, scriptAccountMetadata, err = ctrl.executeNumscript(ctx, unitOfWork, ledgerID, script)
+		postings, scriptMetadata, scriptAccountMetadata, err = ctrl.executeNumscript(ctx, unitOfWork, ledgerName, script)
 		if err != nil {
 			return nil, fmt.Errorf("executing numscript: %w", err)
 		}
 	} else {
 		postings = input.Postings
 		// Check that all source accounts have sufficient funds
-		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerID, postings); err != nil {
+		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerName, postings); err != nil {
 			return nil, err
 		}
 	}
@@ -492,7 +507,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, unitOfWork
 }
 
 // executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
-func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOfWork, ledgerID uint32, script *commonpb.Script) ([]*commonpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
+func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOfWork, ledgerName string, script *commonpb.Script) ([]*commonpb.Posting, metadata.Metadata, map[string]metadata.Metadata, error) {
 	if script == nil || script.Plain == "" {
 		return nil, nil, nil, fmt.Errorf("script is required")
 	}
@@ -517,8 +532,8 @@ func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOf
 		ctrl.scriptCache.Store(scriptKey, parseResult)
 	}
 
-	// Create numscriptStore wrapper with ledgerID for numscript interface methods
-	store := &numscriptStore{unitOfWork: uow, ledgerID: ledgerID}
+	// Create numscriptStore wrapper with ledgerName for numscript interface methods
+	store := &numscriptStore{unitOfWork: uow, ledgerName: ledgerName}
 
 	// Execute the script
 	result, err := parseResult.Run(ctx, script.Vars, store)
@@ -557,20 +572,26 @@ func (ctrl *DefaultController) executeNumscript(ctx context.Context, uow *unitOf
 func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork *unitOfWork, ledgerID uint32, in proto.Message) (*raftcmdpb.AnyCommand, error) {
 	input := in.(*servicepb.RevertTransactionPayload)
 
-	// Validate input
+	// Validate input first
 	if input.TransactionId == 0 {
 		return nil, fmt.Errorf("transaction id is required")
 	}
 
+	// Get ledger name for store operations
+	ledgerName, err := ctrl.getLedgerNameByID(ledgerID)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger name: %w", err)
+	}
+
 	// Lock the transaction ID to prevent concurrent revert operations
-	lockKey := fmt.Sprintf("%d/tx/revert/%d", ledgerID, input.TransactionId)
-	_, err := unitOfWork.LockKeys(ctx, lockKey)
+	lockKey := fmt.Sprintf("%s/tx/revert/%d", ledgerName, input.TransactionId)
+	_, err = unitOfWork.LockKeys(ctx, lockKey)
 	if err != nil {
 		return nil, fmt.Errorf("locking transaction %d: %w", input.TransactionId, err)
 	}
 
 	// Check if transaction is already reverted (fast path using store index)
-	isReverted, err := unitOfWork.IsTransactionReverted(ctx, ledgerID, input.TransactionId)
+	isReverted, err := unitOfWork.IsTransactionReverted(ctx, ledgerName, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("checking if transaction %d is reverted: %w", input.TransactionId, err)
 	}
@@ -579,7 +600,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 	}
 
 	// Get the sequence for the transaction ID
-	sequence, err := unitOfWork.GetSequenceForTransactionID(ctx, ledgerID, input.TransactionId)
+	sequence, err := unitOfWork.GetSequenceForTransactionID(ctx, ledgerName, input.TransactionId)
 	if err != nil {
 		return nil, fmt.Errorf("getting sequence for transaction %d: %w", input.TransactionId, err)
 	}
@@ -639,7 +660,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, unitOfWork
 
 	// Validate balances for revert transaction (unless force is true)
 	if !input.Force {
-		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerID, reversedPostings); err != nil {
+		if err := ctrl.checkBalances(ctx, unitOfWork, ledgerName, reversedPostings); err != nil {
 			return nil, err
 		}
 	}
@@ -823,19 +844,19 @@ func (ctrl *DefaultController) deleteLedger(ctx context.Context, uow *unitOfWork
 }
 
 // Import is not implemented yet
-func (ctrl *DefaultController) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.LedgerLog) error {
+func (ctrl *DefaultController) Import(ctx context.Context, ledgerName string, stream chan *commonpb.LedgerLog) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
 // Export is not implemented yet
-func (ctrl *DefaultController) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
+func (ctrl *DefaultController) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return fmt.Errorf("export is not implemented yet")
 }
 
 // checkBalances verifies that all source accounts have sufficient funds for the given postings.
 // It locks the relevant balance keys, fetches current balances, and returns ErrInsufficientFunds
 // if any source account lacks the required funds.
-func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWork, ledgerID uint32, postings []*commonpb.Posting) error {
+func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWork, ledgerName string, postings []*commonpb.Posting) error {
 	// Group postings by source account and asset to check balances
 	// Build balance query: map[account] = [assets]
 	balanceQuery := make(map[string]map[string]bool)      // account -> asset -> true (for deduplication)
@@ -881,13 +902,13 @@ func (ctrl *DefaultController) checkBalances(ctx context.Context, uow *unitOfWor
 	}
 
 	// Lock balance keys
-	lockKeys := makeBalanceLockKeys(ledgerID, balanceQueryList)
+	lockKeys := makeBalanceLockKeys(ledgerName, balanceQueryList)
 	_, err := uow.LockKeys(ctx, lockKeys...)
 	if err != nil {
 		return err
 	}
 
-	balanceDiffs, err := uow.GetBalanceDiffs(ledgerID, balanceQueryList)
+	balanceDiffs, err := uow.GetBalanceDiffs(ledgerName, balanceQueryList)
 	if err != nil {
 		return err
 	}

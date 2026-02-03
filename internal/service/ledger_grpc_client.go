@@ -34,25 +34,25 @@ func (g *LedgerGrpcClient) Apply(ctx context.Context, actions ...*servicepb.Requ
 	return resp.Logs, nil
 }
 
-func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	return g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger: &servicepb.LedgerNameOrId{
-			Type: &servicepb.LedgerNameOrId_Id{Id: ledgerID},
+			Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
 		},
 		TransactionId: transactionID,
 	})
 }
 
-func (g *LedgerGrpcClient) GetAccount(ctx context.Context, ledgerID uint32, address string) (*commonpb.Account, error) {
+func (g *LedgerGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// GetAccount reads from local store via RoutedController, this method should not be called
 	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
 }
 
-func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerID uint32, stream chan *commonpb.LedgerLog) error {
+func (g *LedgerGrpcClient) Import(ctx context.Context, ledgerName string, stream chan *commonpb.LedgerLog) error {
 	return fmt.Errorf("import is not implemented yet")
 }
 
-func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerID uint32, w ExportWriter) error {
+func (g *LedgerGrpcClient) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return fmt.Errorf("export is not implemented yet")
 }
 

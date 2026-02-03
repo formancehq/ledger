@@ -374,6 +374,16 @@ func (fsm *FSM) GetLedgerInfo(id uint32) (*commonpb.LedgerInfo, error) {
 	return proto.CloneOf(ledger.LedgerInfo), nil
 }
 
+// getLedgerNameByID returns the ledger name for a given ID.
+// This is an internal helper used during log projection.
+func (fsm *FSM) getLedgerNameByID(id uint32) (string, error) {
+	ledger, ok := fsm.state.Ledgers[id]
+	if !ok {
+		return "", fmt.Errorf("ledger %d does not exist", id)
+	}
+	return ledger.LedgerInfo.Name, nil
+}
+
 // GetAllLedgers returns all ledgers (including deleted ones)
 func (fsm *FSM) GetAllLedgers() map[string]*commonpb.LedgerInfo {
 	ret := make(map[string]*commonpb.LedgerInfo, len(fsm.state.Ledgers))
@@ -406,26 +416,26 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 	switch {
 	case log.Payload.GetApply() != nil:
 		ledgerLog := log.Payload.GetApply().Log
+		ledgerID := log.Payload.GetApply().LedgerId
+		ledgerName, err := fsm.getLedgerNameByID(ledgerID)
+		if err != nil {
+			return fmt.Errorf("getting ledger name for ID %d: %w", ledgerID, err)
+		}
 
 		projectTransaction := func(batch *store.Batch, tx *commonpb.Transaction) error {
-			ledgerID := log.Payload.GetApply().LedgerId
 			for _, posting := range tx.Postings {
 				sourceKey := store.BalanceKey{
-					AccountKey: store.AccountKey{LedgerID: ledgerID, Account: posting.Source, RaftIndex: index},
+					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: posting.Source, RaftIndex: index},
 					Asset:      posting.Asset,
 				}
-				if err := batch.AppendBalanceDiff(sourceKey, store.BalanceDiff{
-					Diff: posting.Amount.Neg(),
-				}); err != nil {
+				if err := batch.AppendBalanceDiff(sourceKey, posting.Amount.Neg()); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
 				destKey := store.BalanceKey{
-					AccountKey: store.AccountKey{LedgerID: ledgerID, Account: posting.Destination, RaftIndex: index},
+					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: posting.Destination, RaftIndex: index},
 					Asset:      posting.Asset,
 				}
-				if err := batch.AppendBalanceDiff(destKey, store.BalanceDiff{
-					Diff: posting.Amount,
-				}); err != nil {
+				if err := batch.AppendBalanceDiff(destKey, posting.Amount); err != nil {
 					return fmt.Errorf("appending balance diff for posting %s: %w", posting.String(), err)
 				}
 			}
@@ -439,7 +449,7 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				return fmt.Errorf("projecting transaction %d: %w", payload.CreatedTransaction.Transaction.Id, err)
 			}
 			// Store transaction init update
-			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.CreatedTransaction.Transaction.Id, &commonpb.TransactionUpdate{
+			if err := batch.StoreTransactionUpdate(ledgerName, payload.CreatedTransaction.Transaction.Id, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
 				Updates: []*commonpb.TransactionUpdateType{
 					{
@@ -452,18 +462,15 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				return err
 			}
 			if payload.CreatedTransaction.AccountMetadata != nil {
-				ledgerID := log.Payload.GetApply().LedgerId
 				for account, metadataSet := range payload.CreatedTransaction.AccountMetadata {
 					if metadataSet != nil {
 						for _, md := range metadataSet.Metadata {
 							if md != nil && md.Value != nil {
 								key := store.MetadataKey{
-									AccountKey: store.AccountKey{LedgerID: ledgerID, Account: account, RaftIndex: log.Sequence},
+									AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account, RaftIndex: log.Sequence},
 									Key:        md.Key,
 								}
-								if err := batch.AppendMetadataDiff(key, store.MetadataDiff{
-									Value: md.Value,
-								}); err != nil {
+								if err := batch.AppendMetadataDiff(key, md.Value); err != nil {
 									return err
 								}
 							}
@@ -477,7 +484,7 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				return fmt.Errorf("projecting transaction %d: %w", payload.RevertedTransaction.RevertTransaction.Id, err)
 			}
 			// Store transaction revert update for the original transaction
-			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertedTransactionId, &commonpb.TransactionUpdate{
+			if err := batch.StoreTransactionUpdate(ledgerName, payload.RevertedTransaction.RevertedTransactionId, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
 				Updates: []*commonpb.TransactionUpdateType{
 					{
@@ -492,7 +499,7 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 				return err
 			}
 			// Store transaction init for the revert transaction itself
-			if err := batch.StoreTransactionUpdate(log.Payload.GetApply().LedgerId, payload.RevertedTransaction.RevertTransaction.Id, &commonpb.TransactionUpdate{
+			if err := batch.StoreTransactionUpdate(ledgerName, payload.RevertedTransaction.RevertTransaction.Id, &commonpb.TransactionUpdate{
 				ByLog: log.Sequence,
 				Updates: []*commonpb.TransactionUpdateType{
 					{
@@ -507,16 +514,13 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 		case *commonpb.LedgerLogPayload_SavedMetadata:
 			if account := payload.SavedMetadata.Target.GetAccount(); account != nil {
 				if payload.SavedMetadata.Metadata != nil {
-					ledgerID := log.Payload.GetApply().LedgerId
 					for _, md := range payload.SavedMetadata.Metadata.Metadata {
 						if md != nil && md.Value != nil {
 							key := store.MetadataKey{
-								AccountKey: store.AccountKey{LedgerID: ledgerID, Account: account.Addr, RaftIndex: log.Sequence},
+								AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
 								Key:        md.Key,
 							}
-							if err := batch.AppendMetadataDiff(key, store.MetadataDiff{
-								Value: md.Value,
-							}); err != nil {
+							if err := batch.AppendMetadataDiff(key, md.Value); err != nil {
 								return err
 							}
 						}
@@ -526,12 +530,10 @@ func (fsm *FSM) projectLog(_ context.Context, batch *store.Batch, log *commonpb.
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			if account := payload.DeletedMetadata.Target.GetAccount(); account != nil {
 				key := store.MetadataKey{
-					AccountKey: store.AccountKey{LedgerID: log.Payload.GetApply().LedgerId, Account: account.Addr, RaftIndex: log.Sequence},
+					AccountKey: store.AccountKey{LedgerName: ledgerName, Account: account.Addr, RaftIndex: log.Sequence},
 					Key:        payload.DeletedMetadata.Key,
 				}
-				if err := batch.AppendMetadataDiff(key, store.MetadataDiff{
-					Value: nil, // nil means deletion
-				}); err != nil {
+				if err := batch.AppendMetadataDiff(key, nil); err != nil { // nil means deletion
 					return err
 				}
 			}

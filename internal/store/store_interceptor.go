@@ -18,13 +18,13 @@ type StoreInterceptor struct {
 
 	// Store interceptors
 	OnListLedgers                  func(delegate *Store) (Cursor[*commonpb.LedgerInfo], error)
-	OnGetBalanceDiffs              func(delegate *Store, ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)
-	OnGetBalanceBase               func(delegate *Store, ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error)
-	OnGetAccountMetadata           func(delegate *Store, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error)
-	OnGetAccountVolumes            func(delegate *Store, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error)
+	OnGetBalanceDiffs              func(delegate *Store, ledgerName string, query BalanceDiffsQuery) (BalanceDiffsResult, error)
+	OnGetBalanceBase               func(delegate *Store, ledgerName string, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error)
+	OnGetAccountMetadata           func(delegate *Store, ledgerName string, accounts []string) (map[string]metadata.Metadata, error)
+	OnGetAccountVolumes            func(delegate *Store, ledgerName string, account string) (map[string]*commonpb.VolumesWithBalance, error)
 	OnGetSequenceForIdempotencyKey func(delegate *Store, idempotencyKey string) (uint64, error)
-	OnGetSequenceForTransactionID  func(delegate *Store, ledgerID uint32, transactionID uint64) (uint64, error)
-	OnIsTransactionReverted        func(delegate *Store, ledgerID uint32, transactionID uint64) (bool, error)
+	OnGetSequenceForTransactionID  func(delegate *Store, ledgerName string, transactionID uint64) (uint64, error)
+	OnIsTransactionReverted        func(delegate *Store, ledgerName string, transactionID uint64) (bool, error)
 	OnNewBatch                     func(delegate *Store) *Batch
 	OnCreateSnapshot               func(delegate *Store) error
 	OnGetLastAppliedIndex          func(delegate *Store) (uint64, error)
@@ -74,44 +74,44 @@ func (s *StoreInterceptor) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 	return s.delegate.ListLedgers()
 }
 
-func (s *StoreInterceptor) GetBalanceDiffs(ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error) {
+func (s *StoreInterceptor) GetBalanceDiffs(ledgerName string, query BalanceDiffsQuery) (BalanceDiffsResult, error) {
 	s.mu.RLock()
 	interceptor := s.OnGetBalanceDiffs
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, query)
+		return interceptor(s.delegate, ledgerName, query)
 	}
-	return s.delegate.GetBalanceDiffs(ledgerID, query)
+	return s.delegate.GetBalanceDiffs(ledgerName, query)
 }
 
-func (s *StoreInterceptor) GetBalanceBase(ledgerID uint32, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
+func (s *StoreInterceptor) GetBalanceBase(ledgerName string, account, asset string, maxRaftIndex uint64) (*StoredBalanceBase, error) {
 	s.mu.RLock()
 	interceptor := s.OnGetBalanceBase
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, account, asset, maxRaftIndex)
+		return interceptor(s.delegate, ledgerName, account, asset, maxRaftIndex)
 	}
-	return s.delegate.GetBalanceBase(ledgerID, account, asset, maxRaftIndex)
+	return s.delegate.GetBalanceBase(ledgerName, account, asset, maxRaftIndex)
 }
 
-func (s *StoreInterceptor) GetAccountMetadata(ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
+func (s *StoreInterceptor) GetAccountMetadata(ledgerName string, accounts []string) (map[string]metadata.Metadata, error) {
 	s.mu.RLock()
 	interceptor := s.OnGetAccountMetadata
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, accounts)
+		return interceptor(s.delegate, ledgerName, accounts)
 	}
-	return s.delegate.GetAccountMetadata(ledgerID, accounts)
+	return s.delegate.GetAccountMetadata(ledgerName, accounts)
 }
 
-func (s *StoreInterceptor) GetAccountVolumes(ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func (s *StoreInterceptor) GetAccountVolumes(ledgerName string, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	s.mu.RLock()
 	interceptor := s.OnGetAccountVolumes
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, account)
+		return interceptor(s.delegate, ledgerName, account)
 	}
-	return s.delegate.GetAccountVolumes(ledgerID, account)
+	return s.delegate.GetAccountVolumes(ledgerName, account)
 }
 
 func (s *StoreInterceptor) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error) {
@@ -124,24 +124,24 @@ func (s *StoreInterceptor) GetSequenceForIdempotencyKey(idempotencyKey string) (
 	return s.delegate.GetSequenceForIdempotencyKey(idempotencyKey)
 }
 
-func (s *StoreInterceptor) GetSequenceForTransactionID(ledgerID uint32, transactionID uint64) (uint64, error) {
+func (s *StoreInterceptor) GetSequenceForTransactionID(ledgerName string, transactionID uint64) (uint64, error) {
 	s.mu.RLock()
 	interceptor := s.OnGetSequenceForTransactionID
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, transactionID)
+		return interceptor(s.delegate, ledgerName, transactionID)
 	}
-	return s.delegate.GetSequenceForTransactionID(ledgerID, transactionID)
+	return s.delegate.GetSequenceForTransactionID(ledgerName, transactionID)
 }
 
-func (s *StoreInterceptor) IsTransactionReverted(ledgerID uint32, transactionID uint64) (bool, error) {
+func (s *StoreInterceptor) IsTransactionReverted(ledgerName string, transactionID uint64) (bool, error) {
 	s.mu.RLock()
 	interceptor := s.OnIsTransactionReverted
 	s.mu.RUnlock()
 	if interceptor != nil {
-		return interceptor(s.delegate, ledgerID, transactionID)
+		return interceptor(s.delegate, ledgerName, transactionID)
 	}
-	return s.delegate.IsTransactionReverted(ledgerID, transactionID)
+	return s.delegate.IsTransactionReverted(ledgerName, transactionID)
 }
 
 func (s *StoreInterceptor) NewBatch() *Batch {
@@ -229,7 +229,7 @@ func (s *StoreInterceptor) SetListLedgersInterceptor(fn func(delegate *Store) (C
 	s.mu.Unlock()
 }
 
-func (s *StoreInterceptor) SetGetBalanceDiffsInterceptor(fn func(delegate *Store, ledgerID uint32, query BalanceDiffsQuery) (BalanceDiffsResult, error)) {
+func (s *StoreInterceptor) SetGetBalanceDiffsInterceptor(fn func(delegate *Store, ledgerName string, query BalanceDiffsQuery) (BalanceDiffsResult, error)) {
 	s.mu.Lock()
 	s.OnGetBalanceDiffs = fn
 	s.mu.Unlock()

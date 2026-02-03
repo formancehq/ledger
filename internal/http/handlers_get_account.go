@@ -21,13 +21,14 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
+	// Verify ledger exists
+	_, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
-	account, err := s.backend.GetAccount(r.Context(), ledgerInfo.Id, address)
+	account, err := s.backend.GetAccount(r.Context(), ledgerName, address)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":  ledgerName,

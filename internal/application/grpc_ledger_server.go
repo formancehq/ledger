@@ -78,19 +78,20 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *servicepb.StreamLogsRequest
 }
 
 func (impl *LedgerServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
-	// Get ledger ID from name or ID
-	var ledgerID uint32
+	// Get ledger name from request
+	var ledgerName string
 	if req.Ledger.GetName() != "" {
-		ledger, err := impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+		ledgerName = req.Ledger.GetName()
+	} else {
+		// Resolve ledger name from ID
+		ledger, err := impl.store.GetLedgerByID(req.Ledger.GetId())
 		if err != nil {
 			return nil, fmt.Errorf("getting ledger: %w", err)
 		}
-		ledgerID = ledger.Id
-	} else {
-		ledgerID = req.Ledger.GetId()
+		ledgerName = ledger.Name
 	}
 
-	return impl.ctrl.GetTransaction(ctx, ledgerID, req.TransactionId)
+	return impl.ctrl.GetTransaction(ctx, ledgerName, req.TransactionId)
 }
 
 func (impl *LedgerServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedgersRequest, stream servicepb.LedgerService_GetAllLedgersInfoServer) error {
@@ -129,19 +130,20 @@ func (impl *LedgerServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *LedgerServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	// Get ledger ID from name or ID
-	var ledgerID uint32
+	// Get ledger name from request
+	var ledgerName string
 	if req.Ledger.GetName() != "" {
-		ledger, err := impl.ctrl.GetLedgerByName(ctx, req.Ledger.GetName())
+		ledgerName = req.Ledger.GetName()
+	} else {
+		// Resolve ledger name from ID
+		ledger, err := impl.store.GetLedgerByID(req.Ledger.GetId())
 		if err != nil {
 			return nil, fmt.Errorf("getting ledger: %w", err)
 		}
-		ledgerID = ledger.Id
-	} else {
-		ledgerID = req.Ledger.GetId()
+		ledgerName = ledger.Name
 	}
 
-	return impl.ctrl.GetAccount(ctx, ledgerID, req.Address)
+	return impl.ctrl.GetAccount(ctx, ledgerName, req.Address)
 }
 
 func (impl *LedgerServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {

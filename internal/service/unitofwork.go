@@ -32,27 +32,27 @@ func (s *unitOfWork) ReleaseLocks() {
 	}
 }
 
-func (s *unitOfWork) IsTransactionReverted(_ context.Context, ledgerID uint32, id uint64) (bool, error) {
-	return s.Store.IsTransactionReverted(ledgerID, id)
+func (s *unitOfWork) IsTransactionReverted(_ context.Context, ledgerName string, id uint64) (bool, error) {
+	return s.Store.IsTransactionReverted(ledgerName, id)
 }
 
-func (s *unitOfWork) GetSequenceForTransactionID(_ context.Context, ledgerID uint32, id uint64) (uint64, error) {
-	return s.Store.GetSequenceForTransactionID(ledgerID, id)
+func (s *unitOfWork) GetSequenceForTransactionID(_ context.Context, ledgerName string, id uint64) (uint64, error) {
+	return s.Store.GetSequenceForTransactionID(ledgerName, id)
 }
 
 func (s *unitOfWork) GetLogBySequence(_ context.Context, sequence uint64) (*commonpb.Log, error) {
 	return s.Store.GetLogBySequence(sequence)
 }
 
-func (s *unitOfWork) GetBalanceDiffs(ledgerID uint32, query store.BalanceDiffsQuery) (store.BalanceDiffsResult, error) {
-	return s.Store.GetBalanceDiffs(ledgerID, query)
+func (s *unitOfWork) GetBalanceDiffs(ledgerName string, query store.BalanceDiffsQuery) (store.BalanceDiffsResult, error) {
+	return s.Store.GetBalanceDiffs(ledgerName, query)
 }
 
 // numscriptStore wraps unitOfWork to implement numscript interfaces
-// It holds ledgerID since numscript interface methods can't have additional parameters
+// It holds ledgerName since numscript interface methods can't have additional parameters
 type numscriptStore struct {
 	*unitOfWork
-	ledgerID uint32
+	ledgerName string
 }
 
 func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
@@ -62,13 +62,13 @@ func (s *numscriptStore) GetBalances(ctx context.Context, q numscript.BalanceQue
 		balanceQuery[account] = assets
 	}
 
-	lockKeys := makeBalanceLockKeys(s.ledgerID, balanceQuery)
+	lockKeys := makeBalanceLockKeys(s.ledgerName, balanceQuery)
 	_, err := s.LockKeys(ctx, lockKeys...)
 	if err != nil {
 		return nil, err
 	}
 
-	balanceDiffs, err := s.Store.GetBalanceDiffs(s.ledgerID, balanceQuery)
+	balanceDiffs, err := s.Store.GetBalanceDiffs(s.ledgerName, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (s *numscriptStore) GetAccountsMetadata(_ context.Context, q numscript.Meta
 	}
 
 	// Get metadata from the runtime store
-	metadataMap, err := s.GetAccountMetadata(s.ledgerID, accounts)
+	metadataMap, err := s.GetAccountMetadata(s.ledgerName, accounts)
 	if err != nil {
 		return nil, err
 	}
@@ -119,11 +119,11 @@ func (s *numscriptStore) GetAccountsMetadata(_ context.Context, q numscript.Meta
 	return result, nil
 }
 
-func makeBalanceLockKeys(ledgerID uint32, balanceQuery map[string][]string) []string {
+func makeBalanceLockKeys(ledgerName string, balanceQuery map[string][]string) []string {
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
 		for _, asset := range assets {
-			lockKeys = append(lockKeys, fmt.Sprintf("%d/%s:%s", ledgerID, account, asset))
+			lockKeys = append(lockKeys, fmt.Sprintf("%s/%s:%s", ledgerName, account, asset))
 		}
 	}
 	return lockKeys

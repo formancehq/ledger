@@ -67,36 +67,36 @@ func (b *RoutedController) Apply(ctx context.Context, actions ...*servicepb.Requ
 	return ctrl.Apply(ctx, actions...)
 }
 
-func (b *RoutedController) GetTransaction(ctx context.Context, ledger uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
 	}
 
-	return ctrl.GetTransaction(ctx, ledger, transactionID)
+	return ctrl.GetTransaction(ctx, ledgerName, transactionID)
 }
 
-func (b *RoutedController) GetAccount(ctx context.Context, ledger uint32, address string) (*commonpb.Account, error) {
+func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// Read from local store - data is replicated via Raft
-	return b.localController.GetAccount(ctx, ledger, address)
+	return b.localController.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) Import(ctx context.Context, ledger uint32, stream chan *commonpb.LedgerLog) error {
+func (b *RoutedController) Import(ctx context.Context, ledgerName string, stream chan *commonpb.LedgerLog) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return err
 	}
 
-	return ctrl.Import(ctx, ledger, stream)
+	return ctrl.Import(ctx, ledgerName, stream)
 }
 
-func (b *RoutedController) Export(ctx context.Context, ledger uint32, w ExportWriter) error {
+func (b *RoutedController) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return err
 	}
 
-	return ctrl.Export(ctx, ledger, w)
+	return ctrl.Export(ctx, ledgerName, w)
 }
 
 func (b *RoutedController) GetAllLogs(ctx context.Context, from uint64, to uint64) (store.Cursor[*commonpb.Log], error) {
