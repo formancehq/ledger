@@ -832,6 +832,24 @@ func (s *Store) cleanupOldCheckpoints() error {
 	return nil
 }
 
+// GetCheckpointPath returns the filesystem path for a given checkpoint ID.
+// Returns an error if the checkpoint does not exist.
+func (s *Store) GetCheckpointPath(checkpointID uint64) (string, error) {
+	path := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("checkpoint %d not found", checkpointID)
+		}
+		return "", fmt.Errorf("checking checkpoint %d: %w", checkpointID, err)
+	}
+	return path, nil
+}
+
+// GetCurrentCheckpointID returns the current checkpoint ID.
+func (s *Store) GetCurrentCheckpointID() uint64 {
+	return s.currentCheckPoint
+}
+
 func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedIndex})
 	if err != nil {

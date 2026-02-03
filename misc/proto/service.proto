@@ -29,11 +29,20 @@ service LedgerService {
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
   // GetClusterState returns the current state of the Raft cluster
   rpc GetClusterState(GetClusterStateRequest) returns (raft.ClusterState);
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
 }
 
 // ============================================================================
 // gRPC Request/Response Messages
 // ============================================================================
+
+message GetSnapshotRequest {
+  uint64 snapshot_id = 1;
+}
+
+message GetSnapshotResponse {
+  
+}
 
 message GetAccountRequest {
   LedgerNameOrId ledger = 1;

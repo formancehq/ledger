@@ -15,6 +15,7 @@ import (
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/internal/store"
@@ -111,6 +112,9 @@ func Module() fx.Option {
 		func(logger logging.Logger, ctrl service.Controller, s *store.Store, node *raft.Node) servicepb.LedgerServiceServer {
 			return NewLedgerServiceServer(logger, ctrl, s, node)
 		},
+		func(logger logging.Logger, s *store.Store) snapshotpb.SnapshotServiceServer {
+			return NewSnapshotServiceServer(logger, s)
+		},
 			httphandler.NewServer,
 			httphandler.NewHandler,
 			func(node *raft.Node, ctrl service.Controller) httphandler.Backend {
@@ -196,10 +200,14 @@ func Module() fx.Option {
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
-			func(grpcServer *grpcserver.Server, ledgerServiceServer servicepb.LedgerServiceServer) error {
-				RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
-				return nil
-			},
+		func(grpcServer *grpcserver.Server, ledgerServiceServer servicepb.LedgerServiceServer) error {
+			RegisterLedgerService(grpcServer.GetServer(), ledgerServiceServer)
+			return nil
+		},
+		func(grpcServer *grpcserver.Server, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
+			RegisterSnapshotService(grpcServer.GetServer(), snapshotServiceServer)
+			return nil
+		},
 			func(
 				lc fx.Lifecycle,
 				grpcServer *grpcserver.Server,
