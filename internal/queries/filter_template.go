@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math/big"
 	"reflect"
 	"regexp"
-	"strings"
 
 	"github.com/formancehq/go-libs/v3/query"
 )
@@ -24,64 +24,40 @@ func ValidateFilterBody(resource ResourceKind, body json.RawMessage, vars map[st
 		return err
 	}
 	schema := GetResourceSchema(resource)
-	return validateFilterTemplate(schema, filter, vars)
-}
 
-func validateFilterTemplate(schema EntitySchema, m map[string]any, vars map[string]VarSpec) error {
-	operator, value, err := singleKey(m)
+	builder, err := query.ParseJSON(string(body))
 	if err != nil {
 		return err
 	}
-	switch operator {
-	case "$and", "$or":
-		if set, ok := value.([]any); ok {
-			for _, v := range set {
-				if v, ok := v.(map[string]any); ok {
-					err = validateFilterTemplate(schema, v, vars)
+	if builder == nil {
+		return nil
+	}
+
+	return builder.Walk(func(operator string, key string, value *any) error {
+		ty, err := schema.GetFieldType(key)
+		if err != nil {
+			return err
+		}
+		switch operator {
+		case "$in":
+			if set, ok := (*value).([]any); ok {
+				for _, v := range set {
+					err := validateValue(*ty, v, vars)
 					if err != nil {
 						return err
 					}
-				} else {
-					return fmt.Errorf("unexpected type: %T", v)
-				}
-			}
-		} else {
-			return fmt.Errorf("unexpected type: %T", value)
-		}
-	case "$match", "$gte", "$lte", "$gt", "$lt", "$exists", "$like", "$in":
-		if mp, ok := value.(map[string]any); ok {
-			fieldKey, operand, err := singleKey(mp)
-			if err != nil {
-				return err
-			}
-			valueType, err := schema.GetFieldType(fieldKey)
-			if err != nil {
-				return err
-			}
-			if operator == "$in" {
-				if set, ok := operand.([]any); ok {
-					for _, v := range set {
-						err := validateValue(*valueType, v, vars)
-						if err != nil {
-							return err
-						}
-					}
-				} else {
-					return fmt.Errorf("unexpected type: %T", value)
 				}
 			} else {
-				err := validateValue(*valueType, operand, vars)
-				if err != nil {
-					return err
-				}
+				return fmt.Errorf("unexpected type: %T", *value)
 			}
-		} else {
-			return fmt.Errorf("unexpected type: %T", value)
+		default:
+			err := validateValue(*ty, *value, vars)
+			if err != nil {
+				return err
+			}
 		}
-	default:
-		return fmt.Errorf("unexpected operator: %T", operator)
-	}
-	return nil
+		return nil
+	})
 }
 
 func validateValue(expectedType ValueType, value any, vars map[string]VarSpec) error {
@@ -128,24 +104,7 @@ func validateVariableDefault[T any](value any, validate func(T) error) error {
 			return nil
 		}
 	} else {
-		return fmt.Errorf("default value doesn't match declared type `%s`", reflect.TypeOf((*T)(nil)).Elem().Name())
-	}
-}
-
-func singleKey(m map[string]any) (string, any, error) {
-	switch {
-	case len(m) == 0:
-		return "", nil, fmt.Errorf("expected single key, found none")
-	case len(m) > 1:
-		return "", nil, fmt.Errorf("expected single key, found more than one")
-	default:
-		var (
-			key   string
-			value any
-		)
-		for key, value = range m {
-		}
-		return key, value, nil
+		return fmt.Errorf("default value doesn't match declared type `%s`", reflect.TypeFor[T]().Name())
 	}
 }
 
@@ -161,54 +120,24 @@ func ResolveFilterTemplate(resourceKind ResourceKind, body json.RawMessage, varD
 
 	schema := GetResourceSchema(resourceKind)
 
-	var filter map[string]any
-	if err := unmarshalWithNumber(body, &filter); err != nil {
-		return nil, err
-	}
-	result, err := resolveFilterTemplate(schema, filter, vars)
+	builder, err := query.ParseJSON(string(body))
 	if err != nil {
 		return nil, err
 	}
-	if filter, ok := result.(map[string]any); ok {
-		s, err := json.Marshal(filter)
-		if err != nil {
-			return nil, err
-		}
-		return query.ParseJSON(string(s))
-	} else {
-		return nil, fmt.Errorf("unexpected type: %T", result)
-	}
-}
 
-func resolveFilterTemplate(schema EntitySchema, m any, vars map[string]any) (any, error) {
-	var err error
-	switch v := m.(type) {
-	case []any:
-		for idx, s := range v {
-			v[idx], err = resolveFilterTemplate(schema, s, vars)
-			if err != nil {
-				return nil, err
-			}
+	err = builder.Walk(func(operator string, key string, value *any) error {
+		var err error
+		*value, err = resolveNestedFilter(schema, key, *value, vars)
+		if err != nil {
+			return err
 		}
-	case map[string]any:
-		for key, value := range v {
-			if !strings.HasPrefix(key, "$") {
-				// if value is a string, it may contain variable placeholders that we need to resolve
-				v[key], err = resolveNestedFilter(schema, key, value, vars)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				v[key], err = resolveFilterTemplate(schema, value, vars)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-	default:
-		return nil, fmt.Errorf("unexpected filter shape: %v", v)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return m, nil
+
+	return builder, nil
 }
 
 func resolveNestedFilter(schema EntitySchema, key string, value any, vars map[string]any) (any, error) {
@@ -229,7 +158,7 @@ func resolveNestedFilter(schema EntitySchema, key string, value any, vars map[st
 		}
 		return v, nil
 	default:
-		return nil, fmt.Errorf("unexpected filter shape: %v", v)
+		return nil, fmt.Errorf("unexpected filter shape: %T", v)
 	}
 }
 
@@ -246,13 +175,13 @@ func resolveFilter(schema EntitySchema, key string, value string, vars map[strin
 		if err != nil {
 			return nil, err
 		}
-		return value, nil
+		return *value, nil
 	case ValueTypeDate:
 		value, err := extractVariable[string](value, vars)
 		if err != nil {
 			return nil, err
 		}
-		return value, nil
+		return *value, nil
 	case ValueTypeInt:
 		v, err := extractVariable[json.Number](value, vars)
 		if err != nil {
@@ -261,9 +190,18 @@ func resolveFilter(schema EntitySchema, key string, value string, vars map[strin
 			if err2 != nil {
 				return nil, err
 			}
-			return v, nil
+			bigFloat := new(big.Float).SetFloat64(*v)
+			bigInt, acc := bigFloat.Int(nil)
+			if acc != big.Exact {
+				return nil, fmt.Errorf("provided number should be an integer: %#v", valueType)
+			}
+			return bigInt, nil
 		}
-		return v, nil
+		if x, ok := new(big.Int).SetString(string(*v), 10); ok {
+			return x, nil
+		} else {
+			return nil, fmt.Errorf("provided number should be an integer: %#v", valueType)
+		}
 	default:
 		return nil, fmt.Errorf("unexpected FieldType: %#v", valueType)
 	}
@@ -274,7 +212,7 @@ var varRegex = regexp.MustCompile(`^\${([a-z_]+)}$`)
 func extractVariableName(s string) (string, error) {
 	matches := varRegex.FindStringSubmatch(s)
 	if len(matches) == 0 {
-		return "", fmt.Errorf("expected a \"${variable}\" string or a plain value")
+		return "", fmt.Errorf("expected a \"${variable}\" string or a plain value, got `%s`", s)
 	}
 	return matches[1], nil
 }

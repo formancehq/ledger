@@ -3,6 +3,7 @@ package queries
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"slices"
 
 	"github.com/formancehq/go-libs/v3/time"
@@ -59,10 +60,21 @@ func validateValueType(expectedType ValueType, v any) error {
 			return nil
 		})
 	case ValueTypeInt:
-		err = validateVariableDefault[json.Number](v, nil)
+		err = validateVariableDefault(v, func(n json.Number) error {
+			if _, ok := new(big.Int).SetString(string(n), 10); !ok {
+				return fmt.Errorf("number should be an integer: %v", n)
+			}
+			return nil
+		})
 		if err != nil {
-			err = validateVariableDefault[float64](v, nil)
+			err = validateVariableDefault(v, func(f float64) error {
+				if !new(big.Float).SetFloat64(f).IsInt() {
+					return fmt.Errorf("number should be an integer: %v", f)
+				}
+				return nil
+			})
 		}
+
 	case ValueTypeString:
 		err = validateVariableDefault[string](v, nil)
 	}

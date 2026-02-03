@@ -44,6 +44,26 @@ func TestFilterTemplateResolution(t *testing.T) {
 			}`,
 		},
 		{
+			name:     "simple int substitution with float64",
+			resource: ResourceKindAccount,
+			varDeclarations: map[string]VarSpec{
+				"minimum_balance": {},
+			},
+			source: `{
+				"$gt": {
+					"balance[COIN]": "${minimum_balance}"
+				}
+			}`,
+			vars: map[string]any{
+				"minimum_balance": float64(42.0),
+			},
+			expectedFilter: `{
+				"$gt": {
+					"balance[COIN]": 42
+				}
+			}`,
+		},
+		{
 			name:     "complex",
 			resource: ResourceKindAccount,
 			varDeclarations: map[string]VarSpec{

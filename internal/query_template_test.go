@@ -118,8 +118,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 						"type": "date",
 						"default": "2023-01-01T01:01:01Z"
 					}
-				},
-				"body": {}
+				}
 			}`,
 			expectedTemplate: QueryTemplate{
 				Description: "all types",
@@ -143,7 +142,6 @@ func TestQueryTemplateValidation(t *testing.T) {
 						Default: "2023-01-01T01:01:01Z",
 					},
 				},
-				Body: json.RawMessage(`{}`),
 			},
 		},
 		{
