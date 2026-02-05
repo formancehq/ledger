@@ -80,10 +80,17 @@ func ValidateFilterBody(resource ResourceKind, body json.RawMessage, varDecls ma
 func validateValue(expectedType FieldType, value any, vars map[string]FieldType) error {
 	// if value is a string and we don't expect a string,
 	// it must be a variable placeholders that we need to validate
-	if valueStr, ok := value.(string); ok && (expectedType != TypeString{}) {
-		err := validateVarRef(expectedType, valueStr, vars)
-		if err != nil {
-			return err
+	if valueStr, ok := value.(string); ok {
+		if expectedType != (TypeString{}) {
+			err := validateVarRef(expectedType, valueStr, vars)
+			if err != nil {
+				return err
+			}
+		} else {
+			err := ValidateStringTemplate(valueStr, vars)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		// otherwise check that the value's type matches
