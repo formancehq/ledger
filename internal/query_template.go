@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -57,6 +56,9 @@ func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error {
 	if x.Sort != "" {
 		parts := strings.SplitN(x.Sort, ":", 2)
 		p.SortColumn = strcase.ToSnake(parts[0])
+		if strings.TrimSpace(parts[0]) == "" {
+			return fmt.Errorf("invalid sort column: %q", x.Sort)
+		}
 		if len(parts) > 1 {
 			switch {
 			case strings.ToLower(parts[1]) == "desc":
@@ -104,7 +106,8 @@ type QueryTemplate struct {
 // Validate a query template
 func (q QueryTemplate) Validate() error {
 	// check resource validity
-	if !slices.Contains(queries.Resources, q.Resource) {
+	schema, err := queries.GetResourceSchema(q.Resource)
+	if err != nil {
 		return fmt.Errorf("unknown resource kind: %v", q.Resource)
 	}
 	// check if the params matches the resource
@@ -113,6 +116,12 @@ func (q QueryTemplate) Validate() error {
 		err := validateParam(q.Params, &params)
 		if err != nil {
 			return fmt.Errorf("invalid params: %w", err)
+		}
+		if params.SortColumn != "" {
+			_, field := schema.GetFieldByNameOrAlias(params.SortColumn)
+			if field == nil || !field.IsPaginated {
+				return fmt.Errorf("invalid sort column `%s`", params.SortColumn)
+			}
 		}
 		switch q.Resource {
 		case queries.ResourceKindVolume:
@@ -124,7 +133,7 @@ func (q QueryTemplate) Validate() error {
 		}
 	}
 	// validate variable declarations
-	err := queries.ValidateVarDeclarations(q.Vars)
+	err = queries.ValidateVarDeclarations(q.Vars)
 	if err != nil {
 		return fmt.Errorf("failed to validate variable declarations: %w", err)
 	}
