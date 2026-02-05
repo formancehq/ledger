@@ -6,6 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 )
@@ -14,22 +15,8 @@ type transactionsResourceHandler struct {
 	store *Store
 }
 
-func (h transactionsResourceHandler) Schema() common.EntitySchema {
-	return common.EntitySchema{
-		Fields: map[string]common.Field{
-			"reverted":    common.NewBooleanField(),
-			"account":     common.NewStringField(),
-			"source":      common.NewStringField(),
-			"destination": common.NewStringField(),
-			"timestamp":   common.NewDateField().Paginated(),
-			"metadata":    common.NewStringMapField(),
-			"id":          common.NewNumericField().Paginated(),
-			"reference":   common.NewStringField(),
-			"inserted_at": common.NewDateField().Paginated(),
-			"updated_at":  common.NewDateField().Paginated(),
-			"reverted_at": common.NewDateField().Paginated(),
-		},
-	}
+func (h transactionsResourceHandler) Schema() queries.EntitySchema {
+	return queries.TransactionSchema
 }
 
 func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
@@ -92,7 +79,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reference":
 		switch operator {
-		case common.OperatorIn:
+		case queries.OperatorIn:
 			return "reference IN (?)", []any{bun.In(value)}, nil
 		default:
 			return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
@@ -109,7 +96,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
 		switch operator {
-		case common.OperatorIn:
+		case queries.OperatorIn:
 			addresses, err := assetAddressArray(value)
 			if err != nil {
 				return "", nil, err
@@ -124,7 +111,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case property == "source":
 		switch operator {
-		case common.OperatorIn:
+		case queries.OperatorIn:
 			addresses, err := assetAddressArray(value)
 			if err != nil {
 				return "", nil, err
@@ -138,7 +125,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case property == "destination":
 		switch operator {
-		case common.OperatorIn:
+		case queries.OperatorIn:
 			addresses, err := assetAddressArray(value)
 			if err != nil {
 				return "", nil, err

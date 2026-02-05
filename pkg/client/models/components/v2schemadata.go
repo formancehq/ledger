@@ -8,6 +8,8 @@ type V2SchemaData struct {
 	Chart map[string]V2ChartSegment `json:"chart"`
 	// Transaction templates
 	Transactions map[string]V2TransactionTemplate `json:"transactions"`
+	// Query templates
+	Queries map[string]V2QueryTemplate `json:"queries,omitempty"`
 }
 
 func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {
@@ -22,4 +24,11 @@ func (o *V2SchemaData) GetTransactions() map[string]V2TransactionTemplate {
 		return map[string]V2TransactionTemplate{}
 	}
 	return o.Transactions
+}
+
+func (o *V2SchemaData) GetQueries() map[string]V2QueryTemplate {
+	if o == nil {
+		return nil
+	}
+	return o.Queries
 }

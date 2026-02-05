@@ -14,7 +14,9 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 //go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator
@@ -169,6 +171,20 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	})
 
 	return schemas, err
+}
+
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, paginationConfig storagecommon.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+	var (
+		resource *queries.ResourceKind
+		cursor   *bunpaginate.Cursor[any]
+		err      error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		resource, cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, q, paginationConfig)
+		return err
+	})
+
+	return resource, cursor, err
 }
 
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {

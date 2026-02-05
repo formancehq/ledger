@@ -1,4 +1,4 @@
-package common
+package queries
 
 import (
 	"fmt"
@@ -7,21 +7,42 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 )
 
-const (
-	OperatorMatch  = "$match"
-	OperatorIn     = "$in"
-	OperatorExists = "$exists"
-	OperatorLike   = "$like"
-	OperatorLT     = "$lt"
-	OperatorGT     = "$gt"
-	OperatorLTE    = "$lte"
-	OperatorGTE    = "$gte"
-)
+func FieldTypeFromString(s string) (FieldType, error) {
+	switch s {
+	case "boolean":
+		return NewTypeBoolean(), nil
+	case "date":
+		return NewTypeDate(), nil
+	case "int":
+		return NewTypeNumeric(), nil
+	case "string":
+		return NewTypeString(), nil
+	default:
+		return nil, fmt.Errorf("invalid type `%s`, expected one of `boolean`, `date`, `int`, `string`", s)
+	}
+}
+
+func FieldTypeToString(t FieldType) string {
+	switch v := t.(type) {
+	case TypeBoolean:
+		return "boolean"
+	case TypeDate:
+		return "date"
+	case TypeMap:
+		return fmt.Sprintf("map[string]%s", FieldTypeToString(v.underlyingType))
+	case TypeNumeric:
+		return "int"
+	case TypeString:
+		return "string"
+	default:
+		panic(fmt.Sprintf("unexpected queries.FieldType: %#v", t))
+	}
+}
 
 type FieldType interface {
 	Operators() []string
 	ValidateValue(operator string, value any) error
-	IsIndexable() bool
+	Index() FieldType // later we might want to pass the index as argument
 	IsPaginated() bool
 }
 
@@ -41,7 +62,7 @@ func (f Field) Paginated() Field {
 	return f
 }
 
-func (f Field) matchKey(name, key string) bool {
+func (f Field) MatchKey(name, key string) bool {
 	if key == name {
 		return true
 	}
@@ -102,8 +123,8 @@ func (t TypeString) IsPaginated() bool {
 	return false
 }
 
-func (t TypeString) IsIndexable() bool {
-	return false
+func (t TypeString) Index() FieldType {
+	return nil
 }
 
 func (t TypeString) Operators() []string {
@@ -149,8 +170,8 @@ func (t TypeDate) IsPaginated() bool {
 	return true
 }
 
-func (t TypeDate) IsIndexable() bool {
-	return false
+func (t TypeDate) Index() FieldType {
+	return nil
 }
 
 func (t TypeDate) Operators() []string {
@@ -191,8 +212,8 @@ func (t TypeMap) IsPaginated() bool {
 	return false
 }
 
-func (t TypeMap) IsIndexable() bool {
-	return true
+func (t TypeMap) Index() FieldType {
+	return t.underlyingType
 }
 
 func (t TypeMap) Operators() []string {
@@ -217,8 +238,8 @@ func (t TypeNumeric) IsPaginated() bool {
 	return true
 }
 
-func (t TypeNumeric) IsIndexable() bool {
-	return false
+func (t TypeNumeric) Index() FieldType {
+	return nil
 }
 
 func (t TypeNumeric) Operators() []string {
@@ -253,8 +274,8 @@ func (t TypeBoolean) IsPaginated() bool {
 	return false
 }
 
-func (t TypeBoolean) IsIndexable() bool {
-	return false
+func (t TypeBoolean) Index() FieldType {
+	return nil
 }
 
 func (t TypeBoolean) Operators() []string {

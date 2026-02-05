@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/ledger"
+	ledgerstorage "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func listAccounts(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func listAccounts(w http.ResponseWriter, r *http.Request) {
 	cursor, err := l.ListAccounts(r.Context(), rq)
 	if err != nil {
 		switch {
-		case errors.Is(err, ledger.ErrMissingFeature{}):
+		case errors.Is(err, ledgerstorage.ErrMissingFeature{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)

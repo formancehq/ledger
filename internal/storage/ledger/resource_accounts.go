@@ -6,6 +6,7 @@ import (
 	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 )
@@ -14,17 +15,8 @@ type accountsResourceHandler struct {
 	store *Store
 }
 
-func (h accountsResourceHandler) Schema() common.EntitySchema {
-	return common.EntitySchema{
-		Fields: map[string]common.Field{
-			"address":        common.NewStringField().Paginated(),
-			"first_usage":    common.NewDateField().Paginated(),
-			"balance":        common.NewNumericMapField(),
-			"metadata":       common.NewStringMapField(),
-			"insertion_date": common.NewDateField().Paginated(),
-			"updated_at":     common.NewDateField().Paginated(),
-		},
-	}
+func (h accountsResourceHandler) Schema() queries.EntitySchema {
+	return queries.AccountSchema
 }
 
 func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
@@ -63,7 +55,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 		fallthrough
 	case property == "account":
 		switch operator {
-		case common.OperatorIn:
+		case queries.OperatorIn:
 			addresses, err := assetAddressArray(value)
 			if err != nil {
 				return "", nil, err
