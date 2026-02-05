@@ -83,6 +83,8 @@ import "github.com/formancehq/ledger/internal"
   - [func NewExporter\(configuration ExporterConfiguration\) Exporter](<#NewExporter>)
 - [type ExporterConfiguration](<#ExporterConfiguration>)
   - [func NewExporterConfiguration\(driver string, config json.RawMessage\) ExporterConfiguration](<#NewExporterConfiguration>)
+- [type GetAggregatedVolumesOptions](<#GetAggregatedVolumesOptions>)
+- [type GetVolumesOptions](<#GetVolumesOptions>)
 - [type InsertedSchema](<#InsertedSchema>)
   - [func \(p InsertedSchema\) NeedsSchema\(\) bool](<#InsertedSchema.NeedsSchema>)
   - [func \(u InsertedSchema\) Type\(\) LogType](<#InsertedSchema.Type>)
@@ -133,6 +135,13 @@ import "github.com/formancehq/ledger/internal"
 - [type Postings](<#Postings>)
   - [func \(p Postings\) Reverse\(\) Postings](<#Postings.Reverse>)
   - [func \(p Postings\) Validate\(\) \(int, error\)](<#Postings.Validate>)
+- [type QueryTemplate](<#QueryTemplate>)
+  - [func \(q QueryTemplate\) Validate\(\) error](<#QueryTemplate.Validate>)
+- [type QueryTemplateParams](<#QueryTemplateParams>)
+  - [func \(q QueryTemplateParams\[Opts\]\) Overwrite\(others ...json.RawMessage\) \(\*QueryTemplateParams\[Opts\], error\)](<#QueryTemplateParams[Opts].Overwrite>)
+  - [func \(p \*QueryTemplateParams\[Opts\]\) UnmarshalJSON\(b \[\]byte\) error](<#QueryTemplateParams[Opts].UnmarshalJSON>)
+- [type QueryTemplates](<#QueryTemplates>)
+  - [func \(t QueryTemplates\) Validate\(\) error](<#QueryTemplates.Validate>)
 - [type RevertedTransaction](<#RevertedTransaction>)
   - [func \(r RevertedTransaction\) GetMemento\(\) any](<#RevertedTransaction.GetMemento>)
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
@@ -992,6 +1001,29 @@ func NewExporterConfiguration(driver string, config json.RawMessage) ExporterCon
 
 
 
+<a name="GetAggregatedVolumesOptions"></a>
+## type [GetAggregatedVolumesOptions](<https://github.com/formancehq/ledger/blob/main/internal/resources.go#L3-L5>)
+
+
+
+```go
+type GetAggregatedVolumesOptions struct {
+    UseInsertionDate bool `json:"useInsertionDate"`
+}
+```
+
+<a name="GetVolumesOptions"></a>
+## type [GetVolumesOptions](<https://github.com/formancehq/ledger/blob/main/internal/resources.go#L7-L10>)
+
+
+
+```go
+type GetVolumesOptions struct {
+    UseInsertionDate bool `json:"useInsertionDate"`
+    GroupLvl         int  `json:"groupLvl"`
+}
+```
+
 <a name="InsertedSchema"></a>
 ## type [InsertedSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L416-L418>)
 
@@ -1513,6 +1545,83 @@ func (p Postings) Validate() (int, error)
 
 
 
+<a name="QueryTemplate"></a>
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L96-L102>)
+
+
+
+```go
+type QueryTemplate struct {
+    Description string                     `json:"description,omitempty"`
+    Resource    queries.ResourceKind       `json:"resource"`
+    Params      json.RawMessage            `json:"params,omitempty"`
+    Vars        map[string]queries.VarDecl `json:"vars,omitempty"`
+    Body        json.RawMessage            `json:"body,omitempty"`
+}
+```
+
+<a name="QueryTemplate.Validate"></a>
+### func \(QueryTemplate\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L105>)
+
+```go
+func (q QueryTemplate) Validate() error
+```
+
+Validate a query template
+
+<a name="QueryTemplateParams"></a>
+## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L30-L38>)
+
+
+
+```go
+type QueryTemplateParams[Opts any] struct {
+    PIT        *time.Time
+    OOT        *time.Time
+    Expand     []string
+    Opts       Opts
+    SortColumn string
+    SortOrder  *bunpaginate.Order
+    PageSize   uint
+}
+```
+
+<a name="QueryTemplateParams[Opts].Overwrite"></a>
+### func \(QueryTemplateParams\[Opts\]\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L80>)
+
+```go
+func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryTemplateParams[Opts], error)
+```
+
+
+
+<a name="QueryTemplateParams[Opts].UnmarshalJSON"></a>
+### func \(\*QueryTemplateParams\[Opts\]\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L40>)
+
+```go
+func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="QueryTemplates"></a>
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L19>)
+
+
+
+```go
+type QueryTemplates map[string]QueryTemplate
+```
+
+<a name="QueryTemplates.Validate"></a>
+### func \(QueryTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L21>)
+
+```go
+func (t QueryTemplates) Validate() error
+```
+
+
+
 <a name="RevertedTransaction"></a>
 ## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L370-L373>)
 
@@ -1629,7 +1738,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L16-L22>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L17-L23>)
 
 
 
@@ -1644,7 +1753,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L24>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L25>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1653,7 +1762,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L14>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L15>)
 
 
 
@@ -1661,6 +1770,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 type SchemaData struct {
     Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
     Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
+    Queries      QueryTemplates       `json:"queries" bun:"queries"`
 }
 ```
 

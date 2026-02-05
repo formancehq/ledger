@@ -51,15 +51,15 @@ type Store struct {
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	GetVolumesOptions] {
+	ledger.GetVolumesOptions] {
 	return common.NewPaginatedResourceRepository[
 		ledger.VolumesWithBalanceByAssetByAccount,
-		GetVolumesOptions,
+		ledger.GetVolumesOptions,
 	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
 }
 
-func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
-	return common.NewResourceRepository[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
+	return common.NewResourceRepository[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }

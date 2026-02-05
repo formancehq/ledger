@@ -72,7 +72,7 @@ func (d *DefaultStoreAdapter) Rollback(ctx context.Context) error {
 	return d.Store.Rollback(ctx)
 }
 
-func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions] {
+func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
 	return d.AggregatedVolumes()
 }
 

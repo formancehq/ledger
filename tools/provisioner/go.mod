@@ -9,8 +9,10 @@ replace (
 	github.com/formancehq/ledger/pkg/client => ../../pkg/client
 )
 
+replace github.com/formancehq/go-libs/v3 v3.5.0 => ../../../go-libs
+
 require (
-	github.com/formancehq/go-libs/v3 v3.5.0
+	github.com/formancehq/go-libs/v3 v3.6.1-0.20260203163702-856bac344d07
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/google/go-cmp v0.7.0

@@ -12,8 +12,9 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
@@ -47,6 +48,7 @@ type ControllerWithTraces struct {
 	insertSchemaHistogram              metric.Int64Histogram
 	getSchemaHistogram                 metric.Int64Histogram
 	listSchemasHistogram               metric.Int64Histogram
+	runQueryHistogram                  metric.Int64Histogram
 }
 
 func (c *ControllerWithTraces) Info() ledger.Ledger {
@@ -161,6 +163,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.listSchemasHistogram, err = meter.Int64Histogram("controller.list_schemas", metric.WithUnit("ms"))
+	if err != nil {
+		panic(err)
+	}
+	ret.runQueryHistogram, err = meter.Int64Histogram("controller.run_query", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
@@ -305,7 +311,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.Resource
 	)
 }
 
-func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAggregatedBalances",
@@ -365,7 +371,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
@@ -582,6 +588,29 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	}
 
 	return schemas, nil
+}
+
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, paginationConfig storagecommon.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+	var (
+		resource *queries.ResourceKind
+		cursor   *bunpaginate.Cursor[any]
+		err      error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"RunQuery",
+		c.tracer,
+		c.runQueryHistogram,
+		func(ctx context.Context) (any, error) {
+			resource, cursor, err = c.underlying.RunQuery(ctx, schemaVersion, id, query, paginationConfig)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return resource, cursor, nil
 }
 
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
