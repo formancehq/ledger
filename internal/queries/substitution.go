@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+func ValidateStringTemplate[T any](s string, vars map[string]T) error {
+	_, varRefs, err := ParseTemplate(s)
+	if err != nil {
+		return err
+	}
+	for _, name := range varRefs {
+		if _, ok := vars[name]; !ok {
+			return fmt.Errorf("variable `%v` is not declared", name)
+		}
+	}
+	return nil
+}
+
 func ReplaceVariables(s string, vars map[string]any) (string, error) {
 	strs, varRefs, err := ParseTemplate(s)
 	if err != nil {

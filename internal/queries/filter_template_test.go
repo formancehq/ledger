@@ -40,6 +40,15 @@ func TestFilterTemplateValidation(t *testing.T) {
 			expectedError: "variable `doesntexist` is not declared",
 		},
 		{
+			name:            "missing variable in interpolation",
+			resource:        ResourceKindAccount,
+			varDeclarations: map[string]VarDecl{},
+			source: `{"$match": {
+				"address": "${doesntexist}:foo"
+			}}`,
+			expectedError: "variable `doesntexist` is not declared",
+		},
+		{
 			name:     "invalid field access syntax",
 			resource: ResourceKindAccount,
 			varDeclarations: map[string]VarDecl{

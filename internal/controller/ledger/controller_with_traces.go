@@ -14,7 +14,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
@@ -590,7 +589,7 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	return schemas, nil
 }
 
-func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, paginationConfig storagecommon.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
 	var (
 		resource *queries.ResourceKind
 		cursor   *bunpaginate.Cursor[any]
