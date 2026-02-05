@@ -138,6 +138,14 @@ func TestFilterTemplateResolution(t *testing.T) {
 			name:            "trivial case",
 			resource:        ResourceKindAccount,
 			varDeclarations: map[string]VarDecl{},
+			source:          `null`,
+			vars:            map[string]any{},
+			expectedFilter:  `null`,
+		},
+		{
+			name:            "trivial case",
+			resource:        ResourceKindAccount,
+			varDeclarations: map[string]VarDecl{},
 			source: `{
 				"$gt": {
 					"balance[COIN]": 42

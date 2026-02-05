@@ -137,6 +137,9 @@ func ResolveFilterTemplate(resourceKind ResourceKind, body json.RawMessage, varD
 	if err != nil {
 		return nil, err
 	}
+	if builder == nil {
+		return nil, nil
+	}
 
 	err = builder.Walk(func(operator string, key string, value *any) error {
 		var err error
