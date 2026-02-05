@@ -30,7 +30,10 @@ func ValidateFilterBody(resource ResourceKind, body json.RawMessage, varDecls ma
 	if err := unmarshalWithNumber(body, &filter); err != nil {
 		return err
 	}
-	schema := GetResourceSchema(resource)
+	schema, err := GetResourceSchema(resource)
+	if err != nil {
+		return err
+	}
 
 	builder, err := query.ParseJSON(string(body))
 	if err != nil {
@@ -125,7 +128,10 @@ func ResolveFilterTemplate(resourceKind ResourceKind, body json.RawMessage, varD
 		}
 	}
 
-	schema := GetResourceSchema(resourceKind)
+	schema, err := GetResourceSchema(resourceKind)
+	if err != nil {
+		return nil, err
+	}
 
 	builder, err := query.ParseJSON(string(body))
 	if err != nil {

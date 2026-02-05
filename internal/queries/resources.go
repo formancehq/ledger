@@ -80,17 +80,17 @@ var VolumeSchema EntitySchema = EntitySchema{
 	},
 }
 
-func GetResourceSchema(kind ResourceKind) EntitySchema {
+func GetResourceSchema(kind ResourceKind) (*EntitySchema, error) {
 	switch kind {
 	case ResourceKindAccount:
-		return AccountSchema
+		return &AccountSchema, nil
 	case ResourceKindLog:
-		return LogSchema
+		return &LogSchema, nil
 	case ResourceKindTransaction:
-		return TransactionSchema
+		return &TransactionSchema, nil
 	case ResourceKindVolume:
-		return VolumeSchema
+		return &VolumeSchema, nil
 	default:
-		panic(fmt.Sprintf("unexpected resources.ResourceKind: %#v", kind))
+		return nil, fmt.Errorf("unexpected resources.ResourceKind: %#v", kind)
 	}
 }

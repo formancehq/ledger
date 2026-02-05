@@ -132,6 +132,26 @@ func TestQueryTemplateValidation(t *testing.T) {
 			}`,
 			expectedError: "cannot use variable",
 		},
+		{
+			name: "invalid sort column",
+			source: `{
+				"resource": "accounts",
+				"params": {
+					"sort": "balance:asc"
+				}
+			}`,
+			expectedError: "invalid sort column",
+		},
+		{
+			name: "invalid sort column 2",
+			source: `{
+				"resource": "accounts",
+				"params": {
+					"sort": ":asc"
+				}
+			}`,
+			expectedError: "invalid sort column",
+		},
 	} {
 		var template QueryTemplate
 		err := unmarshalWithNumber([]byte(tc.source), &template)
