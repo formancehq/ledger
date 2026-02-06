@@ -5,7 +5,8 @@ do $$
 	begin
 		set search_path = '{{.Schema}}';
 
-		create temporary table tmp_volumes as
+		drop table if exists tmp_volumes;
+		create temporary table tmp_volumes on commit drop as
 		select distinct on (ledger, accounts_address, asset)
 			ledger,
 			accounts_address,
