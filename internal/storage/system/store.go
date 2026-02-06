@@ -23,6 +23,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	CountLedgersInBucket(ctx context.Context, bucket string) (int, error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -115,6 +116,17 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 	}
 
 	return ret, nil
+}
+
+func (d *DefaultStore) CountLedgersInBucket(ctx context.Context, bucket string) (int, error) {
+	count, err := d.db.NewSelect().
+		TableExpr("_system.ledgers").
+		Where("bucket = ?", bucket).
+		Count(ctx)
+	if err != nil {
+		return 0, postgres.ResolveError(err)
+	}
+	return count, nil
 }
 
 func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
