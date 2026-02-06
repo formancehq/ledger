@@ -36,19 +36,19 @@ func (e *V2RunQueryQueryParamOrder) UnmarshalJSON(data []byte) error {
 }
 
 type V2RunQueryRequestBody struct {
-	Cursor any               `json:"cursor,omitempty"`
-	Params any               `json:"params,omitempty"`
-	Vars   map[string]string `json:"vars,omitempty"`
+	Cursor *string                   `json:"cursor,omitempty"`
+	Params *components.V2QueryParams `json:"params,omitempty"`
+	Vars   map[string]string         `json:"vars,omitempty"`
 }
 
-func (o *V2RunQueryRequestBody) GetCursor() any {
+func (o *V2RunQueryRequestBody) GetCursor() *string {
 	if o == nil {
 		return nil
 	}
 	return o.Cursor
 }
 
-func (o *V2RunQueryRequestBody) GetParams() any {
+func (o *V2RunQueryRequestBody) GetParams() *components.V2QueryParams {
 	if o == nil {
 		return nil
 	}

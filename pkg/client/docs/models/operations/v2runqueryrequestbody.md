@@ -3,8 +3,8 @@
 
 ## Fields
 
-| Field               | Type                | Required            | Description         |
-| ------------------- | ------------------- | ------------------- | ------------------- |
-| `Cursor`            | *any*               | :heavy_minus_sign:  | N/A                 |
-| `Params`            | *any*               | :heavy_minus_sign:  | N/A                 |
-| `Vars`              | map[string]*string* | :heavy_minus_sign:  | N/A                 |
+| Field                                                                 | Type                                                                  | Required                                                              | Description                                                           |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `Cursor`                                                              | **string*                                                             | :heavy_minus_sign:                                                    | N/A                                                                   |
+| `Params`                                                              | [*components.V2QueryParams](../../models/components/v2queryparams.md) | :heavy_minus_sign:                                                    | N/A                                                                   |
+| `Vars`                                                                | map[string]*string*                                                   | :heavy_minus_sign:                                                    | N/A                                                                   |

@@ -5,5 +5,5 @@
 
 | Field              | Type               | Required           | Description        |
 | ------------------ | ------------------ | ------------------ | ------------------ |
-| `Type`             | *any*              | :heavy_minus_sign: | N/A                |
+| `Type`             | *string*           | :heavy_check_mark: | N/A                |
 | `Default`          | *any*              | :heavy_minus_sign: | N/A                |
