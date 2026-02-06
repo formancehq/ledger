@@ -77,6 +77,12 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 		ret = d.ledgerStoreFactory.Create(b, *l)
 
+		count, err := systemStore.CountLedgersInBucket(ctx, l.Bucket)
+		if err != nil {
+			return fmt.Errorf("counting ledgers in bucket: %w", err)
+		}
+		ret.SetAloneInBucket(count == 1)
+
 		return nil
 	})
 	if err != nil {
@@ -88,14 +94,23 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
 	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
-	ret, err := d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
+	// NOTE: if the store is cached, the isAloneInBucket flag must be refreshed/invalidated
+	// when bucket composition changes, otherwise there is a risk of cross-ledger reads.
+	systemStore := d.systemStoreFactory.Create(d.db)
+	ret, err := systemStore.GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 
-	return store, ret, err
+	count, err := systemStore.CountLedgersInBucket(ctx, ret.Bucket)
+	if err != nil {
+		return nil, nil, fmt.Errorf("counting ledgers in bucket: %w", err)
+	}
+	store.SetAloneInBucket(count == 1)
+
+	return store, ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {

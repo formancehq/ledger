@@ -27,6 +27,11 @@ type Store struct {
 	bucket bucket.Bucket
 	ledger ledger.Ledger
 
+	// isAloneInBucket is a point-in-time hint indicating whether this ledger is the only one in its bucket.
+	// It must be refreshed if bucket membership changes.
+	// WARNING: if the store is cached without invalidation, a stale value may cause cross-ledger reads.
+	isAloneInBucket bool
+
 	tracer                             trace.Tracer
 	meter                              metric.Meter
 	checkBucketSchemaHistogram         metric.Int64Histogram
@@ -188,25 +193,17 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 
 // newScopedSelect creates a new select query scoped to the current ledger.
 // notes(gfyrag): The "WHERE ledger = 'XXX'" condition can cause degraded postgres plan.
-// To avoid that, we use a WHERE OR to separate the two cases:
-// 1. Check if the ledger is the only one in the bucket
-// 2. Otherwise, filter by ledger name
+// When the ledger is alone in its bucket we skip the filter entirely.
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	checkLedgerAlone := store.db.NewSelect().
-		TableExpr("_system.ledgers").
-		ColumnExpr("count = 1").
-		Join("JOIN (?) AS counters ON _system.ledgers.bucket = counters.bucket",
-			store.db.NewSelect().
-				TableExpr("_system.ledgers").
-				ColumnExpr("bucket").
-				ColumnExpr("COUNT(*) AS count").
-				Group("bucket"),
-		).
-		Where("_system.ledgers.name = ?", store.ledger.Name)
+	if !store.isAloneInBucket {
+		q = q.Where("ledger = ?", store.ledger.Name)
+	}
+	return q
+}
 
-	return q.
-		Where("((?) or ledger = ?)", checkLedgerAlone, store.ledger.Name)
+func (store *Store) SetAloneInBucket(alone bool) {
+	store.isAloneInBucket = alone
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
