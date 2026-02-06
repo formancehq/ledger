@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/go-libs/v3/service"
 
 	"github.com/formancehq/ledger/internal/api"
-	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -36,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/formancehq/ledger/internal/worker"
@@ -126,7 +126,7 @@ func NewServeCommand() *cobra.Command {
 						MaxSize:  cfg.BulkMaxSize,
 						Parallel: cfg.BulkParallel,
 					},
-					Pagination: common.PaginationConfig{
+					Pagination: storagecommon.PaginationConfig{
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},

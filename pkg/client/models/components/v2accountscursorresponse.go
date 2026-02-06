@@ -2,6 +2,34 @@
 
 package components
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Resource string
+
+const (
+	ResourceAccounts Resource = "accounts"
+)
+
+func (e Resource) ToPointer() *Resource {
+	return &e
+}
+func (e *Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "accounts":
+		*e = Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for Resource: %v", v)
+	}
+}
+
 type V2AccountsCursorResponseCursor struct {
 	PageSize int64       `json:"pageSize"`
 	HasMore  bool        `json:"hasMore"`
@@ -46,7 +74,15 @@ func (o *V2AccountsCursorResponseCursor) GetData() []V2Account {
 }
 
 type V2AccountsCursorResponse struct {
-	Cursor V2AccountsCursorResponseCursor `json:"cursor"`
+	Resource *Resource                      `json:"resource,omitempty"`
+	Cursor   V2AccountsCursorResponseCursor `json:"cursor"`
+}
+
+func (o *V2AccountsCursorResponse) GetResource() *Resource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *V2AccountsCursorResponse) GetCursor() V2AccountsCursorResponseCursor {

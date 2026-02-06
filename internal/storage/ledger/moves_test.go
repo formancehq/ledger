@@ -20,7 +20,6 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestMovesInsert(t *testing.T) {
@@ -173,8 +172,8 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-			Opts: ledgerstore.GetAggregatedVolumesOptions{
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+			Opts: ledger.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},
 		})

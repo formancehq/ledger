@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -75,7 +74,7 @@ func getExpand(r *http.Request) []string {
 
 func getPaginatedQuery[Options any](
 	r *http.Request,
-	paginationConfig common.PaginationConfig,
+	paginationConfig storagecommon.PaginationConfig,
 	column string,
 	order bunpaginate.Order,
 	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]),

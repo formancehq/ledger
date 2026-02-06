@@ -14,21 +14,23 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/internal/queries"
 )
 
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
-	case OperatorMatch:
+	case queries.OperatorMatch:
 		return "="
-	case OperatorLT:
+	case queries.OperatorLT:
 		return "<"
-	case OperatorGT:
+	case queries.OperatorGT:
 		return ">"
-	case OperatorLTE:
+	case queries.OperatorLTE:
 		return "<="
-	case OperatorGTE:
+	case queries.OperatorGTE:
 		return ">="
-	case OperatorLike:
+	case queries.OperatorLike:
 		return "like"
 	}
 	panic("unreachable")
@@ -55,20 +57,6 @@ func AcceptOperators(operators ...string) PropertyValidator {
 		}
 		return nil
 	})
-}
-
-type EntitySchema struct {
-	Fields map[string]Field
-}
-
-func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
-	for fieldName, field := range s.Fields {
-		if fieldName == name || slices.Contains(field.Aliases, name) {
-			return fieldName, &field
-		}
-	}
-
-	return "", nil
 }
 
 type RepositoryHandlerBuildContext[Opts any] struct {
@@ -102,7 +90,7 @@ func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...f
 }
 
 type RepositoryHandler[Opts any] interface {
-	Schema() EntitySchema
+	Schema() queries.EntitySchema
 	BuildDataset(query RepositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	ResolveFilter(query ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	Project(query ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
@@ -120,14 +108,13 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 
 	ret := make(map[string][]any)
 	properties := r.resourceHandler.Schema().Fields
-	if err := builder.Walk(func(operator string, key string, value any) (err error) {
-
+	if err := builder.Walk(func(operator string, key string, value *any) (err error) {
 		for name, property := range properties {
 			key := key
-			if property.Type.IsIndexable() {
+			if property.Type.Index() != nil {
 				key = strings.Split(key, "[")[0]
 			}
-			if !property.matchKey(name, key) {
+			if !property.MatchKey(name, key) {
 				continue
 			}
 
@@ -135,11 +122,11 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 				return NewErrInvalidQuery("operator '%s' is not allowed for property '%s'", operator, name)
 			}
 
-			if err := property.Type.ValidateValue(operator, value); err != nil {
-				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", value, name, err)
+			if err := property.Type.ValidateValue(operator, *value); err != nil {
+				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", *value, name, err)
 			}
 
-			ret[name] = append(ret[name], value)
+			ret[name] = append(ret[name], *value)
 
 			return nil
 		}
