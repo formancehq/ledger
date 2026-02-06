@@ -16,6 +16,7 @@ type SystemStore interface {
 	//ListLedgers(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	CountLedgersInBucket(ctx context.Context, bucket string) (int, error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
