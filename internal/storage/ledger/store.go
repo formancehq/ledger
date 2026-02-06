@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync/atomic"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -23,6 +25,12 @@ type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
+
+	// aloneInBucket is a shared optimization hint (per bucket) indicating whether
+	// this ledger is the only one in its bucket. The pointer is shared across all
+	// stores in the same bucket via the Factory, so updating it from any store
+	// (e.g. when a new ledger is created) immediately affects all stores.
+	aloneInBucket *atomic.Bool
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -164,26 +172,23 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 }
 
 // newScopedSelect creates a new select query scoped to the current ledger.
-// notes(gfyrag): The "WHERE ledger = 'XXX'" condition can cause degraded postgres plan.
-// To avoid that, we use a WHERE OR to separate the two cases:
-// 1. Check if the ledger is the only one in the bucket
-// 2. Otherwise, filter by ledger name
+// When the ledger is alone in its bucket, we skip the WHERE clause to avoid
+// a degraded seq scan plan (selectivity ~100%). Otherwise, we filter by ledger
+// name to use the composite index (ledger, id) efficiently.
+//
+// This relies on aloneInBucket being up to date (shared across the bucket).
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	checkLedgerAlone := store.db.NewSelect().
-		TableExpr("_system.ledgers").
-		ColumnExpr("count = 1").
-		Join("JOIN (?) AS counters ON _system.ledgers.bucket = counters.bucket",
-			store.db.NewSelect().
-				TableExpr("_system.ledgers").
-				ColumnExpr("bucket").
-				ColumnExpr("COUNT(*) AS count").
-				Group("bucket"),
-		).
-		Where("_system.ledgers.name = ?", store.ledger.Name)
+	if store.aloneInBucket == nil || !store.aloneInBucket.Load() {
+		q = q.Where("ledger = ?", store.ledger.Name)
+	}
+	return q
+}
 
-	return q.
-		Where("((?) or ledger = ?)", checkLedgerAlone, store.ledger.Name)
+func (store *Store) SetAloneInBucket(alone bool) {
+	if store.aloneInBucket != nil {
+		store.aloneInBucket.Store(alone)
+	}
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
