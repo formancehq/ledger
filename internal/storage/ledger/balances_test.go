@@ -352,4 +352,125 @@ func TestBalancesAggregates(t *testing.T) {
 			},
 		}, *ret)
 	})
+
+	t.Run("filter using PIT and metadata without partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// This test reproduces the bug where the 'moves' table alias is missing
+		// when using PIT with metadata filter but WITHOUT partial address filter.
+		// The query references moves.accounts_address but the table has no alias.
+		// Account "world" has metadata {world: "bar"} and is always the source (no inputs, only outputs).
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT:     pointer.For(now.Add(time.Minute)),
+			Builder: query.Match("metadata[world]", "bar"),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: new(big.Int),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  new(big.Int),
+					Output: smallInt,
+				},
+			},
+		}, *ret)
+	})
+
+	t.Run("$or with partial address and metadata exists", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having metadata "category"
+		// Expected: users:1 and users:2 (both have category metadata)
+		// The partial address "test::" matches nothing, but users:1 and users:2 have category
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Or(
+				query.Match("address", "test::"),
+				query.Exists("metadata", "category"),
+			),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes for users:1 and users:2 (both have category metadata)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
+	})
+
+	t.Run("$or with partial address and exact address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "users:" (2 segments) OR exact address "world"
+		// Expected: users:1, users:2, world (NOT xxx - it doesn't match either condition)
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Or(
+				query.Match("address", "users:"),
+				query.Match("address", "world"),
+			),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes for users:1, users:2, and world
+		// Note: xxx is NOT included as it doesn't match "users:" or "world"
+		// For EUR: only world has EUR Output (sending to xxx), xxx has EUR Input but is excluded
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  new(big.Int), // xxx is NOT included, so no EUR input
+					Output: smallInt,     // world has EUR output
+				},
+			},
+		}, *ret)
+	})
+
+	t.Run("$not with partial address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts NOT matching "users:" (2 segments)
+		// Expected: world, xxx
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.Not(query.Match("address", "users:")),
+		})
+		require.NoError(t, err)
+		// Should return aggregated volumes for world and xxx (not matching users:)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: new(big.Int),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  smallInt,
+					Output: smallInt,
+				},
+			},
+		}, *ret)
+	})
 }

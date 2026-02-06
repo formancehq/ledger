@@ -68,6 +68,10 @@ func (h transactionsResourceHandler) filters() []filter {
 	}
 }
 
+func (h transactionsResourceHandler) skipFilter(query repositoryHandlerBuildContext[any]) bool {
+	return false
+}
+
 func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.newScopedSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions")).

@@ -704,6 +704,185 @@ func TestVolumesAggregate(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 1)
 	})
+
+	t.Run("filter using PIT and metadata without partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// This test reproduces the bug where the 'moves' table alias is missing
+		// when using PIT/OOT with metadata filter but WITHOUT partial address filter.
+		// The query references moves.accounts_address but the table has no alias.
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("metadata[foo]", "bar"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+	})
+}
+
+func TestVolumesWithPartialAddressAndPIT(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	pit := now.Add(2 * time.Minute)
+	oot := now.Add(-2 * time.Minute)
+
+	// Create accounts with complex address patterns similar to production use cases
+	// Pattern: users:<user_id>:products:<product_id>:<status>
+	tx1 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:123:products:abc:available", "USD", big.NewInt(100))).
+		WithTimestamp(now.Add(-3 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	tx2 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:123:products:abc:hold", "USD", big.NewInt(50))).
+		WithTimestamp(now.Add(-2 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx2, nil))
+
+	tx3 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:456:products:def:available", "EUR", big.NewInt(200))).
+		WithTimestamp(now.Add(-1 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx3, nil))
+
+	tx4 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:456:pending-in-transfer", "USD", big.NewInt(75))).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx4, nil))
+
+	tx5 := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "users:789:products:ghi:pending-out", "USD", big.NewInt(25))).
+		WithTimestamp(now.Add(1 * time.Minute))
+	require.NoError(t, store.CommitTransaction(ctx, &tx5, nil))
+
+	t.Run("PIT with 5-segment partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// Filter: users:*:products:*:available (5 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::available"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // users:123:products:abc:available and users:456:products:def:available
+	})
+
+	t.Run("OOT only with partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// OOT = -2 min means effective_date >= -2 min, so tx1 (-3 min) is excluded
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					OOT:     &oot,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 3) // tx2 (hold), tx3 (available), tx5 (pending-out) - tx1 excluded by OOT
+	})
+
+	t.Run("PIT with 3-segment partial address filter", func(t *testing.T) {
+		t.Parallel()
+
+		// Filter: users:*:pending-in-transfer (3 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users::pending-in-transfer"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1) // users:456:pending-in-transfer
+		require.Equal(t, "users:456:pending-in-transfer", volumes.Data[0].Account)
+	})
+
+	t.Run("PIT + OOT with partial address filter without GroupLvl", func(t *testing.T) {
+		t.Parallel()
+
+		// OOT = -2 min excludes tx1 (users:123:products:abc:available at -3 min)
+		// Only tx3 (users:456:products:def:available at -1 min) matches
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					OOT:     &oot,
+					Builder: query.Match("account", "users::products::available"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1) // Only tx3 - tx1 excluded by OOT
+	})
+
+	t.Run("PIT with multiple OR partial address filters", func(t *testing.T) {
+		t.Parallel()
+
+		// This simulates the production query with multiple address patterns
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "users::products::available"),
+						query.Match("account", "users::products::hold"),
+						query.Match("account", "users::pending-in-transfer"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 4) // 2 available + 1 hold + 1 pending-in-transfer
+	})
+
+	t.Run("PIT with partial address and insertion date", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Opts: ledgercontroller.GetVolumesOptions{
+						UseInsertionDate: true,
+					},
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 4)
+	})
+
+	t.Run("PIT with partial address and GroupLvl 1", func(t *testing.T) {
+		t.Parallel()
+
+		// Should aggregate to "users" level
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Opts: ledgercontroller.GetVolumesOptions{
+						GroupLvl: 1,
+					},
+					PIT:     &pit,
+					Builder: query.Match("account", "users::products::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // Aggregated by asset (USD, EUR) under "users"
+	})
 }
 
 func TestUpdateVolumes(t *testing.T) {
@@ -825,5 +1004,834 @@ func TestUpdateVolumes(t *testing.T) {
 		case <-libtime.After(2 * time.Second):
 			require.Fail(t, "transaction should have finished")
 		}
+	})
+}
+
+func TestVolumesWithOrQueryPartialAddressAndMetadata(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Setup: create accounts foo, bar, quux with transactions
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "foo", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "bar", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "quux", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	// Add metadata: foo and quux have foo_meta, bar has bar_meta
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"foo":  {"foo_meta": "thing"},
+		"bar":  {"bar_meta": "thing"},
+		"quux": {"foo_meta": "thing"},
+	}))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial address and metadata exists", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having metadata "foo_meta"
+		// Expected: foo and quux (both have foo_meta)
+		// The partial address "test::" matches nothing, but foo and quux have foo_meta
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Exists("metadata", "foo_meta"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return foo and quux (both have foo_meta metadata)
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("$or with complex query - NOT address AND metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: (NOT address="foo" AND metadata foo_meta exists) OR address="doesntexist::"
+		// Expected: quux (has foo_meta but is not foo)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.And(
+							query.Not(query.Match("address", "foo")),
+							query.Exists("metadata", "foo_meta"),
+						),
+						query.Match("address", "doesntexist::"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return quux (has foo_meta and is not foo)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "quux", volumes.Data[0].Account)
+	})
+
+	t.Run("$or without PIT - partial address and metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// Same query without PIT
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Exists("metadata", "foo_meta"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return foo and quux (both have foo_meta metadata)
+		require.Len(t, volumes.Data, 2)
+	})
+}
+
+func TestVolumesWithOrQueryPartialAddressAndBalance(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Setup: create accounts with different balances
+	// - foo: 100 COIN
+	// - bar: 200 COIN (high balance)
+	// - quux: 50 COIN (low balance)
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "foo", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "bar", "COIN", big.NewInt(200)),
+			ledger.NewPosting("world", "quux", "COIN", big.NewInt(50)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial address and balance filter", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having balance > 150
+		// Expected: bar (has balance 200 > 150)
+		// The partial address "test::" matches nothing, but bar has balance > 150
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Gt("balance[COIN]", 150),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return bar (has balance 200 > 150)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "bar", volumes.Data[0].Account)
+	})
+
+	t.Run("$or with partial address and balance filter - multiple matches", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "test::" OR having balance >= 100
+		// Expected: foo and bar (both have balance >= 100)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Gte("balance[COIN]", 100),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return foo and bar (both have balance >= 100)
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("$or without PIT - partial address and balance", func(t *testing.T) {
+		t.Parallel()
+
+		// Same query without PIT - should work correctly
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Builder: query.Or(
+						query.Match("address", "test::"),
+						query.Gt("balance[COIN]", 150),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return bar (has balance 200 > 150)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "bar", volumes.Data[0].Account)
+	})
+}
+
+func TestVolumesWithOrQueryPartialAndExactAddress(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Setup: create accounts with different address patterns
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "users:alice", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:bob", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "merchants:shop1", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "admin", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial address and exact address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "users:" (2 segments) OR exact address "admin"
+		// Expected: users:alice, users:bob, admin
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "users:"),
+						query.Match("address", "admin"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, users:bob, admin (3 accounts)
+		require.Len(t, volumes.Data, 3)
+	})
+
+	t.Run("$or with two different partial addresses", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts matching "users:" OR "merchants:" (both 2 segments)
+		// Expected: users:alice, users:bob, merchants:shop1
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "users:"),
+						query.Match("address", "merchants:"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, users:bob, merchants:shop1 (3 accounts)
+		require.Len(t, volumes.Data, 3)
+	})
+
+	t.Run("$not with partial address", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: accounts NOT matching "users:" (2 segments)
+		// Expected: merchants:shop1, admin, world
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Not(query.Match("address", "users:")),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return merchants:shop1, admin, world (3 accounts)
+		require.Len(t, volumes.Data, 3)
+	})
+
+	t.Run("$and with $not partial address and metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// First add metadata to some accounts
+		require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+			"users:alice":     {"vip": "true"},
+			"merchants:shop1": {"vip": "true"},
+			"admin":           {"vip": "true"},
+		}))
+
+		// Query: accounts NOT matching "users:" AND having metadata "vip"
+		// Expected: merchants:shop1, admin
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.And(
+						query.Not(query.Match("address", "users:")),
+						query.Exists("metadata", "vip"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return merchants:shop1, admin (2 accounts with vip that are not users:)
+		require.Len(t, volumes.Data, 2)
+	})
+}
+
+func TestVolumesWithMiddleWildcardPatterns(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Create accounts with various patterns
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "users:123:alice", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:456:alice", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:789:bob", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "prefix:middle:suffix", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "a:b:c:d", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("middle wildcard - users::alice matches users:X:alice", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: users::alice should match users:123:alice and users:456:alice
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users::alice"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("wildcard at specific positions - ::middle::", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: ::middle:: should match X:middle:Y (4 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "prefix::suffix"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "prefix:middle:suffix", volumes.Data[0].Account)
+	})
+
+	t.Run("4 segment pattern - a:::d", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: a:::d should match a:X:Y:d (4 segments)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "a:::d"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "a:b:c:d", volumes.Data[0].Account)
+	})
+
+	t.Run("leading wildcards - ::alice matches X:Y:alice", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: ::alice = ["", "", "alice"] (3 segments)
+		// Should match 3-segment addresses ending with "alice"
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "::alice"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Matches users:123:alice and users:456:alice (3 segments ending with alice)
+		require.Len(t, volumes.Data, 2)
+	})
+}
+
+func TestVolumesWithOrPartialAndExactSamePrefix(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Case from Alix: $or with partial and exact on same prefix
+	// This is a bit silly but should work correctly
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "quux:truc", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "quux:other", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "other:account", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with partial and non-matching exact - quux: OR quux:nope", func(t *testing.T) {
+		t.Parallel()
+
+		// $or([{$match: {address: "quux:"}}, {$match: {address: "quux:nope"}}])
+		// quux: matches quux:truc and quux:other (2 segments)
+		// quux:nope matches nothing (no such account)
+		// Result should be quux:truc and quux:other
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:nope"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+
+	t.Run("$or with partial and matching exact - quux: OR quux:truc", func(t *testing.T) {
+		t.Parallel()
+
+		// quux: matches quux:truc and quux:other
+		// quux:truc matches quux:truc
+		// OR union = quux:truc and quux:other (no duplicates)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:truc"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+
+	t.Run("without PIT - same query should work", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					Builder: query.Or(
+						query.Match("account", "quux:"),
+						query.Match("account", "quux:nope"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // quux:truc and quux:other
+	})
+}
+
+func TestVolumesWithSpecialCharactersAndLongPatterns(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Create accounts with special characters and long patterns
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "région:paris", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "région:lyon", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "user-name:test_123", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "a:b:c:d:e", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "a:x:c:y:e", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "org:dept:team:user:role:level", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("UTF-8 characters in segments - accents", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern with accent character
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "région:"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // région:paris, région:lyon
+	})
+
+	t.Run("special characters - dashes and underscores", func(t *testing.T) {
+		t.Parallel()
+
+		// Exact match with dashes and underscores
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "user-name:"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "user-name:test_123", volumes.Data[0].Account)
+	})
+
+	t.Run("pattern with multiple wildcards in middle - a::c::e", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: a::c::e = ["a", "", "c", "", "e"] = 5 segments
+		// Should match a:X:c:Y:e
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "a::c::e"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // a:b:c:d:e and a:x:c:y:e
+	})
+
+	t.Run("long pattern - 6 segments", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: org::::: = 6 segments starting with org
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "org:::::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "org:dept:team:user:role:level", volumes.Data[0].Account)
+	})
+
+	t.Run("pattern matching specific positions in long address", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern: org::team::: = ["org", "", "team", "", "", ""] = 6 segments
+		// Should match org:X:team:Y:Z:W
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "org::team:::"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "org:dept:team:user:role:level", volumes.Data[0].Account)
+	})
+
+	t.Run("$or with UTF-8 patterns", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "région:paris"),
+						query.Match("account", "user-name:"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2) // région:paris and user-name:test_123
+	})
+}
+
+func TestVolumesWithEdgeCasePatterns(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Create accounts with various edge case patterns
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "a:b", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "x:y", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "single", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:alice", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:bob", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("pattern with single colon - matches all 2-segment addresses", func(t *testing.T) {
+		t.Parallel()
+
+		// Pattern ":" = ["", ""] = 2 segments with both wildcards
+		// Should match all 2-segment addresses: a:b, x:y, users:alice, users:bob
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", ":"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 4) // a:b, x:y, users:alice, users:bob
+	})
+
+	t.Run("exact address match - users:alice should only match users:alice", func(t *testing.T) {
+		t.Parallel()
+
+		// Exact match "users:alice" (no trailing colon)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "users:alice"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "users:alice", volumes.Data[0].Account)
+	})
+
+	t.Run("double negation - $not($not(partial)) equals partial", func(t *testing.T) {
+		t.Parallel()
+
+		// NOT(NOT(users:)) should equal users:
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Not(query.Not(query.Match("account", "users:"))),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, users:bob (same as just "users:")
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("$and with multiple partials - intersection", func(t *testing.T) {
+		t.Parallel()
+
+		// AND of two partials that have no intersection
+		// "users:" AND "a:" - no account matches both
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.And(
+						query.Match("account", "users:"),
+						query.Match("account", "a:"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// No account can match both "users:X" AND "a:X" patterns
+		require.Len(t, volumes.Data, 0)
+	})
+
+	t.Run("single segment address - no colon", func(t *testing.T) {
+		t.Parallel()
+
+		// "single" is a 1-segment address (no colon)
+		// Exact match should work
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &pit,
+					Builder: query.Match("account", "single"),
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Equal(t, "single", volumes.Data[0].Account)
+	})
+
+	t.Run("$or with exact and partial - exact takes priority", func(t *testing.T) {
+		t.Parallel()
+
+		// OR("users:alice", "users:") - both match users:alice
+		// Should return both users without duplicates
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("account", "users:alice"),
+						query.Match("account", "users:"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, users:bob (no duplicates)
+		require.Len(t, volumes.Data, 2)
+	})
+}
+
+func TestVolumesWithComplexNestedQueries(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	// Create accounts with different patterns
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "users:alice", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "users:bob", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "merchants:shop1", "COIN", big.NewInt(100)),
+			ledger.NewPosting("world", "admin", "COIN", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store.CommitTransaction(ctx, &tx1, nil))
+
+	// Add metadata
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"users:alice":     {"type": "premium"},
+		"merchants:shop1": {"type": "verified"},
+		"admin":           {"type": "admin"},
+	}))
+
+	pit := now.Add(time.Minute)
+
+	t.Run("$or with $not inside - $or($not(partial), exact)", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: NOT matching "users:" (2 segments) OR exact "admin"
+		// Expected: merchants:shop1, admin, world (not users:) OR admin
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Not(query.Match("address", "users:")),
+						query.Match("address", "admin"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return merchants:shop1, admin, world (3 accounts)
+		// NOT users: = {merchants:shop1, admin, world}, admin is already in that set
+		require.Len(t, volumes.Data, 3)
+	})
+
+	t.Run("$and with $or inside - $and($or(partial, exact), metadata)", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: (matching "users:" OR "admin") AND having metadata "type"
+		// Expected: users:alice, admin (both match OR and have metadata)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.And(
+						query.Or(
+							query.Match("address", "users:"),
+							query.Match("address", "admin"),
+						),
+						query.Exists("metadata", "type"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, admin (matching OR condition AND having metadata)
+		require.Len(t, volumes.Data, 2)
+	})
+
+	t.Run("triple $or with partials", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: matching "users:" OR "merchants:" OR "admin" (2-segment patterns + exact)
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Or(
+						query.Match("address", "users:"),
+						query.Match("address", "merchants:"),
+						query.Match("address", "admin"),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return users:alice, users:bob, merchants:shop1, admin (4 accounts)
+		require.Len(t, volumes.Data, 4)
+	})
+
+	t.Run("$not wrapping $or - $not($or(partial, exact))", func(t *testing.T) {
+		t.Parallel()
+
+		// Query: NOT (matching "users:" OR "admin")
+		// Expected: merchants:shop1, world
+		volumes, err := store.Volumes().Paginate(ctx,
+			ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT: &pit,
+					Builder: query.Not(
+						query.Or(
+							query.Match("address", "users:"),
+							query.Match("address", "admin"),
+						),
+					),
+				},
+			},
+		)
+		require.NoError(t, err)
+		// Should return merchants:shop1, world (2 accounts not matching users: and not admin)
+		require.Len(t, volumes.Data, 2)
 	})
 }
