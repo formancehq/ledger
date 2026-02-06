@@ -3168,7 +3168,7 @@ components:
       properties:
         type:
           type: string
-        default:
+        default: {}
       required:
         - type
     V2QueryResource:
