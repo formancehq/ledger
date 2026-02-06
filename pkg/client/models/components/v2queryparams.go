@@ -3,17 +3,40 @@
 package components
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
-	"github.com/formancehq/ledger/pkg/client/types"
 	"time"
 )
 
+type V2QueryParams4Resource string
+
+const (
+	V2QueryParams4ResourceVolumes V2QueryParams4Resource = "volumes"
+)
+
+func (e V2QueryParams4Resource) ToPointer() *V2QueryParams4Resource {
+	return &e
+}
+func (e *V2QueryParams4Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "volumes":
+		*e = V2QueryParams4Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams4Resource: %v", v)
+	}
+}
+
 type QueryTemplateVolumeParams struct {
-	resource         *string `const:"volumes" json:"resource,omitempty"`
-	UseInsertionDate any     `json:"useInsertionDate,omitempty"`
-	GroupLvl         any     `json:"groupLvl,omitempty"`
+	Resource         *V2QueryParams4Resource `json:"resource,omitempty"`
+	UseInsertionDate any                     `json:"useInsertionDate,omitempty"`
+	GroupLvl         any                     `json:"groupLvl,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -42,8 +65,11 @@ func (q *QueryTemplateVolumeParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateVolumeParams) GetResource() *string {
-	return types.String("volumes")
+func (o *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *QueryTemplateVolumeParams) GetUseInsertionDate() any {
@@ -95,8 +121,31 @@ func (o *QueryTemplateVolumeParams) GetSort() any {
 	return o.Sort
 }
 
+type V2QueryParams3Resource string
+
+const (
+	V2QueryParams3ResourceLogs V2QueryParams3Resource = "logs"
+)
+
+func (e V2QueryParams3Resource) ToPointer() *V2QueryParams3Resource {
+	return &e
+}
+func (e *V2QueryParams3Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "logs":
+		*e = V2QueryParams3Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams3Resource: %v", v)
+	}
+}
+
 type QueryTemplateLogParams struct {
-	resource *string `const:"logs" json:"resource,omitempty"`
+	Resource *V2QueryParams3Resource `json:"resource,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -125,8 +174,11 @@ func (q *QueryTemplateLogParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateLogParams) GetResource() *string {
-	return types.String("logs")
+func (o *QueryTemplateLogParams) GetResource() *V2QueryParams3Resource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *QueryTemplateLogParams) GetPageSize() *int64 {
@@ -164,8 +216,31 @@ func (o *QueryTemplateLogParams) GetSort() any {
 	return o.Sort
 }
 
+type V2QueryParamsResource string
+
+const (
+	V2QueryParamsResourceTransactions V2QueryParamsResource = "transactions"
+)
+
+func (e V2QueryParamsResource) ToPointer() *V2QueryParamsResource {
+	return &e
+}
+func (e *V2QueryParamsResource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "transactions":
+		*e = V2QueryParamsResource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParamsResource: %v", v)
+	}
+}
+
 type QueryTemplateTransactionParams struct {
-	resource *string `const:"transactions" json:"resource,omitempty"`
+	Resource *V2QueryParamsResource `json:"resource,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -194,8 +269,11 @@ func (q *QueryTemplateTransactionParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateTransactionParams) GetResource() *string {
-	return types.String("transactions")
+func (o *QueryTemplateTransactionParams) GetResource() *V2QueryParamsResource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *QueryTemplateTransactionParams) GetPageSize() *int64 {
@@ -233,8 +311,31 @@ func (o *QueryTemplateTransactionParams) GetSort() any {
 	return o.Sort
 }
 
+type V2QueryParams1Resource string
+
+const (
+	V2QueryParams1ResourceAccounts V2QueryParams1Resource = "accounts"
+)
+
+func (e V2QueryParams1Resource) ToPointer() *V2QueryParams1Resource {
+	return &e
+}
+func (e *V2QueryParams1Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "accounts":
+		*e = V2QueryParams1Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams1Resource: %v", v)
+	}
+}
+
 type QueryTemplateAccountParams struct {
-	resource *string `const:"accounts" json:"resource,omitempty"`
+	Resource *V2QueryParams1Resource `json:"resource,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -263,8 +364,11 @@ func (q *QueryTemplateAccountParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateAccountParams) GetResource() *string {
-	return types.String("accounts")
+func (o *QueryTemplateAccountParams) GetResource() *V2QueryParams1Resource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *QueryTemplateAccountParams) GetPageSize() *int64 {

@@ -3969,7 +3969,9 @@ components:
         - cursor
       properties:
         resource:
-          const: accounts
+          type: string
+          enum:
+            - accounts
         cursor:
           type: object
           required:
@@ -4002,7 +4004,9 @@ components:
         - cursor
       properties:
         resource:
-          const: transactions
+          type: string
+          enum:
+            - transactions
         cursor:
           type: object
           required:
@@ -4035,7 +4039,9 @@ components:
         - cursor
       properties:
         resource:
-          const: logs
+          type: string
+          enum:
+            - logs
         cursor:
           type: object
           required:
@@ -4082,7 +4088,9 @@ components:
         - cursor
       properties:
         resource:
-          const: volumes
+          type: string
+          enum:
+            - volumes
         cursor:
           type: object
           required:
@@ -4973,19 +4981,27 @@ components:
         - x-speakeasy-name-override: QueryTemplateAccountParams
           properties:
             resource:
-              const: accounts
+              type: string
+              enum:
+                - accounts
         - x-speakeasy-name-override: QueryTemplateTransactionParams
           properties:
             resource:
-              const: transactions
+              type: string
+              enum:
+                - transactions
         - x-speakeasy-name-override: QueryTemplateLogParams
           properties:
             resource:
-              const: logs
+              type: string
+              enum:
+                - logs
         - x-speakeasy-name-override: QueryTemplateVolumeParams
           properties:
             resource:
-              const: volumes
+              type: string
+              enum:
+                - volumes
             useInsertionDate: boolean
             groupLvl: integer
     V2QueryTemplate:

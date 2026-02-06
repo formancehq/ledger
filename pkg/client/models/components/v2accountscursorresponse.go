@@ -3,9 +3,32 @@
 package components
 
 import (
-	"github.com/formancehq/ledger/pkg/client/internal/utils"
-	"github.com/formancehq/ledger/pkg/client/types"
+	"encoding/json"
+	"fmt"
 )
+
+type Resource string
+
+const (
+	ResourceAccounts Resource = "accounts"
+)
+
+func (e Resource) ToPointer() *Resource {
+	return &e
+}
+func (e *Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "accounts":
+		*e = Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for Resource: %v", v)
+	}
+}
 
 type V2AccountsCursorResponseCursor struct {
 	PageSize int64       `json:"pageSize"`
@@ -51,23 +74,15 @@ func (o *V2AccountsCursorResponseCursor) GetData() []V2Account {
 }
 
 type V2AccountsCursorResponse struct {
-	resource *string                        `const:"accounts" json:"resource,omitempty"`
+	Resource *Resource                      `json:"resource,omitempty"`
 	Cursor   V2AccountsCursorResponseCursor `json:"cursor"`
 }
 
-func (v V2AccountsCursorResponse) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(v, "", false)
-}
-
-func (v *V2AccountsCursorResponse) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, true); err != nil {
-		return err
+func (o *V2AccountsCursorResponse) GetResource() *Resource {
+	if o == nil {
+		return nil
 	}
-	return nil
-}
-
-func (o *V2AccountsCursorResponse) GetResource() *string {
-	return types.String("accounts")
+	return o.Resource
 }
 
 func (o *V2AccountsCursorResponse) GetCursor() V2AccountsCursorResponseCursor {

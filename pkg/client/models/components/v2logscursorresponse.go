@@ -3,9 +3,32 @@
 package components
 
 import (
-	"github.com/formancehq/ledger/pkg/client/internal/utils"
-	"github.com/formancehq/ledger/pkg/client/types"
+	"encoding/json"
+	"fmt"
 )
+
+type V2LogsCursorResponseResource string
+
+const (
+	V2LogsCursorResponseResourceLogs V2LogsCursorResponseResource = "logs"
+)
+
+func (e V2LogsCursorResponseResource) ToPointer() *V2LogsCursorResponseResource {
+	return &e
+}
+func (e *V2LogsCursorResponseResource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "logs":
+		*e = V2LogsCursorResponseResource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2LogsCursorResponseResource: %v", v)
+	}
+}
 
 type V2LogsCursorResponseCursor struct {
 	PageSize int64   `json:"pageSize"`
@@ -51,23 +74,15 @@ func (o *V2LogsCursorResponseCursor) GetData() []V2Log {
 }
 
 type V2LogsCursorResponse struct {
-	resource *string                    `const:"logs" json:"resource,omitempty"`
-	Cursor   V2LogsCursorResponseCursor `json:"cursor"`
+	Resource *V2LogsCursorResponseResource `json:"resource,omitempty"`
+	Cursor   V2LogsCursorResponseCursor    `json:"cursor"`
 }
 
-func (v V2LogsCursorResponse) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(v, "", false)
-}
-
-func (v *V2LogsCursorResponse) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, true); err != nil {
-		return err
+func (o *V2LogsCursorResponse) GetResource() *V2LogsCursorResponseResource {
+	if o == nil {
+		return nil
 	}
-	return nil
-}
-
-func (o *V2LogsCursorResponse) GetResource() *string {
-	return types.String("logs")
+	return o.Resource
 }
 
 func (o *V2LogsCursorResponse) GetCursor() V2LogsCursorResponseCursor {
