@@ -28,6 +28,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	CountLedgersInBucket(ctx context.Context, bucket string) (int, error)
 	DeleteBucket(ctx context.Context, bucket string) error
 	RestoreBucket(ctx context.Context, bucket string) error
 	GetDeletedBucketsOlderThan(ctx context.Context, olderThan time.Time) ([]string, error)
@@ -67,6 +68,17 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 	}
 
 	return buckets, nil
+}
+
+func (d *DefaultStore) CountLedgersInBucket(ctx context.Context, bucket string) (int, error) {
+	count, err := d.db.NewSelect().
+		Model(&ledger.Ledger{}).
+		Where("bucket = ?", bucket).
+		Count(ctx)
+	if err != nil {
+		return 0, postgres.ResolveError(err)
+	}
+	return count, nil
 }
 
 func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
