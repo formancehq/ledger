@@ -137,7 +137,7 @@ Accept: application/json
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |includeDeleted|query|boolean|false|If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -151,7 +151,7 @@ No other parameters can be set when this parameter is set.
 
 **includeDeleted**: If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -336,73 +336,215 @@ Idempotency-Key: string
 
 ```json
 {
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
+  "type": "object",
+  "description": "Schema data structure for ledger schemas",
+  "properties": {
+    "chart": {
+      "type": "object",
+      "description": "Chart of account",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Segment within a chart of accounts",
+        "properties": {
+          ".self": {
+            "type": "object"
+          },
+          ".pattern": {
+            "type": "string"
+          },
+          ".rules": {
+            "type": "object"
+          },
+          ".metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "default": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": "[Circular]",
+        "example": {
+          "users": {
+            "$userID": {
+              ".pattern": "^[0-9]{16}$"
+            }
+          }
+        }
+      },
+      "example": {
+        "users": {
+          "$userID": {
+            ".pattern": "^[0-9]{16}$"
+          }
+        }
+      }
+    },
+    "transactions": {
+      "type": "object",
+      "description": "Transaction templates",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string",
+            "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+            "enum": [
+              "experimental-interpreter",
+              "machine"
+            ]
+          }
+        },
+        "required": [
+          "script"
+        ]
+      }
+    },
+    "queries": {
+      "type": "object",
+      "description": "Query templates",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string",
+            "enum": [
+              "transactions",
+              "accounts",
+              "logs",
+              "volumes"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "description": "The maximum number of results to return per page.\n",
+                "example": 100
+              },
+              "cursor": {
+                "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+                "type": "string",
+                "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+              },
+              "expand": {
+                "type": "string",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "pit": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "sort": {
+                "name": "sort",
+                "in": "query",
+                "description": "Sort results using a field name and order (ascending or descending).\nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "example": "id:desc"
+                },
+                "exampleValues": {
+                  "object": "id:desc",
+                  "json": "'id:desc'"
+                },
+                "originalType": "string",
+                "safeType": "string",
+                "shortDesc": "Sort results using a field name and order (ascending or descending).",
+                "style": "form"
+              }
+            },
+            "oneOf": [
+              {
+                "x-speakeasy-name-override": "QueryTemplateAccountParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateTransactionParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateLogParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateVolumeParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  },
+                  "useInsertionDate": {
+                    "type": "boolean"
+                  },
+                  "groupLvl": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "vars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "default": null
+              },
+              "required": [
+                "type"
+              ]
+            }
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
       }
     }
   },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
-        },
-        "property2": {
-          "type": null,
-          "default": null
-        }
-      },
-      "body": {}
-    },
-    "property2": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
-        },
-        "property2": {
-          "type": null,
-          "default": null
-        }
-      },
-      "body": {}
-    }
-  }
+  "required": [
+    "chart",
+    "transactions"
+  ]
 }
 ```
 
@@ -473,77 +615,136 @@ Accept: application/json
 
 ```json
 {
-  "data": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
+  "properties": {
+    "data": {
+      "type": "object",
+      "description": "Complete schema structure with metadata",
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "version",
+            "createdAt"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Schema version",
+              "example": "v1.0.0"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Schema creation timestamp",
+              "example": "2023-01-01T00:00:00Z"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Schema data structure for ledger schemas",
+          "properties": {
+            "chart": {
+              "type": "object",
+              "description": "Chart of account",
+              "additionalProperties": {
+                "type": "object",
+                "description": "Segment within a chart of accounts",
+                "properties": {
+                  ".self": {
+                    "type": "object"
+                  },
+                  ".pattern": {
+                    "type": "string"
+                  },
+                  ".rules": {
+                    "type": "object"
+                  },
+                  ".metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": "[Circular]",
+                "example": {
+                  "users": {
+                    "$userID": {}
+                  }
+                }
+              },
+              "example": {
+                "users": {
+                  "$userID": {
+                    ".pattern": "^[0-9]{16}$"
+                  }
+                }
+              }
+            },
+            "transactions": {
+              "type": "object",
+              "description": "Transaction templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "script": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string",
+                    "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+                    "enum": []
+                  }
+                },
+                "required": [
+                  "script"
+                ]
+              }
+            },
+            "queries": {
+              "type": "object",
+              "description": "Query templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {},
+                    "oneOf": []
+                  },
+                  "vars": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "body": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "chart",
+            "transactions"
+          ]
         }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      }
+      ]
     }
-  }
+  },
+  "type": "object",
+  "required": [
+    "data"
+  ]
 }
 ```
 
@@ -598,85 +799,91 @@ Accept: application/json
 
 ```json
 {
-  "cursor": {
-    "data": [
-      {
-        "version": "v1.0.0",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "chart": {
-          "users": {
-            "$userID": {
-              ".pattern": "^[0-9]{16}$"
-            }
+  "properties": {
+    "cursor": {
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Complete schema structure with metadata",
+            "allOf": [
+              {
+                "type": "object",
+                "required": [
+                  "version",
+                  "createdAt"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "description": "Schema version",
+                    "example": "v1.0.0"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Schema creation timestamp",
+                    "example": "2023-01-01T00:00:00Z"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Schema data structure for ledger schemas",
+                "properties": {
+                  "chart": {
+                    "type": "object",
+                    "description": "Chart of account",
+                    "additionalProperties": {},
+                    "example": {}
+                  },
+                  "transactions": {
+                    "type": "object",
+                    "description": "Transaction templates",
+                    "additionalProperties": {}
+                  },
+                  "queries": {
+                    "type": "object",
+                    "description": "Query templates",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "chart",
+                  "transactions"
+                ]
+              }
+            ]
           }
         },
-        "transactions": {
-          "property1": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          },
-          "property2": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          }
+        "hasMore": {
+          "type": "boolean"
         },
-        "queries": {
-          "property1": {
-            "name": null,
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": null,
-                "default": null
-              },
-              "property2": {
-                "type": null,
-                "default": null
-              }
-            },
-            "body": {}
-          },
-          "property2": {
-            "name": null,
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": null,
-                "default": null
-              },
-              "property2": {
-                "type": null,
-                "default": null
-              }
-            },
-            "body": {}
-          }
+        "previous": {
+          "type": "string",
+          "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+        },
+        "next": {
+          "type": "string",
+          "example": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ="
+        },
+        "pageSize": {
+          "type": "integer"
         }
-      }
-    ],
-    "hasMore": true,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-    "pageSize": 0
-  }
+      },
+      "type": "object",
+      "required": [
+        "data",
+        "hasMore",
+        "pageSize"
+      ]
+    }
+  },
+  "type": "object",
+  "required": [
+    "cursor"
+  ]
 }
 ```
 
@@ -1127,7 +1334,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1139,7 +1346,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -1567,7 +1774,7 @@ List transactions from a ledger, sorted by id in descending order.
 |pit|query|string(date-time)|false|none|
 |order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1579,7 +1786,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
@@ -2326,7 +2533,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2338,7 +2545,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2410,7 +2617,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2422,7 +2629,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2597,8 +2804,15 @@ Run a query template on a ledger
 
 ```json
 {
-  "cursor": null,
-  "params": null,
+  "cursor": "string",
+  "params": {
+    "pageSize": 100,
+    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+    "expand": "string",
+    "pit": "2019-08-24T14:15:22Z",
+    "sort": {},
+    "resource": "accounts"
+  },
   "vars": {
     "property1": "string",
     "property2": "string"
@@ -2619,10 +2833,25 @@ Run a query template on a ledger
 |pit|query|string(date-time)|false|none|
 |order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
-|» cursor|body|any|false|none|
-|» params|body|any|false|none|
+|» cursor|body|string|false|none|
+|» params|body|[V2QueryParams](#schemav2queryparams)|false|none|
+|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
+|»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»» expand|body|string|false|none|
+|»» pit|body|string(date-time)|false|none|
+|»» sort|body|object|false|Sort results using a field name and order (ascending or descending).|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»»» useInsertionDate|body|boolean|false|none|
+|»»» groupLvl|body|integer|false|none|
 |» vars|body|object|false|none|
 |»» **additionalProperties**|body|string|false|none|
 
@@ -2635,7 +2864,15 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+
+**»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
+Set to the value of next for the next page of results.
+Set to the value of previous for the previous page of results.
+No other parameters can be set when this parameter is set.
+
+**»» sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
@@ -2643,6 +2880,10 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 |Parameter|Value|
 |---|---|
 |order|effective|
+|»»» resource|accounts|
+|»»» resource|transactions|
+|»»» resource|logs|
+|»»» resource|volumes|
 
 > Example responses
 
@@ -4949,77 +5190,137 @@ continued
 
 ```json
 {
-  "schema": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
+  "type": "object",
+  "description": "Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.",
+  "properties": {
+    "schema": {
+      "type": "object",
+      "description": "Complete schema structure with metadata",
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "version",
+            "createdAt"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Schema version",
+              "example": "v1.0.0"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Schema creation timestamp",
+              "example": "2023-01-01T00:00:00Z"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Schema data structure for ledger schemas",
+          "properties": {
+            "chart": {
+              "type": "object",
+              "description": "Chart of account",
+              "additionalProperties": {
+                "type": "object",
+                "description": "Segment within a chart of accounts",
+                "properties": {
+                  ".self": {
+                    "type": "object"
+                  },
+                  ".pattern": {
+                    "type": "string"
+                  },
+                  ".rules": {
+                    "type": "object"
+                  },
+                  ".metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": "[Circular]",
+                "example": {
+                  "users": {
+                    "$userID": {}
+                  }
+                }
+              },
+              "example": {
+                "users": {
+                  "$userID": {
+                    ".pattern": "^[0-9]{16}$"
+                  }
+                }
+              }
+            },
+            "transactions": {
+              "type": "object",
+              "description": "Transaction templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "script": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string",
+                    "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+                    "enum": []
+                  }
+                },
+                "required": [
+                  "script"
+                ]
+              }
+            },
+            "queries": {
+              "type": "object",
+              "description": "Query templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {},
+                    "oneOf": []
+                  },
+                  "vars": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "body": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "chart",
+            "transactions"
+          ]
         }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      }
+      ]
     }
-  }
+  },
+  "required": [
+    "schema"
+  ]
 }
 
 ```
@@ -6775,8 +7076,16 @@ Transaction templates
 
 ```json
 {
-  "type": null,
-  "default": null
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string"
+    },
+    "default": null
+  },
+  "required": [
+    "type"
+  ]
 }
 
 ```
@@ -6785,8 +7094,7 @@ Transaction templates
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|type|any|false|none|none|
-|default|any|false|none|none|
+|type|string|true|none|none|
 
 <h2 id="tocS_V2QueryResource">V2QueryResource</h2>
 <!-- backwards compatibility -->
@@ -6842,7 +7150,7 @@ Transaction templates
 |cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
 |expand|string|false|none|none|
 |pit|string(date-time)|false|none|none|
-|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending). <br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 oneOf
 
@@ -6871,8 +7179,8 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» resource|string|false|none|none|
-|» useInsertionDate|any|false|none|none|
-|» groupLvl|any|false|none|none|
+|» useInsertionDate|boolean|false|none|none|
+|» groupLvl|integer|false|none|none|
 
 #### Enumerated Values
 
@@ -6892,27 +7200,138 @@ xor
 
 ```json
 {
-  "name": null,
-  "resource": "transactions",
-  "params": {
-    "pageSize": 100,
-    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-    "expand": "string",
-    "pit": "2019-08-24T14:15:22Z",
-    "sort": {},
-    "resource": "accounts"
-  },
-  "vars": {
-    "property1": {
-      "type": null,
-      "default": null
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string"
     },
-    "property2": {
-      "type": null,
-      "default": null
+    "resource": {
+      "type": "string",
+      "enum": [
+        "transactions",
+        "accounts",
+        "logs",
+        "volumes"
+      ]
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "The maximum number of results to return per page.\n",
+          "example": 100
+        },
+        "cursor": {
+          "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+          "type": "string",
+          "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+        },
+        "expand": {
+          "type": "string",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pit": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sort": {
+          "name": "sort",
+          "in": "query",
+          "description": "Sort results using a field name and order (ascending or descending).\nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "example": "id:desc"
+          },
+          "exampleValues": {
+            "object": "id:desc",
+            "json": "'id:desc'"
+          },
+          "originalType": "string",
+          "safeType": "string",
+          "shortDesc": "Sort results using a field name and order (ascending or descending).",
+          "style": "form"
+        }
+      },
+      "oneOf": [
+        {
+          "x-speakeasy-name-override": "QueryTemplateAccountParams",
+          "properties": {
+            "resource": {
+              "type": "string",
+              "enum": [
+                "accounts"
+              ]
+            }
+          }
+        },
+        {
+          "x-speakeasy-name-override": "QueryTemplateTransactionParams",
+          "properties": {
+            "resource": {
+              "type": "string",
+              "enum": [
+                "transactions"
+              ]
+            }
+          }
+        },
+        {
+          "x-speakeasy-name-override": "QueryTemplateLogParams",
+          "properties": {
+            "resource": {
+              "type": "string",
+              "enum": [
+                "logs"
+              ]
+            }
+          }
+        },
+        {
+          "x-speakeasy-name-override": "QueryTemplateVolumeParams",
+          "properties": {
+            "resource": {
+              "type": "string",
+              "enum": [
+                "volumes"
+              ]
+            },
+            "useInsertionDate": {
+              "type": "boolean"
+            },
+            "groupLvl": {
+              "type": "integer"
+            }
+          }
+        }
+      ]
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "required": [
+          "type"
+        ]
+      }
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": true
     }
-  },
-  "body": {}
+  }
 }
 
 ```
@@ -6921,7 +7340,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|any|false|none|none|
+|description|string|false|none|none|
 |resource|[V2QueryResource](#schemav2queryresource)|false|none|none|
 |params|[V2QueryParams](#schemav2queryparams)|false|none|none|
 |vars|object|false|none|none|
@@ -6937,51 +7356,141 @@ xor
 
 ```json
 {
-  "property1": {
-    "name": null,
-    "resource": "transactions",
-    "params": {
-      "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
-      "resource": "accounts"
-    },
-    "vars": {
-      "property1": {
-        "type": null,
-        "default": null
+  "type": "object",
+  "description": "Query templates",
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "description": {
+        "type": "string"
       },
-      "property2": {
-        "type": null,
-        "default": null
-      }
-    },
-    "body": {}
-  },
-  "property2": {
-    "name": null,
-    "resource": "transactions",
-    "params": {
-      "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
-      "resource": "accounts"
-    },
-    "vars": {
-      "property1": {
-        "type": null,
-        "default": null
+      "resource": {
+        "type": "string",
+        "enum": [
+          "transactions",
+          "accounts",
+          "logs",
+          "volumes"
+        ]
       },
-      "property2": {
-        "type": null,
-        "default": null
+      "params": {
+        "type": "object",
+        "properties": {
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "The maximum number of results to return per page.\n",
+            "example": 100
+          },
+          "cursor": {
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+            "type": "string",
+            "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          },
+          "expand": {
+            "type": "string",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pit": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sort": {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort results using a field name and order (ascending or descending).\nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "id:desc"
+            },
+            "exampleValues": {
+              "object": "id:desc",
+              "json": "'id:desc'"
+            },
+            "originalType": "string",
+            "safeType": "string",
+            "shortDesc": "Sort results using a field name and order (ascending or descending).",
+            "style": "form"
+          }
+        },
+        "oneOf": [
+          {
+            "x-speakeasy-name-override": "QueryTemplateAccountParams",
+            "properties": {
+              "resource": {
+                "type": "string",
+                "enum": [
+                  "accounts"
+                ]
+              }
+            }
+          },
+          {
+            "x-speakeasy-name-override": "QueryTemplateTransactionParams",
+            "properties": {
+              "resource": {
+                "type": "string",
+                "enum": [
+                  "transactions"
+                ]
+              }
+            }
+          },
+          {
+            "x-speakeasy-name-override": "QueryTemplateLogParams",
+            "properties": {
+              "resource": {
+                "type": "string",
+                "enum": [
+                  "logs"
+                ]
+              }
+            }
+          },
+          {
+            "x-speakeasy-name-override": "QueryTemplateVolumeParams",
+            "properties": {
+              "resource": {
+                "type": "string",
+                "enum": [
+                  "volumes"
+                ]
+              },
+              "useInsertionDate": {
+                "type": "boolean"
+              },
+              "groupLvl": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "vars": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "required": [
+            "type"
+          ]
+        }
+      },
+      "body": {
+        "type": "object",
+        "additionalProperties": true
       }
-    },
-    "body": {}
+    }
   }
 }
 
@@ -7004,73 +7513,215 @@ Query templates
 
 ```json
 {
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
+  "type": "object",
+  "description": "Schema data structure for ledger schemas",
+  "properties": {
+    "chart": {
+      "type": "object",
+      "description": "Chart of account",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Segment within a chart of accounts",
+        "properties": {
+          ".self": {
+            "type": "object"
+          },
+          ".pattern": {
+            "type": "string"
+          },
+          ".rules": {
+            "type": "object"
+          },
+          ".metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "default": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": "[Circular]",
+        "example": {
+          "users": {
+            "$userID": {
+              ".pattern": "^[0-9]{16}$"
+            }
+          }
+        }
+      },
+      "example": {
+        "users": {
+          "$userID": {
+            ".pattern": "^[0-9]{16}$"
+          }
+        }
+      }
+    },
+    "transactions": {
+      "type": "object",
+      "description": "Transaction templates",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string",
+            "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+            "enum": [
+              "experimental-interpreter",
+              "machine"
+            ]
+          }
+        },
+        "required": [
+          "script"
+        ]
+      }
+    },
+    "queries": {
+      "type": "object",
+      "description": "Query templates",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string",
+            "enum": [
+              "transactions",
+              "accounts",
+              "logs",
+              "volumes"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "description": "The maximum number of results to return per page.\n",
+                "example": 100
+              },
+              "cursor": {
+                "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+                "type": "string",
+                "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+              },
+              "expand": {
+                "type": "string",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "pit": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "sort": {
+                "name": "sort",
+                "in": "query",
+                "description": "Sort results using a field name and order (ascending or descending).\nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "example": "id:desc"
+                },
+                "exampleValues": {
+                  "object": "id:desc",
+                  "json": "'id:desc'"
+                },
+                "originalType": "string",
+                "safeType": "string",
+                "shortDesc": "Sort results using a field name and order (ascending or descending).",
+                "style": "form"
+              }
+            },
+            "oneOf": [
+              {
+                "x-speakeasy-name-override": "QueryTemplateAccountParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateTransactionParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateLogParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  }
+                }
+              },
+              {
+                "x-speakeasy-name-override": "QueryTemplateVolumeParams",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  },
+                  "useInsertionDate": {
+                    "type": "boolean"
+                  },
+                  "groupLvl": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "vars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "default": null
+              },
+              "required": [
+                "type"
+              ]
+            }
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
       }
     }
   },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
-        },
-        "property2": {
-          "type": null,
-          "default": null
-        }
-      },
-      "body": {}
-    },
-    "property2": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
-        },
-        "property2": {
-          "type": null,
-          "default": null
-        }
-      },
-      "body": {}
-    }
-  }
+  "required": [
+    "chart",
+    "transactions"
+  ]
 }
 
 ```
@@ -7094,75 +7745,203 @@ Schema data structure for ledger schemas
 
 ```json
 {
-  "version": "v1.0.0",
-  "createdAt": "2023-01-01T00:00:00Z",
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
+  "type": "object",
+  "description": "Complete schema structure with metadata",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "version",
+        "createdAt"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Schema version",
+          "example": "v1.0.0"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Schema creation timestamp",
+          "example": "2023-01-01T00:00:00Z"
+        }
       }
-    }
-  },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
     },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
+    {
+      "type": "object",
+      "description": "Schema data structure for ledger schemas",
+      "properties": {
+        "chart": {
+          "type": "object",
+          "description": "Chart of account",
+          "additionalProperties": {
+            "type": "object",
+            "description": "Segment within a chart of accounts",
+            "properties": {
+              ".self": {
+                "type": "object"
+              },
+              ".pattern": {
+                "type": "string"
+              },
+              ".rules": {
+                "type": "object"
+              },
+              ".metadata": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "default": {}
+                  }
+                }
+              }
+            },
+            "additionalProperties": "[Circular]",
+            "example": {
+              "users": {
+                "$userID": {
+                  ".pattern": "^[0-9]{16}$"
+                }
+              }
+            }
+          },
+          "example": {
+            "users": {
+              "$userID": {
+                ".pattern": "^[0-9]{16}$"
+              }
+            }
+          }
         },
-        "property2": {
-          "type": null,
-          "default": null
+        "transactions": {
+          "type": "object",
+          "description": "Transaction templates",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "script": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string",
+                "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+                "enum": [
+                  "experimental-interpreter",
+                  "machine"
+                ]
+              }
+            },
+            "required": [
+              "script"
+            ]
+          }
+        },
+        "queries": {
+          "type": "object",
+          "description": "Query templates",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string",
+                "enum": [
+                  "transactions",
+                  "accounts",
+                  "logs",
+                  "volumes"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "pageSize": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "The maximum number of results to return per page.\n",
+                    "example": 100
+                  },
+                  "cursor": {
+                    "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+                    "type": "string",
+                    "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+                  },
+                  "expand": {
+                    "type": "string",
+                    "items": {}
+                  },
+                  "pit": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "sort": {
+                    "name": "sort",
+                    "in": "query",
+                    "description": "Sort results using a field name and order (ascending or descending).\nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n",
+                    "required": false,
+                    "schema": {},
+                    "exampleValues": {},
+                    "originalType": "string",
+                    "safeType": "string",
+                    "shortDesc": "Sort results using a field name and order (ascending or descending).",
+                    "style": "form"
+                  }
+                },
+                "oneOf": [
+                  {
+                    "x-speakeasy-name-override": "QueryTemplateAccountParams",
+                    "properties": {}
+                  },
+                  {
+                    "x-speakeasy-name-override": "QueryTemplateTransactionParams",
+                    "properties": {}
+                  },
+                  {
+                    "x-speakeasy-name-override": "QueryTemplateLogParams",
+                    "properties": {}
+                  },
+                  {
+                    "x-speakeasy-name-override": "QueryTemplateVolumeParams",
+                    "properties": {}
+                  }
+                ]
+              },
+              "vars": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "type": {},
+                    "default": null
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              },
+              "body": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
         }
       },
-      "body": {}
-    },
-    "property2": {
-      "name": null,
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": null,
-          "default": null
-        },
-        "property2": {
-          "type": null,
-          "default": null
-        }
-      },
-      "body": {}
+      "required": [
+        "chart",
+        "transactions"
+      ]
     }
-  }
+  ]
 }
 
 ```
@@ -7194,77 +7973,136 @@ and
 
 ```json
 {
-  "data": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
+  "properties": {
+    "data": {
+      "type": "object",
+      "description": "Complete schema structure with metadata",
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "version",
+            "createdAt"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Schema version",
+              "example": "v1.0.0"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Schema creation timestamp",
+              "example": "2023-01-01T00:00:00Z"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Schema data structure for ledger schemas",
+          "properties": {
+            "chart": {
+              "type": "object",
+              "description": "Chart of account",
+              "additionalProperties": {
+                "type": "object",
+                "description": "Segment within a chart of accounts",
+                "properties": {
+                  ".self": {
+                    "type": "object"
+                  },
+                  ".pattern": {
+                    "type": "string"
+                  },
+                  ".rules": {
+                    "type": "object"
+                  },
+                  ".metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": "[Circular]",
+                "example": {
+                  "users": {
+                    "$userID": {}
+                  }
+                }
+              },
+              "example": {
+                "users": {
+                  "$userID": {
+                    ".pattern": "^[0-9]{16}$"
+                  }
+                }
+              }
+            },
+            "transactions": {
+              "type": "object",
+              "description": "Transaction templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "script": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string",
+                    "description": "The numscript runtime used to execute the script. Uses \"machine\" by default, unless the \"--experimental-numscript-interpreter\" feature flag is passed.",
+                    "enum": []
+                  }
+                },
+                "required": [
+                  "script"
+                ]
+              }
+            },
+            "queries": {
+              "type": "object",
+              "description": "Query templates",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "resource": {
+                    "type": "string",
+                    "enum": []
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {},
+                    "oneOf": []
+                  },
+                  "vars": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "body": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "chart",
+            "transactions"
+          ]
         }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "name": null,
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": null,
-            "default": null
-          },
-          "property2": {
-            "type": null,
-            "default": null
-          }
-        },
-        "body": {}
-      }
+      ]
     }
-  }
+  },
+  "type": "object",
+  "required": [
+    "data"
+  ]
 }
 
 ```
@@ -7284,85 +8122,91 @@ and
 
 ```json
 {
-  "cursor": {
-    "data": [
-      {
-        "version": "v1.0.0",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "chart": {
-          "users": {
-            "$userID": {
-              ".pattern": "^[0-9]{16}$"
-            }
+  "properties": {
+    "cursor": {
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Complete schema structure with metadata",
+            "allOf": [
+              {
+                "type": "object",
+                "required": [
+                  "version",
+                  "createdAt"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "description": "Schema version",
+                    "example": "v1.0.0"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Schema creation timestamp",
+                    "example": "2023-01-01T00:00:00Z"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Schema data structure for ledger schemas",
+                "properties": {
+                  "chart": {
+                    "type": "object",
+                    "description": "Chart of account",
+                    "additionalProperties": {},
+                    "example": {}
+                  },
+                  "transactions": {
+                    "type": "object",
+                    "description": "Transaction templates",
+                    "additionalProperties": {}
+                  },
+                  "queries": {
+                    "type": "object",
+                    "description": "Query templates",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "chart",
+                  "transactions"
+                ]
+              }
+            ]
           }
         },
-        "transactions": {
-          "property1": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          },
-          "property2": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          }
+        "hasMore": {
+          "type": "boolean"
         },
-        "queries": {
-          "property1": {
-            "name": null,
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": null,
-                "default": null
-              },
-              "property2": {
-                "type": null,
-                "default": null
-              }
-            },
-            "body": {}
-          },
-          "property2": {
-            "name": null,
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": null,
-                "default": null
-              },
-              "property2": {
-                "type": null,
-                "default": null
-              }
-            },
-            "body": {}
-          }
+        "previous": {
+          "type": "string",
+          "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+        },
+        "next": {
+          "type": "string",
+          "example": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ="
+        },
+        "pageSize": {
+          "type": "integer"
         }
-      }
-    ],
-    "hasMore": true,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-    "pageSize": 0
-  }
+      },
+      "type": "object",
+      "required": [
+        "data",
+        "hasMore",
+        "pageSize"
+      ]
+    }
+  },
+  "type": "object",
+  "required": [
+    "cursor"
+  ]
 }
 
 ```
@@ -7382,83 +8226,119 @@ and
 
 ```json
 {
-  "data": [
-    {
-      "version": "v1.0.0",
-      "createdAt": "2023-01-01T00:00:00Z",
-      "chart": {
-        "users": {
-          "$userID": {
-            ".pattern": "^[0-9]{16}$"
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Complete schema structure with metadata",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "version",
+              "createdAt"
+            ],
+            "properties": {
+              "version": {
+                "type": "string",
+                "description": "Schema version",
+                "example": "v1.0.0"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Schema creation timestamp",
+                "example": "2023-01-01T00:00:00Z"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Schema data structure for ledger schemas",
+            "properties": {
+              "chart": {
+                "type": "object",
+                "description": "Chart of account",
+                "additionalProperties": {
+                  "type": "object",
+                  "description": "Segment within a chart of accounts",
+                  "properties": {
+                    ".self": {},
+                    ".pattern": {},
+                    ".rules": {},
+                    ".metadata": {}
+                  },
+                  "additionalProperties": "[Circular]",
+                  "example": {
+                    "users": {}
+                  }
+                },
+                "example": {
+                  "users": {
+                    "$userID": {}
+                  }
+                }
+              },
+              "transactions": {
+                "type": "object",
+                "description": "Transaction templates",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "description": {},
+                    "script": {},
+                    "runtime": {}
+                  },
+                  "required": [
+                    "script"
+                  ]
+                }
+              },
+              "queries": {
+                "type": "object",
+                "description": "Query templates",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "description": {},
+                    "resource": {},
+                    "params": {},
+                    "vars": {},
+                    "body": {}
+                  }
+                }
+              }
+            },
+            "required": [
+              "chart",
+              "transactions"
+            ]
           }
-        }
-      },
-      "transactions": {
-        "property1": {
-          "description": "string",
-          "script": "string",
-          "runtime": "experimental-interpreter"
-        },
-        "property2": {
-          "description": "string",
-          "script": "string",
-          "runtime": "experimental-interpreter"
-        }
-      },
-      "queries": {
-        "property1": {
-          "name": null,
-          "resource": "transactions",
-          "params": {
-            "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
-            "resource": "accounts"
-          },
-          "vars": {
-            "property1": {
-              "type": null,
-              "default": null
-            },
-            "property2": {
-              "type": null,
-              "default": null
-            }
-          },
-          "body": {}
-        },
-        "property2": {
-          "name": null,
-          "resource": "transactions",
-          "params": {
-            "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
-            "resource": "accounts"
-          },
-          "vars": {
-            "property1": {
-              "type": null,
-              "default": null
-            },
-            "property2": {
-              "type": null,
-              "default": null
-            }
-          },
-          "body": {}
-        }
+        ]
       }
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "previous": {
+      "type": "string",
+      "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+    },
+    "next": {
+      "type": "string",
+      "example": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ="
+    },
+    "pageSize": {
+      "type": "integer"
     }
-  ],
-  "hasMore": true,
-  "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-  "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-  "pageSize": 0
+  },
+  "type": "object",
+  "required": [
+    "data",
+    "hasMore",
+    "pageSize"
+  ]
 }
 
 ```

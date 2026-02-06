@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 97038400c1df521fbe0bccfc61c8a079
+  docChecksum: 5a1770e253e8739a8a6ac7e85af7ed25
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -1310,7 +1310,7 @@ examples:
           sort: "id:desc"
           schemaVersion: "v1.0.0"
       requestBody:
-        application/json: {}
+        application/json: {"params": {"pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}
       responses:
         "200":
           application/json: {"resource": "transactions", "cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}

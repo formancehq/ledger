@@ -3,18 +3,18 @@
 package components
 
 type V2QueryTemplate struct {
-	Name     any                           `json:"name,omitempty"`
-	Resource *V2QueryResource              `json:"resource,omitempty"`
-	Params   *V2QueryParams                `json:"params,omitempty"`
-	Vars     map[string]V2QueryTemplateVar `json:"vars,omitempty"`
-	Body     map[string]any                `json:"body,omitempty"`
+	Description *string                       `json:"description,omitempty"`
+	Resource    *V2QueryResource              `json:"resource,omitempty"`
+	Params      *V2QueryParams                `json:"params,omitempty"`
+	Vars        map[string]V2QueryTemplateVar `json:"vars,omitempty"`
+	Body        map[string]any                `json:"body,omitempty"`
 }
 
-func (o *V2QueryTemplate) GetName() any {
+func (o *V2QueryTemplate) GetDescription() *string {
 	if o == nil {
 		return nil
 	}
-	return o.Name
+	return o.Description
 }
 
 func (o *V2QueryTemplate) GetResource() *V2QueryResource {

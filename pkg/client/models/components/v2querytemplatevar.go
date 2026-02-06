@@ -3,13 +3,13 @@
 package components
 
 type V2QueryTemplateVar struct {
-	Type    any `json:"type,omitempty"`
-	Default any `json:"default,omitempty"`
+	Type    string `json:"type"`
+	Default any    `json:"default,omitempty"`
 }
 
-func (o *V2QueryTemplateVar) GetType() any {
+func (o *V2QueryTemplateVar) GetType() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Type
 }
