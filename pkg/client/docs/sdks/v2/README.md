@@ -288,6 +288,7 @@ func main() {
                 "key": components.V2QueryTemplate{
                     Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
                         components.QueryTemplateAccountParams{
+                            Resource: components.V2QueryParams1ResourceAccounts.ToPointer(),
                             PageSize: client.Int64(100),
                             Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
                         },

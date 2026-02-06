@@ -2760,6 +2760,9 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 |Property|Value|
 |---|---|
+|resource|transactions|
+|resource|accounts|
+|resource|logs|
 |type|NEW_TRANSACTION|
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
@@ -2774,6 +2777,11 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 |resource|transactions|
 |resource|accounts|
 |resource|logs|
+|resource|volumes|
+|resource|accounts|
+|resource|transactions|
+|resource|logs|
+|resource|volumes|
 |resource|volumes|
 
 <aside class="warning">
@@ -3815,13 +3823,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|any|false|none|none|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Account](#schemav2account)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|accounts|
 
 <h2 id="tocS_V2TransactionsCursorResponse">V2TransactionsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -3934,13 +3948,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|any|false|none|none|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Transaction](#schemav2transaction)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|transactions|
 
 <h2 id="tocS_V2LogsCursorResponse">V2LogsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -3997,13 +4017,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|any|false|none|none|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Log](#schemav2log)]|true|none|[Represents an immutable log entry in the ledger. Each log captures an atomic operation<br>with its full payload, enabling audit trails and event sourcing patterns.<br>The data field structure depends on the log type.<br>]|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|logs|
 
 <h2 id="tocS_V2AccountResponse">V2AccountResponse</h2>
 <!-- backwards compatibility -->
@@ -4113,13 +4139,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|any|false|none|none|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2VolumesWithBalance](#schemav2volumeswithbalance)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|volumes|
 
 <h2 id="tocS_V2VolumesWithBalance">V2VolumesWithBalance</h2>
 <!-- backwards compatibility -->
@@ -6817,30 +6849,39 @@ oneOf
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|any|false|none|none|
+|» resource|string|false|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|any|false|none|none|
+|» resource|string|false|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|any|false|none|none|
+|» resource|string|false|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|any|false|none|none|
+|» resource|string|false|none|none|
 |» useInsertionDate|any|false|none|none|
 |» groupLvl|any|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|accounts|
+|resource|transactions|
+|resource|logs|
+|resource|volumes|
 
 <h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
 <!-- backwards compatibility -->
