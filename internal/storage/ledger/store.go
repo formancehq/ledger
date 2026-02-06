@@ -27,6 +27,14 @@ type Store struct {
 	bucket bucket.Bucket
 	ledger ledger.Ledger
 
+	// isAloneInBucket is a point-in-time optimization hint set when the store is
+	// created/opened. It must be refreshed when bucket membership changes.
+	//
+	// Important: caching Store instances without invalidating this flag can make
+	// newScopedSelect skip the ledger predicate and expose data from other ledgers
+	// in the same bucket.
+	isAloneInBucket bool
+
 	tracer                             trace.Tracer
 	meter                              metric.Meter
 	checkBucketSchemaHistogram         metric.Int64Histogram
@@ -189,26 +197,21 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 }
 
 // newScopedSelect creates a new select query scoped to the current ledger.
-// notes(gfyrag): The "WHERE ledger = 'XXX'" condition can cause degraded postgres plan.
-// To avoid that, we use a WHERE OR to separate the two cases:
-// 1. Check if the ledger is the only one in the bucket
-// 2. Otherwise, filter by ledger name
+// When the ledger is alone in its bucket, we skip the WHERE clause to avoid
+// a degraded seq scan plan (selectivity ~100%). Otherwise, we filter by ledger
+// name to use the composite index (ledger, id) efficiently.
+//
+// This relies on isAloneInBucket being up to date for the store lifetime.
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	checkLedgerAlone := store.db.NewSelect().
-		TableExpr("_system.ledgers").
-		ColumnExpr("count = 1").
-		Join("JOIN (?) AS counters ON _system.ledgers.bucket = counters.bucket",
-			store.db.NewSelect().
-				TableExpr("_system.ledgers").
-				ColumnExpr("bucket").
-				ColumnExpr("COUNT(*) AS count").
-				Group("bucket"),
-		).
-		Where("_system.ledgers.name = ?", store.ledger.Name)
+	if !store.isAloneInBucket {
+		q = q.Where("ledger = ?", store.ledger.Name)
+	}
+	return q
+}
 
-	return q.
-		Where("((?) or ledger = ?)", checkLedgerAlone, store.ledger.Name)
+func (store *Store) SetAloneInBucket(alone bool) {
+	store.isAloneInBucket = alone
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
