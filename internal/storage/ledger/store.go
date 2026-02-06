@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -27,13 +28,11 @@ type Store struct {
 	bucket bucket.Bucket
 	ledger ledger.Ledger
 
-	// isAloneInBucket is a point-in-time optimization hint set when the store is
-	// created/opened. It must be refreshed when bucket membership changes.
-	//
-	// Important: caching Store instances without invalidating this flag can make
-	// newScopedSelect skip the ledger predicate and expose data from other ledgers
-	// in the same bucket.
-	isAloneInBucket bool
+	// aloneInBucket is a shared optimization hint (per bucket) indicating whether
+	// this ledger is the only one in its bucket. The pointer is shared across all
+	// stores in the same bucket via the Factory, so updating it from any store
+	// (e.g. when a new ledger is created) immediately affects all stores.
+	aloneInBucket *atomic.Bool
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -201,17 +200,19 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 // a degraded seq scan plan (selectivity ~100%). Otherwise, we filter by ledger
 // name to use the composite index (ledger, id) efficiently.
 //
-// This relies on isAloneInBucket being up to date for the store lifetime.
+// This relies on aloneInBucket being up to date (shared across the bucket).
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	if !store.isAloneInBucket {
+	if store.aloneInBucket == nil || !store.aloneInBucket.Load() {
 		q = q.Where("ledger = ?", store.ledger.Name)
 	}
 	return q
 }
 
 func (store *Store) SetAloneInBucket(alone bool) {
-	store.isAloneInBucket = alone
+	if store.aloneInBucket != nil {
+		store.aloneInBucket.Store(alone)
+	}
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {

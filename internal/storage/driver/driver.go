@@ -95,9 +95,8 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
 	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
-	// NOTE: if this store is cached, the isAloneInBucket optimization flag must be
-	// refreshed/invalidated on bucket membership changes. Otherwise, scoped reads
-	// may skip "WHERE ledger = ?" and return rows from other ledgers.
+	// NOTE: the aloneInBucket flag is now shared per bucket via the Factory,
+	// so all stores in the same bucket see updates immediately.
 	systemStore := d.systemStoreFactory.Create(d.db)
 
 	ret, err := systemStore.GetLedger(ctx, name)
