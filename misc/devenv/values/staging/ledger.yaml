@@ -63,7 +63,7 @@ config:
     compactionMargin: 50000
     proposeQueueCapacity: 1024
     snapshotInterval: 30s
-    snapshotThreshold: "200000"
+    snapshotThreshold: "10000"
     tickInterval: 100ms
     transport:
       receptionQueues:
@@ -100,14 +100,23 @@ ingressGrpc:
 persistence:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
-replicaCount: 3
+  # WAL persistence (Raft logs)
+  wal:
+    size: 15Gi
+  # Data persistence (application storage)
+  data:
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 50Gi
+
+replicaCount: 1
 resources:
   limits:
     cpu: 8000m
-    memory: 8192Mi
+    memory: 6144Mi
   requests:
     cpu: 8000m
-    memory: 8192Mi
+    memory: 6144Mi
 service:
   grpcPort: 8888
   httpPort: 9000

@@ -143,6 +143,7 @@ func Module() fx.Option {
 				store *data.Store,
 				logger logging.Logger,
 				attrs *attributes.Attributes,
+				meterProvider metric.MeterProvider,
 			) ctrl.Admission {
 				return admission.NewAdmission(
 					cache,
@@ -150,10 +151,7 @@ func Module() fx.Option {
 					logger,
 					node,
 					attrs,
-					node.CommandDurationHistogram(),
-					node.ProposeQueueLoadHistogram(),
-					node.ProposeQueueInflight(),
-					node.ProposeQueueFullCounter(),
+					meterProvider,
 				)
 			},
 			func(

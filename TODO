@@ -13,6 +13,11 @@
 * Attributes compaction
 * Metadata deletion
 * Attribute types
+* Bounded numscript cache
+* Flat buffer for the hot path
+* Disk space limitation
+* WAL compaction
+* Snapshot threshold based on log != entries
 
 Explore:
 * Account hash

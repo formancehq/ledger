@@ -546,9 +546,28 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	// Truncate entries before compactIndex
 	truncateIndex := compactIndex - firstIndex
 	if truncateIndex < uint64(len(s.entries)) {
-		s.entries = s.entries[truncateIndex:]
+		// IMPORTANT: Create a new slice to release memory of old entries.
+		// Simply re-slicing with s.entries[truncateIndex:] keeps a reference
+		// to the original backing array, preventing GC from reclaiming memory.
+		remaining := len(s.entries) - int(truncateIndex)
+		newEntries := make([]raftpb.Entry, remaining)
+		copy(newEntries, s.entries[truncateIndex:])
+		s.entries = newEntries
 	} else {
-		s.entries = s.entries[:0]
+		// Set to nil instead of s.entries[:0] to release the backing array
+		s.entries = nil
+	}
+
+	// IMPORTANT: Release WAL file locks up to compactIndex.
+	// This allows the etcd WAL to release memory associated with old log entries
+	// and potentially remove old WAL segment files.
+	// Without this call, the etcd WAL keeps file handles and memory indefinitely.
+	if err := s.wal.ReleaseLockTo(compactIndex); err != nil {
+		s.logger.WithFields(map[string]any{
+			"compactIndex": compactIndex,
+			"error":        err,
+		}).Errorf("Failed to release WAL lock")
+		// Don't return error - the in-memory compaction succeeded
 	}
 
 	return nil

@@ -3944,6 +3944,230 @@
           ],
           "title": "Snapshot creation",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Size of marshalled Raft commands in bytes. Large commands (>50KB) can cause memory issues when many requests are queued.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 32768
+                  },
+                  {
+                    "color": "red",
+                    "value": 65536
+                  }
+                ]
+              },
+              "unit": "decbytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 112
+          },
+          "id": 106,
+          "options": {
+            "legend": {
+              "calcs": ["mean", "max"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.5, rate(raft.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "interval": "1s",
+              "legendFormat": "p50 (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, rate(raft.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "interval": "1s",
+              "legendFormat": "p95 (Node {{service.node_id}})",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, rate(raft.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "interval": "1s",
+              "legendFormat": "p99 (Node {{service.node_id}})",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Command Size (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of commands by size bucket. Helps identify the distribution of command sizes.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 112
+          },
+          "id": 107,
+          "options": {
+            "legend": {
+              "calcs": ["mean"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum by (le) (rate(raft.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "interval": "1s",
+              "legendFormat": "≤ {{le}} bytes",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Command Size Distribution (stacked)",
+          "type": "timeseries"
         }
       ],
       "title": "Transport & Queues",
@@ -6030,7 +6254,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"peeble.runtime_store\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
               "legendFormat": "Node {{service.node_id}} {{db}} {{status}} {{reason}}",
               "range": true,
               "refId": "A"
@@ -6126,28 +6350,28 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}} p50 {{db}}",
               "range": true,
               "refId": "A"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}} p95 {{db}}",
               "range": true,
               "refId": "B"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}} p99 {{db}}",
               "range": true,
               "refId": "C"
             },
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])) / sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_count\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "hide": true,
               "legendFormat": "Node {{service.node_id}} mean {{db}}",
               "range": true,
@@ -6244,7 +6468,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.input.bytes_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.input.bytes_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
               "refId": "A"
@@ -6339,7 +6563,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id, db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id, db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "legendFormat": "Node {{service.node_id}}: {{status}} {{reason}}",
               "range": true,
               "refId": "A"
@@ -6460,28 +6684,28 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}}: p50",
               "range": true,
               "refId": "A"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}}: p95 ",
               "range": true,
               "refId": "B"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "Node {{service.node_id}}: p99",
               "range": true,
               "refId": "C"
             },
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id, db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id, db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "hide": true,
               "legendFormat": "Node {{service.node_id}}: mean",
               "range": true,
@@ -6577,7 +6801,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "legendFormat": "Node {{service.node_id}}: {{reason}}",
               "range": true,
               "refId": "A"
@@ -6870,21 +7094,21 @@
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "p95 {{db}}",
               "range": true,
               "refId": "B"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "p99 {{db}}",
               "range": true,
               "refId": "C"
             },
             {
               "editorMode": "code",
-              "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_sum\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_count\", \"scope.name\"=\"peeble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "hide": true,
               "legendFormat": "mean {{db}}",
               "range": true,
@@ -7715,6 +7939,139 @@
             }
           ],
           "title": "Cache Hits/Misses by Type",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Number of entries in the attribute cache by type.\n\n- input: Input volumes (credits)\n- output: Output volumes (debits)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 125
+          },
+          "id": 105,
+          "options": {
+            "legend": {
+              "calcs": ["last"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"input\"}",
+              "interval": "1s",
+              "legendFormat": "Input (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"output\"}",
+              "interval": "1s",
+              "legendFormat": "Output (Node {{service.node_id}})",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"account_metadata\"}",
+              "interval": "1s",
+              "legendFormat": "Account Metadata (Node {{service.node_id}})",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"idempotency_keys\"}",
+              "interval": "1s",
+              "legendFormat": "Idempotency Keys (Node {{service.node_id}})",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Cache Size by Type",
           "type": "timeseries"
         }
       ],

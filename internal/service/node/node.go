@@ -68,11 +68,7 @@ type Node struct {
 	leadMonitorHistogram              metric.Int64Gauge
 	committedEntriesPerReadyHistogram metric.Int64Histogram
 	createSnapshotHistogram           metric.Float64Histogram
-	proposeQueueLoadHistogram         metric.Int64Histogram
-	proposeQueueFullCounter           metric.Float64Counter
-	proposeQueueInflight              atomic.Int32
 	readyWaitDurationHistogram        metric.Int64Histogram
-	commandDurationHistogram          metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -256,40 +252,12 @@ func NewNode(
 		panic(err)
 	}
 
-	node.proposeQueueFullCounter, err = meter.Float64Counter("raft.node.propose.full", metric.WithUnit("1"))
-	if err != nil {
-		panic(err)
-	}
-
-	node.proposeQueueLoadHistogram, err = meter.Int64Histogram(
-		"raft.node.propose.load",
-		metric.WithUnit("1"),
-		metric.WithExplicitBucketBoundaries(
-			expBoundaries(12, cfg.ProposeQueueCapacity)...,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
 		"raft.node.ready.wait_duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	node.commandDurationHistogram, err = meter.Int64Histogram(
-		"raft.command.duration",
-		metric.WithDescription("Total time to resolve a command (from Apply call to future resolution)"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
 		),
 	)
 	if err != nil {
@@ -517,6 +485,7 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 			continue
 		}
 		future.Resolve(result.Logs, result.Error)
+		node.futures.Delete(result.ProposalID)
 	}
 
 	return nil
@@ -621,7 +590,6 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 			case p := <-node.proposeCh:
-				node.proposeQueueInflight.Add(-1)
 				p.Resolve(nil, node.rawNode.Propose(p.data))
 			default:
 				select {
@@ -659,10 +627,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
-				case p := <-node.proposeCh:
-					node.proposeQueueInflight.Add(-1)
-					p.Resolve(nil, node.rawNode.Propose(p.data))
-				case err := <-node.taskExecutor.error():
+			case p := <-node.proposeCh:
+				p.Resolve(nil, node.rawNode.Propose(p.data))
+			case err := <-node.taskExecutor.error():
 					return fmt.Errorf("task executor error: %w", err)
 				}
 			}
@@ -791,26 +758,6 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 
 		return node.replaySpool(ctx, frozenAtIndex)
 	})
-}
-
-// ProposeQueueInflight returns the propose queue inflight counter.
-func (node *Node) ProposeQueueInflight() *atomic.Int32 {
-	return &node.proposeQueueInflight
-}
-
-// CommandDurationHistogram returns the command duration histogram metric.
-func (node *Node) CommandDurationHistogram() metric.Int64Histogram {
-	return node.commandDurationHistogram
-}
-
-// ProposeQueueLoadHistogram returns the propose queue load histogram metric.
-func (node *Node) ProposeQueueLoadHistogram() metric.Int64Histogram {
-	return node.proposeQueueLoadHistogram
-}
-
-// ProposeQueueFullCounter returns the propose queue full counter metric.
-func (node *Node) ProposeQueueFullCounter() metric.Float64Counter {
-	return node.proposeQueueFullCounter
 }
 
 // Propose implements the Proposer interface.

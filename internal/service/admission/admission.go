@@ -43,8 +43,9 @@ type Admission struct {
 
 	// Metrics
 	commandDurationHistogram  metric.Int64Histogram
+	commandSizeHistogram      metric.Int64Histogram
 	proposeQueueLoadHistogram metric.Int64Histogram
-	proposeQueueInflight      *atomic.Int32
+	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
 }
 
@@ -55,11 +56,52 @@ func NewAdmission(
 	logger logging.Logger,
 	proposer Proposer,
 	attrs *attributes.Attributes,
-	commandDurationHistogram metric.Int64Histogram,
-	proposeQueueLoadHistogram metric.Int64Histogram,
-	proposeQueueInflight *atomic.Int32,
-	proposeQueueFullCounter metric.Float64Counter,
+	meterProvider metric.MeterProvider,
 ) *Admission {
+	meter := meterProvider.Meter("admission")
+
+	commandDurationHistogram, err := meter.Int64Histogram(
+		"admission.command.duration",
+		metric.WithDescription("Total time to resolve a command (from Apply call to future resolution)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	commandSizeHistogram, err := meter.Int64Histogram(
+		"admission.command.size",
+		metric.WithDescription("Size of marshalled Raft commands in bytes"),
+		metric.WithUnit("By"),
+		metric.WithExplicitBucketBoundaries(
+			0, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	proposeQueueLoadHistogram, err := meter.Int64Histogram(
+		"admission.propose_queue.load",
+		metric.WithDescription("Propose queue load"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	proposeQueueFullCounter, err := meter.Float64Counter(
+		"admission.propose_queue.full",
+		metric.WithDescription("Number of times the propose queue was full"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Admission{
 		cache:                     cache,
 		store:                     store,
@@ -69,8 +111,8 @@ func NewAdmission(
 		nextIndex:                 proposer.InitialIndex(),
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDurationHistogram,
+		commandSizeHistogram:      commandSizeHistogram,
 		proposeQueueLoadHistogram: proposeQueueLoadHistogram,
-		proposeQueueInflight:      proposeQueueInflight,
 		proposeQueueFullCounter:   proposeQueueFullCounter,
 	}
 }
@@ -287,6 +329,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
+	// Record command size for monitoring memory usage
+	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
+
 	proposal := node.NewProposal(cmd.Id, cmdData)
 
 	// Reacquire lock before proposing to ensure correct ordering
@@ -309,11 +354,15 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	if _, err := proposal.Wait(); err != nil {
 		// Clean up loaded keys on error
 		loadedKeys.MarkApplied(a.loaders)
+		a.proposeQueueInflight.Add(-1)
 		return nil, err
 	}
 
 	// Wait for FSM to apply the command
 	logs, err := fsmFuture.Wait()
+
+	// Decrement inflight counter after command is fully processed
+	a.proposeQueueInflight.Add(-1)
 
 	// Clean up loaded keys after command is applied (or failed)
 	// At this point, the cache will have the values, so we can remove them from the loader

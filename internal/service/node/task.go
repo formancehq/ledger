@@ -20,9 +20,11 @@ func (t *task) err() chan error {
 
 func (t *task) run(ctx context.Context) {
 	go func() {
-		if e := recover(); e != nil {
-			t.error <- newPanickedError(e, debug.Stack())
-		}
+		defer func() {
+			if e := recover(); e != nil {
+				t.error <- newPanickedError(e, debug.Stack())
+			}
+		}()
 		t.error <- t.fn(ctx, t.stopChannel)
 	}()
 }
