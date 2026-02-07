@@ -11,11 +11,11 @@ tidy:
 
 # Build the server application
 build:
-    GOEXPERIMENT=jsonv2 go build -o ledger-v3-poc .
+    GOEXPERIMENT=jsonv2 go build -o ./build/ledger-server .
 
 # Build the client application
 build-client:
-    GOEXPERIMENT=jsonv2 go build -o ledgerctl ./cmd/client
+    GOEXPERIMENT=jsonv2 go build -o ./build/ledgerctl ./cmd/client
 
 # Run the application locally (single node)
 run:
@@ -86,3 +86,13 @@ k8s-describe-pod:
 k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-v3-poc
     kubectl rollout status statefulset/ledger-v3-poc
+
+# Generate CLI demo GIF (requires vhs and running server)
+# Usage: just generate-demo [server_address] [insecure]
+# Example: just generate-demo localhost:8888 true
+#          just generate-demo myserver.example.com:443 false
+generate-demo server="localhost:8888" insecure="false":
+    @echo "Generating CLI demo GIF..."
+    @echo "Server: {{server}} (insecure: {{insecure}})"
+    PATH="{{justfile_directory()}}/build:$PATH" SERVER="{{server}}" INSECURE="{{insecure}}" vhs misc/demo/demo.tape
+    @echo "Demo generated: misc/demo/demo.gif"

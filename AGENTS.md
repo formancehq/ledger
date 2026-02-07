@@ -46,7 +46,8 @@ The `docs/cli.md` file documents all CLI commands and their usage. When modifyin
 1. **Update command documentation** - Add or modify the command section with usage, flags, and examples
 2. **Update global flags** - If adding new persistent flags, document them in the Global Flags section
 3. **Update examples** - Ensure examples are accurate and demonstrate common use cases
-4. **Update Numscript examples** - If adding new Numscript-related features, update `numscript/examples/`
+4. **Update Numscript examples** - If adding new Numscript-related features, update `misc/numscript/examples/`
+5. **Update CLI demo** - If adding new commands or flags that should be showcased, update `misc/demo/demo.tape` and `misc/demo/simple-demo.tape`
 
 ## Mock Generation
 
@@ -120,7 +121,25 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
-### Numscript Examples (`numscript/examples/`)
+### CLI Demo (`misc/demo/`)
+
+VHS tape files for generating animated GIF demos of the CLI:
+- **`demo.tape`** : Full demo with Numscript transactions, metadata, etc.
+- **`simple-demo.tape`** : Simple demo using postings directly
+- **`README.md`** : Documentation for generating demos
+
+**Generating demos:**
+```bash
+# Default server (localhost:8888)
+just generate-demo
+
+# Custom server
+just generate-demo myserver:8888
+```
+
+**Note**: Update these files when adding new CLI commands or flags that should be showcased in the demo.
+
+### Numscript Examples (`misc/numscript/examples/`)
 
 Example Numscript files for use with the CLI:
 - **`simple_transfer.num`** : Basic transfer between two accounts
@@ -131,7 +150,6 @@ Example Numscript files for use with the CLI:
 - **`unbounded_overdraft.num`** : Allow unlimited overdraft
 - **`payment_with_fees.num`** : Payment with platform fee calculation
 - **`escrow_funding.num`** : Fund an escrow account with dynamic address
-- **`README.md`** : Documentation and usage examples
 
 ### Numscript Features
 

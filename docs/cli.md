@@ -2,6 +2,8 @@
 
 `ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
 
+![CLI Demo](../misc/demo/demo.gif)
+
 ## Installation
 
 ```bash

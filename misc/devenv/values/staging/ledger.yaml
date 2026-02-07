@@ -104,10 +104,10 @@ replicaCount: 3
 resources:
   limits:
     cpu: 8000m
-    memory: 4096Mi
+    memory: 8192Mi
   requests:
     cpu: 8000m
-    memory: 4096Mi
+    memory: 8192Mi
 service:
   grpcPort: 8888
   httpPort: 9000

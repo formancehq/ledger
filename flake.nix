@@ -42,6 +42,7 @@
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
           stablePackages = with pkgs; [
+            ffmpeg
             ginkgo
             go
             go-tools
@@ -56,6 +57,7 @@
             protobuf_27
             protoc-gen-go
             protoc-gen-go-grpc
+            vhs
             yq-go
             kubernetes-helm
             python313Packages.matplotlib
