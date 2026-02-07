@@ -29,17 +29,14 @@ func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
 
 	v, ok := a.Gen0.Get(k)
 	if ok {
-		a.Cache.recordHit(a.cacheType)
 		return v, true
 	}
 
 	v, ok = a.Gen1.Get(k)
 	if ok {
-		a.Cache.recordHit(a.cacheType)
 		return v, true
 	}
 
-	a.Cache.recordMiss(a.cacheType)
 	return v, false
 }
 
@@ -159,8 +156,6 @@ type Cache struct {
 	CurrentGeneration   uint64
 
 	// Metrics (nil if not initialized)
-	hits            metric.Int64Counter
-	misses          metric.Int64Counter
 	rotations       metric.Int64Counter
 	generationGauge metric.Int64Gauge
 	// sizeRegistration holds the callback registration for size metrics
@@ -223,22 +218,6 @@ func (c *Cache) CheckRotationNeeded(index uint64) {
 
 // initMetrics initializes the cache metrics on the Cache.
 func (c *Cache) initMetrics(m metric.Meter) error {
-	hits, err := m.Int64Counter(
-		"cache.hits",
-		metric.WithDescription("Number of cache hits"),
-	)
-	if err != nil {
-		return err
-	}
-
-	misses, err := m.Int64Counter(
-		"cache.misses",
-		metric.WithDescription("Number of cache misses"),
-	)
-	if err != nil {
-		return err
-	}
-
 	rotations, err := m.Int64Counter(
 		"cache.rotations",
 		metric.WithDescription("Number of cache generation rotations"),
@@ -287,32 +266,10 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 		return err
 	}
 
-	c.hits = hits
-	c.misses = misses
 	c.rotations = rotations
 	c.generationGauge = generation
 	c.sizeRegistration = registration
 	return nil
-}
-
-// recordHit records a cache hit.
-func (c *Cache) recordHit(cacheType string) {
-	if c.hits == nil {
-		return
-	}
-	c.hits.Add(context.Background(), 1, metric.WithAttributes(
-		attribute.String("type", cacheType),
-	))
-}
-
-// recordMiss records a cache miss.
-func (c *Cache) recordMiss(cacheType string) {
-	if c.misses == nil {
-		return
-	}
-	c.misses.Add(context.Background(), 1, metric.WithAttributes(
-		attribute.String("type", cacheType),
-	))
 }
 
 // recordRotation records a cache generation rotation.

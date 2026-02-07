@@ -220,11 +220,7 @@ The Numscript cache stores parsed Numscript programs to avoid re-parsing identic
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `numscript.cache.hits` | Counter | 1 | Number of cache hits (script found in cache) |
-| `numscript.cache.misses` | Counter | 1 | Number of cache misses (script parsed and cached) |
 | `numscript.cache.size` | Gauge | 1 | Number of scripts currently in the cache |
-
-**Key Insight**: A high hit rate indicates effective script reuse. A low hit rate may indicate many unique scripts or script variations.
 
 ### Attribute Cache Metrics
 
@@ -232,10 +228,9 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `cache.hits` | Counter | 1 | Number of cache hits by attribute type |
-| `cache.misses` | Counter | 1 | Number of cache misses by attribute type |
 | `cache.rotations` | Counter | 1 | Number of cache generation rotations |
 | `cache.generation` | Gauge | 1 | Current cache generation number |
+| `cache.size` | Gauge | 1 | Number of entries in the cache by attribute type |
 
 **Attributes**:
 - `type`: Attribute type (`input`, `output`, `account_metadata`, `ledger_metadata`, `reversions`, `idempotency_keys`)
@@ -388,12 +383,9 @@ The dashboard is organized into the following sections:
 - Write Stall Duration
 
 **Caching & Attributes Section**:
-- Numscript Cache Hit Rate
 - Numscript Cache Size
-- Numscript Cache Hits/Misses
-- Attribute Cache Hit Rate by Type
 - Cache Generation & Rotations
-- Cache Hits/Misses by Type
+- Cache Size by Type
 
 ### k6 Dashboard
 

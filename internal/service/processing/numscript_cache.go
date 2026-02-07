@@ -21,8 +21,6 @@ type NumscriptCache struct {
 	hashBuf  [32]byte // pre-allocated buffer for hash output
 
 	// Metrics (nil if not initialized)
-	hits      metric.Int64Counter
-	misses    metric.Int64Counter
 	sizeGauge metric.Int64Gauge
 }
 
@@ -62,12 +60,9 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 
 	// Try to get from cache
 	if cached, ok := c.cache.Load(hash); ok {
-		c.recordHit()
 		ps := cached.(*parsedScript)
 		return ps.program, ps.err
 	}
-
-	c.recordMiss()
 
 	// Parse the script
 	parsed := numscript.Parse(script)
@@ -95,22 +90,6 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 
 // initCacheMetrics initializes the cache metrics on the NumscriptCache.
 func (c *NumscriptCache) initCacheMetrics(m metric.Meter) error {
-	hits, err := m.Int64Counter(
-		"numscript.cache.hits",
-		metric.WithDescription("Number of Numscript cache hits"),
-	)
-	if err != nil {
-		return err
-	}
-
-	misses, err := m.Int64Counter(
-		"numscript.cache.misses",
-		metric.WithDescription("Number of Numscript cache misses (script parsed)"),
-	)
-	if err != nil {
-		return err
-	}
-
 	size, err := m.Int64Gauge(
 		"numscript.cache.size",
 		metric.WithDescription("Number of scripts in the Numscript cache"),
@@ -119,26 +98,8 @@ func (c *NumscriptCache) initCacheMetrics(m metric.Meter) error {
 		return err
 	}
 
-	c.hits = hits
-	c.misses = misses
 	c.sizeGauge = size
 	return nil
-}
-
-// recordHit records a cache hit.
-func (c *NumscriptCache) recordHit() {
-	if c.hits == nil {
-		return
-	}
-	c.hits.Add(context.Background(), 1)
-}
-
-// recordMiss records a cache miss.
-func (c *NumscriptCache) recordMiss() {
-	if c.misses == nil {
-		return
-	}
-	c.misses.Add(context.Background(), 1)
 }
 
 // recordSize records the current cache size.

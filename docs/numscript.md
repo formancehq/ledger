@@ -452,8 +452,6 @@ If the Numscript syntax is invalid:
 Parsed Numscript programs are cached using a blake3 hash of the script content. This avoids re-parsing the same script multiple times, significantly improving performance for repeated transactions with the same script.
 
 Cache metrics are exposed via OpenTelemetry:
-- `numscript.cache.hits` - Number of cache hits
-- `numscript.cache.misses` - Number of cache misses (script parsed)
 - `numscript.cache.size` - Number of scripts in cache
 
 ### Best Practices
