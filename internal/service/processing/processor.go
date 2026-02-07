@@ -576,14 +576,20 @@ func applyPosting(s Store, ledgerName string, posting *commonpb.Posting, skipBal
 	if sourceOutput == nil {
 		sourceOutput = &raftcmdpb.VolumeHolder{}
 	}
-	// Always update Known directly - this is essential for Numscript where
-	// volumes are not preloaded, so buffer.Merge will use SetBase(Known).
-	if sourceOutput.Known == nil {
-		sourceOutput.Known = posting.Amount
-	} else {
+	// If we know the absolute value, update Known (buffer.Merge will use SetBase).
+	// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
+	if sourceOutput.Known != nil {
 		sourceOutput.Known = commonpb.NewBigInt(
 			new(big.Int).Add(sourceOutput.Known.Value(), posting.Amount.Value()),
 		)
+	} else {
+		if sourceOutput.DiffSinceBaseIndex == nil {
+			sourceOutput.DiffSinceBaseIndex = posting.Amount
+		} else {
+			sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(
+				new(big.Int).Add(sourceOutput.DiffSinceBaseIndex.Value(), posting.Amount.Value()),
+			)
+		}
 	}
 	s.PutOutput(sourceKey, sourceOutput)
 
@@ -603,14 +609,20 @@ func applyPosting(s Store, ledgerName string, posting *commonpb.Posting, skipBal
 	if destInput == nil {
 		destInput = &raftcmdpb.VolumeHolder{}
 	}
-	// Always update Known directly - this is essential for Numscript where
-	// volumes are not preloaded, so buffer.Merge will use SetBase(Known).
-	if destInput.Known == nil {
-		destInput.Known = posting.Amount
-	} else {
+	// If we know the absolute value, update Known (buffer.Merge will use SetBase).
+	// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
+	if destInput.Known != nil {
 		destInput.Known = commonpb.NewBigInt(
 			new(big.Int).Add(destInput.Known.Value(), posting.Amount.Value()),
 		)
+	} else {
+		if destInput.DiffSinceBaseIndex == nil {
+			destInput.DiffSinceBaseIndex = posting.Amount
+		} else {
+			destInput.DiffSinceBaseIndex = commonpb.NewBigInt(
+				new(big.Int).Add(destInput.DiffSinceBaseIndex.Value(), posting.Amount.Value()),
+			)
+		}
 	}
 	s.PutInput(destKey, destInput)
 
@@ -633,7 +645,8 @@ type stdPostingProducer struct{}
 
 func (p *stdPostingProducer) produce(s Store, ledgerName string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	for _, posting := range order.Postings {
-		if err := applyPosting(s, ledgerName, posting, false); err != nil {
+		// Skip balance check when Force is true
+		if err := applyPosting(s, ledgerName, posting, order.Force); err != nil {
 			return nil, err
 		}
 	}

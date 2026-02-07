@@ -627,9 +627,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
-			case p := <-node.proposeCh:
-				p.Resolve(nil, node.rawNode.Propose(p.data))
-			case err := <-node.taskExecutor.error():
+				case p := <-node.proposeCh:
+					p.Resolve(nil, node.rawNode.Propose(p.data))
+				case err := <-node.taskExecutor.error():
 					return fmt.Errorf("task executor error: %w", err)
 				}
 			}

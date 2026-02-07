@@ -12,7 +12,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Revert transaction | ✅ | ✅ | |
 | Revert with `force` | ✅ | ✅ | |
 | Revert with `atEffectiveDate` | ✅ | ✅ | |
-| Create transaction with `force` | ❌ | ✅ | Not implemented |
+| Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
 | List transactions | ✅ | ✅ | gRPC stream with pagination |
@@ -66,6 +66,7 @@ This document compares the POC's API with the original Formance ledger API and d
 - ✅ Creation with Numscript script
 - ✅ Numscript variables support
 - ✅ Balance verification (insufficient funds)
+- ✅ `force` option (bypass balance checks)
 - ✅ Transaction metadata
 - ✅ Account metadata in the same request
 - ✅ Transaction reference
@@ -210,26 +211,6 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 **To implement:**
 - `PATCH /{ledgerName}` or `PUT /{ledgerName}/config`
 
-### 6. ❌ Force Parameter on Transaction Creation
-
-**Description:** In the original ledger, the `force` parameter on transaction creation allows creating transactions even if source accounts have insufficient funds (bypasses balance check).
-
-**Current status:**
-- The `force` parameter exists for **revert transaction** only
-- It does NOT exist for **create transaction**
-
-**Use cases:**
-- Creating transactions for accounts that can go negative (unbounded accounts)
-- Forcing a transaction through when balance check should be bypassed
-- Migration scenarios where balances may be temporarily inconsistent
-
-**To implement:**
-- Add `force` field to `CreateTransactionRequestPayload` in protobuf
-- Regenerate protobuf code
-- Update `createTransaction` logic to skip `checkBalances` when `force=true`
-- Update OpenAPI specification
-- Regenerate SDK
-
 ---
 
 ## Intentionally Removed Features
@@ -265,11 +246,11 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 
 ### 1. Negative Balance Handling
 
-**POC:** Strict balance verification (except with `force` for revert).
+**POC:** Strict balance verification by default. The `force` flag on transaction creation or revert bypasses balance checks, allowing accounts to go negative.
 
 **Original:** Same behavior, but the original ledger has configuration options for "unbounded" accounts.
 
-**To consider:** Add unbounded accounts support if needed.
+**Status:** ✅ Compliant (via `force` flag)
 
 ### 2. "world" Account
 
@@ -329,12 +310,11 @@ Read endpoints comparison with the original ledger:
 1. **Import/Export** - Critical for migration and backups
 
 ### Medium Priority
-2. **Force parameter on transaction creation** - Required for unbounded accounts and migration scenarios
-3. **Unique reference validation** - Verify and document behavior
-4. **Ledger metadata update** - Useful for ledger management
+2. **Unique reference validation** - Verify and document behavior
+3. **Ledger metadata update** - Useful for ledger management
 
 ### Low Priority
-5. **Ledger config update** - Can be done manually via recreation
+4. **Ledger config update** - Can be done manually via recreation
 
 ---
 

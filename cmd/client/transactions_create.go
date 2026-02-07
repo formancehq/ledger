@@ -86,6 +86,7 @@ Examples:
 	cmd.Flags().StringArray("var", nil, "Script variable in format: name=value (can be repeated, only with --script)")
 	cmd.Flags().String("reference", "", "Transaction reference")
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
+	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", defaultTimeout, "Request timeout")
 
@@ -316,6 +317,9 @@ func runTransactionsCreate(cmd *cobra.Command, _ []string) error {
 	// Get metadata (optional)
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
 
+	// Get force flag
+	force, _ := cmd.Flags().GetBool("force")
+
 	// Create the transaction
 	ctx, cancel := getContext(cmd)
 	defer cancel()
@@ -334,6 +338,7 @@ func runTransactionsCreate(cmd *cobra.Command, _ []string) error {
 								Script:    script,
 								Reference: reference,
 								Metadata:  commonpb.MetadataSetFromMap(metadata),
+								Force:     force,
 							},
 						},
 					},

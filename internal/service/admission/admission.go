@@ -375,6 +375,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 // Both sources and destinations need preloading:
 // - Sources need balance checks (Input + Output to compute balance)
 // - Destinations need to be in cache to receive credits
+//
+// When Force is true on a CreateTransaction, volume preloading is skipped because:
+// - Balance checks are bypassed anyway
+// - Volumes will be initialized to 0 if not in cache
 func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.VolumeKey]struct{} {
 	neededVolumes := make(map[data.VolumeKey]struct{})
 
@@ -383,6 +387,11 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 		case *raftcmdpb.Order_Apply:
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+				// Skip volume preloading when Force is true
+				// Balance checks will be skipped, and volumes will be initialized to 0 if not in cache
+				if applyData.CreateTransaction.Force {
+					continue
+				}
 				for _, posting := range applyData.CreateTransaction.Postings {
 					// Source account needs balance check
 					neededVolumes[data.VolumeKey{
@@ -404,6 +413,8 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// For reverts, postings are reversed: original destination becomes source (needs balance check)
 				// and original source becomes destination (needs to receive credit)
+				// Note: Force on revert only affects balance check, not volume preloading
+				// because we need to verify the original transaction exists and is not already reverted
 				for _, posting := range applyData.RevertTransaction.OriginalPostings {
 					// Original destination becomes source in revert - needs balance check
 					neededVolumes[data.VolumeKey{
@@ -524,6 +535,7 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 				Timestamp: data.CreateTransaction.Timestamp,
 				Reference: data.CreateTransaction.Reference,
 				Metadata:  data.CreateTransaction.Metadata,
+				Force:     data.CreateTransaction.Force,
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:

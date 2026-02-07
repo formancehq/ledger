@@ -51,7 +51,8 @@ misc/k6/
 │   ├── world_to_any.js
 │   ├── any_to_bank.js
 │   ├── any_bounded_to_any.js
-│   └── any_unbounded_to_any.js
+│   ├── any_unbounded_to_any.js
+│   └── any_force_to_any.js
 ├── archives/             # Generated k6 archives (gitignored)
 └── README.md
 ```
@@ -105,7 +106,8 @@ The following test scenarios are available:
 2. **world_to_any.js**: Transactions from `@world` to variable destinations
 3. **any_to_bank.js**: Transactions from variable sources to `@bank` with unbounded overdraft
 4. **any_bounded_to_any.js**: Transactions from variable sources to variable destinations with bounded overdraft
-5. **any_unbounded_to_any.js**: Transactions from variable sources to variable destinations with unbounded overdraft (supports `BULK_SIZE` env var)
+5. **any_unbounded_to_any.js**: Transactions from variable sources to variable destinations with unbounded overdraft using Numscript (supports `BULK_SIZE` env var)
+6. **any_force_to_any.js**: Transactions from variable sources to variable destinations using simple postings with `force=true` (supports `BULK_SIZE` env var)
 
 ## Usage
 

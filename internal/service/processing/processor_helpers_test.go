@@ -36,6 +36,7 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 					Timestamp: data.CreateTransaction.Timestamp,
 					Reference: data.CreateTransaction.Reference,
 					Metadata:  data.CreateTransaction.Metadata,
+					Force:     data.CreateTransaction.Force,
 				},
 			}
 		case *servicepb.LedgerApplyRequest_AddMetadata:

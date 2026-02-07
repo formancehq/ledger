@@ -2,7 +2,6 @@ package admission
 
 import (
 	"math/big"
-	"sync/atomic"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -91,16 +90,15 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 	commandDuration, _ := meter.Int64Histogram("test_command_duration")
 	proposeQueueLoad, _ := meter.Int64Histogram("test_propose_queue_load")
 	proposeQueueFull, _ := meter.Float64Counter("test_propose_queue_full")
-	var inflight atomic.Int32
 
 	return &Admission{
 		cache:                     testCache,
 		store:                     store,
 		logger:                    logger,
 		nextIndex:                 1,
+		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDuration,
 		proposeQueueLoadHistogram: proposeQueueLoad,
-		proposeQueueInflight:      &inflight,
 		proposeQueueFullCounter:   proposeQueueFull,
 	}
 }
@@ -542,6 +540,236 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		_, err := admission.convertApplyRequest(applyRequest)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "getting original transaction postings")
+	})
+}
+
+func TestExtractNeededVolumes_Force(t *testing.T) {
+	t.Parallel()
+
+	t.Run("skips volume extraction when force is true for create transaction", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Force: true, // Force flag should skip volume extraction
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "users:alice",
+										Destination: "users:bob",
+										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Asset:       "USD",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders)
+
+		// Should be empty because force=true skips volume extraction
+		require.Len(t, volumes, 0, "force=true should skip volume extraction for create transaction")
+	})
+
+	t.Run("extracts volumes when force is false for create transaction", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Force: false, // Default behavior
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "users:alice",
+										Destination: "users:bob",
+										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Asset:       "USD",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders)
+
+		// Should have 2 volume keys: source and destination
+		require.Len(t, volumes, 2, "force=false should extract volumes normally")
+
+		aliceKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:alice"},
+			Asset:      "USD",
+		}
+		bobKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:bob"},
+			Asset:      "USD",
+		}
+
+		_, hasAlice := volumes[aliceKey]
+		_, hasBob := volumes[bobKey]
+		require.True(t, hasAlice)
+		require.True(t, hasBob)
+	})
+
+	t.Run("mixed orders with and without force", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			// First order with force=true - should be skipped
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Force: true,
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "users:skipped",
+										Destination: "users:also_skipped",
+										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Asset:       "USD",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			// Second order with force=false - should extract volumes
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Force: false,
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "users:included",
+										Destination: "users:also_included",
+										Amount:      commonpb.NewBigInt(big.NewInt(200)),
+										Asset:       "EUR",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders)
+
+		// Should only have volumes from the second order (force=false)
+		require.Len(t, volumes, 2)
+
+		// Verify skipped volumes are not present
+		skippedKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:skipped"},
+			Asset:      "USD",
+		}
+		_, hasSkipped := volumes[skippedKey]
+		require.False(t, hasSkipped, "force=true order should not have volumes extracted")
+
+		// Verify included volumes are present
+		includedKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:included"},
+			Asset:      "EUR",
+		}
+		_, hasIncluded := volumes[includedKey]
+		require.True(t, hasIncluded, "force=false order should have volumes extracted")
+	})
+
+	t.Run("force on revert still extracts volumes", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		// Revert transactions still need volume preloading even with force=true
+		// because we need to track the reverted amounts correctly
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 1,
+								Force:         true, // Force on revert only affects balance check
+								OriginalPostings: []*commonpb.Posting{
+									{
+										Source:      "world",
+										Destination: "user:alice",
+										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Asset:       "USD",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders)
+
+		// Should still have 2 volume keys for revert (even with force=true)
+		// because volume preloading is needed for correct accounting
+		require.Len(t, volumes, 2, "revert with force=true should still extract volumes")
+	})
+}
+
+func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
+	t.Parallel()
+
+	t.Run("propagates force flag to order", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		applyRequest := &servicepb.LedgerApplyRequest{
+			Ledger: testLedgerName,
+			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{
+					Force: true,
+					Postings: []*commonpb.Posting{
+						{
+							Source:      "users:alice",
+							Destination: "users:bob",
+							Amount:      commonpb.NewBigInt(big.NewInt(100)),
+							Asset:       "USD",
+						},
+					},
+				},
+			},
+		}
+
+		order, err := admission.convertApplyRequest(applyRequest)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+
+		createOrder := order.Data.(*raftcmdpb.LedgerApplyOrder_CreateTransaction).CreateTransaction
+		require.True(t, createOrder.Force, "force flag should be propagated to order")
 	})
 }
 

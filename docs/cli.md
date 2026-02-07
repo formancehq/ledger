@@ -352,6 +352,7 @@ ledgerctl transactions create [flags]
 | `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
 | `--reference` | | Transaction reference |
 | `--metadata` | | Metadata key=value pairs |
+| `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -371,6 +372,11 @@ ledgerctl transactions create --ledger my-ledger \
   --posting "world,bank,1000,USD" \
   --reference "order-123" \
   --metadata type=deposit --metadata source=api
+
+# Force transaction (bypass balance check, allow negative balance)
+ledgerctl transactions create --ledger my-ledger \
+  --posting "empty-account,destination,1000,USD" \
+  --force
 ```
 
 **Creating transactions with Numscript:**

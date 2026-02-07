@@ -484,6 +484,7 @@ type CreateTransactionOrder struct {
 	Reference       string                           `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
 	Metadata        *commonpb.MetadataSet            `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	AccountMetadata map[string]*commonpb.MetadataSet `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Force           bool                             `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"` // Skip balance checks when true
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -558,6 +559,13 @@ func (x *CreateTransactionOrder) GetAccountMetadata() map[string]*commonpb.Metad
 		return x.AccountMetadata
 	}
 	return nil
+}
+
+func (x *CreateTransactionOrder) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type SaveMetadataOrder struct {
@@ -2045,14 +2053,15 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\fadd_metadata\x18\x03 \x01(\v2\x17.raft.SaveMetadataOrderH\x00R\vaddMetadata\x12M\n" +
 	"\x12revert_transaction\x18\x04 \x01(\v2\x1c.raft.RevertTransactionOrderH\x00R\x11revertTransaction\x12D\n" +
 	"\x0fdelete_metadata\x18\x05 \x01(\v2\x19.raft.DeleteMetadataOrderH\x00R\x0edeleteMetadataB\x06\n" +
-	"\x04data\"\xa4\x03\n" +
+	"\x04data\"\xba\x03\n" +
 	"\x16CreateTransactionOrder\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1c\n" +
 	"\treference\x18\x04 \x01(\tR\treference\x12/\n" +
 	"\bmetadata\x18\x05 \x01(\v2\x13.common.MetadataSetR\bmetadata\x12\\\n" +
-	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
+	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
+	"\x05force\x18\a \x01(\bR\x05force\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"l\n" +

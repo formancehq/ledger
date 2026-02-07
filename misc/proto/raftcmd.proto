@@ -60,6 +60,7 @@ message CreateTransactionOrder {
   string reference = 4;
   common.MetadataSet metadata = 5;
   map<string, common.MetadataSet> account_metadata = 6;
+  bool force = 7;  // Skip balance checks when true
 }
 
 message SaveMetadataOrder {

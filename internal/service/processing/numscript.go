@@ -47,9 +47,11 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 	}
 
 	// Create the store adapter
+	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
 		store:      s,
 		ledgerName: ledgerName,
+		force:      order.Force,
 	}
 
 	// Execute the script with all feature flags enabled
@@ -83,13 +85,21 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 		if sourceOutput == nil {
 			sourceOutput = &raftcmdpb.VolumeHolder{}
 		}
-		// Initialize Known to 0 if nil (same behavior as regular transactions)
-		if sourceOutput.Known == nil {
-			sourceOutput.Known = commonpb.NewBigInt(big.NewInt(0))
+		// If we know the absolute value, update Known (buffer.Merge will use SetBase).
+		// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
+		if sourceOutput.Known != nil {
+			sourceOutput.Known = commonpb.NewBigInt(
+				new(big.Int).Add(sourceOutput.Known.Value(), posting.Amount),
+			)
+		} else {
+			if sourceOutput.DiffSinceBaseIndex == nil {
+				sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(posting.Amount)
+			} else {
+				sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(
+					new(big.Int).Add(sourceOutput.DiffSinceBaseIndex.Value(), posting.Amount),
+				)
+			}
 		}
-		sourceOutput.Known = commonpb.NewBigInt(
-			new(big.Int).Add(sourceOutput.Known.Value(), posting.Amount),
-		)
 		s.PutOutput(sourceKey, sourceOutput)
 
 		// Update destination input (money coming in)
@@ -107,13 +117,21 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 		if destInput == nil {
 			destInput = &raftcmdpb.VolumeHolder{}
 		}
-		// Initialize Known to 0 if nil (same behavior as regular transactions)
-		if destInput.Known == nil {
-			destInput.Known = commonpb.NewBigInt(big.NewInt(0))
+		// If we know the absolute value, update Known (buffer.Merge will use SetBase).
+		// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
+		if destInput.Known != nil {
+			destInput.Known = commonpb.NewBigInt(
+				new(big.Int).Add(destInput.Known.Value(), posting.Amount),
+			)
+		} else {
+			if destInput.DiffSinceBaseIndex == nil {
+				destInput.DiffSinceBaseIndex = commonpb.NewBigInt(posting.Amount)
+			} else {
+				destInput.DiffSinceBaseIndex = commonpb.NewBigInt(
+					new(big.Int).Add(destInput.DiffSinceBaseIndex.Value(), posting.Amount),
+				)
+			}
 		}
-		destInput.Known = commonpb.NewBigInt(
-			new(big.Int).Add(destInput.Known.Value(), posting.Amount),
-		)
 		s.PutInput(destKey, destInput)
 	}
 
@@ -156,7 +174,12 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 type numscriptStoreAdapter struct {
 	store      Store
 	ledgerName string
+	force      bool // When true, return unlimited balances to bypass balance checks
 }
+
+// maxForceBalance is returned for all accounts when force mode is enabled.
+// This effectively allows any amount to be sent from any account.
+var maxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.BalanceQuery) (numscript.Balances, error) {
 	balances := make(numscript.Balances)
@@ -166,6 +189,13 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 		balances[account] = accountBalance
 
 		for _, asset := range assets {
+			// When force mode is enabled, return unlimited balance for all accounts
+			// This bypasses all balance checks in Numscript execution
+			if s.force {
+				accountBalance[asset] = new(big.Int).Set(maxForceBalance)
+				continue
+			}
+
 			volumeKey := data.VolumeKey{
 				AccountKey: data.AccountKey{
 					LedgerName: s.ledgerName,
@@ -184,14 +214,20 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 				return nil, err
 			}
 
+			// Volumes must be preloaded by the admission layer.
+			// If not found, return an error - the client must ensure accounts are known.
+			// Note: In the future, static analysis of Numscript will allow extracting
+			// impacted accounts at admission time for automatic preloading.
+			if input == nil || (input.Known == nil && input.DiffSinceBaseIndex == nil) {
+				return nil, fmt.Errorf("balance not preloaded for account %q asset %q", account, asset)
+			}
+
 			// Calculate balance: Input - Output
 			var inputValue, outputValue *big.Int
-			if input != nil && input.Known != nil {
+			if input.Known != nil {
 				inputValue = input.Known.Value()
-			} else if input != nil && input.DiffSinceBaseIndex != nil {
-				inputValue = input.DiffSinceBaseIndex.Value()
 			} else {
-				inputValue = big.NewInt(0)
+				inputValue = input.DiffSinceBaseIndex.Value()
 			}
 
 			if output != nil && output.Known != nil {

@@ -123,6 +123,45 @@ func createTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 	}
 }
 
+// createForceTransactionAction creates an action for creating a transaction with force=true (bypasses balance checks)
+func createForceTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: postings,
+						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Force:    true,
+					},
+				},
+			},
+		},
+	}
+}
+
+// createForceScriptTransactionAction creates an action for creating a transaction using Numscript with force=true
+func createForceScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: script,
+							Vars:  vars,
+						},
+						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Force:    true,
+					},
+				},
+			},
+		},
+	}
+}
+
 // createScriptTransactionAction creates an action for creating a transaction using Numscript
 func createScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *servicepb.Request {
 	return &servicepb.Request{

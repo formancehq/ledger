@@ -1326,3 +1326,223 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
 }
+
+func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	sourceKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
+		Asset:      "USD",
+	}
+	destKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerName: "test-ledger", Account: "merchant"},
+		Asset:      "USD",
+	}
+
+	// Source has only 50 balance (100 input - 50 output) - not enough for 100
+	sourceInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(100))}
+	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(50))}
+	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetDate().Return(now).Times(3)
+	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
+	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
+	// With force=true, balance check is skipped and output is updated
+	mockStore.EXPECT().PutOutput(sourceKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+			// Output should increase by 100 (50 + 100 = 150)
+			require.Equal(t, int64(150), value.Known.Value().Int64())
+		},
+	)
+	mockStore.EXPECT().GetInput(destKey).Return(destInput, nil)
+	mockStore.EXPECT().PutInput(destKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+			// Input should increase by 100
+			require.Equal(t, int64(100), value.Known.Value().Int64())
+		},
+	)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Force: true, // Force flag bypasses balance check
+						Postings: []*commonpb.Posting{
+							{
+								Source:      "users:123",
+								Destination: "merchant",
+								Amount:      commonpb.NewBigInt(big.NewInt(100)), // Wants 100, has only 50
+								Asset:       "USD",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// With force=true, the transaction should succeed despite insufficient funds
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	applyLog := result.GetApply()
+	require.NotNil(t, applyLog)
+
+	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+	require.Equal(t, uint64(1), createdTx.Transaction.Id)
+}
+
+func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	sourceKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerName: "test-ledger", Account: "users:new"},
+		Asset:      "USD",
+	}
+	destKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerName: "test-ledger", Account: "merchant"},
+		Asset:      "USD",
+	}
+
+	// Source has no input at all (nil) - would fail balance check normally
+	// With force=true, this should succeed
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetDate().Return(now).Times(3)
+	// Source returns nil (no balance)
+	mockStore.EXPECT().GetInput(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetOutput(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().PutOutput(sourceKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+			// Output should use DiffSinceBaseIndex since we don't know the absolute value
+			require.Nil(t, value.Known)
+			require.Equal(t, int64(100), value.DiffSinceBaseIndex.Value().Int64())
+		},
+	)
+	mockStore.EXPECT().GetInput(destKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().PutInput(destKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+			// Input should use DiffSinceBaseIndex since we don't know the absolute value
+			require.Nil(t, value.Known)
+			require.Equal(t, int64(100), value.DiffSinceBaseIndex.Value().Int64())
+		},
+	)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Force: true,
+						Postings: []*commonpb.Posting{
+							{
+								Source:      "users:new",
+								Destination: "merchant",
+								Amount:      commonpb.NewBigInt(big.NewInt(100)),
+								Asset:       "USD",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+}
+
+func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	// Account has 0 balance, but with force=true, Numscript should see unlimited balance
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	// Note: GetInput/GetOutput might be called for volume updates but not for balance queries
+	// when force=true (store adapter returns unlimited balance)
+	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
+	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
+	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
+	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Force: true, // Force bypasses balance checks in Numscript
+						Script: &commonpb.Script{
+							Plain: `
+								send [USD/2 100000] (
+									source = @users:broke
+									destination = @users:alice
+								)
+							`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// With force=true, Numscript should succeed even though users:broke has 0 balance
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	applyLog := result.GetApply()
+	require.NotNil(t, applyLog)
+
+	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+	require.Len(t, createdTx.Transaction.Postings, 1)
+
+	posting := createdTx.Transaction.Postings[0]
+	require.Equal(t, "users:broke", posting.Source)
+	require.Equal(t, "users:alice", posting.Destination)
+	require.Equal(t, int64(100000), posting.Amount.Value().Int64())
+}

@@ -115,7 +115,36 @@ Enter
 Sleep 2s
 
 # ============================================================================
-# PART 5: Account Metadata (set + delete)
+# PART 5: Force Transaction (bypass balance check)
+# ============================================================================
+
+Type "clear"
+Enter
+Sleep 200ms
+
+# Try to send from an account with no balance (will fail)
+Type "# Trying to send from an empty account (insufficient funds)..."
+Enter
+Sleep 800ms
+Type "ledgerctl transactions create --ledger demo --posting 'users:broke,users:rich,1000,USD/2'"
+Enter
+Sleep 2s
+
+# Now use --force to bypass balance check
+Type "# Using --force to bypass balance check..."
+Enter
+Sleep 800ms
+Type "ledgerctl transactions create --ledger demo --posting 'users:broke,users:rich,1000,USD/2' --force"
+Enter
+Sleep 2s
+
+# Show the negative balance
+Type "ledgerctl accounts get users:broke --ledger demo"
+Enter
+Sleep 2s
+
+# ============================================================================
+# PART 6: Account Metadata (set + delete)
 # ============================================================================
 
 Type "clear"
@@ -141,7 +170,7 @@ Enter
 Sleep 1500ms
 
 # ============================================================================
-# PART 6: Transaction Metadata (set + delete)
+# PART 7: Transaction Metadata (set + delete)
 # ============================================================================
 
 Type "clear"
@@ -167,7 +196,7 @@ Enter
 Sleep 1500ms
 
 # ============================================================================
-# PART 7: Revert Transaction
+# PART 8: Revert Transaction
 # ============================================================================
 
 Type "clear"
@@ -190,7 +219,7 @@ Enter
 Sleep 1500ms
 
 # ============================================================================
-# PART 8: List All Transactions
+# PART 9: List All Transactions
 # ============================================================================
 
 Type "clear"
@@ -202,7 +231,7 @@ Enter
 Sleep 3s
 
 # ============================================================================
-# PART 9: Cleanup - Delete Ledger
+# PART 10: Cleanup - Delete Ledger
 # ============================================================================
 
 Type "clear"

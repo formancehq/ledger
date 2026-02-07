@@ -97,6 +97,7 @@ message CreateTransactionPayload {
   string reference = 4;
   common.MetadataSet metadata = 5;
   map<string, common.MetadataSet> account_metadata = 6;
+  bool force = 7;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction
