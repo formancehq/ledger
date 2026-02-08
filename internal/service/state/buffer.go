@@ -47,24 +47,18 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		// If we know the absolute value (Known is set), use SetBase.
 		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
 		if update.New.Known != nil {
-			if err := b.attrs.Input.SetBase(batch, index, update.ID, update.New.Known); err != nil {
+			if err := b.attrs.Input.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
 				return fmt.Errorf("could not set input base: %w", err)
 			}
 			// todo: maybe defer that at another moment? generation rotation?
-			if err := b.attrs.Input.DeleteOldest(batch, index, update.ID); err != nil {
+			if err := b.attrs.Input.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
 				return fmt.Errorf("compacting old input base/delta: %w", err)
 			}
 		} else {
 			delta := balanceHolderDelta(update.Old.Value(), update.New)
-			if err := b.attrs.Input.AddDiff(batch, index, update.ID, delta); err != nil {
+			if err := b.attrs.Input.AddDiff(batch, index, update.CanonicalKey, delta); err != nil {
 				return fmt.Errorf("failed adding input diff: %w", err)
 			}
-		}
-
-		// Register the key in the mapping for listing
-		// todo: touch only new keys, we can detect already existing keys
-		if err := b.attrs.Input.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
-			return fmt.Errorf("failed to touch input key: %w", err)
 		}
 	}
 
@@ -77,22 +71,17 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		// If we know the absolute value (Known is set), use SetBase.
 		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
 		if update.New.Known != nil {
-			if err := b.attrs.Output.SetBase(batch, index, update.ID, update.New.Known); err != nil {
+			if err := b.attrs.Output.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
 				return fmt.Errorf("could not set output base: %w", err)
 			}
-			if err := b.attrs.Output.DeleteOldest(batch, index, update.ID); err != nil {
+			if err := b.attrs.Output.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
 				return fmt.Errorf("compacting old output base/delta: %w", err)
 			}
 		} else {
 			delta := balanceHolderDelta(update.Old.Value(), update.New)
-			if err := b.attrs.Output.AddDiff(batch, index, update.ID, delta); err != nil {
+			if err := b.attrs.Output.AddDiff(batch, index, update.CanonicalKey, delta); err != nil {
 				return fmt.Errorf("failed adding output diff: %w", err)
 			}
-		}
-
-		// Register the key in the mapping for listing
-		if err := b.attrs.Output.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
-			return fmt.Errorf("failed to touch output key: %w", err)
 		}
 	}
 
@@ -101,14 +90,9 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
 	for _, update := range accountMetadataUpdates {
-		err := b.attrs.Metadata.AddDiff(batch, index, update.ID, update.New)
+		err := b.attrs.Metadata.AddDiff(batch, index, update.CanonicalKey, update.New)
 		if err != nil {
 			return fmt.Errorf("failed adding diff between old and new attribute: %v", err)
-		}
-
-		// Register the key in the mapping for listing
-		if err := b.attrs.Metadata.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
-			return fmt.Errorf("failed to touch metadata key: %w", err)
 		}
 	}
 
@@ -117,14 +101,9 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed to merge ledger metadata: %w", err)
 	}
 	for _, update := range ledgerMetadataUpdates {
-		err := b.attrs.LedgerMetadata.AddDiff(batch, index, update.ID, update.New)
+		err := b.attrs.LedgerMetadata.AddDiff(batch, index, update.CanonicalKey, update.New)
 		if err != nil {
 			return fmt.Errorf("failed adding diff for ledger metadata: %v", err)
-		}
-
-		// Register the key in the mapping for listing
-		if err := b.attrs.LedgerMetadata.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
-			return fmt.Errorf("failed to touch ledger metadata key: %w", err)
 		}
 	}
 
@@ -135,11 +114,11 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 	for _, update := range reversionUpdates {
 		// Reverted status is a simple boolean, we store it as a base value
-		err := b.attrs.Reverted.SetBase(batch, index, update.ID, &commonpb.RevertedValue{Reverted: update.New})
+		err := b.attrs.Reverted.SetBase(batch, index, update.CanonicalKey, &commonpb.RevertedValue{Reverted: update.New})
 		if err != nil {
 			return fmt.Errorf("failed setting reverted base: %w", err)
 		}
-		if err := b.attrs.Reverted.DeleteOldest(batch, index, update.ID); err != nil {
+		if err := b.attrs.Reverted.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
 			return fmt.Errorf("compacting old reverted base: %w", err)
 		}
 	}
@@ -151,11 +130,11 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 	for _, update := range idempotencyUpdates {
 		// Idempotency keys are immutable once set, store as base value
-		err := b.attrs.IdempotencyKeys.SetBase(batch, index, update.ID, update.New)
+		err := b.attrs.IdempotencyKeys.SetBase(batch, index, update.CanonicalKey, update.New)
 		if err != nil {
 			return fmt.Errorf("failed setting idempotency key base: %w", err)
 		}
-		if err := b.attrs.IdempotencyKeys.DeleteOldest(batch, index, update.ID); err != nil {
+		if err := b.attrs.IdempotencyKeys.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
 			return fmt.Errorf("compacting old idempotency key base: %w", err)
 		}
 	}

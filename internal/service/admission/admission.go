@@ -154,16 +154,17 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	cmd.Preload.LastPersistedIndex = boundary
 
 	for volumeKey := range neededVolumes {
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, volumeKey.Bytes())
+		canonicalKey := volumeKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 		attrID := &raftcmdpb.AttributeID{
 			Id:  id[:],
 			Tag: tag,
 		}
 
 		// Check Input cache separately
-		if !cache.IsGuaranteed(a.cache.Input, nextIndex, volumeKey.Bytes()) {
+		if !cache.IsGuaranteed(a.cache.Input, nextIndex, canonicalKey) {
 			result, err := a.loaders.Input.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
-				return a.attrs.Input.ComputeValue(a.store, boundary, id)
+				return a.attrs.Input.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("computing input value at boundary %d for %s: %w", boundary, volumeKey, err)
@@ -192,9 +193,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 
 		// Check Output cache separately
-		if !cache.IsGuaranteed(a.cache.Output, nextIndex, volumeKey.Bytes()) {
+		if !cache.IsGuaranteed(a.cache.Output, nextIndex, canonicalKey) {
 			result, err := a.loaders.Output.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
-				return a.attrs.Output.ComputeValue(a.store, boundary, id)
+				return a.attrs.Output.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("computing output value at boundary %d for %s: %w", boundary, volumeKey, err)
@@ -225,16 +226,17 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Build preload for reverted status not guaranteed in cache
 	for txKey := range neededTransactions {
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, txKey.Bytes())
+		canonicalKey := txKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 		attrID := &raftcmdpb.AttributeID{
 			Id:  id[:],
 			Tag: tag,
 		}
 
 		// Check Reversions cache
-		if !cache.IsGuaranteed(a.cache.Reversions, nextIndex, txKey.Bytes()) {
+		if !cache.IsGuaranteed(a.cache.Reversions, nextIndex, canonicalKey) {
 			result, err := a.loaders.Reversions.LoadOrWait(id, boundary, func() (bool, error) {
-				revertedValue, err := a.attrs.Reverted.ComputeValue(a.store, boundary, id)
+				revertedValue, err := a.attrs.Reverted.ComputeValue(a.store, boundary, canonicalKey)
 				if err != nil {
 					return false, err
 				}
@@ -274,12 +276,13 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Build preload for idempotency keys not guaranteed in cache
 	// Only preload if the key is actually found (has a value), to reduce command size
 	for ikKey := range neededIdempotencyKeys {
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, ikKey.Bytes())
+		canonicalKey := ikKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
 		// Check IdempotencyKeys cache
-		if !cache.IsGuaranteed(a.cache.IdempotencyKeys, nextIndex, ikKey.Bytes()) {
+		if !cache.IsGuaranteed(a.cache.IdempotencyKeys, nextIndex, canonicalKey) {
 			result, err := a.loaders.IdempotencyKeys.LoadOrWait(id, boundary, func() (*commonpb.IdempotencyKeyValue, error) {
-				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, id)
+				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("computing idempotency key value at boundary %d for key %s: %w", boundary, ikKey.Key, err)

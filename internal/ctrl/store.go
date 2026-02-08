@@ -51,7 +51,7 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerN
 		}
 
 		// Compute the metadata value (use max uint64 to get the latest value)
-		value, err := attrs.Metadata.ComputeValue(store, ^uint64(0), entry.Hash128)
+		value, err := attrs.Metadata.ComputeValue(store, ^uint64(0), entry.CanonicalKey)
 		if err != nil {
 			return nil, fmt.Errorf("computing metadata value for %s/%s/%s: %w",
 				key.LedgerName, key.Account, key.Key, err)
@@ -66,10 +66,10 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerN
 	return result, nil
 }
 
-// assetEntry holds a VolumeKey and its corresponding U128 hash for volume computation.
+// assetEntry holds a VolumeKey and its canonical key bytes for volume computation.
 type assetEntry struct {
-	key data.VolumeKey
-	id  attributes.U128
+	key          data.VolumeKey
+	canonicalKey []byte
 }
 
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
@@ -79,7 +79,7 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName s
 	const maxIndex uint64 = 1 << 62
 
 	// Collect all assets from both Input and Output mapping tables
-	// Store both the asset name and the U128 hash for later computation
+	// Store both the asset name and the canonical key for later computation
 	assetEntries := make(map[string]assetEntry)
 
 	// List all Input entries
@@ -93,7 +93,7 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName s
 			return nil, fmt.Errorf("parsing input key: %w", err)
 		}
 		if key.LedgerName == ledgerName && key.Account == account {
-			assetEntries[key.Asset] = assetEntry{key: key, id: entry.Hash128}
+			assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}
 		}
 	}
 
@@ -110,21 +110,21 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName s
 		if key.LedgerName == ledgerName && key.Account == account {
 			// Only add if not already present from input entries
 			if _, exists := assetEntries[key.Asset]; !exists {
-				assetEntries[key.Asset] = assetEntry{key: key, id: entry.Hash128}
+				assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}
 			}
 		}
 	}
 
 	// For each asset, compute Input and Output values
 	for asset, entry := range assetEntries {
-		// Use the stored hash ID directly (already computed and stored by Touch)
-		inputValue, err := attrs.Input.ComputeValue(s, maxIndex, entry.id)
+		// Use the canonical key directly for better data locality
+		inputValue, err := attrs.Input.ComputeValue(s, maxIndex, entry.canonicalKey)
 		if err != nil {
 			return nil, fmt.Errorf("computing input for %s: %w", asset, err)
 		}
 
-		// Use the same ID for Output (same canonical key, different attribute prefix)
-		outputValue, err := attrs.Output.ComputeValue(s, maxIndex, entry.id)
+		// Use the same canonical key for Output (same key, different attribute prefix)
+		outputValue, err := attrs.Output.ComputeValue(s, maxIndex, entry.canonicalKey)
 		if err != nil {
 			return nil, fmt.Errorf("computing output for %s: %w", asset, err)
 		}

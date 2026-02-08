@@ -47,7 +47,6 @@ var (
 	keyPrefixLedgerInfo        byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
 	keyPrefixTransactionUpdate byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 	KeyPrefixAttributes        byte = 0x09
-	KeyPrefixAttributesMapping byte = 0x0A
 
 	AttributePrefixInput          = byte('I')
 	AttributePrefixOutput         = byte('O')

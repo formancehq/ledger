@@ -37,14 +37,14 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 		_ = batch.Cancel()
 	}()
 
-	// Create a test ID
-	testID := U128{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
+	// Create a test canonical key (ledger:account:asset format)
+	testKey := []byte("test-ledger\x00test-account\x00USD")
 
 	// Test value: 1000
 	testValue := commonpb.NewBigInt(big.NewInt(1000))
 
 	// Set base at index 5
-	err := attrs.Input.SetBase(batch, 5, testID, testValue)
+	err := attrs.Input.SetBase(batch, 5, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -52,7 +52,7 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, err := attrs.Input.ComputeValue(store, 100, testID)
+	result, err := attrs.Input.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 
 	// Verify the result
@@ -73,14 +73,14 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 		_ = batch.Cancel()
 	}()
 
-	// Create a test ID
-	testID := U128{0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89}
+	// Create a test canonical key (different from the other test for isolation)
+	testKey := []byte("test-ledger\x00another-account\x00EUR")
 
 	// Test value: 0
 	testValue := commonpb.NewBigInt(big.NewInt(0))
 
 	// Set base at index 5
-	err := attrs.Input.SetBase(batch, 5, testID, testValue)
+	err := attrs.Input.SetBase(batch, 5, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -88,7 +88,7 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, err := attrs.Input.ComputeValue(store, 100, testID)
+	result, err := attrs.Input.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 
 	// Verify the result

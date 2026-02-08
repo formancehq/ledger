@@ -98,46 +98,46 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *data.Store) {
 
 		// world sends 100 (output)
 		worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "world"}, Asset: "USD"}
-		worldID, _ := attributes.MakeKey(attributes.DefaultKeys, worldKey.Bytes())
-		require.NoError(t, attrs.Output.AddDiff(batch, 1, worldID, commonpb.NewBigInt(big.NewInt(100))))
+		worldCanonicalKey := worldKey.Bytes()
+		require.NoError(t, attrs.Output.AddDiff(batch, 1, worldCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
 
 		// bank receives 100 (input)
 		bankKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "bank"}, Asset: "USD"}
-		bankID, _ := attributes.MakeKey(attributes.DefaultKeys, bankKey.Bytes())
-		require.NoError(t, attrs.Input.AddDiff(batch, 1, bankID, commonpb.NewBigInt(big.NewInt(100))))
+		bankCanonicalKey := bankKey.Bytes()
+		require.NoError(t, attrs.Input.AddDiff(batch, 1, bankCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
 
 		// user receives 50 (input)
 		userKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user"}, Asset: "USD"}
-		userID, _ := attributes.MakeKey(attributes.DefaultKeys, userKey.Bytes())
-		require.NoError(t, attrs.Input.AddDiff(batch, 2, userID, commonpb.NewBigInt(big.NewInt(50))))
+		userCanonicalKey := userKey.Bytes()
+		require.NoError(t, attrs.Input.AddDiff(batch, 2, userCanonicalKey, commonpb.NewBigInt(big.NewInt(50))))
 
 		// bank sends 50 (output)
-		require.NoError(t, attrs.Output.AddDiff(batch, 2, bankID, commonpb.NewBigInt(big.NewInt(50))))
+		require.NoError(t, attrs.Output.AddDiff(batch, 2, bankCanonicalKey, commonpb.NewBigInt(big.NewInt(50))))
 
 		require.NoError(t, batch.Commit())
 
 		// Test Input/Output for each account
 		// world: input=0, output=100 → balance = -100
-		worldInput, err := attrs.Input.ComputeValue(s, 100, worldID)
+		worldInput, err := attrs.Input.ComputeValue(s, 100, worldCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(0), worldInput.Value())
-		worldOutput, err := attrs.Output.ComputeValue(s, 100, worldID)
+		worldOutput, err := attrs.Output.ComputeValue(s, 100, worldCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(100), worldOutput.Value())
 
 		// bank: input=100, output=50 → balance = 50
-		bankInput, err := attrs.Input.ComputeValue(s, 100, bankID)
+		bankInput, err := attrs.Input.ComputeValue(s, 100, bankCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(100), bankInput.Value())
-		bankOutput, err := attrs.Output.ComputeValue(s, 100, bankID)
+		bankOutput, err := attrs.Output.ComputeValue(s, 100, bankCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(50), bankOutput.Value())
 
 		// user: input=50, output=0 → balance = 50
-		userInput, err := attrs.Input.ComputeValue(s, 100, userID)
+		userInput, err := attrs.Input.ComputeValue(s, 100, userCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(50), userInput.Value())
-		userOutput, err := attrs.Output.ComputeValue(s, 100, userID)
+		userOutput, err := attrs.Output.ComputeValue(s, 100, userCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(0), userOutput.Value())
 	})
@@ -476,11 +476,11 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	// Add some data
 	batch = s.NewBatch()
 	worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "world"}, Asset: "USD"}
-	worldID, _ := attributes.MakeKey(attributes.DefaultKeys, worldKey.Bytes())
-	require.NoError(t, attrs.Output.AddDiff(batch, 1, worldID, commonpb.NewBigInt(big.NewInt(100))))
+	worldCanonicalKey := worldKey.Bytes()
+	require.NoError(t, attrs.Output.AddDiff(batch, 1, worldCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
 	metadataKey := data.MetadataKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "bank"}, Key: "key"}
-	metadataID, _ := attributes.MakeKey(attributes.DefaultKeys, metadataKey.Bytes())
-	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataID, &commonpb.MetadataValue{Value: "value"}))
+	metadataCanonicalKey := metadataKey.Bytes()
+	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, &commonpb.MetadataValue{Value: "value"}))
 	require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -522,7 +522,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	require.Equal(t, deletedAt.Data, ledgers[0].DeletedAt.Data)
 
 	// Verify data still exists (soft delete doesn't remove data)
-	outputResult, err := attrs.Output.ComputeValue(s, 100, worldID)
+	outputResult, err := attrs.Output.ComputeValue(s, 100, worldCanonicalKey)
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(100), outputResult.Value())
 }
@@ -550,102 +550,102 @@ func TestInputOutput(t *testing.T) {
 	userUSD := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "user"}, Asset: "USD"}
 	bankEUR := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "bank"}, Asset: "EUR"}
 
-	// Pre-compute U128 IDs for each key
-	bankUSDID, _ := attributes.MakeKey(attributes.DefaultKeys, bankUSD.Bytes())
-	userUSDID, _ := attributes.MakeKey(attributes.DefaultKeys, userUSD.Bytes())
-	bankEURID, _ := attributes.MakeKey(attributes.DefaultKeys, bankEUR.Bytes())
+	// Pre-compute canonical keys for each key
+	bankUSDKey := bankUSD.Bytes()
+	userUSDKey := userUSD.Bytes()
+	bankEURKey := bankEUR.Bytes()
 
-	getInput := func(id attributes.U128, index uint64) *big.Int {
-		result, err := attrs.Input.ComputeValue(s, index, id)
+	getInput := func(canonicalKey []byte, index uint64) *big.Int {
+		result, err := attrs.Input.ComputeValue(s, index, canonicalKey)
 		require.NoError(t, err)
 		return result.Value()
 	}
 
-	getOutput := func(id attributes.U128, index uint64) *big.Int {
-		result, err := attrs.Output.ComputeValue(s, index, id)
+	getOutput := func(canonicalKey []byte, index uint64) *big.Int {
+		result, err := attrs.Output.ComputeValue(s, index, canonicalKey)
 		require.NoError(t, err)
 		return result.Value()
 	}
 
 	// Initially input and output should be 0
-	require.Equal(t, big.NewInt(0), getInput(bankUSDID, 100))
-	require.Equal(t, big.NewInt(0), getOutput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(0), getInput(bankUSDKey, 100))
+	require.Equal(t, big.NewInt(0), getOutput(bankUSDKey, 100))
 
 	// Add some inputs and outputs
 	batch := s.NewBatch()
-	require.NoError(t, attrs.Input.AddDiff(batch, 1, bankUSDID, commonpb.NewBigInt(big.NewInt(100))))
-	require.NoError(t, attrs.Input.AddDiff(batch, 2, bankUSDID, commonpb.NewBigInt(big.NewInt(50))))
-	require.NoError(t, attrs.Output.AddDiff(batch, 3, bankUSDID, commonpb.NewBigInt(big.NewInt(30))))
+	require.NoError(t, attrs.Input.AddDiff(batch, 1, bankUSDKey, commonpb.NewBigInt(big.NewInt(100))))
+	require.NoError(t, attrs.Input.AddDiff(batch, 2, bankUSDKey, commonpb.NewBigInt(big.NewInt(50))))
+	require.NoError(t, attrs.Output.AddDiff(batch, 3, bankUSDKey, commonpb.NewBigInt(big.NewInt(30))))
 	require.NoError(t, batch.Commit())
 
 	// Input should be sum of inputs: 100 + 50 = 150
-	require.Equal(t, big.NewInt(150), getInput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 100))
 	// Output should be 30
-	require.Equal(t, big.NewInt(30), getOutput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(30), getOutput(bankUSDKey, 100))
 
 	// Input at index 2 should be: 100 + 50 = 150
-	require.Equal(t, big.NewInt(150), getInput(bankUSDID, 2))
+	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 2))
 	// Output at index 2 should be: 0 (output is at index 3)
-	require.Equal(t, big.NewInt(0), getOutput(bankUSDID, 2))
+	require.Equal(t, big.NewInt(0), getOutput(bankUSDKey, 2))
 
 	// Input at index 1 should be: 100
-	require.Equal(t, big.NewInt(100), getInput(bankUSDID, 1))
+	require.Equal(t, big.NewInt(100), getInput(bankUSDKey, 1))
 
 	// Input/Output at index 0 should be: 0 (no diffs before index 1)
-	require.Equal(t, big.NewInt(0), getInput(bankUSDID, 0))
-	require.Equal(t, big.NewInt(0), getOutput(bankUSDID, 0))
+	require.Equal(t, big.NewInt(0), getInput(bankUSDKey, 0))
+	require.Equal(t, big.NewInt(0), getOutput(bankUSDKey, 0))
 
 	// Add a base at index 10
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Input.SetBase(batch, 10, bankUSDID, commonpb.NewBigInt(big.NewInt(1000))))
+	require.NoError(t, attrs.Input.SetBase(batch, 10, bankUSDKey, commonpb.NewBigInt(big.NewInt(1000))))
 	require.NoError(t, batch.Commit())
 
 	// Input at index 100 should use base 1000 (diffs 1,2 are before base, so ignored)
-	require.Equal(t, big.NewInt(1000), getInput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(1000), getInput(bankUSDKey, 100))
 
 	// Input at index 10 should be the base: 1000
-	require.Equal(t, big.NewInt(1000), getInput(bankUSDID, 10))
+	require.Equal(t, big.NewInt(1000), getInput(bankUSDKey, 10))
 
 	// Input at index 9 should still use diffs only (base not visible): 100 + 50 = 150
-	require.Equal(t, big.NewInt(150), getInput(bankUSDID, 9))
+	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 9))
 
 	// Add diffs after the base
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Input.AddDiff(batch, 11, bankUSDID, commonpb.NewBigInt(big.NewInt(200))))
-	require.NoError(t, attrs.Output.AddDiff(batch, 12, bankUSDID, commonpb.NewBigInt(big.NewInt(50))))
+	require.NoError(t, attrs.Input.AddDiff(batch, 11, bankUSDKey, commonpb.NewBigInt(big.NewInt(200))))
+	require.NoError(t, attrs.Output.AddDiff(batch, 12, bankUSDKey, commonpb.NewBigInt(big.NewInt(50))))
 	require.NoError(t, batch.Commit())
 
 	// Input at index 100 should be: base(1000) + diff at 11(200) = 1200
-	require.Equal(t, big.NewInt(1200), getInput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(1200), getInput(bankUSDKey, 100))
 
 	// Output at index 100 should be: 30 + 50 = 80
-	require.Equal(t, big.NewInt(80), getOutput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(80), getOutput(bankUSDKey, 100))
 
 	// Input at index 11 should be: base(1000) + diff at 11(200) = 1200
-	require.Equal(t, big.NewInt(1200), getInput(bankUSDID, 11))
+	require.Equal(t, big.NewInt(1200), getInput(bankUSDKey, 11))
 
 	// Add a newer base at index 20
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Input.SetBase(batch, 20, bankUSDID, commonpb.NewBigInt(big.NewInt(5000))))
+	require.NoError(t, attrs.Input.SetBase(batch, 20, bankUSDKey, commonpb.NewBigInt(big.NewInt(5000))))
 	require.NoError(t, batch.Commit())
 
 	// Input at index 100 should use newer base: 5000
-	require.Equal(t, big.NewInt(5000), getInput(bankUSDID, 100))
+	require.Equal(t, big.NewInt(5000), getInput(bankUSDKey, 100))
 
 	// Input at index 15 should use older base + diffs after it: 1000 + 200 = 1200
-	require.Equal(t, big.NewInt(1200), getInput(bankUSDID, 15))
+	require.Equal(t, big.NewInt(1200), getInput(bankUSDKey, 15))
 
 	// Different account should have 0 input/output
-	require.Equal(t, big.NewInt(0), getInput(userUSDID, 100))
-	require.Equal(t, big.NewInt(0), getOutput(userUSDID, 100))
+	require.Equal(t, big.NewInt(0), getInput(userUSDKey, 100))
+	require.Equal(t, big.NewInt(0), getOutput(userUSDKey, 100))
 
 	// Different asset should have 0 input/output
-	require.Equal(t, big.NewInt(0), getInput(bankEURID, 100))
-	require.Equal(t, big.NewInt(0), getOutput(bankEURID, 100))
+	require.Equal(t, big.NewInt(0), getInput(bankEURKey, 100))
+	require.Equal(t, big.NewInt(0), getOutput(bankEURKey, 100))
 
 	// Non-existing ledger should have 0 input/output
 	nonExistingKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: "non-existing", Account: "bank"}, Asset: "USD"}
-	nonExistingID, _ := attributes.MakeKey(attributes.DefaultKeys, nonExistingKey.Bytes())
-	require.Equal(t, big.NewInt(0), getInput(nonExistingID, 100))
-	require.Equal(t, big.NewInt(0), getOutput(nonExistingID, 100))
+	nonExistingCanonicalKey := nonExistingKey.Bytes()
+	require.Equal(t, big.NewInt(0), getInput(nonExistingCanonicalKey, 100))
+	require.Equal(t, big.NewInt(0), getOutput(nonExistingCanonicalKey, 100))
 }
