@@ -92,7 +92,7 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 	}
 
 	// Marshal LedgerInfo to protobuf
-	infoBinary, err := proto.Marshal(info)
+	infoBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, info)
 	if err != nil {
 		return fmt.Errorf("marshaling ledger info to protobuf: %w", err)
 	}

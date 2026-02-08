@@ -124,20 +124,26 @@ func NewKeyStore[K Key, T any](keys Keys, m kv.KV[U128, Entry[T]]) *KeyStore[K, 
 // Put inserts or overwrites the entry for canonical key.
 // If an entry already exists under the same U128 but with a different tag,
 // ErrCollisionDetected is returned and the store is left unchanged.
-func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T], id U128, err error) {
+func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T], idWithTag IDWithTag, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
 	if existing, ok := s.M.Get(id); ok {
 		if existing.Tag != tag {
-			return kv.None[T](), id, newErrCollisionDetected(canonical, existing.Tag, tag)
+			return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 		}
 		// same key (as far as we can tell) -> overwrite data
 		s.M.Put(id, Entry[T]{Tag: tag, Data: value})
-		return kv.Some(existing.Data), id, nil
+		return kv.Some(existing.Data), IDWithTag{
+			ID:  id,
+			Tag: tag,
+		}, nil
 	}
 
 	s.M.Put(id, Entry[T]{Tag: tag, Data: value})
-	return kv.None[T](), id, nil
+	return kv.None[T](), IDWithTag{
+		ID:  id,
+		Tag: tag,
+	}, nil
 }
 
 // Get retrieves a value by canonical key.
@@ -212,16 +218,15 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
-		overwrite, id, err := s.KeyStore.Put(k.Bytes(), v)
+		overwrite, idWithTag, err := s.KeyStore.Put(k.Bytes(), v)
 		if err != nil {
 			return nil, err
 		}
 		// Compute tag for Touch operation
-		_, tag := s.hasher.MakeKey(k.Bytes())
 		touched = append(touched, Update[K, T]{
 			Key:          k,
-			ID:           id,
-			Tag:          tag,
+			ID:           idWithTag.ID,
+			Tag:          idWithTag.Tag,
 			CanonicalKey: k.Bytes(),
 			Old:          overwrite,
 			New:          v,

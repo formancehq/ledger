@@ -18,10 +18,11 @@ import (
 // - Use dependency injection (New) to get separate instances per Raft node.
 // - Read methods (ComputeValue, List) create their own KeyBuilder for concurrent access.
 type Attribute[V proto.Message] struct {
-	prefix    byte
-	newValue  func() V
-	computeFn func(value V, diffs []V) V
-	kb        *data.KeyBuilder // Used by write methods - each instance has its own
+	prefix      byte
+	newValue    func() V
+	computeFn   func(value V, diffs []V) V
+	kb          *data.KeyBuilder // Used by write methods - each instance has its own
+	protoBuffer []byte
 }
 
 // SetBase stores a base value for the given key ID at the specified raft index.
@@ -35,7 +36,7 @@ func (a *Attribute[V]) SetBase(batch *data.Batch, index uint64, id U128, base V)
 		PutByte(0).
 		Build()
 
-	valueBytes, err := proto.Marshal(base)
+	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer, base)
 	if err != nil {
 		return fmt.Errorf("marshaling base value: %w", err)
 	}
@@ -54,7 +55,7 @@ func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, id U128, diff V)
 		PutByte(1).
 		Build()
 
-	valueBytes, err := proto.Marshal(diff)
+	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer, diff)
 	if err != nil {
 		return fmt.Errorf("marshaling diff value: %w", err)
 	}

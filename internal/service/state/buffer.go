@@ -44,21 +44,25 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed to merge input: %w", err)
 	}
 	for _, update := range volumeUpdates {
-		if update.Old.IsDefined() && update.Old.Value().Known == nil {
+		// If we know the absolute value (Known is set), use SetBase.
+		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
+		if update.New.Known != nil {
+			if err := b.attrs.Input.SetBase(batch, index, update.ID, update.New.Known); err != nil {
+				return fmt.Errorf("could not set input base: %w", err)
+			}
+			// todo: maybe defer that at another moment? generation rotation?
+			if err := b.attrs.Input.DeleteOldest(batch, index, update.ID); err != nil {
+				return fmt.Errorf("compacting old input base/delta: %w", err)
+			}
+		} else {
 			delta := balanceHolderDelta(update.Old.Value(), update.New)
 			if err := b.attrs.Input.AddDiff(batch, index, update.ID, delta); err != nil {
 				return fmt.Errorf("failed adding input diff: %w", err)
 			}
-		} else {
-			if err := b.attrs.Input.SetBase(batch, index, update.ID, update.New.Known); err != nil {
-				return fmt.Errorf("could not set input base: %w", err)
-			}
-			if err := b.attrs.Input.DeleteOldest(batch, index, update.ID); err != nil {
-				return fmt.Errorf("compacting old input base/delta: %w", err)
-			}
 		}
 
 		// Register the key in the mapping for listing
+		// todo: touch only new keys, we can detect already existing keys
 		if err := b.attrs.Input.Touch(batch, update.CanonicalKey, update.ID, update.Tag); err != nil {
 			return fmt.Errorf("failed to touch input key: %w", err)
 		}
@@ -70,17 +74,19 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed to merge output: %w", err)
 	}
 	for _, update := range volumeUpdates {
-		if update.Old.IsDefined() && update.Old.Value().Known == nil {
-			delta := balanceHolderDelta(update.Old.Value(), update.New)
-			if err := b.attrs.Output.AddDiff(batch, index, update.ID, delta); err != nil {
-				return fmt.Errorf("failed adding output diff: %w", err)
-			}
-		} else {
+		// If we know the absolute value (Known is set), use SetBase.
+		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
+		if update.New.Known != nil {
 			if err := b.attrs.Output.SetBase(batch, index, update.ID, update.New.Known); err != nil {
 				return fmt.Errorf("could not set output base: %w", err)
 			}
 			if err := b.attrs.Output.DeleteOldest(batch, index, update.ID); err != nil {
 				return fmt.Errorf("compacting old output base/delta: %w", err)
+			}
+		} else {
+			delta := balanceHolderDelta(update.Old.Value(), update.New)
+			if err := b.attrs.Output.AddDiff(batch, index, update.ID, delta); err != nil {
+				return fmt.Errorf("failed adding output diff: %w", err)
 			}
 		}
 
