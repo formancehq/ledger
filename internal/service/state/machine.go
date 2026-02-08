@@ -356,6 +356,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			responseLogs = append(responseLogs, created)
 		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
 			// Idempotent response - fetch the existing log by sequence
+			// todo: remove that here!
+			// This should be fetched in admission callback
+			// Limit data store interface to only writes to prevent any error regarding this point
 			log, err := fsm.dataStore.GetLogBySequence(refSeq)
 			if err != nil {
 				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)

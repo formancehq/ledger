@@ -162,6 +162,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 
 	for key, updates := range b.TransactionsUpdates {
 		for _, update := range updates {
+			// todo: use transaction id as key for better locality
 			err := batch.StoreTransactionUpdate(key, update)
 			if err != nil {
 				return fmt.Errorf("failed storing transaction update for ledger %s: %w", key.LedgerName, err)

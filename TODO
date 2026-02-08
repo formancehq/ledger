@@ -18,6 +18,6 @@
 * Disk space limitation
 * WAL compaction
 * Snapshot threshold based on log != entries
-
-Explore:
-* Account hash
+* Prevent configuration changes
+* Hash detection when appending only
+* Doc performance (ulid, ordered keys, locality)
