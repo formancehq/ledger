@@ -9,11 +9,6 @@ type AccountKey struct {
 	Account    string
 }
 
-func (ak AccountKey) Bytes(kb *KeyBuilder) {
-	kb.PutString(ak.LedgerName)
-	kb.PutString(ak.Account)
-}
-
 type VolumeKey struct {
 	AccountKey
 	Asset string

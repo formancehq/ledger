@@ -30,8 +30,8 @@ type Attribute[V proto.Message] struct {
 func (a *Attribute[V]) SetBase(batch *data.Batch, index uint64, id U128, base V) error {
 	key := a.kb.
 		PutByte(data.KeyPrefixAttributes).
-		PutBytes(id.Bytes()).
 		PutByte(a.prefix).
+		PutBytes(id.Bytes()).
 		PutUInt64(index).
 		PutByte(0).
 		Build()
@@ -49,8 +49,8 @@ func (a *Attribute[V]) SetBase(batch *data.Batch, index uint64, id U128, base V)
 func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, id U128, diff V) error {
 	key := a.kb.
 		PutByte(data.KeyPrefixAttributes).
-		PutBytes(id.Bytes()).
 		PutByte(a.prefix).
+		PutBytes(id.Bytes()).
 		PutUInt64(index).
 		PutByte(1).
 		Build()
@@ -72,10 +72,10 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, id U128) (V, er
 	// Create a local KeyBuilder for thread-safe concurrent access
 	kb := data.NewKeyBuilder()
 
-	// Build the prefix for this key + attribute prefix
+	// Build the prefix for this attribute type + key ID
 	kb.PutByte(data.KeyPrefixAttributes).
-		PutBytes(id.Bytes()).
-		PutByte(a.prefix)
+		PutByte(a.prefix).
+		PutBytes(id.Bytes())
 	lowerBound := kb.Snapshot()
 
 	// Upper bound includes entries at index. Use index+1 unless it would overflow.
@@ -140,13 +140,13 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, id U128) (V, er
 // This is used to clean up old data after consolidating into a new base.
 // Note: Uses the instance's KeyBuilder - ensure each Raft node has its own Attribute instance.
 func (a *Attribute[V]) DeleteOldest(batch *data.Batch, index uint64, id U128) error {
-	// Build lower bound: [keyPrefixAttributes][id][a.prefix]
+	// Build lower bound: [keyPrefixAttributes][a.prefix][id]
 	a.kb.PutByte(data.KeyPrefixAttributes).
-		PutBytes(id.Bytes()).
-		PutByte(a.prefix)
+		PutByte(a.prefix).
+		PutBytes(id.Bytes())
 	lowerBound := a.kb.Snapshot()
 
-	// Build upper bound: [keyPrefixAttributes][id][a.prefix][index]
+	// Build upper bound: [keyPrefixAttributes][a.prefix][id][index]
 	// This is exclusive, so entries at `index` are kept
 	a.kb.PutUInt64(index)
 	upperBound := a.kb.Build()
