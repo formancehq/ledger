@@ -90,6 +90,8 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 	commandDuration, _ := meter.Int64Histogram("test_command_duration")
 	proposeQueueLoad, _ := meter.Int64Histogram("test_propose_queue_load")
 	proposeQueueFull, _ := meter.Float64Counter("test_propose_queue_full")
+	preloadDuration, _ := meter.Int64Histogram("test_preload_duration")
+	preloadCounter, _ := meter.Int64Counter("test_preload_counter")
 
 	return &Admission{
 		cache:                     testCache,
@@ -100,6 +102,8 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 		commandDurationHistogram:  commandDuration,
 		proposeQueueLoadHistogram: proposeQueueLoad,
 		proposeQueueFullCounter:   proposeQueueFull,
+		preloadDurationHistogram:  preloadDuration,
+		preloadCounter:            preloadCounter,
 	}
 }
 

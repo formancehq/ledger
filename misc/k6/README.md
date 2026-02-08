@@ -44,16 +44,19 @@ When using the Helm chart, ledger creation happens in a pre-install Job and clea
 ```
 misc/k6/
 ├── scripts/
-│   ├── shared/           # Shared utilities and configuration
-│   │   ├── config.js     # Configuration file
-│   │   └── utils.js      # Utility functions
-│   ├── world_to_bank.js  # Test scripts
-│   ├── world_to_any.js
-│   ├── any_to_bank.js
-│   ├── any_bounded_to_any.js
-│   ├── any_unbounded_to_any.js
-│   └── any_force_to_any.js
-├── archives/             # Generated k6 archives (gitignored)
+│   ├── shared/                           # Shared utilities and configuration
+│   │   ├── config.js                     # Configuration file
+│   │   ├── options.js                    # k6 options builder
+│   │   └── utils.js                      # Utility functions
+│   ├── world_to_bank.js                  # @world → @bank
+│   ├── world_to_any.js                   # @world → variable destinations
+│   ├── any_to_bank.js                    # Variable sources → @bank
+│   ├── any_bounded_to_any.js             # Bounded overdraft transactions
+│   ├── any_unbounded_to_any.js           # Unbounded overdraft transactions
+│   ├── any_force_to_any.js               # Force mode transactions
+│   ├── high_contention_marketplace.js    # Realistic marketplace with hot accounts
+│   └── single_hot_account.js             # Extreme single account contention
+├── archives/                             # Generated k6 archives (gitignored)
 └── README.md
 ```
 
@@ -102,12 +105,19 @@ Archives are stored in `misc/k6/archives/` and are automatically included in Kub
 
 The following test scenarios are available:
 
+### Basic Scenarios
+
 1. **world_to_bank.js**: Transactions from `@world` to `@bank`
 2. **world_to_any.js**: Transactions from `@world` to variable destinations
 3. **any_to_bank.js**: Transactions from variable sources to `@bank` with unbounded overdraft
 4. **any_bounded_to_any.js**: Transactions from variable sources to variable destinations with bounded overdraft
 5. **any_unbounded_to_any.js**: Transactions from variable sources to variable destinations with unbounded overdraft using Numscript (supports `BULK_SIZE` env var)
 6. **any_force_to_any.js**: Transactions from variable sources to variable destinations using simple postings with `force=true` (supports `BULK_SIZE` env var)
+
+### High Contention Scenarios
+
+7. **high_contention_marketplace.js**: Realistic marketplace simulation with high contention on platform accounts (deposits, payouts, payments with fees, escrow operations)
+8. **single_hot_account.js**: Extreme contention test where ALL virtual users target a single account simultaneously
 
 ## Usage
 
@@ -348,6 +358,86 @@ If error rates are high:
 2. Verify the ledger exists and is accessible
 3. Check if the service is overloaded
 4. Review threshold settings in the test file
+
+## High Contention Tests
+
+These tests are designed to stress test the system's ability to handle concurrent operations on shared accounts.
+
+### high_contention_marketplace.js
+
+Simulates a realistic marketplace with multiple types of operations creating contention on platform accounts:
+
+**Scenarios:**
+- **Seller deposits** (15%): Sellers deposit funds to the platform account (many → one)
+- **Platform payouts** (10%): Platform pays out earnings to sellers (one → many)
+- **Payments with fees** (25%): Buyers pay merchants with 3% platform fee split
+- **Escrow funding** (15%): Buyers fund escrow accounts for pending orders
+- **Escrow releases** (10%): Release escrowed funds to sellers with fees
+- **Micropayments** (25%): High-frequency small payments to merchants
+
+**Environment variables:**
+- `HOT_ACCOUNT_COUNT`: Number of hot merchant accounts (default: 3)
+- `SELLER_POOL_SIZE`: Pool of seller accounts (default: 100)
+- `BUYER_POOL_SIZE`: Pool of buyer accounts (default: 100)
+- `BULK_SIZE`: Transactions per request (default: 1)
+
+**Usage:**
+```bash
+# Basic run
+k6 run scripts/high_contention_marketplace.js
+
+# With configuration
+HOT_ACCOUNT_COUNT=5 \
+SELLER_POOL_SIZE=200 \
+VUS=50 \
+DURATION=5m \
+k6 run scripts/high_contention_marketplace.js
+```
+
+### single_hot_account.js
+
+Creates extreme contention on a single account. This is the worst-case scenario for testing conflict resolution.
+
+**Modes:**
+- `deposit`: All VUs send TO the hot account (many → one)
+- `withdraw`: All VUs withdraw FROM the hot account (one → many)
+- `transfer`: All VUs send through the hot account (deposit + withdraw)
+- `mixed`: 50% deposit, 50% withdraw (default)
+
+**Environment variables:**
+- `HOT_ACCOUNT`: The hot account name (default: `treasury:main`)
+- `CONTENTION_MODE`: Operation mode - `deposit`, `withdraw`, `transfer`, or `mixed` (default: `mixed`)
+- `SENDER_POOL_SIZE`: Pool of sender/recipient accounts (default: 1000)
+- `BULK_SIZE`: Transactions per request (default: 1)
+
+**Usage:**
+```bash
+# Basic run (mixed mode)
+k6 run scripts/single_hot_account.js
+
+# Extreme deposit contention (all VUs send to same account)
+CONTENTION_MODE=deposit \
+VUS=100 \
+k6 run scripts/single_hot_account.js
+
+# Extreme withdraw contention (all VUs withdraw from same account)
+CONTENTION_MODE=withdraw \
+VUS=100 \
+k6 run scripts/single_hot_account.js
+
+# Custom hot account
+HOT_ACCOUNT=merchant:popular \
+CONTENTION_MODE=deposit \
+VUS=50 \
+DURATION=5m \
+k6 run scripts/single_hot_account.js
+```
+
+**Metrics:**
+- `deposit_ops`: Number of deposit operations
+- `withdraw_ops`: Number of withdraw operations
+- `transactions_created`: Total successful transactions
+- `error_rate`: Percentage of failed requests
 
 ## Further Reading
 

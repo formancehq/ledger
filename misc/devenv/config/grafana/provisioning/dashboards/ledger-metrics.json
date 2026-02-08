@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 33,
+  "id": 55,
   "links": [],
   "panels": [
     {
@@ -3994,8 +3994,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "yellow",
@@ -4020,7 +4019,10 @@
           "id": 106,
           "options": {
             "legend": {
-              "calcs": ["mean", "max"],
+              "calcs": [
+                "mean",
+                "max"
+              ],
               "displayMode": "table",
               "placement": "right",
               "showLegend": true
@@ -4122,8 +4124,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -4137,10 +4138,12 @@
             "x": 12,
             "y": 112
           },
-          "id": 107,
+          "id": 255,
           "options": {
             "legend": {
-              "calcs": ["mean"],
+              "calcs": [
+                "mean"
+              ],
               "displayMode": "table",
               "placement": "right",
               "showLegend": true
@@ -4197,7 +4200,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 430
+            "y": 472
           },
           "id": 205,
           "options": {
@@ -4237,7 +4240,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 450
+            "y": 492
           },
           "id": 202,
           "options": {
@@ -4277,7 +4280,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 470
+            "y": 512
           },
           "id": 203,
           "options": {
@@ -4317,7 +4320,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 490
+            "y": 532
           },
           "id": 204,
           "options": {
@@ -6159,7 +6162,7 @@
       "type": "timeseries"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -6167,960 +6170,1313 @@
         "y": 114
       },
       "id": 5,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
+      "panels": [],
+      "title": "Pebble",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).\n\nFlushes are triggered when:\n- Memtable reaches capacity\n- Manual flush requested\n- Write stall prevention\n\nHigh flush rates indicate heavy write activity. Monitor flush duration for performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
           },
-          "description": "Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).\n\nFlushes are triggered when:\n- Memtable reaches capacity\n- Manual flush requested\n- Write stall prevention\n\nHigh flush rates indicate heavy write activity. Monitor flush duration for performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 0,
-            "y": 447
-          },
-          "id": 6,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
             },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
           },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
-              "legendFormat": "Node {{service.node_id}} {{db}} {{status}} {{reason}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Flush / second",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 8,
-            "y": 447
-          },
-          "id": 63,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}} p50 {{db}}",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}} p95 {{db}}",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}} p99 {{db}}",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "hide": true,
-              "legendFormat": "Node {{service.node_id}} mean {{db}}",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Flush duration (ms)",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Rate of bytes flushed from memtables to SSTables per second.\n\nThis indicates write amplification and disk write throughput. High values mean:\n- Heavy write workload\n- Good throughput\n- High disk I/O utilization\n\nCompare with flush duration to understand I/O efficiency.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "Bps"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 16,
-            "y": 447
-          },
-          "id": 8,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.input.bytes_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Flush input bytes / second",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.\n\nCompaction purposes:\n- Merge overlapping keys\n- Reclaim deleted space\n- Optimize read performance\n- Level promotion\n\nHigh compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 0,
-            "y": 453
-          },
-          "id": 10,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id, db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "legendFormat": "Node {{service.node_id}}: {{status}} {{reason}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Compactions / second",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": [
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "__systemRef": "hideSeriesFrom",
-                "matcher": {
-                  "id": "byNames",
-                  "options": {
-                    "mode": "exclude",
-                    "names": [
-                      "Node 1: p99"
-                    ],
-                    "prefix": "All except:",
-                    "readOnly": true
-                  }
-                },
-                "properties": [
-                  {
-                    "id": "custom.hideFrom",
-                    "value": {
-                      "legend": false,
-                      "tooltip": true,
-                      "viz": true
-                    }
-                  }
-                ]
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 115
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}} {{db}} {{status}} {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Flush / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 8,
-            "y": 453
-          },
-          "id": 64,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}}: p50",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}}: p95 ",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "Node {{service.node_id}}: p99",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id, db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "hide": true,
-              "legendFormat": "Node {{service.node_id}}: mean",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Compaction duration (ms)",
-          "type": "timeseries"
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 115
+      },
+      "id": 63,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}} p50 {{db}}",
+          "range": true,
+          "refId": "A"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Rate of compaction errors per second.\n\nALERT: Any non-zero value requires immediate investigation!\n\nCompaction errors may indicate:\n- Disk corruption\n- Out of disk space\n- Hardware failure\n- File system issues\n\nCheck system logs and disk health immediately.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 16,
-            "y": 453
-          },
-          "id": 12,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum by (service.node_id, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "legendFormat": "Node {{service.node_id}}: {{reason}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Compaction errors / second",
-          "type": "timeseries"
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}} p95 {{db}}",
+          "range": true,
+          "refId": "B"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).\n\nCRITICAL ALERT: Value of 1 means transactions are being delayed!\n\nWrite stalls occur when:\n- L0 has too many files\n- Memtable count too high\n- Compaction backlog too large\n\nImmediate actions:\n- Check disk I/O utilization\n- Consider faster storage (NVMe)\n- Review compaction settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 1
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 0,
-            "y": 459
-          },
-          "id": 61,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "max by (service.node_id, reason) ({__name__=\"pebble.write_stall.active\"})",
-              "legendFormat": "{{service.node_id}} / {{reason}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Write stall active (max)",
-          "type": "timeseries"
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}} p99 {{db}}",
+          "range": true,
+          "refId": "C"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of write stall events per second. Each stall temporarily blocks write operations.\n\nWrite stalls happen when Pebble's internal queues fill up:\n- memtable: Too many memtables waiting to flush\n- l0: Too many L0 SSTables\n- flush_slowdown: Flush falling behind\n\nFrequent stalls indicate storage cannot keep up with write rate. Consider:\n- Faster storage (NVMe SSD)\n- Reduced write rate\n- Tuning Pebble settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 8,
-            "y": 459
-          },
-          "id": 62,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum by (db, reason) (rate({__name__=\"pebble.write_stall.total\"}[$__rate_interval]))",
-              "legendFormat": "{{db}} / {{reason}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Write stalls / second",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.\n\nStall duration directly impacts:\n- Transaction latency (blocked during stall)\n- Throughput (no progress during stall)\n- Client timeouts (if stall exceeds timeout)\n\nLong stalls (>1s) are critical. High P99 values indicate occasional severe blocking.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "s"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 6,
-            "w": 8,
-            "x": 16,
-            "y": 459
-          },
-          "id": 4,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\"}[$__rate_interval])))",
-              "legendFormat": "p50 {{db}}",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "p95 {{db}}",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-              "legendFormat": "p99 {{db}}",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "editorMode": "code",
-              "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
-              "hide": true,
-              "legendFormat": "mean {{db}}",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Write stall duration",
-          "type": "timeseries"
+          "editorMode": "code",
+          "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (service.node_id) (rate({__name__=\"pebble.flush.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "hide": true,
+          "legendFormat": "Node {{service.node_id}} mean {{db}}",
+          "range": true,
+          "refId": "D"
         }
       ],
-      "title": "Pebble",
+      "title": "Flush duration (ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of bytes flushed from memtables to SSTables per second.\n\nThis indicates write amplification and disk write throughput. High values mean:\n- Heavy write workload\n- Good throughput\n- High disk I/O utilization\n\nCompare with flush duration to understand I/O efficiency.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 115
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (service.node_id) (rate({__name__=\"pebble.flush.input.bytes_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Flush input bytes / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.\n\nCompaction purposes:\n- Merge overlapping keys\n- Reclaim deleted space\n- Optimize read performance\n- Level promotion\n\nHigh compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 121
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (service.node_id, db, status, reason) (rate({__name__=\"pebble.compaction.total\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}}: {{status}} {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Compactions / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Node 1: p99"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 121
+      },
+      "id": 64,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p50",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p95 ",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__=\"pebble.compaction.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "Node {{service.node_id}}: p99",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum by (service.node_id, db) (rate({__name__=\"pebble.compaction.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.compaction.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "hide": true,
+          "legendFormat": "Node {{service.node_id}}: mean",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Compaction duration (ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of compaction errors per second.\n\nALERT: Any non-zero value requires immediate investigation!\n\nCompaction errors may indicate:\n- Disk corruption\n- Out of disk space\n- Hardware failure\n- File system issues\n\nCheck system logs and disk health immediately.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 121
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (service.node_id, reason) (rate({__name__=\"pebble.compaction.total\", status=\"error\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "legendFormat": "Node {{service.node_id}}: {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Compaction errors / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).\n\nCRITICAL ALERT: Value of 1 means transactions are being delayed!\n\nWrite stalls occur when:\n- L0 has too many files\n- Memtable count too high\n- Compaction backlog too large\n\nImmediate actions:\n- Check disk I/O utilization\n- Consider faster storage (NVMe)\n- Review compaction settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 127
+      },
+      "id": 61,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max by (service.node_id, reason) ({__name__=\"pebble.write_stall.active\"})",
+          "legendFormat": "{{service.node_id}} / {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Write stall active (max)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of write stall events per second. Each stall temporarily blocks write operations.\n\nWrite stalls happen when Pebble's internal queues fill up:\n- memtable: Too many memtables waiting to flush\n- l0: Too many L0 SSTables\n- flush_slowdown: Flush falling behind\n\nFrequent stalls indicate storage cannot keep up with write rate. Consider:\n- Faster storage (NVMe SSD)\n- Reduced write rate\n- Tuning Pebble settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 127
+      },
+      "id": 62,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (db, reason) (rate({__name__=\"pebble.write_stall.total\"}[$__rate_interval]))",
+          "legendFormat": "{{db}} / {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Write stalls / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.\n\nStall duration directly impacts:\n- Transaction latency (blocked during stall)\n- Throughput (no progress during stall)\n- Client timeouts (if stall exceeds timeout)\n\nLong stalls (>1s) are critical. High P99 values indicate occasional severe blocking.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 127
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\"}[$__rate_interval])))",
+          "legendFormat": "p50 {{db}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{db}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{db}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+          "hide": true,
+          "legendFormat": "mean {{db}}",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Write stall duration",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 133
+      },
+      "id": 256,
+      "panels": [],
+      "title": "Caching & Attributes",
       "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of entries in the attribute cache by type.\n\n- input: Input volumes (credits)\n- output: Output volumes (debits)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 134
+      },
+      "id": 105,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cache.size{service.node_id=~\"$node\", type=\"input\"}",
+          "interval": "1s",
+          "legendFormat": "Input (Node {{service.node_id}})",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cache.size{service.node_id=~\"$node\", type=\"output\"}",
+          "interval": "1s",
+          "legendFormat": "Output (Node {{service.node_id}})",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cache.size{service.node_id=~\"$node\", type=\"account_metadata\"}",
+          "interval": "1s",
+          "legendFormat": "Account Metadata (Node {{service.node_id}})",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cache.size{service.node_id=~\"$node\", type=\"idempotency_keys\"}",
+          "interval": "1s",
+          "legendFormat": "Idempotency Keys (Node {{service.node_id}})",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Cache Size by Type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of cached Numscript programs per node. Shows how many unique scripts are currently stored in the cache.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 134
+      },
+      "id": 257,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "numscript.cache.size{service.node_id=~\"$node\"}",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Numscript Cache Size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of cache generation rotations and current generation.\n\nRotations occur when the raft index crosses a generation threshold, triggering cleanup of old cached data.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 142
+      },
+      "id": 258,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cache.generation{service.node_id=~\"$node\"}",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Generation",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cache.rotations{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Rotations/s",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Cache Generation & Rotations",
+      "type": "timeseries"
     },
     {
       "collapsed": true,
@@ -7128,16 +7484,16 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 115
+        "y": 140
       },
-      "id": 100,
+      "id": 200,
       "panels": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Number of cached Numscript programs per node. Shows how many unique scripts are currently stored in the cache.",
+          "description": "Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.\n\nBreakdown by attribute type:\n- input: Account input volumes (credits)\n- output: Account output volumes (debits)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -7167,7 +7523,6 @@
                   "type": "linear"
                 },
                 "showPoints": "never",
-                "showValues": false,
                 "spanNulls": false,
                 "stacking": {
                   "group": "A",
@@ -7187,18 +7542,342 @@
                   }
                 ]
               },
-              "unit": "none"
+              "unit": "µs"
             },
             "overrides": []
           },
           "gridPos": {
             "h": 8,
-            "w": 8,
-            "x": 8,
-            "y": 117
+            "w": 12,
+            "x": 0,
+            "y": 141
           },
-          "id": 102,
+          "id": 201,
           "options": {
+            "legend": {
+              "calcs": ["mean", "max"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "interval": "1s",
+              "legendFormat": "p50 - {{type}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "interval": "1s",
+              "legendFormat": "p95 - {{type}}",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "interval": "1s",
+              "legendFormat": "p99 - {{type}}",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Preload Duration (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.\n\nBreakdown by attribute type:\n- input: Account input volumes (credits)\n- output: Account output volumes (debits)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 141
+          },
+          "id": 202,
+          "options": {
+            "legend": {
+              "calcs": ["mean", "max"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(admission.preload.total{service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "interval": "1s",
+              "legendFormat": "{{type}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Preload Rate (by type)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Total time from Apply call to future resolution. Includes preload time, proposal time, and FSM application time.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "µs"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 149
+          },
+          "id": 203,
+          "options": {
+            "legend": {
+              "calcs": ["mean", "max"],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "interval": "1s",
+              "legendFormat": "p50 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "interval": "1s",
+              "legendFormat": "p95 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "interval": "1s",
+              "legendFormat": "p99 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Command Duration (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Distribution of Raft command sizes in bytes. Large commands may indicate many postings or large metadata.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 149
+          },
+          "id": 204,
+          "options": {
+            "bucketCount": 30,
+            "bucketOffset": 0,
+            "bucketSize": 0,
+            "combine": false,
             "legend": {
               "calcs": [],
               "displayMode": "list",
@@ -7206,7 +7885,6 @@
               "showLegend": true
             },
             "tooltip": {
-              "hideZeros": false,
               "mode": "single",
               "sort": "none"
             }
@@ -7219,260 +7897,19 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "numscript.cache.size{service.node_id=~\"$node\"}",
+              "expr": "sum(rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le)",
+              "format": "heatmap",
               "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}",
+              "legendFormat": "{{le}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Numscript Cache Size",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of cache generation rotations and current generation.\n\nRotations occur when the raft index crosses a generation threshold, triggering cleanup of old cached data.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "unit": "none"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 133
-          },
-          "id": 106,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.generation{service.node_id=~\"$node\"}",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: Generation",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(cache.rotations{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: Rotations/s",
-              "range": true,
-              "refId": "B"
-            }
-          ],
-          "title": "Cache Generation & Rotations",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of entries in the attribute cache by type.\n\n- input: Input volumes (credits)\n- output: Output volumes (debits)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "unit": "none"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 125
-          },
-          "id": 105,
-          "options": {
-            "legend": {
-              "calcs": ["last"],
-              "displayMode": "table",
-              "placement": "right",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"input\"}",
-              "interval": "1s",
-              "legendFormat": "Input (Node {{service.node_id}})",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"output\"}",
-              "interval": "1s",
-              "legendFormat": "Output (Node {{service.node_id}})",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"account_metadata\"}",
-              "interval": "1s",
-              "legendFormat": "Account Metadata (Node {{service.node_id}})",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"idempotency_keys\"}",
-              "interval": "1s",
-              "legendFormat": "Idempotency Keys (Node {{service.node_id}})",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Cache Size by Type",
-          "type": "timeseries"
+          "title": "Command Size Distribution",
+          "type": "histogram"
         }
       ],
-      "title": "Caching & Attributes",
+      "title": "Admission",
       "type": "row"
     }
   ],

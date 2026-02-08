@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 )
@@ -47,6 +48,8 @@ type Admission struct {
 	proposeQueueLoadHistogram metric.Int64Histogram
 	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
+	preloadDurationHistogram  metric.Int64Histogram
+	preloadCounter            metric.Int64Counter
 }
 
 // NewAdmission creates a new Admission handler.
@@ -102,6 +105,27 @@ func NewAdmission(
 		panic(err)
 	}
 
+	preloadDurationHistogram, err := meter.Int64Histogram(
+		"admission.preload.duration",
+		metric.WithDescription("Time spent loading preload values from store"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadCounter, err := meter.Int64Counter(
+		"admission.preload.total",
+		metric.WithDescription("Total number of preload operations from store"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Admission{
 		cache:                     cache,
 		store:                     store,
@@ -114,6 +138,8 @@ func NewAdmission(
 		commandSizeHistogram:      commandSizeHistogram,
 		proposeQueueLoadHistogram: proposeQueueLoadHistogram,
 		proposeQueueFullCounter:   proposeQueueFullCounter,
+		preloadDurationHistogram:  preloadDurationHistogram,
+		preloadCounter:            preloadCounter,
 	}
 }
 
@@ -163,6 +189,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 		// Check Input cache separately
 		if !cache.IsGuaranteed(a.cache.Input, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
 			result, err := a.loaders.Input.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
 				return a.attrs.Input.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -172,6 +199,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Input = append(loadedKeys.Input, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "input")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "input")))
 			}
 
 			a.logger.WithFields(map[string]any{
@@ -194,6 +225,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 		// Check Output cache separately
 		if !cache.IsGuaranteed(a.cache.Output, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
 			result, err := a.loaders.Output.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
 				return a.attrs.Output.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -203,6 +235,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Output = append(loadedKeys.Output, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "output")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "output")))
 			}
 
 			a.logger.WithFields(map[string]any{
@@ -235,6 +271,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 		// Check Reversions cache
 		if !cache.IsGuaranteed(a.cache.Reversions, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
 			result, err := a.loaders.Reversions.LoadOrWait(id, boundary, func() (bool, error) {
 				revertedValue, err := a.attrs.Reverted.ComputeValue(a.store, boundary, canonicalKey)
 				if err != nil {
@@ -251,6 +288,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Reversions = append(loadedKeys.Reversions, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "reversions")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "reversions")))
 			}
 
 			a.logger.WithFields(map[string]any{
@@ -281,6 +322,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 		// Check IdempotencyKeys cache
 		if !cache.IsGuaranteed(a.cache.IdempotencyKeys, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
 			result, err := a.loaders.IdempotencyKeys.LoadOrWait(id, boundary, func() (*commonpb.IdempotencyKeyValue, error) {
 				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -290,6 +332,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.IdempotencyKeys = append(loadedKeys.IdempotencyKeys, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "idempotency_keys")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "idempotency_keys")))
 			}
 
 			// Only send preload if the key exists in the store

@@ -162,6 +162,42 @@ Each peer connection has 3 priority queues for sending messages (one per priorit
 - `priority`: Queue priority level (0 = high, 1 = medium, 2 = low)
 - `priority_name`: Human-readable priority name (`high`, `medium`, `low`)
 
+## Admission Metrics
+
+The admission service handles order processing before Raft consensus. It preloads attribute values from the store when they are not available in the cache.
+
+### Preload Metrics
+
+When a value is not guaranteed to be in cache (based on the cache generation), the admission service loads it from the persistent store. These metrics track the performance of these preload operations.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `admission.preload.duration` | Histogram | µs | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
+| `admission.preload.total` | Counter | 1 | Total number of preload operations from store. High rates may indicate cache miss issues or cold startup. |
+
+**Attributes**:
+- `type`: Attribute type being preloaded (`input`, `output`, `reversions`, `idempotency_keys`)
+
+**Attribute Types**:
+| Type | Description |
+|------|-------------|
+| `input` | Account input volumes (credits received) |
+| `output` | Account output volumes (debits sent) |
+| `reversions` | Transaction reversion status |
+| `idempotency_keys` | Idempotency key mappings |
+
+**Preload Flow**: When processing a transaction, the admission service checks if required values (volumes, reversion status, idempotency keys) are in cache. If not guaranteed in cache due to generation rotation, it loads them from the persistent store. These metrics help identify:
+- Storage performance issues (high preload duration)
+- Cache efficiency problems (high preload rate after warmup)
+- Cold start behavior (expected high preload rate initially)
+
+### Command Metrics
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `admission.command.duration` | Histogram | µs | Total time from Apply call to future resolution. Includes preload, proposal, and FSM application. |
+| `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
+
 ## Pebble Storage Metrics
 
 The Pebble storage driver exposes metrics via an event listener. Pebble is used for the runtime store (balances, metadata).
@@ -386,6 +422,12 @@ The dashboard is organized into the following sections:
 - Numscript Cache Size
 - Cache Generation & Rotations
 - Cache Size by Type
+
+**Admission Section**:
+- Preload Duration (by type)
+- Preload Rate (by type)
+- Command Duration Percentiles
+- Command Size Distribution
 
 ### k6 Dashboard
 
