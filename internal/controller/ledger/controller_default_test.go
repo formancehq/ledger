@@ -75,7 +75,7 @@ func TestCreateTransactionWithoutSchema(t *testing.T) {
 			return log
 		})
 
-	_, _, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+	_, _, _, err := l.CreateTransaction(t.Context(), Parameters[CreateTransaction]{
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},
@@ -156,7 +156,7 @@ send [EUR/2 100] (
 			return log
 		})
 
-	_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
+	_, _, _, err := l.InsertSchema(t.Context(), Parameters[InsertSchema]{
 		Input: InsertSchema{
 			Version: schema.Version,
 			Data:    schema.SchemaData,
@@ -212,7 +212,7 @@ send [EUR/2 100] (
 			return log
 		})
 
-	_, _, _, err = l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+	_, _, _, err = l.CreateTransaction(t.Context(), Parameters[CreateTransaction]{
 		SchemaVersion: schemaVersion,
 		Input: CreateTransaction{
 			RunScript: runScript,

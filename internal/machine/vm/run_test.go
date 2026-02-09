@@ -1,7 +1,6 @@
 package vm
 
 import (
-	"context"
 	"errors"
 	"math/big"
 	"testing"
@@ -432,9 +431,9 @@ func TestRun(t *testing.T) {
 			m := NewMachine(*program)
 			require.NoError(t, m.SetVarsFromJSON(tc.vars))
 
-			err = m.ResolveResources(context.Background(), tc.store)
+			err = m.ResolveResources(t.Context(), tc.store)
 			require.NoError(t, err)
-			require.NoError(t, m.ResolveBalances(context.Background(), tc.store))
+			require.NoError(t, m.ResolveBalances(t.Context(), tc.store))
 
 			result, err := Run(m, RunScript{
 				Script: Script{

@@ -35,7 +35,16 @@ linters:
     - errchkjson
     - godox
     - tparallel
+    - usetesting
   settings:
+    usetesting:
+      os-create-temp: true
+      os-mkdir-temp: true
+      os-setenv: true
+      os-temp-dir: true
+      os-chdir: true
+      context-background: true
+      context-todo: true
     godox:
       # Report any comments starting with keywords
       keywords:
