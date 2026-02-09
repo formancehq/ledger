@@ -31,7 +31,17 @@ linters:
     - unparam
     - unused
     - unconvert
+    - errcheck
+    - errchkjson
+    - godox
   settings:
+    godox:
+      # Report any comments starting with keywords
+      keywords:
+        - BUG
+        - FIXME
+        - OPTIMIZE
+        - HACK
     gocyclo:
       # Minimal code complexity to report.
       # Default: 30 (but we recommend 10-20)
