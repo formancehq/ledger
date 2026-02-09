@@ -34,6 +34,7 @@ linters:
     - errcheck
     - errchkjson
     - godox
+    - tparallel
   settings:
     godox:
       # Report any comments starting with keywords

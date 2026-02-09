@@ -228,6 +228,7 @@ func TestAccountsList(t *testing.T) {
 	for _, testCase := range testCases {
 		tc := testCase
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			if tc.expectStatusCode == 0 {
 				tc.expectStatusCode = http.StatusOK

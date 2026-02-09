@@ -420,6 +420,7 @@ func TestRun(t *testing.T) {
 	for _, tc := range runTestCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			if tc.store == nil {
 				tc.store = StaticStore{}

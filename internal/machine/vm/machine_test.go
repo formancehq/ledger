@@ -1748,6 +1748,7 @@ func TestWorldNonSourceVariable(t *testing.T) {
 }
 
 func TestSetVarsFromJSON(t *testing.T) {
+	t.Parallel()
 
 	type testCase struct {
 		name          string
@@ -1787,6 +1788,7 @@ func TestSetVarsFromJSON(t *testing.T) {
 }
 
 func TestResolveResources(t *testing.T) {
+	t.Parallel()
 
 	type testCase struct {
 		name          string
@@ -1831,6 +1833,7 @@ func TestResolveResources(t *testing.T) {
 }
 
 func TestResolveBalances(t *testing.T) {
+	t.Parallel()
 
 	type testCase struct {
 		name          string
