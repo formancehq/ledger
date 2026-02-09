@@ -37,8 +37,10 @@ securityContext:
 
 # Application configuration
 config:
-  # Raft/gRPC configuration (Raft transport uses gRPC, so same port)
-  bindAddr: "0.0.0.0:8888"  # Port for both Raft and gRPC
+  # Raft transport configuration (internal inter-node communication)
+  bindAddr: "0.0.0.0:7777"  # Raft transport port
+  # gRPC service port (external client-facing API)
+  grpcPort: 8888
   httpPort: 9000
   walDir: "/data/raft"
   dataDir: "/data/app"
@@ -165,7 +167,8 @@ config:
 service:
   type: ClusterIP
   httpPort: 9000
-  grpcPort: 8888  # Same port as bindAddr (Raft transport uses gRPC)
+  grpcPort: 8888  # External service API port
+  raftPort: 7777  # Internal Raft transport port
   annotations: {}
 
 # Headless service for Raft peer discovery

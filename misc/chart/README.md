@@ -171,7 +171,8 @@ The following table lists the configurable parameters and their default values:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `config.bindAddr` | Raft/gRPC bind address (same port for both) | `0.0.0.0:8888` |
+| `config.bindAddr` | Raft transport bind address (internal inter-node communication) | `0.0.0.0:7777` |
+| `config.grpcPort` | gRPC service port (external client-facing API) | `8888` |
 | `config.httpPort` | HTTP server port | `9000` |
 | `config.dataDir` | Data directory for Raft | `/data/raft` |
 | `config.raft.snapshotThreshold` | Number of logs before triggering a snapshot | `100` |
@@ -210,7 +211,8 @@ The chart uses the `core` chart's monitoring helpers. Configuration can be set a
 |-----------|-------------|---------|
 | `service.type` | Kubernetes service type | `ClusterIP` |
 | `service.httpPort` | HTTP service port | `9000` |
-| `service.grpcPort` | gRPC service port (same as bindAddr port) | `8888` |
+| `service.grpcPort` | gRPC service port (external client-facing API) | `8888` |
+| `service.raftPort` | Raft transport port (internal inter-node communication) | `7777` |
 | `headlessService.enabled` | Enable headless service for peer discovery | `true` |
 
 #### Accessing Individual Pods
@@ -226,7 +228,8 @@ With a StatefulSet and headless service, each pod gets a stable DNS name that al
 
 **Ports**:
 - HTTP: `{pod-dns-name}:9000`
-- gRPC/Raft: `{pod-dns-name}:8888`
+- gRPC Service: `{pod-dns-name}:8888`
+- Raft Transport: `{pod-dns-name}:7777` (internal)
 
 **Usage examples**:
 ```bash

@@ -12,7 +12,11 @@ The gRPC API provides a programmatic interface for interacting with the ledger c
 
 ### Default Port
 
-The gRPC server listens on port `8888` by default (configurable via `--bind-addr`).
+The gRPC service server listens on port `8888` by default (configurable via `--grpc-port`).
+
+> **Note**: There are two separate gRPC servers:
+> - **Service server** (port 8888): External client-facing API (BucketService, ClusterService, Health)
+> - **Raft server** (port 7777): Internal inter-node communication (RaftTransport, SnapshotService)
 
 ### Connection Example
 
@@ -532,19 +536,19 @@ ledgerctl transactions create --ledger my-ledger \
 
 ## Request Forwarding
 
-When a gRPC request reaches a follower node, it is automatically forwarded to the leader:
+When a gRPC request reaches a follower node, it is automatically forwarded to the leader via the **ServiceConnectionPool** (connecting to the leader's service port 8888):
 
 ```
-┌────────────┐     gRPC      ┌────────────┐    Forward    ┌────────────┐
-│   Client   │───────────────▶  Follower  │───────────────▶   Leader   │
-└────────────┘               └────────────┘               └────────────┘
-       ▲                            │                           │
-       │                            │                           │
-       └────────────────────────────┴───────────────────────────┘
-                          Response returned
+┌────────────┐   gRPC:8888   ┌────────────┐  Forward:8888  ┌────────────┐
+│   Client   │───────────────▶  Follower  │────────────────▶   Leader   │
+└────────────┘               └────────────┘                └────────────┘
+       ▲                            │                            │
+       │                            │                            │
+       └────────────────────────────┴────────────────────────────┘
+                           Response returned
 ```
 
-This is transparent to the client - the client can connect to any node.
+This is transparent to the client - the client can connect to any node. The `RoutedController` handles leader detection and request forwarding.
 
 ## Proto Files
 

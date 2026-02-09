@@ -29,25 +29,26 @@ var _ = Describe("Simple cluster", func() {
 		leaderID uint64
 	)
 	const (
-		countInstances   = 3
-		gatewayBasePort  = 7200
-		nodeGRPCBasePort = 8000
-		nodeHTTPBasePort = 9000
+		countInstances       = 3
+		gatewayBasePort      = 6200 // Gateway ports for Raft traffic interception
+		nodeRaftBasePort     = 6000 // Internal Raft transport port (avoid macOS Control Center on 7000)
+		nodeServiceBasePort  = 8000 // External service API port
+		nodeHTTPBasePort     = 9000
 	)
 
 	BeforeEach(func() {
 		ctx = logging.TestingContext()
 
-		// Create gateway that forwards to node gRPC ports
+		// Create gateway that forwards to node Raft ports (internal transport)
 		gatewayPorts := make([]int, countInstances)
-		nodeAddresses := make([]string, countInstances)
+		nodeRaftAddresses := make([]string, countInstances)
 		for i := range countInstances {
 			gatewayPorts[i] = gatewayBasePort + i
-			nodeAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodeGRPCBasePort+i)
+			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodeRaftBasePort+i)
 		}
 
 		var err error
-		gateway, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeAddresses)
+		gateway, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeRaftAddresses)
 		Expect(err).To(Succeed())
 
 		// Start gateway before starting nodes
@@ -75,7 +76,8 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithHTTPPort(nodeHTTPBasePort+i),
 					testserver.WithWalDir(walTmpDir),
 					testserver.WithDataDir(dataTmpDir),
-					testserver.WithGRPCPort(nodeGRPCBasePort+i),
+					testserver.WithRaftPort(nodeRaftBasePort+i),     // Internal Raft transport
+					testserver.WithGRPCPort(nodeServiceBasePort+i),  // External service API
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
@@ -88,10 +90,12 @@ var _ = Describe("Simple cluster", func() {
 							if i == j {
 								continue
 							}
-							// Use gateway ports instead of direct node ports
+							// Use gateway ports for Raft transport (peers communicate through gateway)
+							// Use direct service ports for request forwarding (BucketService)
 							ret = append(ret, node.Peer{
-								ID:      uint64(j + 1),
-								Address: fmt.Sprintf("127.0.0.1:%d", gatewayBasePort+j),
+								ID:             uint64(j + 1),
+								Address:        fmt.Sprintf("127.0.0.1:%d", gatewayBasePort+j),
+								ServiceAddress: fmt.Sprintf("127.0.0.1:%d", nodeServiceBasePort+j),
 							})
 						}
 
@@ -101,8 +105,8 @@ var _ = Describe("Simple cluster", func() {
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
-			// Create gRPC client
-			grpcClient, clusterClient, grpcConn, err := newGRPCClient(nodeGRPCBasePort + i)
+			// Create gRPC client connecting to Service API port
+			grpcClient, clusterClient, grpcConn, err := newGRPCClient(nodeServiceBasePort + i)
 			Expect(err).To(Succeed())
 			DeferCleanup(func() {
 				_ = grpcConn.Close()
@@ -115,7 +119,7 @@ var _ = Describe("Simple cluster", func() {
 				grpcConn:      grpcConn,
 				walDir:        walTmpDir,
 				dataDir:       dataTmpDir,
-				grpcPort:      nodeGRPCBasePort + i,
+				grpcPort:      nodeServiceBasePort + i,
 			})
 		}
 		Eventually(servers[0]).To(HaveALeader(&leaderID))

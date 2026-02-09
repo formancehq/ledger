@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -13,15 +12,62 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
 
-type Server struct {
+// baseServer contains common server functionality
+type baseServer struct {
 	server   *grpc.Server
 	listener net.Listener
 	logger   logging.Logger
 	port     int
+	name     string
+}
+
+func (s *baseServer) GetServer() *grpc.Server {
+	return s.server
+}
+
+func (s *baseServer) Start(listening chan struct{}) error {
+	lis, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.port))
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+	s.listener = lis
+
+	s.logger.
+		WithFields(map[string]any{"addr": lis.Addr().String()}).
+		Infof("Starting %s server", s.name)
+
+	close(listening)
+
+	if err := s.server.Serve(lis); err != nil {
+		return fmt.Errorf("%s server failed: %w", s.name, err)
+	}
+	return nil
+}
+
+func (s *baseServer) Stop() error {
+	s.logger.Infof("Stopping %s server", s.name)
+	if s.server != nil {
+		s.server.Stop()
+		s.server = nil
+	}
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+	return nil
+}
+
+// RaftServer is the gRPC server for Raft transport (internal inter-node communication)
+type RaftServer struct {
+	baseServer
+}
+
+// ServiceServer is the gRPC server for service API (external client-facing)
+type ServiceServer struct {
+	baseServer
 }
 
 // errorConversionInterceptor converts known errors to proper gRPC status codes
@@ -68,7 +114,34 @@ func convertToGRPCError(err error) error {
 	return err
 }
 
-func NewServer(port int, logger logging.Logger, debug bool) *Server {
+// NewRaftServer creates a new gRPC server for Raft transport (internal)
+// This server is optimized for high-throughput inter-node communication
+// and does not include OpenTelemetry instrumentation to minimize overhead
+func NewRaftServer(port int, logger logging.Logger) *RaftServer {
+	opts := []grpc.ServerOption{
+		grpc.InitialWindowSize(16 * 1024 * 1024),
+		grpc.InitialConnWindowSize(64 * 1024 * 1024),
+		grpc.ReadBufferSize(1 * 1024 * 1024),
+		grpc.WriteBufferSize(1 * 1024 * 1024),
+		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
+		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+	}
+
+	server := grpc.NewServer(opts...)
+
+	return &RaftServer{
+		baseServer: baseServer{
+			port:   port,
+			logger: logger,
+			server: server,
+			name:   "Raft gRPC",
+		},
+	}
+}
+
+// NewServiceServer creates a new gRPC server for service API (external)
+// This server includes OpenTelemetry instrumentation and error conversion
+func NewServiceServer(port int, logger logging.Logger, debug bool) *ServiceServer {
 	// Always add error conversion interceptor
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		errorConversionInterceptor(),
@@ -97,12 +170,7 @@ func NewServer(port int, logger logging.Logger, debug bool) *Server {
 	}
 
 	opts := []grpc.ServerOption{
-		// todo: make configurable (performance cost)
-		grpc.StatsHandler(otelgrpc.NewServerHandler(
-			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
-				return !strings.Contains(info.FullMethodName, "RaftTransportService")
-			}),
-		)),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.InitialWindowSize(16 * 1024 * 1024),
 		grpc.InitialConnWindowSize(64 * 1024 * 1024),
 		grpc.ReadBufferSize(1 * 1024 * 1024),
@@ -118,46 +186,12 @@ func NewServer(port int, logger logging.Logger, debug bool) *Server {
 	// Enable gRPC reflection for debugging tools like grpcurl
 	reflection.Register(server)
 
-	return &Server{
-		port:   port,
-		logger: logger,
-		server: server,
+	return &ServiceServer{
+		baseServer: baseServer{
+			port:   port,
+			logger: logger,
+			server: server,
+			name:   "Service gRPC",
+		},
 	}
-}
-
-func (s *Server) GetServer() *grpc.Server {
-	return s.server
-}
-
-func (s *Server) Start(listening chan struct{}) error {
-	lis, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.port))
-	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
-	}
-	s.listener = lis
-
-	s.logger.
-		WithFields(map[string]any{"addr": lis.Addr().String()}).
-		Infof("Starting gRPC server")
-
-	close(listening)
-
-	if err := s.server.Serve(lis); err != nil {
-		return fmt.Errorf("gRPC server failed: %w", err)
-	}
-	return nil
-}
-
-func (s *Server) Stop() error {
-	s.logger.Infof("Stopping gRPC server")
-	if s.server != nil {
-		// todo: could be a graceful shutdown but we need to handle properly in the raft transport
-		s.server.Stop()
-		s.server = nil
-	}
-	if s.listener != nil {
-		_ = s.listener.Close()
-		s.listener = nil
-	}
-	return nil
 }

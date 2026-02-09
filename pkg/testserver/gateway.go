@@ -8,9 +8,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
@@ -112,7 +110,8 @@ func (g *Gateway) Start(ctx context.Context) error {
 		// Create gRPC server
 		server := grpc.NewServer()
 
-		// Register all services with forwarding implementations
+		// Register Raft-related services only (RaftTransportService and SnapshotService)
+		// These are the internal inter-node communication services that the gateway proxies
 		rafttransportpb.RegisterRaftTransportServiceServer(server, &raftTransportGateway{
 			logger: g.logger.WithFields(map[string]any{
 				"gateway_port": port,
@@ -120,14 +119,6 @@ func (g *Gateway) Start(ctx context.Context) error {
 			}),
 			client:  rafttransportpb.NewRaftTransportServiceClient(conn),
 			gateway: g,
-		})
-
-		servicepb.RegisterBucketServiceServer(server, &bucketServiceGateway{
-			logger: g.logger.WithFields(map[string]any{
-				"gateway_port": port,
-				"node_addr":    nodeAddr,
-			}),
-			client: servicepb.NewBucketServiceClient(conn),
 		})
 
 		snapshotpb.RegisterSnapshotServiceServer(server, &snapshotServiceGateway{
@@ -341,82 +332,6 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 		return err1
 	}
 	return err2
-}
-
-// bucketServiceGateway forwards BucketService calls
-type bucketServiceGateway struct {
-	servicepb.UnimplementedBucketServiceServer
-	logger logging.Logger
-	client servicepb.BucketServiceClient
-}
-
-func (g *bucketServiceGateway) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
-	return g.client.Apply(ctx, req)
-}
-
-func (g *bucketServiceGateway) CreateLedger(ctx context.Context, req *servicepb.CreateLedgerRequest) (*commonpb.LedgerInfo, error) {
-	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: req,
-				},
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(resp.Logs) == 0 {
-		return nil, fmt.Errorf("no logs returned")
-	}
-	return resp.Logs[0].Payload.GetCreateLedger().GetInfo(), nil
-}
-
-func (g *bucketServiceGateway) DeleteLedger(ctx context.Context, req *servicepb.DeleteLedgerRequest) (*servicepb.DeleteLedgerResponse, error) {
-	_, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_DeleteLedger{
-					DeleteLedger: req,
-				},
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &servicepb.DeleteLedgerResponse{}, nil
-}
-
-func (g *bucketServiceGateway) GetAllLedgersInfo(req *servicepb.GetAllLedgersRequest, stream servicepb.BucketService_GetAllLedgersInfoServer) error {
-	ctx := stream.Context()
-
-	clientStream, err := g.client.GetAllLedgersInfo(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	for {
-		ledger, err := clientStream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := stream.Send(ledger); err != nil {
-			return err
-		}
-	}
-}
-
-func (g *bucketServiceGateway) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
-	return g.client.GetLedger(ctx, req)
-}
-
-func (g *bucketServiceGateway) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
-	return g.client.GetTransaction(ctx, req)
 }
 
 // snapshotServiceGateway forwards SnapshotService calls

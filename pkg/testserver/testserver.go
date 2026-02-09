@@ -20,6 +20,13 @@ func WithHTTPPort(port int) testservice.InstrumentationFunc {
 
 func WithGRPCPort(port int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--grpc-port", fmt.Sprintf("%d", port))
+		return nil
+	}
+}
+
+func WithRaftPort(port int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--bind-addr", fmt.Sprintf(":%d", port))
 		return nil
 	}
@@ -56,7 +63,8 @@ func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
 func WithPeers(peers ...node.Peer) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		for _, peer := range peers {
-			cfg.AppendArgs("--peers", fmt.Sprintf("%d/%s", peer.ID, peer.Address))
+			// Format: <id>/<raftAddress>/<serviceAddress>
+			cfg.AppendArgs("--peers", fmt.Sprintf("%d/%s/%s", peer.ID, peer.Address, peer.ServiceAddress))
 		}
 		return nil
 	}

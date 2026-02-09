@@ -562,7 +562,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 						Ledger: testLedgerName,
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: true, // Force flag should skip volume extraction
+								Force: true, // Force flag skips volume extraction (deltas only)
 								Postings: []*commonpb.Posting{
 									{
 										Source:      "users:alice",
@@ -580,8 +580,8 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		volumes := admission.extractNeededVolumes(orders)
 
-		// Should be empty because force=true skips volume extraction
-		require.Len(t, volumes, 0, "force=true should skip volume extraction for create transaction")
+		// Should have 0 volume keys with force=true - processor stores deltas only
+		require.Len(t, volumes, 0, "force=true should skip volume extraction")
 	})
 
 	t.Run("extracts volumes when force is false for create transaction", func(t *testing.T) {
@@ -632,13 +632,13 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.True(t, hasBob)
 	})
 
-	t.Run("mixed orders with and without force", func(t *testing.T) {
+	t.Run("mixed orders: force=true skipped, force=false extracted", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
-			// First order with force=true - should be skipped
+			// First order with force=true - should skip volume extraction
 			{
 				Type: &raftcmdpb.Order_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
@@ -648,8 +648,8 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 								Force: true,
 								Postings: []*commonpb.Posting{
 									{
-										Source:      "users:skipped",
-										Destination: "users:also_skipped",
+										Source:      "users:force_source",
+										Destination: "users:force_dest",
 										Amount:      commonpb.NewBigInt(big.NewInt(100)),
 										Asset:       "USD",
 									},
@@ -669,8 +669,8 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 								Force: false,
 								Postings: []*commonpb.Posting{
 									{
-										Source:      "users:included",
-										Destination: "users:also_included",
+										Source:      "users:normal_source",
+										Destination: "users:normal_dest",
 										Amount:      commonpb.NewBigInt(big.NewInt(200)),
 										Asset:       "EUR",
 									},
@@ -684,24 +684,24 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		volumes := admission.extractNeededVolumes(orders)
 
-		// Should only have volumes from the second order (force=false)
+		// Should have volumes only from force=false order (2 volume keys)
 		require.Len(t, volumes, 2)
 
-		// Verify skipped volumes are not present
-		skippedKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:skipped"},
+		// Verify force=true volumes are NOT present
+		forceSourceKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:force_source"},
 			Asset:      "USD",
 		}
-		_, hasSkipped := volumes[skippedKey]
-		require.False(t, hasSkipped, "force=true order should not have volumes extracted")
+		_, hasForceSource := volumes[forceSourceKey]
+		require.False(t, hasForceSource, "force=true order should NOT have volumes extracted")
 
-		// Verify included volumes are present
-		includedKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:included"},
+		// Verify force=false volumes are present
+		normalSourceKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:normal_source"},
 			Asset:      "EUR",
 		}
-		_, hasIncluded := volumes[includedKey]
-		require.True(t, hasIncluded, "force=false order should have volumes extracted")
+		_, hasNormalSource := volumes[normalSourceKey]
+		require.True(t, hasNormalSource, "force=false order should have volumes extracted")
 	})
 
 	t.Run("force on revert still extracts volumes", func(t *testing.T) {

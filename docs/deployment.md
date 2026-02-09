@@ -20,7 +20,8 @@ just run
 # or manually
 go run . run \
   --node-id 1 \
-  --bind-addr 127.0.0.1:8888 \
+  --bind-addr 127.0.0.1:7777 \
+  --grpc-port 8888 \
   --wal-dir ./wal/node-1 \
   --data-dir ./data/node-1 \
   --http-port 9000
@@ -36,11 +37,12 @@ ledger-v3-poc run [flags]
 
 Available flags for `run`:
 - `--node-id`: Numeric node ID for this instance (must be non-zero)
-- `--bind-addr`: Address to bind to for gRPC (default: `0.0.0.0:8888`)
+- `--bind-addr`: Address to bind to for Raft transport (internal inter-node communication, default: `0.0.0.0:7777`)
+- `--grpc-port`: Port for gRPC service API (external client-facing, default: `8888`)
 - `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
-- `--peers`: Initial peer list (format: `<id>/<address>`, e.g., `1/node-1:8888,2/node-2:8888`)
+- `--peers`: Initial peer list (format: `<id>/<raftAddress>/<serviceAddress>`, e.g., `1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888`)
 - `--http-port`: HTTP server port (default: `9000`)
 
 ### Configuration
@@ -52,7 +54,8 @@ Options can be provided via:
 Example with environment variables:
 ```bash
 export NODE_ID=1
-export BIND_ADDR=127.0.0.1:8888
+export BIND_ADDR=127.0.0.1:7777
+export GRPC_PORT=8888
 export DATA_DIR=./data/node-1
 export HTTP_PORT=9000
 
@@ -95,7 +98,8 @@ replicaCount: 3  # Must be odd for Raft
 
 ```yaml
 config:
-  bindAddr: "0.0.0.0:8888"  # Port for both Raft and gRPC
+  bindAddr: "0.0.0.0:7777"  # Raft transport port (internal inter-node communication)
+  grpcPort: 8888            # gRPC service port (external client-facing API)
   httpPort: 9000
   dataDir: "/data/raft"
   debug: false
@@ -130,7 +134,8 @@ persistence:
 service:
   type: ClusterIP
   httpPort: 9000
-  grpcPort: 8888  # Same port as bindAddr (Raft transport uses gRPC)
+  grpcPort: 8888   # External gRPC service port
+  raftPort: 7777   # Internal Raft transport port
   annotations: {}
 ```
 

@@ -2,7 +2,6 @@ package attributes
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -187,7 +186,8 @@ type Entry[T any] struct {
 
 type DerivedKeyStore[K Key, T any] struct {
 	*KeyStore[K, T]
-	values map[K]T
+	values  map[K]T
+	cloneFn func(T) T
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
@@ -195,16 +195,20 @@ func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
 }
 
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
+	// First check local values (uncommitted changes)
+	if localV, ok := s.values[canonical]; ok {
+		return localV, nil
+	}
+
+	// Then check underlying store
 	v, _, err := s.KeyStore.Get(canonical.Bytes())
-	if err != nil && !errors.Is(err, data.ErrNotFound) {
+	if err != nil {
 		return v, err
 	}
-	if errors.Is(err, data.ErrNotFound) {
-		localV, ok := s.values[canonical]
-		if !ok {
-			return v, data.ErrNotFound
-		}
-		return localV, nil
+
+	// Clone to prevent in-place modifications affecting the underlying store
+	if s.cloneFn != nil {
+		v = s.cloneFn(v)
 	}
 
 	return v, nil
@@ -236,10 +240,11 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], error) {
 	return touched, nil
 }
 
-func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T]) *DerivedKeyStore[K, T] {
+func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore: store,
 		values:   make(map[K]T),
+		cloneFn:  cloneFn,
 	}
 }
 

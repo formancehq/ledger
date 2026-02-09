@@ -7,7 +7,7 @@ import (
 
 type NodeConfig struct {
 	NodeID               uint64 // Numeric rawNode ID
-	Peers                []Peer // Format: "<id>/<address>" (e.g., "1/rawNode-1:8888")
+	Peers                []Peer // Format: "<id>/<raftAddress>/<serviceAddress>" (e.g., "1/node-1:7777/node-1:8888")
 	WalDir               string
 	SnapshotThreshold    uint64        // Number of logs before triggering a snapshot
 	SnapshotInterval     time.Duration // Minimum interval between snapshots
@@ -61,6 +61,7 @@ func (cfg *NodeConfig) SetDefaults() {
 }
 
 type Peer struct {
-	ID      uint64
-	Address string
+	ID             uint64
+	Address        string // Raft transport address
+	ServiceAddress string // Service API address (for request forwarding)
 }

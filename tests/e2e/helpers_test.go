@@ -330,6 +330,9 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 		Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 	})
 
+	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
+	raftPort := grpcPort - 1000
+
 	server := testservice.New(cmdserver.NewRunCommand,
 		testservice.WithInstruments(
 			testservice.DebugInstrumentation(debug),
@@ -338,7 +341,8 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 			testserver.WithHTTPPort(httpPort),
 			testserver.WithWalDir(walTmpDir),
 			testserver.WithDataDir(dataTmpDir),
-			testserver.WithGRPCPort(grpcPort),
+			testserver.WithRaftPort(raftPort), // Internal Raft transport
+			testserver.WithGRPCPort(grpcPort), // External service API
 			testserver.WithSnapshotThreshold(10),
 			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 			testserver.WithRaftTickInterval(10*time.Millisecond),

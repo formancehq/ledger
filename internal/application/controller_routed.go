@@ -14,7 +14,7 @@ import (
 
 type RoutedController struct {
 	*node.Node
-	connectionPool  *transport.ConnectionPool
+	servicePool     *transport.ServiceConnectionPool
 	localController ctrl.Controller
 }
 
@@ -26,7 +26,10 @@ func (b *RoutedController) getCtrl() (ctrl.Controller, error) {
 		return nil, commonpb.ErrNoLeader
 	}
 
-	grpcConn := b.connectionPool.GetConnection(b.GetLeader())
+	grpcConn := b.servicePool.GetConnection(b.GetLeader())
+	if grpcConn == nil {
+		return nil, commonpb.ErrNoLeader
+	}
 
 	return NewLedgerGrpcClient(servicepb.NewBucketServiceClient(grpcConn)), nil
 }
@@ -93,10 +96,10 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 
 var _ ctrl.Controller = (*RoutedController)(nil)
 
-func NewRoutedController(localController ctrl.Controller, node *node.Node, connectionPool *transport.ConnectionPool) *RoutedController {
+func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ServiceConnectionPool) *RoutedController {
 	return &RoutedController{
 		Node:            node,
-		connectionPool:  connectionPool,
+		servicePool:     servicePool,
 		localController: localController,
 	}
 }

@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
-	health "google.golang.org/grpc/health"
+	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -111,17 +111,22 @@ func Module() fx.Option {
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
-			func(cfg Config, logger logging.Logger) (*Server, error) {
+			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
+			func(cfg Config, logger logging.Logger) (*RaftServer, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
 				}
-				grpcPort, err := strconv.Atoi(raftPort)
+				port, err := strconv.Atoi(raftPort)
 				if err != nil {
 					return nil, fmt.Errorf("invalid port in bind address: %w", err)
 				}
 
-				return NewServer(grpcPort, logger, cfg.Debug), nil
+				return NewRaftServer(port, logger), nil
+			},
+			// ServiceServer for external client-facing API
+			func(cfg Config, logger logging.Logger) *ServiceServer {
+				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
 			},
 			func(logger logging.Logger, ctrl ctrl.Controller, s *data.Store) servicepb.BucketServiceServer {
 				return NewBucketServiceServer(logger, ctrl, s)
@@ -156,7 +161,7 @@ func Module() fx.Option {
 			},
 			func(
 				raftNode *node.Node,
-				connectionPool *transport.ConnectionPool,
+				servicePool *transport.ServiceConnectionPool,
 				admission ctrl.Admission,
 				store *data.Store,
 				logger logging.Logger,
@@ -165,7 +170,7 @@ func Module() fx.Option {
 				return NewRoutedController(
 					ctrl.NewDefaultController(admission, store, logger, attrs),
 					raftNode,
-					connectionPool,
+					servicePool,
 				)
 			},
 		),
@@ -225,38 +230,45 @@ func Module() fx.Option {
 					},
 				})
 			},
-			func(grpcServer *Server, transport *node.DefaultTransport) error {
+			// Register Raft transport and Snapshot services on RaftServer (internal)
+			func(raftServer *RaftServer, transport *node.DefaultTransport) error {
+				node.RegisterRaftTransportService(raftServer.GetServer(), transport)
+				return nil
+			},
+			func(raftServer *RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
+				RegisterSnapshotService(raftServer.GetServer(), snapshotServiceServer)
+				return nil
+			},
+			// Register business services on ServiceServer (external)
+			func(serviceServer *ServiceServer) error {
 				hs := health.NewServer()
-				healthpb.RegisterHealthServer(grpcServer.GetServer(), hs)
-				node.RegisterRaftTransportService(grpcServer.GetServer(), transport)
+				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
-			func(grpcServer *Server, bucketServiceServer servicepb.BucketServiceServer) error {
-				RegisterBucketService(grpcServer.GetServer(), bucketServiceServer)
+			func(serviceServer *ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
+				RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
 				return nil
 			},
-			func(grpcServer *Server, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
-				RegisterSnapshotService(grpcServer.GetServer(), snapshotServiceServer)
+			func(serviceServer *ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
+				RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
 				return nil
 			},
-			func(grpcServer *Server, clusterServiceServer clusterpb.ClusterServiceServer) error {
-				RegisterClusterService(grpcServer.GetServer(), clusterServiceServer)
-				return nil
-			},
+			// Start Raft server (internal) - must start before adding peers
 			func(
 				lc fx.Lifecycle,
-				grpcServer *Server,
+				raftServer *RaftServer,
 				logger logging.Logger,
 				defaultTransport *node.DefaultTransport,
+				servicePool *transport.ServiceConnectionPool,
 				cfg node.NodeConfig,
 			) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting GRPC server")
+						logger.Infof("Starting Raft gRPC server")
 						listening := make(chan struct{})
 						otlplogs.Go(func() {
-							if err := grpcServer.Start(listening); err != nil {
+							if err := raftServer.Start(listening); err != nil {
 								panic(err)
 							}
 						}, logger)
@@ -267,18 +279,52 @@ func Module() fx.Option {
 						case <-listening:
 						}
 
-						logger.Infof("GRPC server started successfully")
+						logger.Infof("Raft gRPC server started successfully")
 						for _, peerEntry := range cfg.Peers {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
-							logger.Debugf("Adding peer to transport")
+							logger.Debugf("Adding peer to transport and service pool")
 							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
+							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
+								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
+							}
 						}
 
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping GRPC server")
-						return grpcServer.Stop()
+						logger.Infof("Stopping Raft gRPC server")
+						return raftServer.Stop()
+					},
+				})
+			},
+			// Start Service server (external)
+			func(
+				lc fx.Lifecycle,
+				serviceServer *ServiceServer,
+				logger logging.Logger,
+			) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						logger.Infof("Starting Service gRPC server")
+						listening := make(chan struct{})
+						otlplogs.Go(func() {
+							if err := serviceServer.Start(listening); err != nil {
+								panic(err)
+							}
+						}, logger)
+
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-listening:
+						}
+
+						logger.Infof("Service gRPC server started successfully")
+						return nil
+					},
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping Service gRPC server")
+						return serviceServer.Stop()
 					},
 				})
 			},

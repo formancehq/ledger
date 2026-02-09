@@ -172,12 +172,12 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Boundaries:          kv.NewCopier(proto.CloneOf, fsm.boundaries),
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
-		Input:               attributes.NewDerivedKeyStore(fsm.Input),
-		Output:              attributes.NewDerivedKeyStore(fsm.Output),
-		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata),
-		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata),
-		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions),
-		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys),
+		Input:               attributes.NewDerivedKeyStore(fsm.Input, proto.CloneOf),
+		Output:              attributes.NewDerivedKeyStore(fsm.Output, proto.CloneOf),
+		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, proto.CloneOf),
+		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, proto.CloneOf),
+		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
+		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, proto.CloneOf),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
 	}
 }

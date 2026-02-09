@@ -9,6 +9,7 @@ type Config struct {
 	RaftConfig      node.NodeConfig
 	Debug           bool
 	HTTPPort        int
+	GRPCPort        int
 	TransportConfig node.TransportConfig
 	DataDir         string
 	PebbleConfig    data.Config

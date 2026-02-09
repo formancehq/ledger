@@ -4,13 +4,37 @@
 
 The Ledger v3 POC uses gRPC for inter-node communication within the Raft cluster. This document describes the connection architecture and the measures implemented to ensure the fastest possible automatic reconnection during rolling deployments or network failures.
 
-## Architecture
+## Two gRPC Servers per Node
+
+Each node runs **two separate gRPC servers** on different ports:
+
+| Server | Port | Purpose | Services |
+|--------|------|---------|----------|
+| **Service Server** | 8888 | External API & request forwarding | `BucketService`, `ClusterService`, `Health` |
+| **Raft Server** | 7777 | Internal Raft communication | `RaftTransport`, `SnapshotService` |
+
+### Two Connection Pools
+
+Correspondingly, each node maintains **two connection pools**:
+
+1. **ConnectionPool** (`internal/service/transport/connection_pool.go`): Manages connections to peers' **Raft ports** (7777) for Raft message exchange
+2. **ServiceConnectionPool** (`internal/service/transport/service_pool.go`): Manages connections to peers' **Service ports** (8888) for request forwarding to the leader
+
+### Peer Configuration
+
+Peers are configured with both addresses using the format: `<id>/<raftAddress>/<serviceAddress>`
+
+```bash
+--peers "1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888"
+```
+
+The Raft transport handles internal inter-node communication for consensus:
 
 ```mermaid
 graph TB
     subgraph "Node A"
         Transport[Transport Layer]
-        ConnPool[Connection Pool]
+        ConnPool[Raft Connection Pool<br/>Port 7777]
         PeerConn[Peer Connection]
         
         subgraph "Priority Streams"
@@ -21,7 +45,7 @@ graph TB
     end
     
     subgraph "Node B"
-        GRPCServer[gRPC Server]
+        GRPCServer[Raft gRPC Server<br/>Port 7777]
         RaftService[RaftTransportService]
         
         subgraph "Recv Queues"
@@ -55,23 +79,37 @@ graph TB
 
 ## Key Components
 
-### Connection Pool
+### Raft Connection Pool
 
-**File**: `internal/transport/connection_pool.go`
+**File**: `internal/service/transport/connection_pool.go`
 
-The connection pool manages raw gRPC connections to peers. Each connection is created lazily when needed.
+The Raft connection pool manages gRPC connections to peers' **Raft ports** (7777) for consensus messages. Each connection is created lazily when needed.
 
 ```go
 type ConnectionPool struct {
-    peers map[uint64]string  // peer ID -> address
+    peers       map[uint64]string        // peer ID -> raft address
+    connections map[uint64]*grpc.ClientConn
+}
+```
+
+### Service Connection Pool
+
+**File**: `internal/service/transport/service_pool.go`
+
+The service connection pool manages gRPC connections to peers' **Service ports** (8888) for request forwarding. When a follower receives a write request, it uses this pool to forward the request to the leader's `BucketService`.
+
+```go
+type ServiceConnectionPool struct {
+    peers       map[uint64]string        // peer ID -> service address
+    connections map[uint64]*grpc.ClientConn
 }
 ```
 
 ### Transport Layer
 
-**File**: `internal/raft/transport.go`
+**File**: `internal/service/node/transport.go`
 
-The transport layer wraps the connection pool and manages Raft-specific message routing:
+The transport layer wraps the Raft connection pool and manages Raft-specific message routing:
 
 - **Priority Queues**: Messages are prioritized (heartbeats, votes, and append entries have different priorities)
 - **Per-Peer Connections**: Each peer has 3 dedicated bidirectional streams (one per priority)

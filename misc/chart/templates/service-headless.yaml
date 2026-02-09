@@ -12,6 +12,10 @@ metadata:
 spec:
   clusterIP: None
   ports:
+    - port: {{ .Values.service.raftPort }}
+      targetPort: raft
+      protocol: TCP
+      name: raft
     - port: {{ .Values.service.grpcPort }}
       targetPort: grpc
       protocol: TCP

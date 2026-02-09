@@ -20,8 +20,8 @@ var _ = Describe("Reversions", func() {
 	)
 
 	const (
-		httpPort = 9500
-		grpcPort = 8500
+		httpPort = 9800
+		grpcPort = 8800
 	)
 
 	BeforeEach(func() {

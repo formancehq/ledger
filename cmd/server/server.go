@@ -68,11 +68,12 @@ func NewRunCommand() *cobra.Command {
 
 	// Add application-specific flags
 	runCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
-	runCmd.Flags().String("bind-addr", "0.0.0.0:8888", "Address to bind to (grpc)")
+	runCmd.Flags().String("bind-addr", "0.0.0.0:7777", "Address to bind for Raft transport (internal inter-node communication)")
 	runCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
+	runCmd.Flags().Int("grpc-port", 8888, "gRPC port for service API (external client-facing)")
 	runCmd.Flags().String("wal-dir", "./wal", "WAL directory for Raft")
 	runCmd.Flags().String("data-dir", "./data", "Data directory for application storage")
-	runCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<address>, e.g., \"1/node-1:8888,2/node-2:8888\")")
+	runCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<raftAddress>/<serviceAddress>, e.g., \"1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888\")")
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	runCmd.Flags().Uint64("snapshot-threshold", 5000, "Number of logs before triggering a snapshot (0 = use Raft default)")
 	// todo: remove
@@ -253,6 +254,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	cfg.Debug = getBool("debug", false)
 	cfg.HTTPPort = getInt("http-port", 9000)
+	cfg.GRPCPort = getInt("grpc-port", 8888)
 	cfg.RaftConfig.NodeID = getUint64("node-id", 0)
 	cfg.RaftConfig.BindAddr = getString("bind-addr", "127.0.0.1:8888")
 	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
@@ -260,7 +262,11 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.DataDir = getString("data-dir", "./data")
 	cfg.RaftConfig.Peers = make([]node.Peer, 0)
 	for _, peer := range getStringSlice("peers") {
-		parts := strings.SplitN(peer, "/", 2)
+		// Format: <id>/<raftAddress>/<serviceAddress>
+		parts := strings.Split(peer, "/")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("invalid peer format: expected <id>/<raftAddress>/<serviceAddress>, got %q", peer)
+		}
 
 		id, err := strconv.ParseUint(parts[0], 10, 64)
 		if err != nil {
@@ -268,8 +274,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 		}
 
 		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, node.Peer{
-			ID:      id,
-			Address: parts[1],
+			ID:             id,
+			Address:        parts[1],
+			ServiceAddress: parts[2],
 		})
 	}
 	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)

@@ -51,7 +51,7 @@ just dev
 docker compose up -d
 
 # Option 3: Manual
-go run . --node-id 1 --raft-addr localhost:7777 --http-port 8080 --grpc-port 8888
+go run . --node-id 1 --bind-addr localhost:7777 --http-port 9000 --grpc-port 8888
 ```
 
 ## Generating the Demo GIF

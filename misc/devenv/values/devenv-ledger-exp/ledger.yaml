@@ -1,5 +1,6 @@
 config:
-  bindAddr: 0.0.0.0:8888
+  bindAddr: 0.0.0.0:7777  # Raft transport port (internal inter-node communication)
+  grpcPort: 8888          # Service gRPC port (external client-facing API)
   dataDir: /data/data
   walDir: /data/wal
   debug: false

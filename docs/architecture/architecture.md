@@ -16,7 +16,8 @@ graph TB
     
     subgraph "Node 1"
         HTTPServer1[HTTP Server<br/>Port 9000]
-        GRPCServer1[gRPC Server<br/>Port 8888]
+        GRPCServer1[gRPC Service<br/>Port 8888]
+        RaftServer1[Raft Transport<br/>Port 7777]
         RaftNode1[Raft Node]
         FSM1[FSM<br/>All Ledgers]
         Storage1[Store]
@@ -24,7 +25,8 @@ graph TB
     
     subgraph "Node 2"
         HTTPServer2[HTTP Server<br/>Port 9000]
-        GRPCServer2[gRPC Server<br/>Port 8888]
+        GRPCServer2[gRPC Service<br/>Port 8888]
+        RaftServer2[Raft Transport<br/>Port 7777]
         RaftNode2[Raft Node]
         FSM2[FSM<br/>All Ledgers]
         Storage2[Store]
@@ -32,7 +34,8 @@ graph TB
     
     subgraph "Node 3"
         HTTPServer3[HTTP Server<br/>Port 9000]
-        GRPCServer3[gRPC Server<br/>Port 8888]
+        GRPCServer3[gRPC Service<br/>Port 8888]
+        RaftServer3[Raft Transport<br/>Port 7777]
         RaftNode3[Raft Node]
         FSM3[FSM<br/>All Ledgers]
         Storage3[Store]
@@ -66,8 +69,16 @@ graph TB
 Each node in the cluster runs the following components:
 
 - **HTTP Server**: Public REST API (port 9000)
-- **gRPC Server**: Inter-node communication and gRPC API (port 8888)
+- **gRPC Service Server** (port 8888): External client-facing API
+  - `BucketService`: Ledger operations, transactions, accounts
+  - `ClusterService`: Cluster state and node information
+  - `Health`: Health checks
+- **gRPC Raft Server** (port 7777): Internal inter-node communication
+  - `RaftTransport`: Raft message exchange between nodes
+  - `SnapshotService`: Snapshot transfer for new nodes
 - **Raft Node**: Single Raft group managing all ledgers and transactions
+- **Routed Controller**: Routes requests to local controller or forwards to leader
+- **Service Connection Pool**: Manages gRPC connections to peers' service ports for request forwarding
 - **Finite State Machine (FSM)**: State machine for applying commands (ledger and log operations)
 - **Store**: Persistent storage for logs, balances, and metadata
 
@@ -77,16 +88,19 @@ Each node in the cluster runs the following components:
 graph TB
     subgraph "API Layer"
         HTTP[HTTP Handlers]
-        GRPC[gRPC Server<br/>LedgerService + RaftTransport]
+        ServiceGRPC[gRPC Service Server<br/>BucketService, ClusterService<br/>Port 8888]
+        RaftGRPC[gRPC Raft Server<br/>RaftTransport, SnapshotService<br/>Port 7777]
     end
     
     subgraph "Service Layer"
         Controller[Default Controller<br/>Transaction Processing]
+        RoutedCtrl[Routed Controller<br/>Leader Forwarding]
     end
     
     subgraph "Raft Layer"
         RaftNode[Raft Node]
         Transport[gRPC Transport]
+        ServicePool[Service Connection Pool]
     end
     
     subgraph "Storage Layer"
@@ -95,11 +109,13 @@ graph TB
         Snapshot[Snapshot Store]
     end
     
-    HTTP --> RaftNode
-    GRPC --> RaftNode
-    RaftNode --> Controller
+    HTTP --> RoutedCtrl
+    ServiceGRPC --> RoutedCtrl
+    RoutedCtrl --> Controller
+    RoutedCtrl -.forward to leader.-> ServicePool
     Controller --> Store
     
+    RaftGRPC --> RaftNode
     RaftNode --> Transport
     
     RaftNode --> WAL
@@ -242,25 +258,34 @@ sequenceDiagram
 
 When a node receives a write request but is not the leader:
 
-1. The node detects it is not the leader
-2. It identifies the current leader
-3. It forwards the request to the leader via gRPC
-4. The leader processes the request and returns the response
+1. The node detects it is not the leader via `RoutedController`
+2. It identifies the current leader from the Raft state
+3. It uses the `ServiceConnectionPool` to get a connection to the leader's **service port** (8888)
+4. It forwards the request to the leader's `BucketService` via gRPC
+5. The leader processes the request and returns the response
+
+**Important**: Request forwarding uses the **service port** (8888), not the Raft transport port (7777). Each peer is configured with both addresses: `<id>/<raftAddress>/<serviceAddress>`.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Follower
-    participant Leader
+    participant FollowerService as Follower<br/>Service :8888
+    participant RoutedCtrl as Routed Controller
+    participant ServicePool as Service Pool
+    participant LeaderService as Leader<br/>Service :8888
     participant FSM
     
-    Client->>Follower: Write Request
-    Follower->>Follower: Check IsLeader()
-    Follower->>Leader: Forward via gRPC
-    Leader->>FSM: Apply Command
-    FSM-->>Leader: Result
-    Leader-->>Follower: Response
-    Follower-->>Client: Response
+    Client->>FollowerService: Write Request
+    FollowerService->>RoutedCtrl: Process
+    RoutedCtrl->>RoutedCtrl: Check IsLeader()
+    RoutedCtrl->>ServicePool: GetConnection(leaderID)
+    ServicePool-->>RoutedCtrl: gRPC conn to :8888
+    RoutedCtrl->>LeaderService: Forward via BucketService
+    LeaderService->>FSM: Apply Command
+    FSM-->>LeaderService: Result
+    LeaderService-->>RoutedCtrl: Response
+    RoutedCtrl-->>FollowerService: Response
+    FollowerService-->>Client: Response
 ```
 
 ### "No Leader" Error Handling

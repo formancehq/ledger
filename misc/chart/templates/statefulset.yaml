@@ -44,6 +44,9 @@ spec:
           containerPort: {{ .Values.config.httpPort }}
           protocol: TCP
         - name: grpc
+          containerPort: {{ .Values.config.grpcPort }}
+          protocol: TCP
+        - name: raft
           containerPort: {{ (split ":" .Values.config.bindAddr)._1 | atoi }}
           protocol: TCP
         env:
@@ -61,6 +64,8 @@ spec:
               fieldPath: metadata.namespace
         - name: BIND_ADDR
           value: {{ .Values.config.bindAddr | quote }}
+        - name: GRPC_PORT
+          value: {{ .Values.config.grpcPort | quote }}
         - name: HTTP_PORT
           value: {{ .Values.config.httpPort | quote }}
         - name: WAL_DIR
@@ -248,22 +253,25 @@ spec:
           # Calculate node ID from pod index (pod index 0 -> node ID 1, etc.)
           NODE_ID=$((POD_INDEX + 1))
           
-          # Extract port from BIND_ADDR (format: 0.0.0.0:8888)
-          BIND_PORT=$(echo $BIND_ADDR | cut -d: -f2)
+          # Extract Raft transport port from BIND_ADDR (format: 0.0.0.0:7777)
+          RAFT_PORT=$(echo $BIND_ADDR | cut -d: -f2)
           
-          # Generate ADVERTISE_ADDR from pod name
-          ADVERTISE_ADDR="${POD_NAME}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${BIND_PORT}"
+          # Generate ADVERTISE_ADDR from pod name (uses Raft transport port)
+          ADVERTISE_ADDR="${POD_NAME}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${RAFT_PORT}"
           
           # Generate peers list (all nodes except current)
+          # Format: <id>/<raftAddress>/<serviceAddress>
           PEERS_LIST=""
           for i in $(seq 0 $(({{ .Values.replicaCount }} - 1))); do
             if [ $i -ne $POD_INDEX ]; then
               NODE_NUM=$((i + 1))
-              PEER_ADDR="{{ include "ledger-v3-poc.fullname" . }}-${i}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${BIND_PORT}"
+              PEER_HOST="{{ include "ledger-v3-poc.fullname" . }}-${i}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local"
+              RAFT_ADDR="${PEER_HOST}:${RAFT_PORT}"
+              SERVICE_ADDR="${PEER_HOST}:${GRPC_PORT}"
               if [ -z "$PEERS_LIST" ]; then
-                PEERS_LIST="--peers ${NODE_NUM}/${PEER_ADDR}"
+                PEERS_LIST="--peers ${NODE_NUM}/${RAFT_ADDR}/${SERVICE_ADDR}"
               else
-                PEERS_LIST="${PEERS_LIST} --peers ${NODE_NUM}/${PEER_ADDR}"
+                PEERS_LIST="${PEERS_LIST} --peers ${NODE_NUM}/${RAFT_ADDR}/${SERVICE_ADDR}"
               fi
             fi
           done

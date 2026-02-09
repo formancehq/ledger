@@ -427,7 +427,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 //
 // When Force is true on a CreateTransaction, volume preloading is skipped because:
 // - Balance checks are bypassed anyway
-// - Volumes will be initialized to 0 if not in cache
+// - The processor stores deltas (DiffSinceBaseIndex) instead of absolute values
 func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.VolumeKey]struct{} {
 	neededVolumes := make(map[data.VolumeKey]struct{})
 
@@ -436,8 +436,7 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 		case *raftcmdpb.Order_Apply:
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-				// Skip volume preloading when Force is true
-				// Balance checks will be skipped, and volumes will be initialized to 0 if not in cache
+				// Skip volume preloading for force transactions - they store deltas only
 				if applyData.CreateTransaction.Force {
 					continue
 				}
