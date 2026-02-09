@@ -20,9 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 )
 
 // serviceWithClient is a shared type used across e2e tests to hold a test service instance
@@ -35,44 +33,41 @@ type serviceWithClient struct {
 	walDir        string
 	dataDir       string
 	grpcPort      int
+	nodeID        uint32
 }
 
-// retryUnaryInterceptor retries the request on Unavailable errors (e.g., no leader)
-func retryUnaryInterceptor(maxRetries int, retryDelay time.Duration) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		var lastErr error
-		for attempt := 0; attempt <= maxRetries; attempt++ {
-			lastErr = invoker(ctx, method, req, reply, cc, opts...)
-			if lastErr == nil {
-				return nil
-			}
-
-			// Check if the error is retryable (Unavailable = no leader)
-			st, ok := status.FromError(lastErr)
-			if !ok || st.Code() != codes.Unavailable {
-				// Not a retryable error
-				return lastErr
-			}
-
-			// Wait before retrying (unless it's the last attempt)
-			if attempt < maxRetries {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(retryDelay):
-				}
-			}
+// grpcRetryPolicy defines the retry policy for gRPC clients when no leader is available
+var grpcRetryPolicy = `{
+	"methodConfig": [{
+		"name": [{}],
+		"retryPolicy": {
+			"MaxAttempts": 50,
+			"InitialBackoff": "0.2s",
+			"MaxBackoff": "0.2s",
+			"BackoffMultiplier": 1.0,
+			"RetryableStatusCodes": ["UNAVAILABLE"]
 		}
-		return lastErr
-	}
-}
+	}]
+}`
 
 // newGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
 func newGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+	return newGRPCClientWithRetry(grpcPort, true)
+}
+
+// newGRPCClientWithRetry creates a new gRPC client with optional retry policy
+func newGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	if withRetry {
+		opts = append(opts, grpc.WithDefaultServiceConfig(grpcRetryPolicy)) // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
+	}
+
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(retryUnaryInterceptor(10, 100*time.Millisecond)), // Retry up to 10 times with 100ms delay
+		opts...,
 	)
 	if err != nil {
 		return nil, nil, nil, err

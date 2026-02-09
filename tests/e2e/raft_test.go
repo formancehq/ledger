@@ -29,11 +29,11 @@ var _ = Describe("Simple cluster", func() {
 		leaderID uint64
 	)
 	const (
-		countInstances       = 3
-		gatewayBasePort      = 6200 // Gateway ports for Raft traffic interception
-		nodeRaftBasePort     = 6000 // Internal Raft transport port (avoid macOS Control Center on 7000)
-		nodeServiceBasePort  = 8000 // External service API port
-		nodeHTTPBasePort     = 9000
+		countInstances      = 3
+		gatewayBasePort     = 6200 // Gateway ports for Raft traffic interception
+		nodeRaftBasePort    = 6000 // Internal Raft transport port (avoid macOS Control Center on 7000)
+		nodeServiceBasePort = 8000 // External service API port
+		nodeHTTPBasePort    = 9000
 	)
 
 	BeforeEach(func() {
@@ -76,14 +76,14 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithHTTPPort(nodeHTTPBasePort+i),
 					testserver.WithWalDir(walTmpDir),
 					testserver.WithDataDir(dataTmpDir),
-					testserver.WithRaftPort(nodeRaftBasePort+i),     // Internal Raft transport
-					testserver.WithGRPCPort(nodeServiceBasePort+i),  // External service API
+					testserver.WithRaftPort(nodeRaftBasePort+i),    // Internal Raft transport
+					testserver.WithGRPCPort(nodeServiceBasePort+i), // External service API
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-					testserver.WithRaftTickInterval(10*time.Millisecond),
-					testserver.WithRaftHeartbeatTick(10),
-					testserver.WithRaftElectionTick(100),
+					testserver.WithRaftTickInterval(100*time.Millisecond),
+					testserver.WithRaftHeartbeatTick(1),
+					testserver.WithRaftElectionTick(20),
 					testserver.WithPeers(func() []node.Peer {
 						ret := make([]node.Peer, 0, countInstances-1)
 						for j := range countInstances {
@@ -120,6 +120,7 @@ var _ = Describe("Simple cluster", func() {
 				walDir:        walTmpDir,
 				dataDir:       dataTmpDir,
 				grpcPort:      nodeServiceBasePort + i,
+				nodeID:        uint32(i + 1),
 			})
 		}
 		Eventually(servers[0]).To(HaveALeader(&leaderID))

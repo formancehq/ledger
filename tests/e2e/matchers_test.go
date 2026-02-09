@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/onsi/gomega/types"
@@ -18,7 +19,12 @@ func (matcher beFollowerMatcher) Match(actual any) (success bool, err error) {
 		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
 	}
 
-	clusterState, err := srv.clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	clusterState, err := srv.clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+		NodeId: srv.nodeID,
+	})
 	if err != nil {
 		return false, fmt.Errorf("gRPC error getting cluster state: %w", err)
 	}
@@ -53,7 +59,9 @@ func (h haveALeaderMatcher) Match(actual any) (success bool, err error) {
 		return false, fmt.Errorf("expected *serviceWithClient, got %T", actual)
 	}
 
-	clusterState, err := srv.clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{})
+	clusterState, err := srv.clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+		NodeId: srv.nodeID,
+	})
 	if err != nil {
 		return false, err
 	}

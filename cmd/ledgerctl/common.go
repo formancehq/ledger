@@ -19,6 +19,20 @@ import (
 
 const defaultTimeout = 10 * time.Second
 
+// grpcRetryPolicy defines the retry policy for gRPC clients when no leader is available
+var grpcRetryPolicy = `{
+	"methodConfig": [{
+		"name": [{}],
+		"retryPolicy": {
+			"MaxAttempts": 50,
+			"InitialBackoff": "0.2s",
+			"MaxBackoff": "0.2s",
+			"BackoffMultiplier": 1.0,
+			"RetryableStatusCodes": ["UNAVAILABLE"]
+		}
+	}]
+}`
+
 // ErrNoLedgers is returned when no ledgers exist.
 var ErrNoLedgers = fmt.Errorf("no ledgers found")
 
@@ -113,6 +127,7 @@ func getClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultServiceConfig(grpcRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)

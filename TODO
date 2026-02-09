@@ -21,3 +21,5 @@
 * Hash detection when appending only
 * Doc performance (ulid, ordered keys, locality)
 * Cluster ID to allow new nodes
+* Log hash
+* Ledger ID for canonical keys
