@@ -28,6 +28,9 @@ linters:
     - gosec
     - tagliatelle
     - gocyclo
+    - unparam
+    - unused
+    - unconvert
   settings:
     gocyclo:
       # Minimal code complexity to report.

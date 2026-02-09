@@ -136,6 +136,7 @@ func (m *Machine) withdrawAll(account machine.AccountAddress, asset machine.Asse
 	return nil, fmt.Errorf("missing %v balance from %v", asset, account)
 }
 
+//nolint:unparam // error return kept for consistency with withdrawAll signature
 func (m *Machine) withdrawAlways(account machine.AccountAddress, mon machine.Monetary) (*machine.Funding, error) {
 	if accBalance, ok := m.Balances[account]; ok {
 		if balance, ok := accBalance[mon.Asset]; ok {

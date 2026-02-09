@@ -1134,7 +1134,7 @@ func TestSetTxMeta(t *testing.T) {
 	assert.Equal(t, 6, len(resMeta))
 
 	for key, val := range resMeta {
-		assert.Equal(t, string(expectedMeta[key]), val)
+		assert.Equal(t, expectedMeta[key], val)
 	}
 }
 
@@ -1223,7 +1223,7 @@ func TestSetAccountMeta(t *testing.T) {
 			assert.Equal(t, "test", acc)
 			assert.Equal(t, 1, len(meta))
 			for key, val := range meta {
-				assert.Equal(t, string(expectedMeta[key]), val)
+				assert.Equal(t, expectedMeta[key], val)
 			}
 		}
 	})
