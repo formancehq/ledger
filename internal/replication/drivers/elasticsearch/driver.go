@@ -109,6 +109,9 @@ type DocID struct {
 }
 
 func (docID DocID) String() string {
-	rawID, _ := json.Marshal(docID)
+	rawID, err := json.Marshal(docID)
+	if err != nil {
+		panic(err)
+	}
 	return base64.URLEncoding.EncodeToString(rawID)
 }
