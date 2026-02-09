@@ -298,6 +298,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		MaxInflightMsgs:           node.config.MaxInflightMsgs,
 		Logger:                    NewLoggerAdapter(node.logger),
 		DisableProposalForwarding: true,
+		PreVote:                   true,
 	}
 
 	node.logger.WithFields(map[string]any{
@@ -801,6 +802,11 @@ func (node *Node) GetLeader() uint64 {
 	return lastSoftState.Lead
 }
 
+// GetNodeID returns the ID of this node
+func (node *Node) GetNodeID() uint64 {
+	return node.config.NodeID
+}
+
 // GetClusterState returns the current state of the Raft cluster
 func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
 	status := node.rawNode.Status()
@@ -822,48 +828,50 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		stateStr = "PreCandidate"
 	}
 
-	// Build nodes list from progress
-	nodes := make([]*clusterpb.NodeInfo, 0)
-	for id := range status.Progress {
-		suffrage := "Voter"
-
-		var address string
-		// todo: set address
-		//if id == rawNode.config.NodeID {
-		//	address = rawNode.config.AdvertiseAddr
-		//} else {
-		//	address = rawNode.transport.GetPeerAddress(id)
-		//}
-
-		nodes = append(nodes, &clusterpb.NodeInfo{
-			Id:       uint32(id),
-			Address:  address,
-			Suffrage: suffrage,
-		})
-	}
-
-	// Build progress information map
+	// Build progress information map and nodes list only if this node is the leader
+	var nodes []*clusterpb.NodeInfo
 	progress := make(map[uint64]*clusterpb.ProgressInfo)
-	for id, prog := range status.Progress {
-		// Convert StateType to string
-		stateStr := "Unknown"
-		switch prog.State {
-		case tracker.StateProbe:
-			stateStr = "Probe"
-		case tracker.StateReplicate:
-			stateStr = "Replicate"
-		case tracker.StateSnapshot:
-			stateStr = "Snapshot"
+
+	if status.RaftState == raft.StateLeader {
+		// Build progress information map first
+		for id, prog := range status.Progress {
+			// Convert StateType to string
+			stateStr := "Unknown"
+			switch prog.State {
+			case tracker.StateProbe:
+				stateStr = "Probe"
+			case tracker.StateReplicate:
+				stateStr = "Replicate"
+			case tracker.StateSnapshot:
+				stateStr = "Snapshot"
+			}
+
+			progress[id] = &clusterpb.ProgressInfo{
+				Match:           prog.Match,
+				Next:            prog.Next,
+				State:           stateStr,
+				PendingSnapshot: prog.PendingSnapshot,
+				RecentActive:    prog.RecentActive,
+				ProbeSent:       prog.ProbeSent,
+				IsPaused:        prog.IsPaused(),
+			}
 		}
 
-		progress[id] = &clusterpb.ProgressInfo{
-			Match:           prog.Match,
-			Next:            prog.Next,
-			State:           stateStr,
-			PendingSnapshot: prog.PendingSnapshot,
-			RecentActive:    prog.RecentActive,
-			ProbeSent:       prog.ProbeSent,
-			IsPaused:        prog.IsPaused(),
+		// Build nodes list with progress information
+		nodes = make([]*clusterpb.NodeInfo, 0, len(status.Progress))
+		for id := range status.Progress {
+			suffrage := "Voter"
+
+			nodeInfo := &clusterpb.NodeInfo{
+				Id:       uint32(id),
+				Suffrage: suffrage,
+			}
+
+			if prog, ok := progress[id]; ok {
+				nodeInfo.Progress = prog
+			}
+
+			nodes = append(nodes, nodeInfo)
 		}
 	}
 

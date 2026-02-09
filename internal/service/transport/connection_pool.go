@@ -38,7 +38,7 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 }
 
 func (p *ConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
-	return grpc.NewClient(addr,
+	return grpc.NewClient("dns:///"+addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// TODO: Make that configuration
 		// TOneverDO: Configure a MaxDelay greater than the election timeout

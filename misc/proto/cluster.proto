@@ -14,7 +14,10 @@ service ClusterService {
   rpc GetClusterState(GetClusterStateRequest) returns (ClusterState);
 }
 
-message GetClusterStateRequest {}
+message GetClusterStateRequest {
+  // node_id indicates which node to query for cluster state (0 = route to leader)
+  uint32 node_id = 1;
+}
 
 // ============================================================================
 // Cluster State Messages
@@ -23,8 +26,8 @@ message GetClusterStateRequest {}
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
   uint32 id = 1;
-  string address = 2;
-  string suffrage = 3;  // Voter or Nonvoter
+  string suffrage = 2;  // Voter or Nonvoter
+  ProgressInfo progress = 3;  // Progress information (only available when querying leader)
 }
 
 // ProgressInfo represents the progress information for a node

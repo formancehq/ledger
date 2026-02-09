@@ -49,6 +49,30 @@ The `docs/cli.md` file documents all CLI commands and their usage. When modifyin
 4. **Update Numscript examples** - If adding new Numscript-related features, update `misc/numscript/examples/`
 5. **Update CLI demo** - If adding new commands or flags that should be showcased, update `misc/demo/demo.tape` and `misc/demo/simple-demo.tape`
 
+## Pre-commit Checks
+
+**CRITICAL**: Before completing any task, you MUST run pre-commit checks to ensure code quality.
+
+Run pre-commit checks:
+```bash
+just pre-commit
+```
+
+**For Nix environments**: If using Nix with direnv, IntelliJ's GOROOT configuration may conflict with the Nix-provided Go environment. In this case, unset GOROOT before running pre-commit:
+```bash
+GOROOT= just pre-commit
+```
+
+This command:
+1. Runs `go generate ./...` to regenerate mocks and protobuf files
+2. Runs `go mod tidy` to clean up dependencies
+3. Runs `golangci-lint run --fix` to check and auto-fix linting issues
+
+**Note for AI agents**:
+- Always run `just pre-commit` (or `GOROOT= just pre-commit` in Nix environments) after completing any code changes
+- Always verify that the code compiles with `go build ./...` before submitting
+- If pre-commit fails, fix the errors before completing the task
+
 ## Mock Generation
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, you MUST regenerate the mocks immediately.

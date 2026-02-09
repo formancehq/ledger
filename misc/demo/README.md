@@ -139,6 +139,22 @@ Override from command line:
 SERVER=myserver:8888 INSECURE=true vhs demo.tape
 ```
 
+### Demo Content
+
+The main demo (`demo.tape`) showcases:
+
+1. **Ledger management**: Create and delete ledgers
+2. **Interactive transaction wizard**: Simple postings with prompts
+3. **Numscript support**: Execute scripts with interactive variable input
+4. **Escrow with dynamic accounts**: Using `@escrow:$order_id` syntax
+5. **Force transactions**: Bypass balance checks with `--force`
+6. **Account metadata**: Set and delete metadata on accounts
+7. **Transaction metadata**: Set and delete metadata on transactions
+8. **Transaction revert**: Undo transactions with counter-transactions
+9. **List transactions**: View all transactions in a ledger
+10. **Cluster status**: Inspect the Raft cluster state and node information
+11. **Cleanup**: Delete the demo ledger
+
 ### VHS Commands
 
 ```tape

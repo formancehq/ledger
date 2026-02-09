@@ -231,7 +231,20 @@ Enter
 Sleep 3s
 
 # ============================================================================
-# PART 10: Cleanup - Delete Ledger
+# PART 10: Cluster Status
+# ============================================================================
+
+Type "clear"
+Enter
+Sleep 200ms
+
+# Show cluster status from leader (default)
+Type "ledgerctl cluster status"
+Enter
+Sleep 3s
+
+# ============================================================================
+# PART 11: Cleanup - Delete Ledger
 # ============================================================================
 
 Type "clear"

@@ -33,6 +33,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newAccountsCommand())
 	rootCmd.AddCommand(newTransactionsCommand())
 	rootCmd.AddCommand(newStoreCommand())
+	rootCmd.AddCommand(newClusterCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd

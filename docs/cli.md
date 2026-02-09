@@ -576,6 +576,55 @@ ledgerctl store metrics --json
 
 ---
 
+### cluster
+
+Manage and inspect the Raft cluster.
+
+**Aliases:** `cl`
+
+#### cluster status
+
+Display the current state of the Raft cluster, including node information and replication status.
+
+**Aliases:** `st`
+
+```bash
+ledgerctl cluster status [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--node-id` | `0` | Query specific node by ID (0 = route to leader) |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- By default (`--node-id=0`), the request is automatically routed to the cluster leader
+- Specify `--node-id` to query a specific node's state
+- Displays cluster overview, Raft status, node list, and replication progress (if leader)
+
+**Example:**
+
+```bash
+# Get cluster status from leader (default)
+ledgerctl cluster status
+
+# Get status from specific node (e.g., node 1)
+ledgerctl cluster status --node-id 1
+
+# Get status from node 2
+ledgerctl cluster status --node-id 2
+```
+
+**Output sections:**
+- **Cluster Overview**: State, local node ID, leader ID, total nodes
+- **Raft Status**: Term, applied index, commit index, last index
+- **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
+- **Replication Progress**: Replication status for each follower (only shown when querying leader)
+
+---
+
 ## Connection Examples
 
 ### Local Development

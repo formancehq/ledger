@@ -3,6 +3,7 @@ module github.com/formancehq/ledger-v3-poc
 go 1.25.3
 
 require (
+	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/formancehq/go-libs/v3 v3.6.0
@@ -45,7 +46,6 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/IBM/sarama v1.45.2 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect

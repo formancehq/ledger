@@ -643,6 +643,10 @@ func (conn *peerConnection) loop() {
 					}
 					break drainLoop
 				case <-time.After(time.Until(waitingDelayBeforeReconnect)):
+					conn.logger.Infof("Restarting connection to peer %x...", conn.peerID)
+					if err := conn.connectionPool.RestartConnection(conn.peerID); err != nil {
+						conn.logger.Errorf("Failed to restart connection to peer: %v", err)
+					}
 					break drainLoop
 				}
 			}

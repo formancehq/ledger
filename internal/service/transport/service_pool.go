@@ -43,7 +43,7 @@ func (p *ServiceConnectionPool) AddPeer(id uint64, serviceAddr string) error {
 }
 
 func (p *ServiceConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
-	return grpc.NewClient(addr,
+	return grpc.NewClient("dns:///"+addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(grpc.ConnectParams{
 			Backoff: backoff.Config{

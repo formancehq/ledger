@@ -20,4 +20,3 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Status: "ok",
 	})
 }
-

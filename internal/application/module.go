@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	http2 "github.com/formancehq/ledger-v3-poc/internal/compat/http"
+	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
 	"github.com/formancehq/ledger-v3-poc/internal/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -31,6 +31,7 @@ import (
 	"go.uber.org/fx"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
 )
 
 func Module() fx.Option {
@@ -134,13 +135,13 @@ func Module() fx.Option {
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)
 			},
-			func(node *node.Node) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node)
+			func(node *node.Node, servicePool *transport.ServiceConnectionPool) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node, servicePool)
 			},
-			http2.NewServer,
-			http2.NewHandler,
-			func(node *node.Node, ctrl ctrl.Controller) http2.Backend {
-				return http2.NewDefaultBackend(node, ctrl)
+			httpcompat.NewServer,
+			httpcompat.NewHandler,
+			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
+				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
 			func(
 				node *node.Node,
@@ -240,6 +241,12 @@ func Module() fx.Option {
 				return nil
 			},
 			// Register business services on ServiceServer (external)
+			func(raftServer *RaftServer) error {
+				hs := health.NewServer()
+				healthpb.RegisterHealthServer(raftServer.GetServer(), hs)
+				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+				return nil
+			},
 			func(serviceServer *ServiceServer) error {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -267,6 +274,7 @@ func Module() fx.Option {
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Raft gRPC server")
 						listening := make(chan struct{})
+						reflection.Register(raftServer.GetServer())
 						otlplogs.Go(func() {
 							if err := raftServer.Start(listening); err != nil {
 								panic(err)
@@ -282,7 +290,7 @@ func Module() fx.Option {
 						logger.Infof("Raft gRPC server started successfully")
 						for _, peerEntry := range cfg.Peers {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
-							logger.Debugf("Adding peer to transport and service pool")
+							logger.Infof("Adding peer to transport and service pool")
 							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
 							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
