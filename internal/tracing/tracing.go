@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 )
 
+//nolint:gocyclo // Simple string mapping table, no real logic complexity
 func LegacyMetricsName(operationName string) string {
 	switch operationName {
 	case "controller.numscript_run":

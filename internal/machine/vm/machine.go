@@ -184,6 +184,7 @@ func (m *Machine) repay(funding machine.Funding) {
 	}
 }
 
+//nolint:gocyclo // Bytecode interpreter loop, each case handles a distinct opcode
 func (m *Machine) tick() (bool, error) {
 	op := m.Program.Instructions[m.P]
 

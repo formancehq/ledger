@@ -27,7 +27,12 @@ linters:
     - unused
     - gosec
     - tagliatelle
+    - gocyclo
   settings:
+    gocyclo:
+      # Minimal code complexity to report.
+      # Default: 30 (but we recommend 10-20)
+      min-complexity: 30
     tagliatelle:
       case:
         rules:
