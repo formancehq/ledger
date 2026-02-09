@@ -18,11 +18,25 @@ formatters:
 run:
   timeout: 5m
 
+exclusions:
+  paths:
+    - pkg/client # Generated SDK code
+
 linters:
   enable:
     - unused
     - gosec
+    - tagliatelle
   settings:
+    tagliatelle:
+      case:
+        rules:
+          json: goCamel
+          yaml: goCamel
+          xml: goCamel
+          bson: goCamel
+          env: upperSnake
+          envconfig: upperSnake
     errcheck:
       exclude-functions:
         - (io.Closer).Close
