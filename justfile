@@ -15,7 +15,7 @@ build:
 
 # Build the client application
 build-client:
-    GOEXPERIMENT=jsonv2 go build -o ./build/ledgerctl ./cmd/client
+    GOEXPERIMENT=jsonv2 go build -o ./build/ledgerctl ./cmd/ledgerctl
 
 # Run the application locally (single node)
 run:
@@ -23,10 +23,10 @@ run:
 
 # Run the client application
 run-client *ARGS:
-    GOEXPERIMENT=jsonv2 go run ./cmd/client {{ARGS}}
+    GOEXPERIMENT=jsonv2 go run ./cmd/ledgerctl {{ARGS}}
 
 install-client:
-    go build -o $GOPATH/bin/ledgerctl ./cmd/client
+    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 

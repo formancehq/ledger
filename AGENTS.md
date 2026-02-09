@@ -41,7 +41,7 @@ The `docs/api-comparison.md` file tracks feature parity between this POC and the
 
 ### CLI Documentation
 
-The `docs/cli.md` file documents all CLI commands and their usage. When modifying the CLI (`cmd/client/`):
+The `docs/cli.md` file documents all CLI commands and their usage. When modifying the CLI (`cmd/ledgerctl/`):
 
 1. **Update command documentation** - Add or modify the command section with usage, flags, and examples
 2. **Update global flags** - If adding new persistent flags, document them in the Global Flags section
@@ -91,7 +91,7 @@ This convention ensures consistency across the API and matches common JavaScript
 
 The client CLI and HTTP handlers are organized into separate files to improve maintainability and code readability.
 
-### Client CLI (`cmd/client/`)
+### Client CLI (`cmd/ledgerctl/`)
 
 The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 
@@ -177,7 +177,7 @@ When new Numscript features are added to the `github.com/formancehq/numscript` l
 just build-client
 
 # Or directly
-go build -o ledgerctl ./cmd/client
+go build -o build/ledgerctl ./cmd/ledgerctl
 ```
 
 ### Build Directory

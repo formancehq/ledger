@@ -36,7 +36,7 @@ sudo apt install ffmpeg
 just build-client
 
 # Or manually
-go build -o build/ledgerctl ./cmd/client
+go build -o build/ledgerctl ./cmd/ledgerctl
 ```
 
 ### Start the Server

@@ -11,7 +11,7 @@
 just build-client
 
 # Or directly with Go
-go build -o build/ledgerctl ./cmd/client
+go build -o build/ledgerctl ./cmd/ledgerctl
 ```
 
 ## Global Flags

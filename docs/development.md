@@ -10,7 +10,7 @@ This guide provides the information needed to contribute to the Ledger v3 POC pr
 ledger-v3-poc/
 ├── cmd/                    # Entry points of the application
 │   ├── server/            # Main server
-│   └── client/            # CLI client (ledgerctl)
+│   └── ledgerctl/         # CLI client (ledgerctl)
 ├── numscript/              # Numscript resources
 │   └── examples/          # Example Numscript files
 ├── internal/               # Internal code (not exported)
@@ -74,7 +74,7 @@ Each HTTP handler has its own file:
 - `handlers_bulk.go`
 - etc.
 
-#### CLI Commands (`cmd/client/`)
+#### CLI Commands (`cmd/ledgerctl/`)
 
 Each CLI command has its own file:
 - `ledgers.go` - Parent command for ledger operations

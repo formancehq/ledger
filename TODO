@@ -20,3 +20,4 @@
 * Prevent configuration changes
 * Hash detection when appending only
 * Doc performance (ulid, ordered keys, locality)
+* Cluster ID to allow new nodes
