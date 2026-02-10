@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.opentelemetry.io/otel/metric"
@@ -369,6 +370,22 @@ func Module() fx.Option {
 				lc.Append(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
+			},
+			func(lc fx.Lifecycle, cfg Config, meterProvider metric.MeterProvider) error {
+				registration, err := diskusage.RegisterMetrics(
+					meterProvider.Meter("storage"),
+					cfg.RaftConfig.WalDir,
+					cfg.DataDir,
+				)
+				if err != nil {
+					return fmt.Errorf("registering disk usage metrics: %w", err)
+				}
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						return registration.Unregister()
+					},
+				})
+				return nil
 			},
 		),
 	)

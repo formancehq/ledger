@@ -11,6 +11,7 @@ Metrics are organized into several categories:
 - **Transport Metrics**: Inter-node communication (reception, sending, unreachable channels)
 - **Queue Metrics**: Internal queue monitoring (propose, reception, sending)
 - **Storage Metrics**: Pebble storage engine performance
+- **Storage Disk Usage**: Disk space consumption per component and volume
 
 For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) section.
 
@@ -247,6 +248,41 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 > - Increasing Pebble cache size
 > - Reducing write rate
 > - Scaling horizontally
+
+## Storage Disk Usage Metrics
+
+Disk space consumption is tracked per storage component and per volume. These metrics use observable gauges that compute directory sizes on each collection interval.
+
+### Per-Component Disk Usage
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `storage.disk.component.bytes` | Gauge | By | Disk space used by a storage component |
+
+**Attributes**:
+- `component`: Storage component name
+
+| Component | Path | Description |
+|-----------|------|-------------|
+| `spool` | `{walDir}/spool/` | Spool log files buffering Raft entries before WAL persistence |
+| `wal` | `{walDir}/` (excluding `spool/`) | Write-Ahead Log files (`etcd/` directory + state files) |
+| `data` | `{dataDir}/` | Pebble database (live SSTs, checkpoints, manifests, etc.) |
+
+### Per-Volume Disk Usage
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `storage.disk.volume.bytes` | Gauge | By | Disk space used by a storage volume |
+
+**Attributes**:
+- `volume`: Storage volume name
+
+| Volume | Path | Description |
+|--------|------|-------------|
+| `wal` | `{walDir}/` (entire directory) | WAL volume containing spool + WAL data |
+| `data` | `{dataDir}/` (entire directory) | Data volume containing the Pebble database |
+
+**Note**: The WAL volume total (`volume=wal`) equals the sum of the spool and wal components (`component=spool` + `component=wal`).
 
 ## Caching & Attributes Metrics
 
