@@ -20,7 +20,7 @@ import (
 type Attribute[V proto.Message] struct {
 	prefix      byte
 	newValue    func() V
-	computeFn   func(value V, diffs []V) V
+	computeFn   func(base V, lastDiff V) V
 	kb          *data.KeyBuilder // Used by write methods - each instance has its own
 	protoBuffer []byte
 }
@@ -99,11 +99,11 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 	}
 	defer func() { _ = iter.Close() }()
 
-	// Track the most recent base and diffs after it
+	// Track the most recent base and the last diff after it
 	var (
 		baseValue V
 		baseIndex uint64
-		diffs     []V
+		lastDiff  V
 	)
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -117,7 +117,6 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 			return zeroValue, fmt.Errorf("reading value: %w", err)
 		}
 
-		// Create a new instance of Value type for unmarshaling
 		v := a.newValue()
 		if err := proto.Unmarshal(valueBytes, v); err != nil {
 			return zeroValue, fmt.Errorf("unmarshaling value: %w", err)
@@ -128,16 +127,15 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 			// Base entry - reset computation from this point
 			baseValue = v
 			baseIndex = raftIndex
-			diffs = nil
+			lastDiff = zeroValue
 		case 1:
 			if (any)(baseValue) == nil || raftIndex > baseIndex {
-
-				diffs = []V{v}
+				lastDiff = v
 			}
 		}
 	}
 
-	return a.computeFn(baseValue, diffs), nil
+	return a.computeFn(baseValue, lastDiff), nil
 }
 
 // DeleteOldest deletes all entries (bases and diffs) with raft index strictly less than the given index.

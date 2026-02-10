@@ -41,13 +41,13 @@ func NewInputAttribute() *Attribute[*commonpb.BigInt] {
 	return &Attribute[*commonpb.BigInt]{
 		prefix:   data.AttributePrefixInput,
 		newValue: func() *commonpb.BigInt { return &commonpb.BigInt{} },
-		computeFn: func(base *commonpb.BigInt, diffs []*commonpb.BigInt) *commonpb.BigInt {
+		computeFn: func(base *commonpb.BigInt, lastDiff *commonpb.BigInt) *commonpb.BigInt {
 			result := big.NewInt(0)
 			if base != nil {
 				result = base.Value()
 			}
-			for _, diff := range diffs {
-				result = new(big.Int).Add(result, diff.Value())
+			if lastDiff != nil {
+				result = new(big.Int).Add(result, lastDiff.Value())
 			}
 			return commonpb.NewBigInt(result)
 		},
@@ -60,13 +60,13 @@ func NewOutputAttribute() *Attribute[*commonpb.BigInt] {
 	return &Attribute[*commonpb.BigInt]{
 		prefix:   data.AttributePrefixOutput,
 		newValue: func() *commonpb.BigInt { return &commonpb.BigInt{} },
-		computeFn: func(base *commonpb.BigInt, diffs []*commonpb.BigInt) *commonpb.BigInt {
+		computeFn: func(base *commonpb.BigInt, lastDiff *commonpb.BigInt) *commonpb.BigInt {
 			result := big.NewInt(0)
 			if base != nil {
 				result = base.Value()
 			}
-			for _, diff := range diffs {
-				result = new(big.Int).Add(result, diff.Value())
+			if lastDiff != nil {
+				result = new(big.Int).Add(result, lastDiff.Value())
 			}
 			return commonpb.NewBigInt(result)
 		},
@@ -79,11 +79,11 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
 		prefix:   data.AttributePrefixMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
-		computeFn: func(base *commonpb.MetadataValue, diffs []*commonpb.MetadataValue) *commonpb.MetadataValue {
-			if len(diffs) == 0 {
+		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
+			if lastDiff == nil {
 				return base
 			}
-			return diffs[len(diffs)-1]
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
@@ -94,11 +94,11 @@ func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
 		prefix:   data.AttributePrefixLedgerMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
-		computeFn: func(base *commonpb.MetadataValue, diffs []*commonpb.MetadataValue) *commonpb.MetadataValue {
-			if len(diffs) == 0 {
+		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
+			if lastDiff == nil {
 				return base
 			}
-			return diffs[len(diffs)-1]
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
@@ -109,14 +109,14 @@ func NewRevertedAttribute() *Attribute[*commonpb.RevertedValue] {
 	return &Attribute[*commonpb.RevertedValue]{
 		prefix:   data.AttributePrefixReverted,
 		newValue: func() *commonpb.RevertedValue { return &commonpb.RevertedValue{} },
-		computeFn: func(base *commonpb.RevertedValue, diffs []*commonpb.RevertedValue) *commonpb.RevertedValue {
-			if len(diffs) == 0 {
+		computeFn: func(base *commonpb.RevertedValue, lastDiff *commonpb.RevertedValue) *commonpb.RevertedValue {
+			if lastDiff == nil {
 				if base == nil {
 					return &commonpb.RevertedValue{Reverted: false}
 				}
 				return base
 			}
-			return diffs[len(diffs)-1]
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
@@ -127,14 +127,11 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 	return &Attribute[*commonpb.IdempotencyKeyValue]{
 		prefix:   data.AttributePrefixIdempotencyKey,
 		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
-		computeFn: func(base *commonpb.IdempotencyKeyValue, diffs []*commonpb.IdempotencyKeyValue) *commonpb.IdempotencyKeyValue {
+		computeFn: func(base *commonpb.IdempotencyKeyValue, lastDiff *commonpb.IdempotencyKeyValue) *commonpb.IdempotencyKeyValue {
 			if base != nil {
 				return base
 			}
-			if len(diffs) > 0 {
-				return diffs[0]
-			}
-			return nil
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
@@ -145,11 +142,11 @@ func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 	return &Attribute[*commonpb.LedgerInfo]{
 		prefix:   data.AttributePrefixLedger,
 		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
-		computeFn: func(base *commonpb.LedgerInfo, diffs []*commonpb.LedgerInfo) *commonpb.LedgerInfo {
-			if len(diffs) == 0 {
+		computeFn: func(base *commonpb.LedgerInfo, lastDiff *commonpb.LedgerInfo) *commonpb.LedgerInfo {
+			if lastDiff == nil {
 				return base
 			}
-			return diffs[len(diffs)-1]
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
@@ -160,11 +157,11 @@ func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 	return &Attribute[*raftcmdpb.LedgerBoundaries]{
 		prefix:   data.AttributePrefixBoundary,
 		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
-		computeFn: func(base *raftcmdpb.LedgerBoundaries, diffs []*raftcmdpb.LedgerBoundaries) *raftcmdpb.LedgerBoundaries {
-			if len(diffs) == 0 {
+		computeFn: func(base *raftcmdpb.LedgerBoundaries, lastDiff *raftcmdpb.LedgerBoundaries) *raftcmdpb.LedgerBoundaries {
+			if lastDiff == nil {
 				return base
 			}
-			return diffs[len(diffs)-1]
+			return lastDiff
 		},
 		kb: data.NewKeyBuilder(),
 	}
