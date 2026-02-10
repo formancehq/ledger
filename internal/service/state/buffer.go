@@ -17,6 +17,7 @@ type Buffered struct {
 	Date                *commonpb.Timestamp
 	NextLedgerID        uint32
 	NextSequenceID      uint64
+	LastLogHash         []byte
 	Ledgers             *attributes.DerivedKeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries          *attributes.DerivedKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	Input               *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
@@ -176,6 +177,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
+	b.fsm.lastLogHash = b.LastLogHash
 
 	return nil
 }
@@ -189,6 +191,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, proto.CloneOf),
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
+		LastLogHash:         fsm.lastLogHash,
 		Input:               attributes.NewDerivedKeyStore(fsm.Input, proto.CloneOf),
 		Output:              attributes.NewDerivedKeyStore(fsm.Output, proto.CloneOf),
 		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, proto.CloneOf),
@@ -299,6 +302,14 @@ func (b *Buffered) IncrementNextSequenceID() uint64 {
 
 func (b *Buffered) GetDate() *commonpb.Timestamp {
 	return b.Date
+}
+
+func (b *Buffered) GetLastLogHash() []byte {
+	return b.LastLogHash
+}
+
+func (b *Buffered) SetLastLogHash(hash []byte) {
+	b.LastLogHash = hash
 }
 
 // Ensure Buffered implements Store

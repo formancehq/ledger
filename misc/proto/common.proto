@@ -146,6 +146,7 @@ message Log {
   uint64 sequence = 1;
   LogPayload payload = 2;
   Idempotency idempotency = 3;
+  bytes hash = 4;
 }
 
 message LogPayload {

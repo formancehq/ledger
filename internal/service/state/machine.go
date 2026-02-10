@@ -42,6 +42,7 @@ type Machine struct {
 
 	nextLedgerID     uint32
 	nextSequenceID   uint64
+	lastLogHash      []byte
 	lastCheckpointID uint64
 
 	lastAppliedIndex            uint64
@@ -501,6 +502,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextLedgerId:      fsm.nextLedgerID,
 		NextSequenceId:    fsm.nextSequenceID,
+		LastLogHash:       fsm.lastLogHash,
 		Gen0:              serializeCacheGeneration(fsm.Cache, 0),
 		Gen1:              serializeCacheGeneration(fsm.Cache, 1),
 		CheckpointId:      checkpointID,
@@ -659,6 +661,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Restore memory state from snapshot
 	fsm.nextLedgerID = memSnapshot.NextLedgerId
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
+	fsm.lastLogHash = memSnapshot.LastLogHash
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 
 	// Reset the cache and deserialize both generations into it

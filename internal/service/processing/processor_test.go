@@ -50,8 +50,10 @@ func TestProcessProposal_WithIdempotencyKey_NewRequest(t *testing.T) {
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
-	// Increment sequence ID and store idempotency key
+	// Increment sequence ID, hash chaining, and store idempotency key
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().GetLastLogHash().Return(nil)
+	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 	mockStore.EXPECT().PutIdempotencyKey(
 		data.IdempotencyKey{Key: "unique-key-123"},
 		gomock.Any(),
@@ -71,6 +73,7 @@ func TestProcessProposal_WithIdempotencyKey_NewRequest(t *testing.T) {
 	require.Equal(t, uint64(100), createdLog.Sequence)
 	require.NotNil(t, createdLog.Idempotency)
 	require.Equal(t, "unique-key-123", createdLog.Idempotency.Key)
+	require.NotEmpty(t, createdLog.Hash, "log should have a hash")
 }
 
 func TestProcessProposal_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
@@ -200,6 +203,8 @@ func TestProcessProposal_WithoutIdempotencyKey(t *testing.T) {
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().GetLastLogHash().Return(nil)
+	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 
 	response, err := processor.ProcessProposal(proposal, mockStore)
 	require.NoError(t, err)
@@ -209,6 +214,7 @@ func TestProcessProposal_WithoutIdempotencyKey(t *testing.T) {
 	createdLog := response.Logs[0].GetCreatedLog()
 	require.NotNil(t, createdLog)
 	require.Equal(t, uint64(100), createdLog.Sequence)
+	require.NotEmpty(t, createdLog.Hash, "log should have a hash")
 }
 
 func TestProcessCreateLedger(t *testing.T) {
@@ -1587,4 +1593,127 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	require.Equal(t, "users:broke", posting.Source)
 	require.Equal(t, "users:alice", posting.Destination)
 	require.Equal(t, int64(100000), posting.Amount.Value().Int64())
+}
+
+func TestProcessProposal_HashChaining(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+
+	// Create a proposal with 3 orders to verify hash chaining across logs
+	proposal := &raftcmdpb.Proposal{
+		Id: 1,
+		Orders: []*raftcmdpb.Order{
+			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "ledger-1"}}},
+			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "ledger-2"}}},
+			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "ledger-3"}}},
+		},
+	}
+
+	// Track the hash chain as SetLastLogHash is called
+	var capturedHashes [][]byte
+
+	// For each of the 3 orders: GetLedger, IncrementNextLedgerID, GetDate, PutLedger, PutBoundaries, IncrementNextSequenceID
+	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
+		mockStore.EXPECT().GetLedger(name).Return(nil, false)
+		mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
+		mockStore.EXPECT().GetDate().Return(now)
+		mockStore.EXPECT().PutLedger(name, gomock.Any())
+		mockStore.EXPECT().PutBoundaries(name, gomock.Any())
+		mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(i + 1))
+	}
+
+	// Use gomock.InOrder for hash chain operations since they must happen sequentially
+	gomock.InOrder(
+		mockStore.EXPECT().GetLastLogHash().Return(nil),
+		mockStore.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes = append(capturedHashes, hash)
+		}),
+		mockStore.EXPECT().GetLastLogHash().DoAndReturn(func() []byte {
+			return capturedHashes[0]
+		}),
+		mockStore.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes = append(capturedHashes, hash)
+		}),
+		mockStore.EXPECT().GetLastLogHash().DoAndReturn(func() []byte {
+			return capturedHashes[1]
+		}),
+		mockStore.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes = append(capturedHashes, hash)
+		}),
+	)
+
+	response, err := processor.ProcessProposal(proposal, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Len(t, response.Logs, 3)
+
+	// Verify all logs have hashes
+	for i, logOrRef := range response.Logs {
+		createdLog := logOrRef.GetCreatedLog()
+		require.NotNil(t, createdLog, "log %d should be a created log", i)
+		require.NotEmpty(t, createdLog.Hash, "log %d should have a hash", i)
+	}
+
+	// Verify hashes are all different (chaining produces unique hashes)
+	hash1 := response.Logs[0].GetCreatedLog().Hash
+	hash2 := response.Logs[1].GetCreatedLog().Hash
+	hash3 := response.Logs[2].GetCreatedLog().Hash
+	require.NotEqual(t, hash1, hash2, "consecutive log hashes should differ")
+	require.NotEqual(t, hash2, hash3, "consecutive log hashes should differ")
+	require.NotEqual(t, hash1, hash3, "non-consecutive log hashes should differ")
+
+	// Verify determinism: same inputs produce same hashes
+	processor2, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	mockStore2 := NewMockStore(ctrl)
+	var capturedHashes2 [][]byte
+
+	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
+		mockStore2.EXPECT().GetLedger(name).Return(nil, false)
+		mockStore2.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
+		mockStore2.EXPECT().GetDate().Return(now)
+		mockStore2.EXPECT().PutLedger(name, gomock.Any())
+		mockStore2.EXPECT().PutBoundaries(name, gomock.Any())
+		mockStore2.EXPECT().IncrementNextSequenceID().Return(uint64(i + 1))
+	}
+
+	gomock.InOrder(
+		mockStore2.EXPECT().GetLastLogHash().Return(nil),
+		mockStore2.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes2 = append(capturedHashes2, hash)
+		}),
+		mockStore2.EXPECT().GetLastLogHash().DoAndReturn(func() []byte {
+			return capturedHashes2[0]
+		}),
+		mockStore2.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes2 = append(capturedHashes2, hash)
+		}),
+		mockStore2.EXPECT().GetLastLogHash().DoAndReturn(func() []byte {
+			return capturedHashes2[1]
+		}),
+		mockStore2.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes2 = append(capturedHashes2, hash)
+		}),
+	)
+
+	response2, err := processor2.ProcessProposal(proposal, mockStore2)
+	require.NoError(t, err)
+
+	// Hashes should be identical for same inputs
+	for i := range response.Logs {
+		require.Equal(t,
+			response.Logs[i].GetCreatedLog().Hash,
+			response2.Logs[i].GetCreatedLog().Hash,
+			"hash %d should be deterministic", i,
+		)
+	}
 }

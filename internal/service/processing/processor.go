@@ -55,6 +55,10 @@ type Store interface {
 	// Transaction updates
 	AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate)
 
+	// Log hash chaining
+	GetLastLogHash() []byte
+	SetLastLogHash(hash []byte)
+
 	// Counters and timestamps
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
@@ -65,6 +69,7 @@ type Store interface {
 
 type RequestProcessor struct {
 	numscriptCache *NumscriptCache
+	logHasher      *blake3.Hasher
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -80,6 +85,7 @@ func NewRequestProcessor(m metric.Meter) (*RequestProcessor, error) {
 	}
 	return &RequestProcessor{
 		numscriptCache: cache,
+		logHasher:      blake3.New(),
 	}, nil
 }
 
@@ -124,13 +130,17 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 		}
 
 		nextSequenceID := s.IncrementNextSequenceID()
+		log := &commonpb.Log{
+			Sequence:    nextSequenceID,
+			Payload:     payload,
+			Idempotency: order.Idempotency,
+		}
+		log.Hash = computeLogHash(p.logHasher, s.GetLastLogHash(), log)
+		s.SetLastLogHash(log.Hash)
+
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
 			Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
-				CreatedLog: &commonpb.Log{
-					Sequence:    nextSequenceID,
-					Payload:     payload,
-					Idempotency: order.Idempotency,
-				},
+				CreatedLog: log,
 			},
 		}
 
@@ -168,6 +178,22 @@ func computeOrderHash(order *raftcmdpb.Order) []byte {
 	}
 	hash := blake3.Sum256(data)
 	return hash[:]
+}
+
+// computeLogHash computes a blake3 hash for log chaining: blake3(lastHash || serialize(log)).
+// The log is serialized with Deterministic: true to ensure stable output.
+// The hasher is reset and reused to avoid allocation overhead.
+func computeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
+	logBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(log)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal log for hash chaining: %v", err))
+	}
+	hasher.Reset()
+	if len(lastHash) > 0 {
+		_, _ = hasher.Write(lastHash)
+	}
+	_, _ = hasher.Write(logBytes)
+	return hasher.Sum(nil)
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.

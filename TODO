@@ -7,12 +7,9 @@
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
 * Attributes compaction
-* Attribute types
 * Bounded numscript cache
 * Flat buffer for the hot path
-* Snapshot threshold based on log != entries
 * Prevent configuration changes
 * Doc performance (ulid, ordered keys, locality)
-* Log hash
 * Roll up of existing ledgers
 * Branches

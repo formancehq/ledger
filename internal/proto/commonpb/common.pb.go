@@ -1110,6 +1110,7 @@ type Log struct {
 	Sequence      uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Payload       *LogPayload            `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	Idempotency   *Idempotency           `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Hash          []byte                 `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1161,6 +1162,13 @@ func (x *Log) GetPayload() *LogPayload {
 func (x *Log) GetIdempotency() *Idempotency {
 	if x != nil {
 		return x.Idempotency
+	}
+	return nil
+}
+
+func (x *Log) GetHash() []byte {
+	if x != nil {
+		return x.Hash
 	}
 	return nil
 }
@@ -2482,11 +2490,12 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\x86\x01\n" +
+	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\x9a\x01\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
-	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\"\xc4\x01\n" +
+	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12\x12\n" +
+	"\x04hash\x18\x04 \x01(\fR\x04hash\"\xc4\x01\n" +
 	"\n" +
 	"LogPayload\x12>\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x17.common.CreateLedgerLogH\x00R\fcreateLedger\x12>\n" +

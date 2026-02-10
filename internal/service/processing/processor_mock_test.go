@@ -140,6 +140,20 @@ func (mr *MockStoreMockRecorder) GetInput(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInput", reflect.TypeOf((*MockStore)(nil).GetInput), key)
 }
 
+// GetLastLogHash mocks base method.
+func (m *MockStore) GetLastLogHash() []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastLogHash")
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// GetLastLogHash indicates an expected call of GetLastLogHash.
+func (mr *MockStoreMockRecorder) GetLastLogHash() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogHash", reflect.TypeOf((*MockStore)(nil).GetLastLogHash))
+}
+
 // GetLedger mocks base method.
 func (m *MockStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	m.ctrl.T.Helper()
@@ -335,6 +349,18 @@ func (m *MockStore) PutReverted(key data.TransactionKey, reverted bool) {
 func (mr *MockStoreMockRecorder) PutReverted(key, reverted any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutReverted", reflect.TypeOf((*MockStore)(nil).PutReverted), key, reverted)
+}
+
+// SetLastLogHash mocks base method.
+func (m *MockStore) SetLastLogHash(hash []byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetLastLogHash", hash)
+}
+
+// SetLastLogHash indicates an expected call of SetLastLogHash.
+func (mr *MockStoreMockRecorder) SetLastLogHash(hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastLogHash", reflect.TypeOf((*MockStore)(nil).SetLastLogHash), hash)
 }
 
 // MockpostingProducer is a mock of postingProducer interface.

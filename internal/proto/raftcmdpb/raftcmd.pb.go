@@ -1763,6 +1763,7 @@ type MemorySnapshot struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	NextLedgerId      uint32                 `protobuf:"varint,1,opt,name=next_ledger_id,json=nextLedgerId,proto3" json:"next_ledger_id,omitempty"`
 	NextSequenceId    uint64                 `protobuf:"varint,2,opt,name=next_sequence_id,json=nextSequenceId,proto3" json:"next_sequence_id,omitempty"`
+	LastLogHash       []byte                 `protobuf:"bytes,3,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`
 	Gen0              *GenerationSnapshot    `protobuf:"bytes,4,opt,name=gen0,proto3" json:"gen0,omitempty"`
 	Gen1              *GenerationSnapshot    `protobuf:"bytes,5,opt,name=gen1,proto3" json:"gen1,omitempty"` // May be nil
 	CheckpointId      uint64                 `protobuf:"varint,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
@@ -1813,6 +1814,13 @@ func (x *MemorySnapshot) GetNextSequenceId() uint64 {
 		return x.NextSequenceId
 	}
 	return 0
+}
+
+func (x *MemorySnapshot) GetLastLogHash() []byte {
+	if x != nil {
+		return x.LastLogHash
+	}
+	return nil
 }
 
 func (x *MemorySnapshot) GetGen0() *GenerationSnapshot {
@@ -2336,14 +2344,15 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x126\n" +
 	"\n" +
 	"boundaries\x18\x02 \x01(\v2\x16.raft.LedgerBoundariesR\n" +
-	"boundaries\"\x96\x02\n" +
+	"boundaries\"\xb4\x02\n" +
 	"\x0eMemorySnapshot\x12$\n" +
 	"\x0enext_ledger_id\x18\x01 \x01(\rR\fnextLedgerId\x12(\n" +
-	"\x10next_sequence_id\x18\x02 \x01(\x04R\x0enextSequenceId\x12,\n" +
+	"\x10next_sequence_id\x18\x02 \x01(\x04R\x0enextSequenceId\x12\"\n" +
+	"\rlast_log_hash\x18\x03 \x01(\fR\vlastLogHash\x12,\n" +
 	"\x04gen0\x18\x04 \x01(\v2\x18.raft.GenerationSnapshotR\x04gen0\x12,\n" +
 	"\x04gen1\x18\x05 \x01(\v2\x18.raft.GenerationSnapshotR\x04gen1\x12#\n" +
 	"\rcheckpoint_id\x18\x06 \x01(\x04R\fcheckpointId\x12-\n" +
-	"\x12current_generation\x18\a \x01(\x04R\x11currentGenerationJ\x04\b\x03\x10\x04\"\x8e\x03\n" +
+	"\x12current_generation\x18\a \x01(\x04R\x11currentGeneration\"\x8e\x03\n" +
 	"\x12GenerationSnapshot\x12\x1d\n" +
 	"\n" +
 	"base_index\x18\x01 \x01(\x04R\tbaseIndex\x120\n" +

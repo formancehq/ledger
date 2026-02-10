@@ -197,7 +197,7 @@ message PreloadBoundary {
 message MemorySnapshot {
   uint32 next_ledger_id = 1;
   uint64 next_sequence_id = 2;
-  reserved 3; // Was: map<string, BoundarySnapshot> boundaries
+  bytes last_log_hash = 3;
   GenerationSnapshot gen0 = 4;
   GenerationSnapshot gen1 = 5;  // May be nil
   uint64 checkpoint_id = 6;
