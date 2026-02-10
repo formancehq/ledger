@@ -2,10 +2,12 @@ package state
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"math/big"
 	"testing"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -18,8 +20,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// newTestMachine creates a Machine backed by a real Pebble store for testing.
-func newTestMachine(t *testing.T) (*Machine, *data.Store, *attributes.Attributes) {
+// newTestMachineWithThreshold creates a Machine with a configurable generation threshold.
+func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Machine, *data.Store, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -32,13 +34,19 @@ func newTestMachine(t *testing.T) (*Machine, *data.Store, *attributes.Attributes
 
 	attrs := attributes.New()
 
-	c, err := cache.New(1000, meter)
+	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, generationThreshold)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs
+}
+
+// newTestMachine creates a Machine backed by a real Pebble store for testing.
+func newTestMachine(t *testing.T) (*Machine, *data.Store, *attributes.Attributes) {
+	t.Helper()
+	return newTestMachineWithThreshold(t, 1000)
 }
 
 // makeProposal builds a Proposal protobuf with the given orders.
@@ -424,4 +432,289 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		require.Equal(t, int64(50), inputVal.Value().Int64(),
 			"platform:revenue store input should be 50 (20+30)")
 	})
+}
+
+// attributeEntryInfo holds information about a single raw PebbleDB entry for an attribute key.
+type attributeEntryInfo struct {
+	RaftIndex uint64
+	IsBase    bool // true = base (type 0), false = diff (type 1)
+}
+
+// listRawAttributeEntries returns all raw PebbleDB entries for a given attribute prefix and canonical key.
+// This is used by tests to verify the physical state of the store after compaction.
+func listRawAttributeEntries(t *testing.T, store *data.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
+	t.Helper()
+
+	kb := data.NewKeyBuilder()
+	kb.PutByte(data.KeyPrefixAttributes).
+		PutByte(attrPrefix).
+		PutBytes(canonicalKey)
+	lowerBound := kb.Snapshot()
+	kb.PutByte(0xFF)
+	upperBound := kb.Build()
+
+	iter, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	require.NoError(t, err)
+	defer func() { _ = iter.Close() }()
+
+	var entries []attributeEntryInfo
+	for iter.First(); iter.Valid(); iter.Next() {
+		iterKey := iter.Key()
+		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-9 : len(iterKey)-1])
+		entryType := iterKey[len(iterKey)-1]
+		entries = append(entries, attributeEntryInfo{
+			RaftIndex: raftIndex,
+			IsBase:    entryType == 0,
+		})
+	}
+	return entries
+}
+
+// TestVolumeDiffCompactionAtGenerationRotation verifies that old volume diffs
+// are pruned when compactVolumeDiffs is called.
+//
+// Compaction uses a prune-only strategy: it calls DeleteOldest to remove
+// superseded diffs, but does NOT create a new base. This is safe because
+// volume diffs are cumulative (each diff stores the total delta since the
+// original base), so only the latest diff is needed by ComputeValue.
+//
+// This test directly exercises compactVolumeDiffs by:
+//  1. Writing cumulative diffs to PebbleDB using the attribute layer
+//  2. Calling compactVolumeDiffs at a given compaction index
+//  3. Verifying that old diffs are removed and no base is created
+//  4. Verifying that computed values remain correct after pruning
+func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, attrs := newTestMachine(t)
+
+	aliceInputKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:alice"},
+		Asset:      "EUR",
+	}.Bytes()
+
+	worldOutputKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
+		Asset:      "EUR",
+	}.Bytes()
+
+	// Write cumulative diffs at indexes 2,3,4,5: 100, 200, 300, 400
+	// Each value represents the total delta since the implicit base (0).
+	for i, amount := range []int64{100, 200, 300, 400} {
+		batch := dataStore.NewBatch()
+		err := attrs.Input.AddDiff(batch, uint64(i+2), aliceInputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		require.NoError(t, err)
+		require.NoError(t, batch.Commit())
+	}
+
+	for i, amount := range []int64{100, 200, 300, 400} {
+		batch := dataStore.NewBatch()
+		err := attrs.Output.AddDiff(batch, uint64(i+2), worldOutputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		require.NoError(t, err)
+		require.NoError(t, batch.Commit())
+	}
+
+	// Verify initial state: 4 diff entries for each key
+	inputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	require.Len(t, inputEntries, 4, "should have 4 diff entries initially")
+	for _, e := range inputEntries {
+		require.False(t, e.IsBase, "all initial entries should be diffs")
+	}
+
+	outputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixOutput, worldOutputKey)
+	require.Len(t, outputEntries, 4, "should have 4 output diff entries initially")
+
+	// Verify computed values before compaction: latest cumul diff = 400
+	inputVal, err := attrs.Input.ComputeValue(dataStore, 5, aliceInputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), inputVal.Value().Int64())
+
+	outputVal, err := attrs.Output.ComputeValue(dataStore, 5, worldOutputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), outputVal.Value().Int64())
+
+	// ---------------------------------------------------------------
+	// First compaction at index 4: prunes diffs strictly before 4
+	// Removes diffs at indexes 2 and 3; diffs at 4 and 5 remain.
+	// ---------------------------------------------------------------
+	batch := dataStore.NewBatch()
+	err = machine.compactVolumeDiffs(batch, 4)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after compaction")
+	for _, e := range inputEntries {
+		require.False(t, e.IsBase, "prune-only compaction must not create bases")
+	}
+	require.Equal(t, uint64(4), inputEntries[0].RaftIndex)
+	require.Equal(t, uint64(5), inputEntries[1].RaftIndex)
+
+	outputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixOutput, worldOutputKey)
+	require.Len(t, outputEntries, 2, "should have 2 output diffs remaining after compaction")
+
+	// Computed values unchanged: latest cumul diff = 400
+	inputVal, err = attrs.Input.ComputeValue(dataStore, 5, aliceInputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), inputVal.Value().Int64(),
+		"alice input should still be 400 after compaction")
+
+	outputVal, err = attrs.Output.ComputeValue(dataStore, 5, worldOutputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), outputVal.Value().Int64(),
+		"world output should still be 400 after compaction")
+
+	// ---------------------------------------------------------------
+	// Add more cumulative diffs at indexes 6(500) and 7(600)
+	// Still cumulative from the implicit base 0.
+	// ---------------------------------------------------------------
+	for i, amount := range []int64{500, 600} {
+		batch := dataStore.NewBatch()
+		err := attrs.Input.AddDiff(batch, uint64(i+6), aliceInputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		require.NoError(t, err)
+		require.NoError(t, batch.Commit())
+	}
+
+	// Latest cumul diff at index 7 = 600 → computed value = 0 + 600 = 600
+	inputVal, err = attrs.Input.ComputeValue(dataStore, 7, aliceInputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(600), inputVal.Value().Int64(),
+		"alice input should be 600 (latest cumulative diff from implicit base 0)")
+
+	// ---------------------------------------------------------------
+	// Second compaction at index 6: prunes entries < 6
+	// Removes diffs at indexes 4 and 5; diffs at 6 and 7 remain.
+	// ---------------------------------------------------------------
+	batch = dataStore.NewBatch()
+	err = machine.compactVolumeDiffs(batch, 6)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after second compaction")
+	for _, e := range inputEntries {
+		require.False(t, e.IsBase, "prune-only compaction must not create bases")
+	}
+	require.Equal(t, uint64(6), inputEntries[0].RaftIndex)
+	require.Equal(t, uint64(7), inputEntries[1].RaftIndex)
+
+	// Computed value unchanged: latest cumul diff at index 7 = 600
+	inputVal, err = attrs.Input.ComputeValue(dataStore, 7, aliceInputKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(600), inputVal.Value().Int64(),
+		"alice input should remain 600 after second compaction")
+}
+
+// makeLedgerPreloadSet creates a PreloadSet that injects ledger info into the cache.
+// lastPersistedIndex should be machine.Cache.BaseIndex.Gen0 at the time of creation.
+// This mimics what the admission layer does for entries where the ledger info
+// may have been evicted from cache due to generation rotation.
+func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerInfo *commonpb.LedgerInfo) *raftcmdpb.PreloadSet {
+	hasher := attributes.NewKeyHasher(attributes.DefaultKeys)
+	id, tag := hasher.MakeKey(data.LedgerKey{Name: ledgerName}.Bytes())
+
+	return &raftcmdpb.PreloadSet{
+		LastPersistedIndex: lastPersistedIndex,
+		Preloads: []*raftcmdpb.Preload{
+			{
+				Type: &raftcmdpb.Preload_Ledger{
+					Ledger: &raftcmdpb.PreloadLedger{
+						Id: &raftcmdpb.AttributeID{
+							Id:  id[:],
+							Tag: tag,
+						},
+						Info: ledgerInfo,
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestVolumeDiffCompactionIntegration verifies that compaction is triggered
+// automatically during generation rotation in the full ApplyEntries pipeline.
+//
+// With K=10 and entries 1-42:
+//   - Rotation 1 (entry 12): compactVolumeDiffs(0) — no-op
+//   - Rotation 2 (entry 22): compactVolumeDiffs(1) — no-op (entries start at 2)
+//   - Rotation 3 (entry 32): compactVolumeDiffs(11) — prunes diffs at indexes 2-10
+//   - Rotation 4 (entry 42): compactVolumeDiffs(21) — prunes diffs at indexes 11-20
+//
+// After all processing: 41 diffs initially, 19 pruned = 22 remaining.
+// Ledger info is injected via preloads after cache eviction (mimics admission layer).
+func TestVolumeDiffCompactionIntegration(t *testing.T) {
+	t.Parallel()
+
+	const generationThreshold = 10
+	machine, dataStore, attrs := newTestMachineWithThreshold(t, generationThreshold)
+	ctx := context.Background()
+
+	const ledgerName = "integration-test"
+
+	// Index 1: create the ledger
+	results, err := machine.ApplyEntries(ctx,
+		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
+	)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NoError(t, results[0].Error)
+
+	const ledgerID = uint32(1)
+
+	// Capture ledger info from cache for preloads
+	ledgerInfo, _, err := machine.Ledgers.Get(data.LedgerKey{Name: ledgerName}.Bytes())
+	require.NoError(t, err)
+
+	aliceInputKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
+		Asset:      "EUR",
+	}.Bytes()
+
+	// Apply 41 transactions at indexes 2-42 (triggers 4 rotations).
+	// Each proposal includes a ledger preload so that the ledger info
+	// is available even after cache eviction (same as the real admission layer).
+	for i := uint64(2); i <= 42; i++ {
+		proposal := makeProposal(i,
+			createTransactionOrder(ledgerName, true,
+				newPosting("world", "users:alice", "EUR", 100),
+			),
+		)
+		proposal.Preload = makeLedgerPreloadSet(
+			machine.Cache.BaseIndex.Gen0,
+			ledgerName,
+			ledgerInfo,
+		)
+
+		results, err = machine.ApplyEntries(ctx, makeEntry(t, i, proposal))
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		require.NoError(t, results[0].Error, "entry %d should succeed", i)
+	}
+
+	// Verify the final computed value: 41 transactions * 100 = 4100
+	inputVal, err := attrs.Input.ComputeValue(dataStore, 42, aliceInputKey)
+	require.NoError(t, err)
+	require.NotNil(t, inputVal)
+	require.Equal(t, int64(4100), inputVal.Value().Int64(),
+		"users:alice input should be 4100 (41 * 100)")
+
+	// Verify that compaction pruned old entries.
+	// 41 diffs initially, 19 pruned (9 at rotation 3 + 10 at rotation 4) = 22 remaining.
+	entries := listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	require.Equal(t, 22, len(entries),
+		"compaction should have pruned old diffs, leaving 22 entries (diffs at indexes 21-42)")
+
+	// All remaining entries should be diffs (prune-only compaction creates no bases)
+	for _, e := range entries {
+		require.False(t, e.IsBase, "prune-only compaction must not create base entries")
+	}
+
+	// Verify the range of remaining entries
+	require.Equal(t, uint64(21), entries[0].RaftIndex,
+		"first remaining diff should be at index 21")
+	require.Equal(t, uint64(42), entries[len(entries)-1].RaftIndex,
+		"last remaining diff should be at index 42")
 }

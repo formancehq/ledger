@@ -492,15 +492,23 @@ FSM flushes at apply time (batch, no sync):
 
 Goal: never force a Pebble read in Apply just to write a base.
 
-### 12.3 Background compaction
+### 12.3 Volume Diff Compaction at Generation Rotation
 
-A background compaction process:
+Volume diffs accumulate in PebbleDB and must be periodically pruned to prevent unbounded growth. Compaction is triggered deterministically during cache generation rotation (every K entries).
 
-- merges `base + diffs` into a newer `base`
-- removes diffs that become redundant
-- keeps admission reconstruction bounded and fast for cold accounts
+**Implementation:** When `CheckRotationNeeded` detects a generation change, it captures the old Gen1 base index as the compaction threshold. `compactVolumeDiffs` then calls `DeleteOldest(compactionThreshold)` on every Input and Output volume key, removing all entries with raft index strictly less than the threshold.
 
-Compaction can align new bases to generation boundaries (e.g., end of gen1) to simplify.
+This is a **prune-only** strategy — old superseded diffs are deleted, but no new base is created. This design is critical because:
+
+1. **Cumulative diffs are relative to the original base.** Each diff stores the total delta since the base (or implicit base 0 for force=true transactions). Creating a new base via `SetBase` would corrupt subsequent cumulative diffs that are still relative to the original base.
+
+2. **Only the latest diff matters.** `ComputeValue` uses `base + latestDiff`, so removing older diffs has no effect on computed values.
+
+3. **Hot accounts compact naturally.** Accounts that are frequently accessed via admission get preloaded values (`Known != nil`), which are written as `SetBase` entries during `Buffered.Merge`. This naturally consolidates their state.
+
+**Effect:** Entry count per volume key is bounded to approximately `2*K` (entries from the current and previous generation). For K=10000, this means at most ~20000 diff entries per account/asset combination.
+
+See [System Attributes](./attributes.md#volume-compaction) for a detailed description of all three compaction mechanisms.
 
 ### 12.4 Practical Pebble key layout (suggestion)
 

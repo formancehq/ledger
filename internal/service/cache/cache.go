@@ -209,17 +209,22 @@ func (c *Cache) Reset() {
 
 // CheckRotationNeeded checks if a generation rotation is needed for the given index
 // and performs it atomically if necessary.
-func (c *Cache) CheckRotationNeeded(index uint64) {
+// Returns whether a rotation occurred and the old Gen1 base index (compaction threshold).
+func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseIndex uint64) {
 	if c.GenerationThreshold == 0 {
-		return
+		return false, 0
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if g := gen(index, c.GenerationThreshold); g != c.CurrentGeneration {
+		oldGen1BaseIndex = c.BaseIndex.Gen1
 		c.rotateLocked(index, g)
+		return true, oldGen1BaseIndex
 	}
+
+	return false, 0
 }
 
 // initMetrics initializes the cache metrics on the Cache.

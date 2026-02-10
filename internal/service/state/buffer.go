@@ -73,10 +73,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 			if err := b.attrs.Input.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
 				return fmt.Errorf("could not set input base: %w", err)
 			}
-			// todo: maybe defer that at another moment? generation rotation?
-			if err := b.attrs.Input.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-				return fmt.Errorf("compacting old input base/delta: %w", err)
-			}
 		} else {
 			if err := b.attrs.Input.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {
 				return fmt.Errorf("failed adding input diff: %w", err)
@@ -95,9 +91,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		if update.New.Known != nil {
 			if err := b.attrs.Output.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
 				return fmt.Errorf("could not set output base: %w", err)
-			}
-			if err := b.attrs.Output.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-				return fmt.Errorf("compacting old output base/delta: %w", err)
 			}
 		} else {
 			if err := b.attrs.Output.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {

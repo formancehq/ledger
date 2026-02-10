@@ -137,19 +137,21 @@ See [Idempotency](./idempotency.md) for detailed documentation.
 
 ### Key Structure
 
-All attributes use a unified key format:
+All attributes use a unified key format in PebbleDB:
 
 ```
-[KeyPrefixAttributes][U128 hash][attribute prefix][raft index][entry type]
+[KeyPrefixAttributes][attribute prefix][canonical key bytes][raft index][entry type]
 ```
 
 | Component | Size | Description |
 |-----------|------|-------------|
-| `KeyPrefixAttributes` | 1 byte | Constant prefix for all attributes |
-| `U128 hash` | 16 bytes | BLAKE3 hash of canonical key |
-| `attribute prefix` | 1 byte | Identifies attribute type |
+| `KeyPrefixAttributes` | 1 byte | Constant prefix (`0x09`) for all attributes |
+| `attribute prefix` | 1 byte | Identifies attribute type (see table below) |
+| `canonical key bytes` | variable | Domain-specific key (e.g., ledgerID + account + asset for volumes) |
 | `raft index` | 8 bytes | Raft log index (big-endian) |
-| `entry type` | 1 byte | 0 = base, 1 = diff |
+| `entry type` | 1 byte | `0` = base, `1` = diff |
+
+This layout groups all entries for the same canonical key together, enabling efficient range scans for `ComputeValue`, `DeleteOldest`, and `List`.
 
 ### Attribute Prefixes
 
@@ -164,27 +166,85 @@ All attributes use a unified key format:
 
 ### Value Computation
 
-During read, the system:
-1. Finds the most recent base with index ≤ target index
-2. Finds the latest diff with index > base index and ≤ target index
-3. Applies the computation function (varies by attribute type)
+During read (`ComputeValue`), the system:
+1. Scans all entries for the canonical key up to the target raft index
+2. Finds the most recent base entry
+3. Finds the latest diff entry after that base
+4. Applies the computation function (varies by attribute type)
 
-For volumes (Input/Output), diffs are stored as cumulative values since the base, so only the latest diff is needed:
+For volumes (Input/Output), diffs are cumulative (each stores the total delta since the base), so only the latest diff is needed:
 ```
-Final Value = computeFn(base, [latest_cumulative_diff])
+Final Value = base + latest_cumulative_diff
 ```
 
-## Mapping Index
+For metadata, the latest diff wins:
+```
+Final Value = latest_diff ?? base
+```
 
-Each attribute maintains a mapping index for listing all keys:
+## Volume Compaction
+
+Volume diffs accumulate in PebbleDB over time. Three mechanisms limit growth and keep the entry count bounded:
+
+### 1. Known-Path Base Consolidation (per Merge)
+
+When a volume value is preloaded from the store (cache hit via admission), the `VolumeHolder.Known` field contains the absolute value. During `Buffered.Merge`, this is written as a `SetBase` entry in PebbleDB, effectively consolidating all prior state into a single base value.
+
+This is the primary compaction path for **hot accounts** (frequently accessed, kept in cache).
+
+**Trigger:** Every `Buffered.Merge` where `Known != nil`.
+
+### 2. Generation-Rotation Diff Pruning (periodic)
+
+When a cache generation rotation occurs (every K entries), `compactVolumeDiffs` is called to prune old superseded diffs. For each volume attribute key in PebbleDB, it calls `DeleteOldest(compactionIndex)` which removes all entries with raft index strictly less than the compaction threshold.
+
+The compaction index is the old Gen1 base index, captured just before rotation. This is safe because:
+- All entries below this index were part of Gen1 (now being discarded)
+- The latest cumulative diff above this index still represents the correct total delta
+
+This is a **prune-only** strategy: it removes old diffs but does NOT create a new base. This is critical because cumulative diffs are always relative to the original base (or implicit base 0). Creating a new base would make subsequent diffs inconsistent.
+
+**Trigger:** `CheckRotationNeeded` detects a generation change during `ApplyEntries`.
+
+**Effect:** Keeps the number of entries per key bounded to approximately `2*K` (two generations' worth).
+
+### 3. DeleteOldest for Non-Volume Attributes (per Merge)
+
+For non-cumulative attributes (ledgers, boundaries, reversions, idempotency keys), `DeleteOldest` is called during `Buffered.Merge` after writing a new base. Since these attributes use last-write-wins semantics, the old base is simply superseded.
+
+### Compaction Flow
 
 ```
-[KeyPrefixAttributesMapping][attribute prefix][canonical key bytes]
-  → [U128 hash (16 bytes)][tag64 (8 bytes)]
+Entry applied at index i
+        │
+        ▼
+  ┌─────────────────────────────────┐
+  │ CheckRotationNeeded(i)          │
+  │   gen(i) != currentGeneration?  │
+  └───────────┬─────────────────────┘
+              │ Yes (rotation)
+              ▼
+  ┌─────────────────────────────────┐
+  │ compactVolumeDiffs(oldGen1Base) │
+  │   For each Input/Output key:   │
+  │     DeleteOldest(oldGen1Base)   │
+  │   (prune diffs < oldGen1Base)  │
+  └─────────────────────────────────┘
+              │
+              ▼
+  ┌─────────────────────────────────┐
+  │ Process entry → Buffered.Merge  │
+  │   Known != nil → SetBase (hot)  │
+  │   Known == nil → AddDiff (cold) │
+  └─────────────────────────────────┘
 ```
+
+## Listing Attribute Keys
+
+The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (2 bytes) and suffix (9 bytes: index + type) from each Pebble key.
 
 This enables:
-- Listing all accounts with volumes
+- Listing all accounts with volumes (for compaction)
 - Listing all metadata keys
 - Iterating over all idempotency keys
 

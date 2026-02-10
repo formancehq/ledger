@@ -5,12 +5,10 @@
 * Export/Compaction data
 * Cold storage
 * Short circuit log ingestion
-* Idempotency rotation
 * Add DB size metric
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
 * Attributes compaction
-* Metadata deletion
 * Attribute types
 * Bounded numscript cache
 * Flat buffer for the hot path
@@ -24,3 +22,5 @@
 * Log hash
 * Ledger ID for canonical keys
 * Inter node communication
+* Roll up of existing ledgers
+* Branches

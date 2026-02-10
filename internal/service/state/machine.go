@@ -153,7 +153,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			return nil, fmt.Errorf("invalid index, got %d, expected %d", entry.Index, fsm.lastAppliedIndex+1)
 		}
 
-		fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex)
+		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex); rotated {
+			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex); err != nil {
+				return nil, fmt.Errorf("compacting volume diffs: %w", err)
+			}
+		}
 		fsm.lastAppliedIndex++
 
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
@@ -182,6 +186,39 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 
 	return ret, nil
+}
+
+// compactVolumeDiffs prunes old volume diff entries during generation rotation.
+//
+// Volume diffs are cumulative: each diff stores the total delta since the original base.
+// Only the latest diff is needed by ComputeValue, so older diffs can be safely removed.
+//
+// We delete all entries strictly before compactionIndex. This removes superseded diffs
+// while preserving the latest cumulative diff and any base that might exist.
+// We do NOT create a new base because existing diffs are cumulative from the original base,
+// and introducing a new base would make subsequent diffs inconsistent.
+func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64) error {
+	compact := func(attr *attributes.Attribute[*commonpb.BigInt]) error {
+		entries, err := attr.List(fsm.dataStore)
+		if err != nil {
+			return fmt.Errorf("listing attribute keys: %w", err)
+		}
+		for _, entry := range entries {
+			if err := attr.DeleteOldest(batch, compactionIndex, entry.CanonicalKey); err != nil {
+				return fmt.Errorf("deleting oldest: %w", err)
+			}
+		}
+		return nil
+	}
+
+	if err := compact(fsm.Attrs.Input); err != nil {
+		return fmt.Errorf("compacting input volumes: %w", err)
+	}
+	if err := compact(fsm.Attrs.Output); err != nil {
+		return fmt.Errorf("compacting output volumes: %w", err)
+	}
+
+	return nil
 }
 
 // Preload applies preloaded data to the Machine's volatile state.
