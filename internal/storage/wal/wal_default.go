@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/server/v3/wal"
@@ -23,7 +24,20 @@ const (
 	walCreationCompletedFile = "WAL_CREATION_COMPLETED"
 	etcdWalDir               = "etcd"
 	stateFile                = "raft-state.pb"
+
+	defaultPurgeInterval = 30 * time.Second
 )
+
+// Option configures a DefaultWAL instance.
+type Option func(*DefaultWAL)
+
+// WithPurgeInterval sets the interval at which the background purger checks
+// for old WAL segment files to delete. Defaults to 30s.
+func WithPurgeInterval(d time.Duration) Option {
+	return func(w *DefaultWAL) {
+		w.purgeInterval = d
+	}
+}
 
 // DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal
 type DefaultWAL struct {
@@ -49,6 +63,14 @@ type DefaultWAL struct {
 	stateFile  string
 	etcdWalDir string
 
+	// Purger for old WAL segment files
+	stopPurge     chan struct{}
+	purgeDone     <-chan struct{}
+	purgeInterval time.Duration
+
+	// Zap logger for etcd WAL and purger
+	zapLogger *zap.Logger
+
 	// Metrics
 	appendCacheHistogram     metric.Int64Histogram
 	appendSaveHistogram      metric.Int64Histogram
@@ -56,7 +78,7 @@ type DefaultWAL struct {
 }
 
 // New creates a new DefaultWAL instance
-func New(dataDir string, logger logging.Logger, meter metric.Meter) (*DefaultWAL, error) {
+func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
 
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -65,12 +87,17 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter) (*DefaultWAL
 	logger = logger.WithFields(map[string]any{"cmp": "wal"})
 
 	s := &DefaultWAL{
-		entries:    make([]raftpb.Entry, 0),
-		logger:     logger,
-		meter:      meter,
-		dataDir:    dataDir,
-		stateFile:  filepath.Join(dataDir, stateFile),
-		etcdWalDir: filepath.Join(dataDir, etcdWalDir),
+		entries:       make([]raftpb.Entry, 0),
+		logger:        logger,
+		meter:         meter,
+		dataDir:       dataDir,
+		stateFile:     filepath.Join(dataDir, stateFile),
+		etcdWalDir:    filepath.Join(dataDir, etcdWalDir),
+		purgeInterval: defaultPurgeInterval,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	// Create metrics
@@ -102,10 +129,11 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter) (*DefaultWAL
 		return nil, fmt.Errorf("creating append batch size histogram: %w", err)
 	}
 
-	zapLogger, err := zap.NewDevelopment()
+	s.zapLogger, err = zap.NewDevelopment()
 	if err != nil {
 		return nil, fmt.Errorf("creating zap logger: %w", err)
 	}
+	zapLogger := s.zapLogger
 
 	markerFilePath := filepath.Join(s.dataDir, walCreationCompletedFile)
 
@@ -192,6 +220,11 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter) (*DefaultWAL
 			"snapshot.Index":   s.snapshot.Metadata.Index,
 			"snapshot.Term":    s.snapshot.Metadata.Term,
 		}).Infof("DefaultWAL replay completed")
+
+	// Start background purger to delete old WAL segment files that have been
+	// unlocked by ReleaseLockTo during compaction.
+	s.stopPurge = make(chan struct{})
+	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(s.zapLogger, s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 
 	return s, nil
 }
@@ -583,5 +616,7 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 
 // Close closes the DefaultWAL
 func (s *DefaultWAL) Close() error {
+	close(s.stopPurge)
+	<-s.purgeDone
 	return s.wal.Close()
 }

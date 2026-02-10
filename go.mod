@@ -20,6 +20,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
+	go.etcd.io/etcd/client/pkg/v3 v3.5.25
 	go.etcd.io/etcd/raft/v3 v3.5.25
 	go.etcd.io/etcd/server/v3 v3.5.25
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
@@ -181,7 +182,6 @@ require (
 	github.com/xo/dburl v0.23.8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.5.25 // indirect
 	go.etcd.io/etcd/pkg/v3 v3.5.25 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/host v0.62.0 // indirect
