@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
+	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -35,7 +36,7 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Get context
 	ctx, cancel := getContext(cmd)
@@ -85,7 +86,7 @@ func getClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 func displayClusterStatus(state *clusterpb.ClusterState) {
 	// Display banner
 	banner, _ := pterm.DefaultBigText.WithLetters(
-		pterm.NewLettersFromStringWithStyle("CLUSTER", pterm.FgCyan.ToStyle()),
+		putils.LettersFromStringWithStyle("CLUSTER", pterm.FgCyan.ToStyle()),
 	).Srender()
 	pterm.Println(banner)
 
@@ -99,7 +100,7 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 		{pterm.LightCyan("Total Nodes:"), fmt.Sprintf("%d", len(state.Nodes))},
 	}
 
-	pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Render()
+	_ = pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Render()
 	pterm.Println()
 
 	// Raft status
@@ -117,7 +118,7 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			raftData = append(raftData, []string{pterm.LightCyan("Vote:"), fmt.Sprintf("%d", state.RaftStatus.Vote)})
 		}
 
-		pterm.DefaultTable.WithHasHeader(false).WithData(raftData).Render()
+		_ = pterm.DefaultTable.WithHasHeader(false).WithData(raftData).Render()
 		pterm.Println()
 	}
 
@@ -180,7 +181,7 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			})
 		}
 
-		pterm.DefaultTable.WithHasHeader(true).WithData(nodeData).Render()
+		_ = pterm.DefaultTable.WithHasHeader(true).WithData(nodeData).Render()
 		pterm.Println()
 	}
 }

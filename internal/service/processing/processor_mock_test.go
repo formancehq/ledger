@@ -253,6 +253,18 @@ func (mr *MockStoreMockRecorder) PutAccountMetadata(key, value any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutAccountMetadata", reflect.TypeOf((*MockStore)(nil).PutAccountMetadata), key, value)
 }
 
+// PutBoundaries mocks base method.
+func (m *MockStore) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutBoundaries", ledger, boundaries)
+}
+
+// PutBoundaries indicates an expected call of PutBoundaries.
+func (mr *MockStoreMockRecorder) PutBoundaries(ledger, boundaries any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutBoundaries", reflect.TypeOf((*MockStore)(nil).PutBoundaries), ledger, boundaries)
+}
+
 // PutIdempotencyKey mocks base method.
 func (m *MockStore) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	m.ctrl.T.Helper()
@@ -278,15 +290,15 @@ func (mr *MockStoreMockRecorder) PutInput(key, value any) *gomock.Call {
 }
 
 // PutLedger mocks base method.
-func (m *MockStore) PutLedger(name string, info *commonpb.LedgerInfo, boundaries *raftcmdpb.LedgerBoundaries) {
+func (m *MockStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutLedger", name, info, boundaries)
+	m.ctrl.Call(m, "PutLedger", name, info)
 }
 
 // PutLedger indicates an expected call of PutLedger.
-func (mr *MockStoreMockRecorder) PutLedger(name, info, boundaries any) *gomock.Call {
+func (mr *MockStoreMockRecorder) PutLedger(name, info any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedger", reflect.TypeOf((*MockStore)(nil).PutLedger), name, info, boundaries)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedger", reflect.TypeOf((*MockStore)(nil).PutLedger), name, info)
 }
 
 // PutLedgerMetadata mocks base method.

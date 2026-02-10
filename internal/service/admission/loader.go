@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 )
 
@@ -126,6 +127,7 @@ type Loaders struct {
 	Reversions      *AttributeLoader[bool]
 	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
 	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
+	Boundaries      *AttributeLoader[*raftcmdpb.LedgerBoundaries]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -136,6 +138,7 @@ func NewLoaders() *Loaders {
 		Reversions:      NewAttributeLoader[bool](),
 		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
 		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
+		Boundaries:      NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
 	}
 }
 
@@ -147,6 +150,7 @@ type LoadedKeysTracker struct {
 	Reversions      []attributes.U128
 	IdempotencyKeys []attributes.U128
 	Ledgers         []attributes.U128
+	Boundaries      []attributes.U128
 }
 
 // NewLoadedKeysTracker creates a new empty tracker.
@@ -170,5 +174,8 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	}
 	for _, key := range t.Ledgers {
 		loaders.Ledgers.MarkApplied(key)
+	}
+	for _, key := range t.Boundaries {
+		loaders.Boundaries.MarkApplied(key)
 	}
 }

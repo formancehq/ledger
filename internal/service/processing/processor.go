@@ -24,10 +24,11 @@ import (
 type Store interface {
 	// Ledger operations
 	GetLedger(name string) (*commonpb.LedgerInfo, bool)
-	PutLedger(name string, info *commonpb.LedgerInfo, boundaries *raftcmdpb.LedgerBoundaries)
+	PutLedger(name string, info *commonpb.LedgerInfo)
 
 	// Boundaries operations
 	GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool)
+	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
 	// Volume operations (Input/Output)
 	GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error)
@@ -195,7 +196,8 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		CreatedAt: s.GetDate(),
 		Id:        ledgerID,
 	}
-	s.PutLedger(order.Name, info, &raftcmdpb.LedgerBoundaries{
+	s.PutLedger(order.Name, info)
+	s.PutBoundaries(order.Name, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
 	})
@@ -226,8 +228,7 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 	}
 	l.DeletedAt = s.GetDate()
 
-	boundaries, _ := s.GetBoundaries(order.Name)
-	s.PutLedger(order.Name, l, boundaries)
+	s.PutLedger(order.Name, l)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
@@ -266,6 +267,8 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Sto
 
 	nextLogID := boundaries.NextLogId
 	boundaries.NextLogId = nextLogID + 1
+
+	s.PutBoundaries(apply.Ledger, boundaries)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{

@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.uber.org/fx"
 )
@@ -18,6 +19,7 @@ type Attributes struct {
 	Reverted        *Attribute[*commonpb.RevertedValue]
 	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
 	Ledger          *Attribute[*commonpb.LedgerInfo]
+	Boundary        *Attribute[*raftcmdpb.LedgerBoundaries]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -30,6 +32,7 @@ func New() *Attributes {
 		Reverted:        NewRevertedAttribute(),
 		IdempotencyKeys: NewIdempotencyKeysAttribute(),
 		Ledger:          NewLedgerAttribute(),
+		Boundary:        NewBoundaryAttribute(),
 	}
 }
 
@@ -143,6 +146,21 @@ func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 		prefix:   data.AttributePrefixLedger,
 		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
 		computeFn: func(base *commonpb.LedgerInfo, diffs []*commonpb.LedgerInfo) *commonpb.LedgerInfo {
+			if len(diffs) == 0 {
+				return base
+			}
+			return diffs[len(diffs)-1]
+		},
+		kb: data.NewKeyBuilder(),
+	}
+}
+
+// NewBoundaryAttribute creates a new Boundary attribute for storing ledger boundaries.
+func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
+	return &Attribute[*raftcmdpb.LedgerBoundaries]{
+		prefix:   data.AttributePrefixBoundary,
+		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
+		computeFn: func(base *raftcmdpb.LedgerBoundaries, diffs []*raftcmdpb.LedgerBoundaries) *raftcmdpb.LedgerBoundaries {
 			if len(diffs) == 0 {
 				return base
 			}

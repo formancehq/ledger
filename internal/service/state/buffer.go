@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/protobuf/proto"
@@ -20,7 +19,7 @@ type Buffered struct {
 	NextLedgerID        uint32
 	NextSequenceID      uint64
 	Ledgers             *attributes.DerivedKeyStore[data.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries          *kv.Copier[string, *raftcmdpb.LedgerBoundaries]
+	Boundaries          *attributes.DerivedKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	Input               *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
 	Output              *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
 	AccountMetadata     *attributes.DerivedKeyStore[data.MetadataKey, *commonpb.MetadataValue]
@@ -46,6 +45,20 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 		if err := b.attrs.Ledger.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
 			return fmt.Errorf("compacting old ledger base: %w", err)
+		}
+	}
+
+	// Process Boundary updates
+	boundaryUpdates, err := b.Boundaries.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge boundaries: %w", err)
+	}
+	for _, update := range boundaryUpdates {
+		if err := b.attrs.Boundary.SetBase(batch, index, update.CanonicalKey, update.New); err != nil {
+			return fmt.Errorf("failed setting boundary base: %w", err)
+		}
+		if err := b.attrs.Boundary.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+			return fmt.Errorf("compacting old boundary base: %w", err)
 		}
 	}
 
@@ -168,7 +181,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
-	b.Boundaries.Merge()
 
 	return nil
 }
@@ -179,7 +191,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		attrs:               fsm.Attrs,
 		Date:                at,
 		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, proto.CloneOf),
-		Boundaries:          kv.NewCopier(proto.CloneOf, fsm.boundaries),
+		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, proto.CloneOf),
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
 		Input:               attributes.NewDerivedKeyStore(fsm.Input, proto.CloneOf),
@@ -213,13 +225,20 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	return info, true
 }
 
-func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo, boundaries *raftcmdpb.LedgerBoundaries) {
+func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
 	b.Ledgers.Put(data.LedgerKey{Name: name}, info)
-	b.Boundaries.Put(name, boundaries)
 }
 
 func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
-	return b.Boundaries.Get(ledger)
+	boundaries, err := b.Boundaries.Get(data.LedgerKey{Name: ledger})
+	if err != nil || boundaries == nil {
+		return nil, false
+	}
+	return boundaries, true
+}
+
+func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
+	b.Boundaries.Put(data.LedgerKey{Name: ledger}, boundaries)
 }
 
 func (b *Buffered) GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {

@@ -38,8 +38,8 @@ type Machine struct {
 	Reversions      *attributes.KeyStore[data.TransactionKey, bool]
 	IdempotencyKeys *attributes.KeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
 	Ledgers         *attributes.KeyStore[data.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries      *attributes.KeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
 
-	boundaries kv.Map[string, *raftcmdpb.LedgerBoundaries]
 	nextLedgerID     uint32
 	nextSequenceID   uint64
 	lastCheckpointID uint64
@@ -113,7 +113,10 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			attributes.DefaultKeys,
 			cache.Ledgers,
 		),
-		boundaries: kv.NewMap[string, *raftcmdpb.LedgerBoundaries](),
+		Boundaries: attributes.NewKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries](
+			attributes.DefaultKeys,
+			cache.Boundaries,
+		),
 		nextLedgerID:   1,
 		nextSequenceID: 1,
 	}
@@ -311,6 +314,31 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	// Helper function to put a preloaded boundary into a cache generation
+	putInCacheBoundary := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]],
+		attrID *raftcmdpb.AttributeID,
+		value *raftcmdpb.LedgerBoundaries,
+	) *raftcmdpb.LedgerBoundaries {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id": id.Hex(),
+		}).Debugf("Preload boundary")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	// todo: handle metadata preload
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.Type.(type) {
@@ -356,6 +384,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, value)
 			} else {
 				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, preloadType.Ledger.Info)
+			}
+
+		case *raftcmdpb.Preload_Boundary:
+			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
+				value := putInCacheBoundary(fsm.Cache.Boundaries.Gen1, preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
+				putInCacheBoundary(fsm.Cache.Boundaries.Gen0, preloadType.Boundary.Id, value)
+			} else {
+				putInCacheBoundary(fsm.Cache.Boundaries.Gen0, preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
 			}
 		}
 	}
@@ -428,18 +464,10 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextLedgerId:      fsm.nextLedgerID,
 		NextSequenceId:    fsm.nextSequenceID,
-		Boundaries:        make(map[string]*raftcmdpb.BoundarySnapshot),
 		Gen0:              serializeCacheGeneration(fsm.Cache, 0),
 		Gen1:              serializeCacheGeneration(fsm.Cache, 1),
 		CheckpointId:      checkpointID,
 		CurrentGeneration: fsm.Cache.CurrentGeneration,
-	}
-
-	for name, ledger := range fsm.boundaries.Iter() {
-		snapshot.Boundaries[name] = &raftcmdpb.BoundarySnapshot{
-			NextTransactionId: ledger.NextTransactionId,
-			NextLogId:         ledger.NextLogId,
-		}
 	}
 
 	return proto.Marshal(snapshot)
@@ -458,6 +486,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore       kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
 	)
 
 	if genIndex == 0 {
@@ -467,6 +496,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		metadataStore = cache.AccountMetadata.Gen0
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0
 		ledgerStore = cache.Ledgers.Gen0
+		boundaryStore = cache.Boundaries.Gen0
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
 		inputStore = cache.Input.Gen1
@@ -474,6 +504,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		metadataStore = cache.AccountMetadata.Gen1
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1
 		ledgerStore = cache.Ledgers.Gen1
+		boundaryStore = cache.Boundaries.Gen1
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
@@ -483,6 +514,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		Metadata:       make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
 		LedgerMetadata: make([]*raftcmdpb.MetadataAttributeEntry, 0, ledgerMetadataStore.Size()),
 		Ledgers:        make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
+		Boundaries:     make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
 	}
 
 	// Serialize Input KeyStore
@@ -562,6 +594,20 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		}
 	}
 
+	// Serialize Boundaries KeyStore
+	if boundaryMap, ok := boundaryStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]); ok {
+		for u128, entry := range boundaryMap.Iter() {
+			ksEntry := &raftcmdpb.BoundaryAttributeEntry{
+				Id: &raftcmdpb.AttributeID{
+					Id:  u128[:],
+					Tag: entry.Tag,
+				},
+				Boundaries: entry.Data,
+			}
+			snapshot.Boundaries = append(snapshot.Boundaries, ksEntry)
+		}
+	}
+
 	return snapshot
 }
 
@@ -574,20 +620,12 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	}
 
 	// Restore memory state from snapshot
-	fsm.boundaries = kv.NewMap[string, *raftcmdpb.LedgerBoundaries]()
 	fsm.nextLedgerID = memSnapshot.NextLedgerId
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 
-	for name, boundarySnapshot := range memSnapshot.Boundaries {
-		fsm.boundaries.Put(name, &raftcmdpb.LedgerBoundaries{
-			NextTransactionId: boundarySnapshot.NextTransactionId,
-			NextLogId:         boundarySnapshot.NextLogId,
-		})
-	}
-
 	// Reset the cache and deserialize both generations into it
-	// Ledger info is restored via deserializeCacheGeneration (from cache generations)
+	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
 	fsm.Cache.Reset()
 	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen0, 0)
 	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen1, 1)
@@ -610,6 +648,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		metadataStore       kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore       kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
 	)
 
 	if genIndex == 0 {
@@ -619,6 +658,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		metadataStore = cache.AccountMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerStore = cache.Ledgers.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
+		boundaryStore = cache.Boundaries.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]])
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.BaseIndex
 		inputStore = cache.Input.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
@@ -626,6 +666,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		metadataStore = cache.AccountMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerStore = cache.Ledgers.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
+		boundaryStore = cache.Boundaries.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]])
 	}
 
 	// Deserialize Input KeyStore
@@ -678,6 +719,15 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
 			Tag:  ksEntry.Id.Tag,
 			Data: ksEntry.Info,
+		})
+	}
+
+	// Deserialize Boundaries KeyStore
+	for _, ksEntry := range snapshot.Boundaries {
+		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
+		boundaryStore.Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
+			Tag:  ksEntry.Id.Tag,
+			Data: ksEntry.Boundaries,
 		})
 	}
 }

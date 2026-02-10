@@ -158,11 +158,12 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required volumes, transactions, idempotency keys, and ledgers from orders
+	// Step 1: Extract required volumes, transactions, idempotency keys, ledgers, and boundaries from orders
 	neededVolumes := a.extractNeededVolumes(orders)
 	neededTransactions := a.extractNeededTransactions(orders)
 	neededIdempotencyKeys := a.extractNeededIdempotencyKeys(orders)
 	neededLedgers := a.extractNeededLedgers(orders)
+	neededBoundaries := a.extractNeededBoundaries(orders)
 
 	// Step 2: Read nextIndex under lock (don't increment yet)
 	a.admissionLock.Lock()
@@ -416,6 +417,54 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	// Build preload for boundaries not guaranteed in cache
+	for boundaryKey := range neededBoundaries {
+		canonicalKey := boundaryKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+
+		if !cache.IsGuaranteed(a.cache.Boundaries, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
+			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
+				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing boundary value at boundary %d for %s: %w", boundary, boundaryKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.Boundaries = append(loadedKeys.Boundaries, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "boundaries")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "boundaries")))
+			}
+
+			if result.Value != nil {
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"name":      boundaryKey.Name,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading boundary from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_Boundary{
+						Boundary: &raftcmdpb.PreloadBoundary{
+							Id:         attrID,
+							Boundaries: result.Value,
+						},
+					},
+				})
+			}
+		}
+	}
+
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
 	defer func() {
@@ -569,6 +618,19 @@ func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.Led
 			needed[data.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
 		case *raftcmdpb.Order_DeleteLedger:
 			needed[data.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+		case *raftcmdpb.Order_Apply:
+			needed[data.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
+		}
+	}
+	return needed
+}
+
+// extractNeededBoundaries extracts all boundary keys that need to be preloaded.
+// This is needed for apply operations to access next_transaction_id/next_log_id.
+func (a *Admission) extractNeededBoundaries(orders []*raftcmdpb.Order) map[data.LedgerKey]struct{} {
+	needed := make(map[data.LedgerKey]struct{})
+	for _, order := range orders {
+		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_Apply:
 			needed[data.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 		}

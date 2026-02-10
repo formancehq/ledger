@@ -55,6 +55,7 @@ var (
 	AttributePrefixReverted       = byte('R')
 	AttributePrefixIdempotencyKey = byte('K')
 	AttributePrefixLedger         = byte('G')
+	AttributePrefixBoundary       = byte('B')
 )
 
 // NewStore creates a new Store instance
