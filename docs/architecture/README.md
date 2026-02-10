@@ -48,3 +48,6 @@ gRPC connection mechanics, reconnection strategies, and optimizations for rollin
 
 ### [Idempotency](./idempotency.md)
 Idempotency key mechanism for safe request retries, hash-based conflict detection, and storage architecture.
+
+### [Disk Space Limiting](./disk-space-limiting.md)
+Cluster-wide disk space monitoring with per-volume thresholds that automatically reject write operations when storage usage is too high.

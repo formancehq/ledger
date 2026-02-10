@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
+	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -147,6 +148,15 @@ func Module() fx.Option {
 			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector) clusterpb.ClusterServiceServer {
 				return NewClusterServiceServer(node, servicePool, collector)
 			},
+			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
+				return clusterhealth.NewHealthChecker(
+					n, collector, servicePool,
+					cfg.RaftConfig.Peers, logger,
+					cfg.HealthConfig.Interval,
+					cfg.HealthConfig.WALThreshold,
+					cfg.HealthConfig.DataThreshold,
+				)
+			},
 			httpcompat.NewServer,
 			httpcompat.NewHandler,
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
@@ -159,6 +169,7 @@ func Module() fx.Option {
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				meterProvider metric.MeterProvider,
+				hc *clusterhealth.HealthChecker,
 			) ctrl.Admission {
 				return admission.NewAdmission(
 					cache,
@@ -167,6 +178,7 @@ func Module() fx.Option {
 					node,
 					attrs,
 					meterProvider,
+					hc,
 				)
 			},
 			func(
@@ -395,6 +407,18 @@ func Module() fx.Option {
 					},
 				})
 				return nil
+			},
+			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						hc.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						hc.Stop()
+						return nil
+					},
+				})
 			},
 		),
 	)

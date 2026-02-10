@@ -85,6 +85,7 @@ Interfaces annotated with mockgen:
 - `Spool` in `internal/storage/spool/spool.go`
 - `WAL` in `internal/storage/wal/wal.go`
 - `Store` in `internal/service/processing/processor.go`
+- `Checker` in `internal/health/healthcheck.go`
 
 To regenerate all mocks, run:
 ```bash
