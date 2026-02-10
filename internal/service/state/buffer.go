@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -63,11 +64,11 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Input updates
-	volumeUpdates, _, err := b.Input.Merge()
+	inputUpdates, _, err := b.Input.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge input: %w", err)
 	}
-	for _, update := range volumeUpdates {
+	for _, update := range inputUpdates {
 		// If we know the absolute value (Known is set), use SetBase.
 		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
 		if update.New.Known != nil {
@@ -82,11 +83,11 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Output updates
-	volumeUpdates, _, err = b.Output.Merge()
+	outputUpdates, _, err := b.Output.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge output: %w", err)
 	}
-	for _, update := range volumeUpdates {
+	for _, update := range outputUpdates {
 		// If we know the absolute value (Known is set), use SetBase.
 		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
 		if update.New.Known != nil {
@@ -98,6 +99,13 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("failed adding output diff: %w", err)
 			}
 		}
+	}
+
+	// Defensive check: double-entry invariant.
+	// The sum of all input deltas must equal the sum of all output deltas,
+	// because every posting moves the same amount from source (output) to destination (input).
+	if err := checkDoubleEntryInvariant(inputUpdates, outputUpdates); err != nil {
+		return err
 	}
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.AccountMetadata.Merge()
@@ -310,6 +318,56 @@ func (b *Buffered) GetLastLogHash() []byte {
 
 func (b *Buffered) SetLastLogHash(hash []byte) {
 	b.LastLogHash = hash
+}
+
+// volumeDelta computes the net delta for a single volume update by comparing New vs Old.
+func volumeDelta(update attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder]) *big.Int {
+	vh := update.New
+	if vh.Known != nil {
+		result := vh.Known.Value()
+		if update.Old.IsDefined() {
+			old := update.Old.Value()
+			if old != nil && old.Known != nil {
+				return new(big.Int).Sub(result, old.Known.Value())
+			}
+		}
+		return new(big.Int).Set(result)
+	}
+	if vh.DiffSinceBaseIndex != nil {
+		result := vh.DiffSinceBaseIndex.Value()
+		if update.Old.IsDefined() {
+			old := update.Old.Value()
+			if old != nil && old.DiffSinceBaseIndex != nil {
+				return new(big.Int).Sub(result, old.DiffSinceBaseIndex.Value())
+			}
+		}
+		return new(big.Int).Set(result)
+	}
+	return big.NewInt(0)
+}
+
+// checkDoubleEntryInvariant verifies that the sum of input deltas equals the sum of output deltas.
+// This is a fundamental accounting invariant: every posting moves the same amount from a source
+// account (output) to a destination account (input), so the totals must always balance.
+func checkDoubleEntryInvariant(
+	inputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
+	outputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
+) error {
+	inputSum := big.NewInt(0)
+	for _, update := range inputUpdates {
+		inputSum.Add(inputSum, volumeDelta(update))
+	}
+
+	outputSum := big.NewInt(0)
+	for _, update := range outputUpdates {
+		outputSum.Add(outputSum, volumeDelta(update))
+	}
+
+	if inputSum.Cmp(outputSum) != 0 {
+		return fmt.Errorf("double-entry invariant violated: sum of inputs (%s) != sum of outputs (%s)", inputSum, outputSum)
+	}
+
+	return nil
 }
 
 // Ensure Buffered implements Store
