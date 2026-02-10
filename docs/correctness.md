@@ -71,6 +71,73 @@ The delta computation handles both absolute values (`Known`) and relative values
 
 This check runs on every successful proposal merge, before any state is committed to storage. A violation would prevent the batch from being committed, stopping the node rather than persisting corrupted data.
 
+## Store Integrity Check
+
+The `store check` command performs a comprehensive offline verification of the entire store. It replays all logs from the beginning and compares the derived state against the actual stored values.
+
+### Verification Process
+
+The check runs in three passes:
+
+**Pass 1 — Log replay and hash chain verification:**
+
+For each log from sequence 1 to the last sequence:
+
+1. **Sequence continuity**: Verifies that no log sequence numbers are missing (gaps)
+2. **Hash chain integrity**: Recomputes the expected BLAKE3 hash for each log and compares it to the stored hash. The hash is computed over the deterministic protobuf serialization of the log (without the hash field), chained to the previous log's hash
+3. **State replay**: Replays each log payload to build expected state:
+   - `CreateLedger` logs register ledger name-to-ID mappings
+   - `CreatedTransaction` logs accumulate expected input/output volumes per account/asset, and track account metadata set during the transaction
+   - `RevertedTransaction` logs accumulate reversed posting volumes
+   - `SavedMetadata` logs track expected metadata values per account/key
+   - `DeletedMetadata` logs mark metadata as deleted
+
+**Pass 2 — Volume comparison:**
+
+For each account/asset pair encountered during replay, the checker compares the expected cumulative input and output volumes against the actual values computed from the attribute store. Any mismatch is reported as a `VOLUME_MISMATCH` error.
+
+**Pass 3 — Metadata comparison:**
+
+For each account metadata key/value encountered during replay (excluding deleted keys), the checker compares the expected value against the actual value from the attribute store. Any mismatch is reported as a `METADATA_MISMATCH` error.
+
+### Error Types
+
+| Error Type | Description |
+|------------|-------------|
+| `HASH_MISMATCH` | Log hash does not match recomputed hash (corruption or tampering) |
+| `SEQUENCE_GAP` | A log sequence number is missing |
+| `VOLUME_MISMATCH` | Account input or output volume does not match log replay |
+| `METADATA_MISMATCH` | Account metadata value does not match log replay |
+| `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
+
+### CLI Usage
+
+```bash
+# Interactive check with progress spinner
+ledgerctl store check
+
+# Machine-readable JSON output
+ledgerctl store check --json
+```
+
+### gRPC API
+
+The check is exposed as a server-streaming RPC:
+
+```protobuf
+rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
+```
+
+Events are streamed in real-time:
+- `CheckStoreProgress` events report the number of logs checked vs total
+- `CheckStoreError` events report each integrity error as it is found
+
+### Implementation
+
+The checker (`internal/service/check/checker.go`) takes a `*data.Store` and `*attributes.Attributes` as input. It reads logs sequentially from the store, replays them to build expected state in memory, then queries the attribute stores for actual values.
+
+Progress events are emitted every 100 logs and at the end of the replay.
+
 ## Integrity Guarantees
 
 1. **Tamper detection**: Modifying any historical log invalidates all subsequent hashes in the chain
@@ -78,3 +145,4 @@ This check runs on every successful proposal merge, before any state is committe
 3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same hash chain is produced (verified by tests)
 4. **Crash recovery**: The hash chain survives node restarts via Raft snapshot persistence
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
+6. **Full store verification**: The `store check` command validates the entire log chain and all derived data (volumes, metadata) against the source of truth (logs)

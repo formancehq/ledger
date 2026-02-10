@@ -244,7 +244,22 @@ Enter
 Sleep 3s
 
 # ============================================================================
-# PART 11: Cleanup - Delete Ledger
+# PART 11: Store Integrity Check
+# ============================================================================
+
+Type "clear"
+Enter
+Sleep 200ms
+
+Type "# Verify store integrity (hash chain + derived data)"
+Enter
+Sleep 800ms
+Type "ledgerctl store check"
+Enter
+Sleep 3s
+
+# ============================================================================
+# PART 12: Cleanup - Delete Ledger
 # ============================================================================
 
 Type "clear"

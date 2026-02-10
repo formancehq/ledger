@@ -27,6 +27,7 @@ const (
 	BucketService_ListTransactions_FullMethodName  = "/ledger.BucketService/ListTransactions"
 	BucketService_Apply_FullMethodName             = "/ledger.BucketService/Apply"
 	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
+	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -49,6 +50,8 @@ type BucketServiceClient interface {
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error)
+	// CheckStore verifies store integrity (hash chain and derived data consistency)
+	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
 }
 
 type bucketServiceClient struct {
@@ -147,6 +150,25 @@ func (c *bucketServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreM
 	return out, nil
 }
 
+func (c *bucketServiceClient) CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[2], BucketService_CheckStore_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[CheckStoreRequest, CheckStoreEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_CheckStoreClient = grpc.ServerStreamingClient[CheckStoreEvent]
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -167,6 +189,8 @@ type BucketServiceServer interface {
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error)
+	// CheckStore verifies store integrity (hash chain and derived data consistency)
+	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -197,6 +221,9 @@ func (UnimplementedBucketServiceServer) Apply(context.Context, *ApplyRequest) (*
 }
 func (UnimplementedBucketServiceServer) GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStoreMetrics not implemented")
+}
+func (UnimplementedBucketServiceServer) CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method CheckStore not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -331,6 +358,17 @@ func _BucketService_GetStoreMetrics_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_CheckStore_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CheckStoreRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).CheckStore(m, &grpc.GenericServerStream[CheckStoreRequest, CheckStoreEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_CheckStoreServer = grpc.ServerStreamingServer[CheckStoreEvent]
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -368,6 +406,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListTransactions",
 			Handler:       _BucketService_ListTransactions_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "CheckStore",
+			Handler:       _BucketService_CheckStore_Handler,
 			ServerStreams: true,
 		},
 	},

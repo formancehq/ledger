@@ -135,7 +135,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 			Payload:     payload,
 			Idempotency: order.Idempotency,
 		}
-		log.Hash = computeLogHash(p.logHasher, s.GetLastLogHash(), log)
+		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.Hash)
 
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
@@ -180,10 +180,10 @@ func computeOrderHash(order *raftcmdpb.Order) []byte {
 	return hash[:]
 }
 
-// computeLogHash computes a blake3 hash for log chaining: blake3(lastHash || serialize(log)).
+// ComputeLogHash computes a blake3 hash for log chaining: blake3(lastHash || serialize(log)).
 // The log is serialized with Deterministic: true to ensure stable output.
 // The hasher is reset and reused to avoid allocation overhead.
-func computeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
+func ComputeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
 	logBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(log)
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal log for hash chaining: %v", err))

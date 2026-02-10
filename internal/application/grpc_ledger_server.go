@@ -8,6 +8,8 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
@@ -18,13 +20,15 @@ type BucketServiceServerImpl struct {
 	logger logging.Logger
 	ctrl   ctrl.Controller
 	store  *data.Store
+	attrs  *attributes.Attributes
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
 		logger: logger,
 		ctrl:   ctrl,
 		store:  s,
+		attrs:  attrs,
 	}
 }
 
@@ -140,6 +144,13 @@ func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servi
 		Available: true,
 		Metrics:   metrics,
 	}, nil
+}
+
+func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
+	checker := check.NewChecker(impl.store, impl.attrs)
+	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
+		_ = stream.Send(event)
+	})
 }
 
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {

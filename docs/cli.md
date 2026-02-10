@@ -574,6 +574,45 @@ ledgerctl store metrics
 ledgerctl store metrics --json
 ```
 
+#### store check
+
+Verify store integrity by checking the hash chain and derived data consistency.
+
+**Aliases:** `c`, `verify`
+
+```bash
+ledgerctl store check [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `50s` | Request timeout |
+
+**Behavior:**
+- Iterates all logs and verifies the BLAKE3 hash chain
+- Replays logs to compute expected volumes and metadata
+- Compares expected state against actual stored state
+- Streams progress and errors in real-time
+
+**Checks performed:**
+- **SEQUENCE_GAP**: Missing log entries in the sequence
+- **HASH_MISMATCH**: Log hash does not match expected hash chain value
+- **VOLUME_MISMATCH**: Stored volume (input/output) does not match expected value from log replay
+- **METADATA_MISMATCH**: Stored account metadata does not match expected value from log replay
+
+**Example:**
+
+```bash
+# Check store integrity
+ledgerctl store check
+
+# Output as JSON (for scripting)
+ledgerctl store check --json
+```
+
 ---
 
 ### cluster

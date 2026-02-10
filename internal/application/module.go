@@ -147,8 +147,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger) *ServiceServer {
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
 			},
-			func(logger logging.Logger, ctrl ctrl.Controller, s *data.Store) servicepb.BucketServiceServer {
-				return NewBucketServiceServer(logger, ctrl, s)
+			func(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s, attrs)
 			},
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)

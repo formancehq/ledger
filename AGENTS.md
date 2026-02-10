@@ -142,6 +142,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 **Store commands:**
 - **`store.go`** : Parent command for store operations
 - **`store_metrics.go`** : `store metrics` command to retrieve Pebble storage metrics via gRPC
+- **`store_check.go`** : `store check` command to verify store integrity (hash chain + derived data) via gRPC
 
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)

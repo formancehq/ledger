@@ -26,6 +26,8 @@ service BucketService {
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   // GetStoreMetrics returns metrics from the local store (Pebble only)
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
+  // CheckStore verifies store integrity (hash chain and derived data consistency)
+  rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
 }
 
 // ============================================================================
@@ -233,4 +235,40 @@ message LevelMetrics {
   uint64 tables_flushed = 12;
   uint64 tables_ingested = 13;
   uint64 tables_moved = 14;
+}
+
+// ============================================================================
+// Store Check Messages
+// ============================================================================
+
+message CheckStoreRequest {}
+
+message CheckStoreEvent {
+  oneof type {
+    CheckStoreError error = 1;
+    CheckStoreProgress progress = 2;
+  }
+}
+
+enum CheckStoreErrorType {
+  CHECK_STORE_ERROR_TYPE_UNSPECIFIED = 0;
+  CHECK_STORE_ERROR_TYPE_HASH_MISMATCH = 1;
+  CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP = 2;
+  CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH = 3;
+  CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH = 4;
+  CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER = 5;
+}
+
+message CheckStoreError {
+  CheckStoreErrorType error_type = 1;
+  string message = 2;
+  uint64 log_sequence = 3;
+  string ledger = 4;
+  string account = 5;
+  string asset = 6;
+}
+
+message CheckStoreProgress {
+  uint64 logs_checked = 1;
+  uint64 total_logs = 2;
 }

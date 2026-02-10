@@ -45,6 +45,9 @@ This document compares the POC's API with the original Formance ledger API and d
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
 | **Idempotency** |
 | Idempotency key | ✅ | ✅ | |
+| **Store Operations** |
+| Store metrics | ✅ | ❌ | Pebble storage metrics |
+| Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | **Volumes (responses)** |
 | postCommitVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
