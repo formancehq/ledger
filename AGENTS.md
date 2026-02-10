@@ -58,9 +58,9 @@ Run pre-commit checks:
 just pre-commit
 ```
 
-**For Nix environments**: If using Nix with direnv, IntelliJ's GOROOT configuration may conflict with the Nix-provided Go environment. In this case, unset GOROOT before running pre-commit:
+**For Nix environments**: This project uses Nix with direnv to provide the correct toolchain (Go, golangci-lint, protoc, etc.). Before running pre-commit, you MUST activate the Nix environment by running `direnv allow` first, then unset GOROOT to avoid conflicts with IntelliJ's configuration:
 ```bash
-GOROOT= just pre-commit
+direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
 ```
 
 This command:
@@ -69,7 +69,7 @@ This command:
 3. Runs `golangci-lint run --fix` to check and auto-fix linting issues
 
 **Note for AI agents**:
-- Always run `just pre-commit` (or `GOROOT= just pre-commit` in Nix environments) after completing any code changes
+- Always activate the Nix environment first with `direnv allow && eval "$(direnv export bash)"`, then run `GOROOT= just pre-commit` after completing any code changes
 - Always verify that the code compiles with `go build ./...` before submitting
 - If pre-commit fails, fix the errors before completing the task
 
@@ -85,6 +85,7 @@ Interfaces annotated with mockgen:
 - `Spool` in `internal/storage/spool/spool.go`
 - `WAL` in `internal/storage/wal/wal.go`
 - `Store` in `internal/service/processing/processor.go`
+- `Checker` in `internal/health/healthcheck.go`
 
 To regenerate all mocks, run:
 ```bash

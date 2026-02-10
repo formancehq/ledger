@@ -103,6 +103,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 
+	// Health check configuration flags
+	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
+	runCmd.Flags().Float64("health-wal-threshold", 0.8, "WAL volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
+	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
+
 	return runCmd
 }
 
@@ -317,6 +322,11 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	}
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
+
+	// Health check configuration
+	cfg.HealthConfig.Interval = getDuration("health-check-interval", 30*time.Second)
+	cfg.HealthConfig.WALThreshold, _ = cmd.Flags().GetFloat64("health-wal-threshold")
+	cfg.HealthConfig.DataThreshold, _ = cmd.Flags().GetFloat64("health-data-threshold")
 
 	return cfg, nil
 }

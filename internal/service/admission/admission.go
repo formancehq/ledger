@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -30,11 +31,12 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	cache    *cache.Cache
-	store    *data.Store
-	logger   logging.Logger
-	proposer Proposer
-	attrs    *attributes.Attributes
+	cache         *cache.Cache
+	store         *data.Store
+	logger        logging.Logger
+	proposer      Proposer
+	attrs         *attributes.Attributes
+	healthChecker health.Checker
 
 	admissionLock sync.Mutex
 	nextIndex     uint64
@@ -60,6 +62,7 @@ func NewAdmission(
 	proposer Proposer,
 	attrs *attributes.Attributes,
 	meterProvider metric.MeterProvider,
+	healthChecker health.Checker,
 ) *Admission {
 	meter := meterProvider.Meter("admission")
 
@@ -132,6 +135,7 @@ func NewAdmission(
 		logger:                    logger,
 		proposer:                  proposer,
 		attrs:                     attrs,
+		healthChecker:             healthChecker,
 		nextIndex:                 proposer.InitialIndex(),
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDurationHistogram,
@@ -152,6 +156,10 @@ func NewAdmission(
 // 5. Propose command with Preload containing base values
 // TODO: Add a second phase of db lookup as the index can advance quickly and cause a cache miss
 func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	if !a.healthChecker.IsHealthy() {
+		return nil, health.ErrUnhealthy
+	}
+
 	// Convert requests to orders
 	orders, err := a.requestsToOrders(requests)
 	if err != nil {

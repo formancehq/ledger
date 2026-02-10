@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
+	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -24,6 +26,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.opentelemetry.io/otel/metric"
@@ -135,8 +138,24 @@ func Module() fx.Option {
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)
 			},
-			func(node *node.Node, servicePool *transport.ServiceConnectionPool) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node, servicePool)
+			func(cfg Config) *diskusage.Collector {
+				return diskusage.NewCollector(
+					cfg.RaftConfig.WalDir,
+					cfg.DataDir,
+					10*time.Second,
+				)
+			},
+			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node, servicePool, collector)
+			},
+			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
+				return clusterhealth.NewHealthChecker(
+					n, collector, servicePool,
+					cfg.RaftConfig.Peers, logger,
+					cfg.HealthConfig.Interval,
+					cfg.HealthConfig.WALThreshold,
+					cfg.HealthConfig.DataThreshold,
+				)
 			},
 			httpcompat.NewServer,
 			httpcompat.NewHandler,
@@ -150,6 +169,7 @@ func Module() fx.Option {
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				meterProvider metric.MeterProvider,
+				hc *clusterhealth.HealthChecker,
 			) ctrl.Admission {
 				return admission.NewAdmission(
 					cache,
@@ -158,6 +178,7 @@ func Module() fx.Option {
 					node,
 					attrs,
 					meterProvider,
+					hc,
 				)
 			},
 			func(
@@ -369,6 +390,35 @@ func Module() fx.Option {
 				lc.Append(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
+			},
+			func(lc fx.Lifecycle, collector *diskusage.Collector, meterProvider metric.MeterProvider) error {
+				registration, err := collector.RegisterMetrics(meterProvider.Meter("storage"))
+				if err != nil {
+					return fmt.Errorf("registering disk usage metrics: %w", err)
+				}
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						collector.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						collector.Stop()
+						return registration.Unregister()
+					},
+				})
+				return nil
+			},
+			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						hc.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						hc.Stop()
+						return nil
+					},
+				})
 			},
 		),
 	)

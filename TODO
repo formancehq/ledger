@@ -5,15 +5,12 @@
 * Export/Compaction data
 * Cold storage
 * Short circuit log ingestion
-* Add DB size metric
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
 * Attributes compaction
 * Attribute types
 * Bounded numscript cache
 * Flat buffer for the hot path
-* Disk space limitation
-* WAL compaction
 * Snapshot threshold based on log != entries
 * Prevent configuration changes
 * Hash detection when appending only

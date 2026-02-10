@@ -12,6 +12,9 @@ option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/clusterp
 service ClusterService {
   // GetClusterState returns the current state of the Raft cluster
   rpc GetClusterState(GetClusterStateRequest) returns (ClusterState);
+
+  // GetDiskUsage returns the disk usage of the local node
+  rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage);
 }
 
 message GetClusterStateRequest {
@@ -60,4 +63,21 @@ message ClusterState {
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
   uint32 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
+}
+
+// ============================================================================
+// Disk Usage Messages
+// ============================================================================
+
+message GetDiskUsageRequest {}
+
+// DiskUsage represents the disk space used by storage components on a node
+message DiskUsage {
+  int64 spool_bytes = 1;              // Spool directory size in bytes
+  int64 wal_bytes = 2;                // WAL directory size in bytes (excluding spool)
+  int64 data_bytes = 3;               // Data directory size in bytes
+  int64 wal_volume_bytes = 4;         // Total WAL volume size in bytes
+  int64 data_volume_bytes = 5;        // Total data volume size in bytes
+  int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
+  int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
 }

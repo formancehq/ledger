@@ -44,6 +44,9 @@ Available flags for `run`:
 - `--data-dir`: Data directory for application storage (default: `./data`)
 - `--peers`: Initial peer list (format: `<id>/<raftAddress>/<serviceAddress>`, e.g., `1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888`)
 - `--http-port`: HTTP server port (default: `9000`)
+- `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
+- `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
+- `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
 ### Configuration
 
@@ -289,6 +292,20 @@ The chart uses a StatefulSet with a headless service for automatic discovery:
 ### Automatic Cluster Initialization
 
 All pods automatically initialize their storage with the cluster configuration when starting with empty storage. No special bootstrap flag is needed.
+
+### Disk Space Limiting
+
+The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./architecture/disk-space-limiting.md) for detailed architecture documentation.
+
+```yaml
+config:
+  health:
+    interval: "30s"       # Health check interval
+    walThreshold: 0.8     # WAL volume threshold (80%)
+    dataThreshold: 0.8    # Data volume threshold (80%)
+```
+
+When a threshold is exceeded, all write operations (create ledger, create transaction, metadata updates) are rejected. Read operations remain available.
 
 ### Health Checks
 

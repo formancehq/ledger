@@ -623,6 +623,41 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+#### cluster disk-usage
+
+Display disk space used by storage components on the connected node.
+
+**Aliases:** `du`
+
+```bash
+ledgerctl cluster disk-usage [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Returns disk usage from the node the CLI is directly connected to (no leader forwarding)
+- Displays two sections: storage components (Spool, WAL, Data) and volumes (WAL, Data)
+
+**Example:**
+
+```bash
+# Get disk usage from connected node
+ledgerctl cluster disk-usage
+
+# Output as JSON
+ledgerctl cluster du --json
+```
+
+**Output sections:**
+- **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
+- **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
+
 ---
 
 ## Connection Examples

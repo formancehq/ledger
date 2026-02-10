@@ -116,6 +116,21 @@ spec:
           value: {{ .Values.config.raft.compactionMargin | quote }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
+        # Health check configuration
+        {{- if .Values.config.health }}
+        {{- if .Values.config.health.interval }}
+        - name: HEALTH_CHECK_INTERVAL
+          value: {{ .Values.config.health.interval | quote }}
+        {{- end }}
+        {{- if .Values.config.health.walThreshold }}
+        - name: HEALTH_WAL_THRESHOLD
+          value: {{ .Values.config.health.walThreshold | toString | quote }}
+        {{- end }}
+        {{- if .Values.config.health.dataThreshold }}
+        - name: HEALTH_DATA_THRESHOLD
+          value: {{ .Values.config.health.dataThreshold | toString | quote }}
+        {{- end }}
+        {{- end }}
         # Pebble configuration
         {{- if .Values.config.pebble }}
         {{- if .Values.config.pebble.memTableSize }}
