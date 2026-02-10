@@ -73,9 +73,11 @@ message GetDiskUsageRequest {}
 
 // DiskUsage represents the disk space used by storage components on a node
 message DiskUsage {
-  int64 spool_bytes = 1;        // Spool directory size in bytes
-  int64 wal_bytes = 2;          // WAL directory size in bytes (excluding spool)
-  int64 data_bytes = 3;         // Data directory size in bytes
-  int64 wal_volume_bytes = 4;   // Total WAL volume size in bytes
-  int64 data_volume_bytes = 5;  // Total data volume size in bytes
+  int64 spool_bytes = 1;              // Spool directory size in bytes
+  int64 wal_bytes = 2;                // WAL directory size in bytes (excluding spool)
+  int64 data_bytes = 3;               // Data directory size in bytes
+  int64 wal_volume_bytes = 4;         // Total WAL volume size in bytes
+  int64 data_volume_bytes = 5;        // Total data volume size in bytes
+  int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
+  int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
 }

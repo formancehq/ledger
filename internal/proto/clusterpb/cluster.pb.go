@@ -436,14 +436,16 @@ func (*GetDiskUsageRequest) Descriptor() ([]byte, []int) {
 
 // DiskUsage represents the disk space used by storage components on a node
 type DiskUsage struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	SpoolBytes      int64                  `protobuf:"varint,1,opt,name=spool_bytes,json=spoolBytes,proto3" json:"spool_bytes,omitempty"`                  // Spool directory size in bytes
-	WalBytes        int64                  `protobuf:"varint,2,opt,name=wal_bytes,json=walBytes,proto3" json:"wal_bytes,omitempty"`                        // WAL directory size in bytes (excluding spool)
-	DataBytes       int64                  `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"`                     // Data directory size in bytes
-	WalVolumeBytes  int64                  `protobuf:"varint,4,opt,name=wal_volume_bytes,json=walVolumeBytes,proto3" json:"wal_volume_bytes,omitempty"`    // Total WAL volume size in bytes
-	DataVolumeBytes int64                  `protobuf:"varint,5,opt,name=data_volume_bytes,json=dataVolumeBytes,proto3" json:"data_volume_bytes,omitempty"` // Total data volume size in bytes
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	SpoolBytes           int64                  `protobuf:"varint,1,opt,name=spool_bytes,json=spoolBytes,proto3" json:"spool_bytes,omitempty"`                                   // Spool directory size in bytes
+	WalBytes             int64                  `protobuf:"varint,2,opt,name=wal_bytes,json=walBytes,proto3" json:"wal_bytes,omitempty"`                                         // WAL directory size in bytes (excluding spool)
+	DataBytes            int64                  `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"`                                      // Data directory size in bytes
+	WalVolumeBytes       int64                  `protobuf:"varint,4,opt,name=wal_volume_bytes,json=walVolumeBytes,proto3" json:"wal_volume_bytes,omitempty"`                     // Total WAL volume size in bytes
+	DataVolumeBytes      int64                  `protobuf:"varint,5,opt,name=data_volume_bytes,json=dataVolumeBytes,proto3" json:"data_volume_bytes,omitempty"`                  // Total data volume size in bytes
+	WalVolumeTotalBytes  int64                  `protobuf:"varint,6,opt,name=wal_volume_total_bytes,json=walVolumeTotalBytes,proto3" json:"wal_volume_total_bytes,omitempty"`    // Total capacity of the WAL filesystem in bytes
+	DataVolumeTotalBytes int64                  `protobuf:"varint,7,opt,name=data_volume_total_bytes,json=dataVolumeTotalBytes,proto3" json:"data_volume_total_bytes,omitempty"` // Total capacity of the data filesystem in bytes
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *DiskUsage) Reset() {
@@ -511,6 +513,20 @@ func (x *DiskUsage) GetDataVolumeBytes() int64 {
 	return 0
 }
 
+func (x *DiskUsage) GetWalVolumeTotalBytes() int64 {
+	if x != nil {
+		return x.WalVolumeTotalBytes
+	}
+	return 0
+}
+
+func (x *DiskUsage) GetDataVolumeTotalBytes() int64 {
+	if x != nil {
+		return x.DataVolumeTotalBytes
+	}
+	return 0
+}
+
 var File_cluster_proto protoreflect.FileDescriptor
 
 const file_cluster_proto_rawDesc = "" +
@@ -553,7 +569,7 @@ const file_cluster_proto_rawDesc = "" +
 	"local_node\x18\x04 \x01(\rR\tlocalNode\x124\n" +
 	"\vraft_status\x18\x05 \x01(\v2\x13.cluster.RaftStatusR\n" +
 	"raftStatus\"\x15\n" +
-	"\x13GetDiskUsageRequest\"\xbe\x01\n" +
+	"\x13GetDiskUsageRequest\"\xaa\x02\n" +
 	"\tDiskUsage\x12\x1f\n" +
 	"\vspool_bytes\x18\x01 \x01(\x03R\n" +
 	"spoolBytes\x12\x1b\n" +
@@ -561,7 +577,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"data_bytes\x18\x03 \x01(\x03R\tdataBytes\x12(\n" +
 	"\x10wal_volume_bytes\x18\x04 \x01(\x03R\x0ewalVolumeBytes\x12*\n" +
-	"\x11data_volume_bytes\x18\x05 \x01(\x03R\x0fdataVolumeBytes2\x9d\x01\n" +
+	"\x11data_volume_bytes\x18\x05 \x01(\x03R\x0fdataVolumeBytes\x123\n" +
+	"\x16wal_volume_total_bytes\x18\x06 \x01(\x03R\x13walVolumeTotalBytes\x125\n" +
+	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes2\x9d\x01\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsageB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"

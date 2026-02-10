@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -69,11 +70,13 @@ type Collector struct {
 	spoolDir string
 	interval time.Duration
 
-	spoolBytes      atomic.Int64
-	walBytes        atomic.Int64
-	dataBytes       atomic.Int64
-	walVolumeBytes  atomic.Int64
-	dataVolumeBytes atomic.Int64
+	spoolBytes           atomic.Int64
+	walBytes             atomic.Int64
+	dataBytes            atomic.Int64
+	walVolumeBytes       atomic.Int64
+	dataVolumeBytes      atomic.Int64
+	walVolumeTotalBytes  atomic.Int64
+	dataVolumeTotalBytes atomic.Int64
 
 	stopCh chan struct{}
 	doneCh chan struct{}
@@ -135,6 +138,21 @@ func (c *Collector) collect() {
 	if size, err := DirSize(c.dataDir); err == nil {
 		c.dataVolumeBytes.Store(size)
 	}
+	if total, err := filesystemTotalBytes(c.walDir); err == nil {
+		c.walVolumeTotalBytes.Store(total)
+	}
+	if total, err := filesystemTotalBytes(c.dataDir); err == nil {
+		c.dataVolumeTotalBytes.Store(total)
+	}
+}
+
+// filesystemTotalBytes returns the total capacity of the filesystem containing path.
+func filesystemTotalBytes(path string) (int64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, err
+	}
+	return int64(stat.Blocks) * int64(stat.Bsize), nil
 }
 
 // SpoolBytes returns the last computed spool directory size in bytes.
@@ -151,6 +169,12 @@ func (c *Collector) WALVolumeBytes() int64 { return c.walVolumeBytes.Load() }
 
 // DataVolumeBytes returns the last computed total data volume size in bytes.
 func (c *Collector) DataVolumeBytes() int64 { return c.dataVolumeBytes.Load() }
+
+// WALVolumeTotalBytes returns the total capacity of the WAL filesystem in bytes.
+func (c *Collector) WALVolumeTotalBytes() int64 { return c.walVolumeTotalBytes.Load() }
+
+// DataVolumeTotalBytes returns the total capacity of the data filesystem in bytes.
+func (c *Collector) DataVolumeTotalBytes() int64 { return c.dataVolumeTotalBytes.Load() }
 
 // RegisterMetrics registers observable gauges for disk space consumption.
 // The callback reads cached values computed by the background goroutine.

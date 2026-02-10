@@ -69,9 +69,9 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 	pterm.DefaultSection.Println("Volumes")
 
 	volumeData := [][]string{
-		{pterm.Bold.Sprint("Volume"), pterm.Bold.Sprint("Size")},
-		{"WAL", formatBytes(uint64(usage.WalVolumeBytes))},
-		{"Data", formatBytes(uint64(usage.DataVolumeBytes))},
+		{pterm.Bold.Sprint("Volume"), pterm.Bold.Sprint("Used"), pterm.Bold.Sprint("Total")},
+		{"WAL", formatBytes(uint64(usage.WalVolumeBytes)), formatBytes(uint64(usage.WalVolumeTotalBytes))},
+		{"Data", formatBytes(uint64(usage.DataVolumeBytes)), formatBytes(uint64(usage.DataVolumeTotalBytes))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader(true).WithData(volumeData).Render()
 	pterm.Println()

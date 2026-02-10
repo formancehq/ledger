@@ -64,11 +64,13 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 func (impl *ClusterServiceServerImpl) GetDiskUsage(_ context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
 	return &clusterpb.DiskUsage{
-		SpoolBytes:      impl.collector.SpoolBytes(),
-		WalBytes:        impl.collector.WALBytes(),
-		DataBytes:       impl.collector.DataBytes(),
-		WalVolumeBytes:  impl.collector.WALVolumeBytes(),
-		DataVolumeBytes: impl.collector.DataVolumeBytes(),
+		SpoolBytes:           impl.collector.SpoolBytes(),
+		WalBytes:             impl.collector.WALBytes(),
+		DataBytes:            impl.collector.DataBytes(),
+		WalVolumeBytes:       impl.collector.WALVolumeBytes(),
+		DataVolumeBytes:      impl.collector.DataVolumeBytes(),
+		WalVolumeTotalBytes:  impl.collector.WALVolumeTotalBytes(),
+		DataVolumeTotalBytes: impl.collector.DataVolumeTotalBytes(),
 	}, nil
 }
 

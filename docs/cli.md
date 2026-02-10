@@ -656,7 +656,7 @@ ledgerctl cluster du --json
 
 **Output sections:**
 - **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
-- **Volumes**: Total size of each storage volume (WAL including spool, Data)
+- **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
 
 ---
 
