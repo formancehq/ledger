@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -372,16 +373,22 @@ func Module() fx.Option {
 				))
 			},
 			func(lc fx.Lifecycle, cfg Config, meterProvider metric.MeterProvider) error {
-				registration, err := diskusage.RegisterMetrics(
-					meterProvider.Meter("storage"),
+				collector := diskusage.NewCollector(
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
+					10*time.Second,
 				)
+				registration, err := collector.RegisterMetrics(meterProvider.Meter("storage"))
 				if err != nil {
 					return fmt.Errorf("registering disk usage metrics: %w", err)
 				}
 				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						collector.Start()
+						return nil
+					},
 					OnStop: func(_ context.Context) error {
+						collector.Stop()
 						return registration.Unregister()
 					},
 				})

@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -59,11 +61,85 @@ var (
 	volumeKey    = attribute.Key("volume")
 )
 
-// RegisterMetrics registers observable gauges for disk space consumption.
-// It returns a metric.Registration that can be used to unregister the callbacks.
-func RegisterMetrics(meter metric.Meter, walDir, dataDir string) (metric.Registration, error) {
-	spoolDir := filepath.Join(walDir, "spool")
+// Collector periodically computes directory sizes in the background and
+// exposes cached values to OTEL observable gauge callbacks.
+type Collector struct {
+	walDir   string
+	dataDir  string
+	spoolDir string
+	interval time.Duration
 
+	spoolBytes      atomic.Int64
+	walBytes        atomic.Int64
+	dataBytes       atomic.Int64
+	walVolumeBytes  atomic.Int64
+	dataVolumeBytes atomic.Int64
+
+	stopCh chan struct{}
+	doneCh chan struct{}
+}
+
+// NewCollector creates a new Collector that will periodically compute disk usage
+// for the given directories at the specified interval.
+func NewCollector(walDir, dataDir string, interval time.Duration) *Collector {
+	return &Collector{
+		walDir:   walDir,
+		dataDir:  dataDir,
+		spoolDir: filepath.Join(walDir, "spool"),
+		interval: interval,
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
+	}
+}
+
+// Start launches the background goroutine that periodically computes directory sizes.
+func (c *Collector) Start() {
+	c.collect()
+
+	go func() {
+		defer close(c.doneCh)
+		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.stopCh:
+				return
+			case <-ticker.C:
+				c.collect()
+			}
+		}
+	}()
+}
+
+// Stop signals the background goroutine to stop and waits for it to finish.
+func (c *Collector) Stop() {
+	close(c.stopCh)
+	<-c.doneCh
+}
+
+// collect computes directory sizes and stores the results atomically.
+func (c *Collector) collect() {
+	if size, err := DirSize(c.spoolDir); err == nil {
+		c.spoolBytes.Store(size)
+	}
+	if size, err := dirSizeExcluding(c.walDir, c.spoolDir); err == nil {
+		c.walBytes.Store(size)
+	}
+	if size, err := DirSize(c.dataDir); err == nil {
+		c.dataBytes.Store(size)
+	}
+	if size, err := DirSize(c.walDir); err == nil {
+		c.walVolumeBytes.Store(size)
+	}
+	if size, err := DirSize(c.dataDir); err == nil {
+		c.dataVolumeBytes.Store(size)
+	}
+}
+
+// RegisterMetrics registers observable gauges for disk space consumption.
+// The callback reads cached values computed by the background goroutine.
+func (c *Collector) RegisterMetrics(meter metric.Meter) (metric.Registration, error) {
 	componentGauge, err := meter.Int64ObservableGauge(
 		"storage.disk.component.bytes",
 		metric.WithDescription("Disk space used by storage component"),
@@ -84,29 +160,17 @@ func RegisterMetrics(meter metric.Meter, walDir, dataDir string) (metric.Registr
 
 	return meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			// Per-component metrics
-			if size, err := DirSize(spoolDir); err == nil {
-				o.ObserveInt64(componentGauge, size,
-					metric.WithAttributes(componentKey.String("spool")))
-			}
-			if size, err := dirSizeExcluding(walDir, spoolDir); err == nil {
-				o.ObserveInt64(componentGauge, size,
-					metric.WithAttributes(componentKey.String("wal")))
-			}
-			if size, err := DirSize(dataDir); err == nil {
-				o.ObserveInt64(componentGauge, size,
-					metric.WithAttributes(componentKey.String("data")))
-			}
+			o.ObserveInt64(componentGauge, c.spoolBytes.Load(),
+				metric.WithAttributes(componentKey.String("spool")))
+			o.ObserveInt64(componentGauge, c.walBytes.Load(),
+				metric.WithAttributes(componentKey.String("wal")))
+			o.ObserveInt64(componentGauge, c.dataBytes.Load(),
+				metric.WithAttributes(componentKey.String("data")))
 
-			// Per-volume metrics
-			if size, err := DirSize(walDir); err == nil {
-				o.ObserveInt64(volumeGauge, size,
-					metric.WithAttributes(volumeKey.String("wal")))
-			}
-			if size, err := DirSize(dataDir); err == nil {
-				o.ObserveInt64(volumeGauge, size,
-					metric.WithAttributes(volumeKey.String("data")))
-			}
+			o.ObserveInt64(volumeGauge, c.walVolumeBytes.Load(),
+				metric.WithAttributes(volumeKey.String("wal")))
+			o.ObserveInt64(volumeGauge, c.dataVolumeBytes.Load(),
+				metric.WithAttributes(volumeKey.String("data")))
 
 			return nil
 		},
