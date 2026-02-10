@@ -19,7 +19,7 @@ type Buffered struct {
 	Date                *commonpb.Timestamp
 	NextLedgerID        uint32
 	NextSequenceID      uint64
-	Ledgers             *kv.Copier[string, *commonpb.LedgerInfo]
+	Ledgers             *attributes.DerivedKeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries          *kv.Copier[string, *raftcmdpb.LedgerBoundaries]
 	Input               *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
 	Output              *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
@@ -32,9 +32,20 @@ type Buffered struct {
 }
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
-	for _, update := range b.Ledgers.Updates() {
+	// Process Ledger updates
+	ledgerUpdates, err := b.Ledgers.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge ledgers: %w", err)
+	}
+	for _, update := range ledgerUpdates {
+		if err := b.attrs.Ledger.SetBase(batch, index, update.CanonicalKey, update.New); err != nil {
+			return fmt.Errorf("failed setting ledger base: %w", err)
+		}
 		if err := batch.SaveLedger(update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
+		}
+		if err := b.attrs.Ledger.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+			return fmt.Errorf("compacting old ledger base: %w", err)
 		}
 	}
 
@@ -157,7 +168,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
-	b.Ledgers.Merge()
 	b.Boundaries.Merge()
 
 	return nil
@@ -168,7 +178,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		fsm:                 fsm,
 		attrs:               fsm.Attrs,
 		Date:                at,
-		Ledgers:             kv.NewCopier(proto.CloneOf, fsm.ledgers),
+		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, proto.CloneOf),
 		Boundaries:          kv.NewCopier(proto.CloneOf, fsm.boundaries),
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
@@ -196,11 +206,15 @@ func balanceHolderDelta(from, to *raftcmdpb.VolumeHolder) *commonpb.BigInt {
 // Store interface implementation for Buffered
 
 func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
-	return b.Ledgers.Get(name)
+	info, err := b.Ledgers.Get(data.LedgerKey{Name: name})
+	if err != nil || info == nil {
+		return nil, false
+	}
+	return info, true
 }
 
 func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo, boundaries *raftcmdpb.LedgerBoundaries) {
-	b.Ledgers.Put(name, info)
+	b.Ledgers.Put(data.LedgerKey{Name: name}, info)
 	b.Boundaries.Put(name, boundaries)
 }
 

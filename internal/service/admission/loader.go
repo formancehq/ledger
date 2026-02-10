@@ -125,6 +125,7 @@ type Loaders struct {
 	Output          *AttributeLoader[*commonpb.BigInt]
 	Reversions      *AttributeLoader[bool]
 	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
+	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -134,6 +135,7 @@ func NewLoaders() *Loaders {
 		Output:          NewAttributeLoader[*commonpb.BigInt](),
 		Reversions:      NewAttributeLoader[bool](),
 		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
+		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
 	}
 }
 
@@ -144,6 +146,7 @@ type LoadedKeysTracker struct {
 	Output          []attributes.U128
 	Reversions      []attributes.U128
 	IdempotencyKeys []attributes.U128
+	Ledgers         []attributes.U128
 }
 
 // NewLoadedKeysTracker creates a new empty tracker.
@@ -164,5 +167,8 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	}
 	for _, key := range t.IdempotencyKeys {
 		loaders.IdempotencyKeys.MarkApplied(key)
+	}
+	for _, key := range t.Ledgers {
+		loaders.Ledgers.MarkApplied(key)
 	}
 }

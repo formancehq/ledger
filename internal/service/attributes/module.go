@@ -17,6 +17,7 @@ type Attributes struct {
 	LedgerMetadata  *Attribute[*commonpb.MetadataValue]
 	Reverted        *Attribute[*commonpb.RevertedValue]
 	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
+	Ledger          *Attribute[*commonpb.LedgerInfo]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -28,6 +29,7 @@ func New() *Attributes {
 		LedgerMetadata:  NewLedgerMetadataAttribute(),
 		Reverted:        NewRevertedAttribute(),
 		IdempotencyKeys: NewIdempotencyKeysAttribute(),
+		Ledger:          NewLedgerAttribute(),
 	}
 }
 
@@ -130,6 +132,21 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 				return diffs[0]
 			}
 			return nil
+		},
+		kb: data.NewKeyBuilder(),
+	}
+}
+
+// NewLedgerAttribute creates a new Ledger attribute for storing ledger info.
+func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
+	return &Attribute[*commonpb.LedgerInfo]{
+		prefix:   data.AttributePrefixLedger,
+		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
+		computeFn: func(base *commonpb.LedgerInfo, diffs []*commonpb.LedgerInfo) *commonpb.LedgerInfo {
+			if len(diffs) == 0 {
+				return base
+			}
+			return diffs[len(diffs)-1]
 		},
 		kb: data.NewKeyBuilder(),
 	}

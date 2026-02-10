@@ -226,6 +226,9 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 	}
 	l.DeletedAt = s.GetDate()
 
+	boundaries, _ := s.GetBoundaries(order.Name)
+	s.PutLedger(order.Name, l, boundaries)
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
 			DeleteLedger: &commonpb.DeleteLedgerLog{

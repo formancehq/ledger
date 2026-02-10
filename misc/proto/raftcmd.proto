@@ -154,6 +154,7 @@ message Preload {
      PreloadOutput output = 2;
      PreloadReverted reverted = 3;
      PreloadIdempotencyKey idempotency_key = 4;
+     PreloadLedger ledger = 5;
   }
 }
 
@@ -178,6 +179,11 @@ message PreloadIdempotencyKey {
   bytes hash = 3;           // Hash of the original request (for conflict detection)
 }
 
+message PreloadLedger {
+  AttributeID id = 1;
+  common.LedgerInfo info = 2;
+}
+
 // ============================================================================
 // Memory Snapshot (for Raft snapshots)
 // ============================================================================
@@ -185,11 +191,16 @@ message PreloadIdempotencyKey {
 message MemorySnapshot {
   uint32 next_ledger_id = 1;
   uint64 next_sequence_id = 2;
-  map<string, LedgerSnapshot> ledgers = 3;
+  map<string, BoundarySnapshot> boundaries = 3;
   GenerationSnapshot gen0 = 4;
   GenerationSnapshot gen1 = 5;  // May be nil
   uint64 checkpoint_id = 6;
   uint64 current_generation = 7;
+}
+
+message BoundarySnapshot {
+  uint64 next_transaction_id = 1;
+  uint64 next_log_id = 2;
 }
 
 message GenerationSnapshot {
@@ -198,6 +209,7 @@ message GenerationSnapshot {
   repeated VolumeAttributeEntry output = 3;
   repeated MetadataAttributeEntry metadata = 4;  // Account metadata
   repeated MetadataAttributeEntry ledger_metadata = 5;  // Ledger metadata
+  repeated LedgerAttributeEntry ledgers = 6;
 }
 
 // KeyStoreEntry stores a single entry from KeyStore[*VolumeHolder]
@@ -212,6 +224,12 @@ message VolumeAttributeEntry {
 message MetadataAttributeEntry {
   AttributeID id = 1;
   common.MetadataValue value = 2;
+}
+
+// LedgerAttributeEntry stores a single entry from KeyStore[*LedgerInfo]
+message LedgerAttributeEntry {
+  AttributeID id = 1;
+  common.LedgerInfo info = 2;
 }
 
 message LedgerSnapshot {

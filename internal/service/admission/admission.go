@@ -158,10 +158,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required volumes, transactions, and idempotency keys from orders
+	// Step 1: Extract required volumes, transactions, idempotency keys, and ledgers from orders
 	neededVolumes := a.extractNeededVolumes(orders)
 	neededTransactions := a.extractNeededTransactions(orders)
 	neededIdempotencyKeys := a.extractNeededIdempotencyKeys(orders)
+	neededLedgers := a.extractNeededLedgers(orders)
 
 	// Step 2: Read nextIndex under lock (don't increment yet)
 	a.admissionLock.Lock()
@@ -367,6 +368,54 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	// Build preload for ledgers not guaranteed in cache
+	for ledgerKey := range neededLedgers {
+		canonicalKey := ledgerKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+
+		if !cache.IsGuaranteed(a.cache.Ledgers, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
+			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
+				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing ledger value at boundary %d for %s: %w", boundary, ledgerKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.Ledgers = append(loadedKeys.Ledgers, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "ledgers")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "ledgers")))
+			}
+
+			if result.Value != nil {
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"name":      ledgerKey.Name,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading ledger from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_Ledger{
+						Ledger: &raftcmdpb.PreloadLedger{
+							Id:   attrID,
+							Info: result.Value,
+						},
+					},
+				})
+			}
+		}
+	}
+
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
 	defer func() {
@@ -508,6 +557,23 @@ func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order) map[dat
 	}
 
 	return neededTransactions
+}
+
+// extractNeededLedgers extracts all ledger keys that need to be checked.
+// This is needed for create/delete ledger operations and for any apply operation that targets a ledger.
+func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.LedgerKey]struct{} {
+	needed := make(map[data.LedgerKey]struct{})
+	for _, order := range orders {
+		switch orderType := order.Type.(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			needed[data.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
+		case *raftcmdpb.Order_DeleteLedger:
+			needed[data.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+		case *raftcmdpb.Order_Apply:
+			needed[data.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
+		}
+	}
+	return needed
 }
 
 // extractNeededIdempotencyKeys extracts all idempotency keys that need to be checked.

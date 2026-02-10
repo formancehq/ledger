@@ -151,6 +151,7 @@ type Cache struct {
 	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
 	Reversions          *AttributeCache[bool]
 	IdempotencyKeys     *AttributeCache[*commonpb.IdempotencyKeyValue]
+	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
 	CurrentGeneration   uint64
@@ -171,6 +172,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.LedgerMetadata.Rotate()
 	c.Reversions.Rotate()
 	c.IdempotencyKeys.Rotate()
+	c.Ledgers.Rotate()
 	c.BaseIndex.Rotate(index)
 	c.CurrentGeneration = newGeneration
 
@@ -197,6 +199,7 @@ func (c *Cache) Reset() {
 	c.LedgerMetadata.reset()
 	c.Reversions.reset()
 	c.IdempotencyKeys.reset()
+	c.Ledgers.reset()
 	c.BaseIndex = newDualGen[uint64](1, 0)
 	c.CurrentGeneration = 0
 }
@@ -258,6 +261,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "reversions")))
 			o.ObserveInt64(sizeGauge, int64(c.IdempotencyKeys.Size()),
 				metric.WithAttributes(attribute.String("type", "idempotency_keys")))
+			o.ObserveInt64(sizeGauge, int64(c.Ledgers.Size()),
+				metric.WithAttributes(attribute.String("type", "ledgers")))
 			return nil
 		},
 		sizeGauge,
@@ -309,6 +314,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
 	ret.Reversions = newAttributeCache[bool](ret, "reversions")
 	ret.IdempotencyKeys = newAttributeCache[*commonpb.IdempotencyKeyValue](ret, "idempotency_keys")
+	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 
 	if err := ret.initMetrics(m); err != nil {
 		return nil, fmt.Errorf("initializing cache metrics: %w", err)

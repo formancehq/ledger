@@ -209,6 +209,23 @@ func (ik *IdempotencyKey) Unmarshal(data []byte) error {
 
 var _ CanonicalBytes = (*IdempotencyKey)(nil)
 
+type LedgerKey struct {
+	Name string
+}
+
+// Bytes returns a canonical byte representation of the ledger key.
+func (lk LedgerKey) Bytes() []byte {
+	return []byte(lk.Name)
+}
+
+// Unmarshal parses canonical bytes into the LedgerKey.
+func (lk *LedgerKey) Unmarshal(data []byte) error {
+	lk.Name = string(data)
+	return nil
+}
+
+var _ CanonicalBytes = (*LedgerKey)(nil)
+
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte

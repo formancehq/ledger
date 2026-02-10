@@ -37,9 +37,9 @@ type Machine struct {
 	LedgerMetadata  *attributes.KeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
 	Reversions      *attributes.KeyStore[data.TransactionKey, bool]
 	IdempotencyKeys *attributes.KeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	Ledgers         *attributes.KeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 
-	ledgers          kv.Map[string, *commonpb.LedgerInfo]
-	boundaries       kv.Map[string, *raftcmdpb.LedgerBoundaries]
+	boundaries kv.Map[string, *raftcmdpb.LedgerBoundaries]
 	nextLedgerID     uint32
 	nextSequenceID   uint64
 	lastCheckpointID uint64
@@ -109,8 +109,11 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			attributes.DefaultKeys,
 			cache.IdempotencyKeys,
 		),
-		ledgers:        kv.NewMap[string, *commonpb.LedgerInfo](),
-		boundaries:     kv.NewMap[string, *raftcmdpb.LedgerBoundaries](),
+		Ledgers: attributes.NewKeyStore[data.LedgerKey, *commonpb.LedgerInfo](
+			attributes.DefaultKeys,
+			cache.Ledgers,
+		),
+		boundaries: kv.NewMap[string, *raftcmdpb.LedgerBoundaries](),
 		nextLedgerID:   1,
 		nextSequenceID: 1,
 	}
@@ -282,6 +285,32 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	// Helper function to put a preloaded ledger info into a cache generation
+	putInCacheLedger := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]],
+		attrID *raftcmdpb.AttributeID,
+		value *commonpb.LedgerInfo,
+	) *commonpb.LedgerInfo {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id":   id.Hex(),
+			"name": value.Name,
+		}).Debugf("Preload ledger")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[*commonpb.LedgerInfo]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	// todo: handle metadata preload
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.Type.(type) {
@@ -319,6 +348,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0, preloadType.IdempotencyKey.Id, value)
 			} else {
 				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0, preloadType.IdempotencyKey.Id, idempotencyValue)
+			}
+
+		case *raftcmdpb.Preload_Ledger:
+			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
+				value := putInCacheLedger(fsm.Cache.Ledgers.Gen1, preloadType.Ledger.Id, preloadType.Ledger.Info)
+				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, value)
+			} else {
+				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, preloadType.Ledger.Info)
 			}
 		}
 	}
@@ -391,7 +428,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextLedgerId:      fsm.nextLedgerID,
 		NextSequenceId:    fsm.nextSequenceID,
-		Ledgers:           make(map[string]*raftcmdpb.LedgerSnapshot),
+		Boundaries:        make(map[string]*raftcmdpb.BoundarySnapshot),
 		Gen0:              serializeCacheGeneration(fsm.Cache, 0),
 		Gen1:              serializeCacheGeneration(fsm.Cache, 1),
 		CheckpointId:      checkpointID,
@@ -399,9 +436,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	for name, ledger := range fsm.boundaries.Iter() {
-		info, _ := fsm.ledgers.Get(name)
-		snapshot.Ledgers[name] = &raftcmdpb.LedgerSnapshot{
-			Info:              info,
+		snapshot.Boundaries[name] = &raftcmdpb.BoundarySnapshot{
 			NextTransactionId: ledger.NextTransactionId,
 			NextLogId:         ledger.NextLogId,
 		}
@@ -422,6 +457,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		outputStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
 		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 	)
 
 	if genIndex == 0 {
@@ -430,12 +466,14 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		outputStore = cache.Output.Gen0
 		metadataStore = cache.AccountMetadata.Gen0
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0
+		ledgerStore = cache.Ledgers.Gen0
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
 		inputStore = cache.Input.Gen1
 		outputStore = cache.Output.Gen1
 		metadataStore = cache.AccountMetadata.Gen1
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1
+		ledgerStore = cache.Ledgers.Gen1
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
@@ -444,6 +482,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		Output:         make([]*raftcmdpb.VolumeAttributeEntry, 0, outputStore.Size()),
 		Metadata:       make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
 		LedgerMetadata: make([]*raftcmdpb.MetadataAttributeEntry, 0, ledgerMetadataStore.Size()),
+		Ledgers:        make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
 	}
 
 	// Serialize Input KeyStore
@@ -509,6 +548,20 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		}
 	}
 
+	// Serialize Ledgers KeyStore
+	if ledgerMap, ok := ledgerStore.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]); ok {
+		for u128, entry := range ledgerMap.Iter() {
+			ksEntry := &raftcmdpb.LedgerAttributeEntry{
+				Id: &raftcmdpb.AttributeID{
+					Id:  u128[:],
+					Tag: entry.Tag,
+				},
+				Info: entry.Data,
+			}
+			snapshot.Ledgers = append(snapshot.Ledgers, ksEntry)
+		}
+	}
+
 	return snapshot
 }
 
@@ -521,21 +574,20 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	}
 
 	// Restore memory state from snapshot
-	fsm.ledgers = kv.NewMap[string, *commonpb.LedgerInfo]()
 	fsm.boundaries = kv.NewMap[string, *raftcmdpb.LedgerBoundaries]()
 	fsm.nextLedgerID = memSnapshot.NextLedgerId
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 
-	for name, ledgerSnapshot := range memSnapshot.Ledgers {
+	for name, boundarySnapshot := range memSnapshot.Boundaries {
 		fsm.boundaries.Put(name, &raftcmdpb.LedgerBoundaries{
-			NextTransactionId: ledgerSnapshot.NextTransactionId,
-			NextLogId:         ledgerSnapshot.NextLogId,
+			NextTransactionId: boundarySnapshot.NextTransactionId,
+			NextLogId:         boundarySnapshot.NextLogId,
 		})
-		fsm.ledgers.Put(name, ledgerSnapshot.Info)
 	}
 
 	// Reset the cache and deserialize both generations into it
+	// Ledger info is restored via deserializeCacheGeneration (from cache generations)
 	fsm.Cache.Reset()
 	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen0, 0)
 	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen1, 1)
@@ -557,6 +609,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		outputStore         kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
 		metadataStore       kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore         kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 	)
 
 	if genIndex == 0 {
@@ -565,12 +618,14 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		outputStore = cache.Output.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
 		metadataStore = cache.AccountMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
+		ledgerStore = cache.Ledgers.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.BaseIndex
 		inputStore = cache.Input.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
 		outputStore = cache.Output.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
 		metadataStore = cache.AccountMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
+		ledgerStore = cache.Ledgers.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
 	}
 
 	// Deserialize Input KeyStore
@@ -614,6 +669,15 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		ledgerMetadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
 			Tag:  ksEntry.Id.Tag,
 			Data: ksEntry.Value,
+		})
+	}
+
+	// Deserialize Ledgers KeyStore
+	for _, ksEntry := range snapshot.Ledgers {
+		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
+		ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
+			Tag:  ksEntry.Id.Tag,
+			Data: ksEntry.Info,
 		})
 	}
 }
