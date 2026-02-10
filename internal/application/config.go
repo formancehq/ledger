@@ -22,6 +22,7 @@ type Config struct {
 	DataDir         string
 	PebbleConfig    data.Config
 	HealthConfig    HealthConfig
+	ClusterID       string
 }
 
 func (c Config) Validate() error {

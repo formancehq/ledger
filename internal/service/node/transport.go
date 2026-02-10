@@ -16,7 +16,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 )
@@ -52,6 +54,7 @@ type DefaultTransport struct {
 	meterProvider metric.MeterProvider
 	config        TransportConfig
 	nodeID        uint64
+	clusterID     string
 
 	pendingSendQueue chan []raftpb.Message
 	stopCh           chan chan struct{}
@@ -96,6 +99,7 @@ func NewTransport(
 	meterProvider metric.MeterProvider,
 	nodeID uint64,
 	config TransportConfig,
+	clusterID string,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -114,6 +118,7 @@ func NewTransport(
 		logger:               logger,
 		config:               config,
 		nodeID:               nodeID,
+		clusterID:            clusterID,
 		stopCh:               make(chan chan struct{}),
 		pendingSendQueue:     make(chan []raftpb.Message, pendingSendCapacity),
 	}
@@ -269,6 +274,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		logger:                 logger,
 		peerID:                 id,
 		nodeID:                 t.nodeID,
+		clusterID:              t.clusterID,
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
 		reconnected:            make(chan struct{}),
@@ -426,6 +432,14 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 		return fmt.Errorf("failed to decode nodeID from metadata: %w", err)
 	}
 
+	// Validate cluster ID if configured
+	if t.clusterID != "" {
+		clusterIDStr := metadata.ValueFromIncomingContext(stream.Context(), "clusterID")
+		if len(clusterIDStr) == 0 || clusterIDStr[0] != t.clusterID {
+			return status.Errorf(codes.PermissionDenied, "invalid cluster ID")
+		}
+	}
+
 	priorityStr := metadata.ValueFromIncomingContext(stream.Context(), "priority")
 	if len(priorityStr) == 0 {
 		return fmt.Errorf("priority metadata not found in context")
@@ -537,6 +551,7 @@ type peerConnection struct {
 	logger                 logging.Logger
 	peerID                 uint64
 	nodeID                 uint64
+	clusterID              string
 	pendingResponseCounter metric.Float64UpDownCounter
 	pingLatency            metric.Int64Histogram
 	reconnected            chan struct{}
@@ -668,8 +683,9 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
 			metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
-				"nodeID":   fmt.Sprintf("%x", conn.nodeID),
-				"priority": priorityName,
+				"nodeID":    fmt.Sprintf("%x", conn.nodeID),
+				"priority":  priorityName,
+				"clusterID": conn.clusterID,
 			})),
 		)
 	}

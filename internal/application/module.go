@@ -54,6 +54,7 @@ func Module() fx.Option {
 					meterProvider,
 					cfg.RaftConfig.NodeID,
 					cfg.TransportConfig,
+					cfg.ClusterID,
 				)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*data.Store, error) {

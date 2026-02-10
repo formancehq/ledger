@@ -72,6 +72,10 @@ spec:
           value: {{ .Values.config.walDir | quote }}
         - name: DATA_DIR
           value: {{ .Values.config.dataDir | quote }}
+        {{- if .Values.config.clusterID }}
+        - name: CLUSTER_ID
+          value: {{ .Values.config.clusterID | quote }}
+        {{- end }}
         {{- if .Values.config.raft.snapshotThreshold }}
         - name: SNAPSHOT_THRESHOLD
           value: {{ .Values.config.raft.snapshotThreshold | quote }}

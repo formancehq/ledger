@@ -37,6 +37,9 @@ securityContext:
 
 # Application configuration
 config:
+  # Cluster ID for inter-node communication validation
+  # All nodes in a cluster must share the same cluster ID
+  clusterID: "default"
   # Raft transport configuration (internal inter-node communication)
   bindAddr: "0.0.0.0:7777"  # Raft transport port
   # gRPC service port (external client-facing API)

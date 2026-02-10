@@ -171,6 +171,7 @@ The following table lists the configurable parameters and their default values:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `config.clusterID` | Cluster ID for inter-node communication validation (all nodes must share the same ID) | `default` |
 | `config.bindAddr` | Raft transport bind address (internal inter-node communication) | `0.0.0.0:7777` |
 | `config.grpcPort` | gRPC service port (external client-facing API) | `8888` |
 | `config.httpPort` | HTTP server port | `9000` |

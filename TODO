@@ -1,7 +1,6 @@
 * Register failed transactions
 * Import/Export logs
 * Infinite data storage
-* Idempotency limits
 * Export/Compaction data
 * Cold storage
 * Short circuit log ingestion
@@ -13,11 +12,7 @@
 * Flat buffer for the hot path
 * Snapshot threshold based on log != entries
 * Prevent configuration changes
-* Hash detection when appending only
 * Doc performance (ulid, ordered keys, locality)
-* Cluster ID to allow new nodes
 * Log hash
-* Ledger ID for canonical keys
-* Inter node communication
 * Roll up of existing ledgers
 * Branches
