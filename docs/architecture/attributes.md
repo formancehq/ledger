@@ -17,8 +17,8 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 
 | Attribute | Key | Value | Scope | Behavior |
 |-----------|-----|-------|-------|----------|
-| **Input Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (sum of diffs) |
-| **Output Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (sum of diffs) |
+| **Input Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (base + latest cumulative diff) |
+| **Output Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (base + latest cumulative diff) |
 | **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Reversions** | ledger/txID | `bool` | Per-ledger | Last-write-wins |
@@ -32,7 +32,7 @@ Track funds flow for each account and asset combination.
 |----------|-------------|
 | **Key** | `VolumeKey` = ledger name + account address + asset |
 | **Value** | `BigInt` (arbitrary precision integer) |
-| **Computation** | Base + sum of all diffs |
+| **Computation** | Base + latest cumulative diff |
 | **Balance** | `Input - Output` |
 
 **Example:**
@@ -166,11 +166,12 @@ All attributes use a unified key format:
 
 During read, the system:
 1. Finds the most recent base with index ≤ target index
-2. Collects all diffs with index > base index and ≤ target index
+2. Finds the latest diff with index > base index and ≤ target index
 3. Applies the computation function (varies by attribute type)
 
+For volumes (Input/Output), diffs are stored as cumulative values since the base, so only the latest diff is needed:
 ```
-Final Value = computeFn(base, [diff1, diff2, ...])
+Final Value = computeFn(base, [latest_cumulative_diff])
 ```
 
 ## Mapping Index

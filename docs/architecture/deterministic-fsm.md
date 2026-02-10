@@ -478,14 +478,14 @@ For each account `acct`:
 Reconstruction for boundary `B`:
 
 ```
-Balance@B = Base@(baseIndex ≤ B) + Σ Diff(index ∈ (baseIndex, B])
+Balance@B = Base@(baseIndex ≤ B) + LatestDiff(index ∈ (baseIndex, B])
 ```
 
 ### 12.2 FSM writes (opportunistic)
 
 FSM flushes at apply time (batch, no sync):
 
-- always write indexed `diff[acct, i]` for entry index `i`
+- always write indexed cumulative `diff[acct, i]` for entry index `i` (each diff contains the total delta since the base)
 - write/update `base[acct]` opportunistically when a materialized balance/meta is available:
   - account already materialized in RAM, or
   - base material arrived via Preload

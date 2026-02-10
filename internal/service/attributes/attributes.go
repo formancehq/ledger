@@ -131,7 +131,8 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 			diffs = nil
 		case 1:
 			if (any)(baseValue) == nil || raftIndex > baseIndex {
-				diffs = append(diffs, v)
+
+				diffs = []V{v}
 			}
 		}
 	}

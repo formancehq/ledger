@@ -2,7 +2,6 @@ package state
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -79,8 +78,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("compacting old input base/delta: %w", err)
 			}
 		} else {
-			delta := balanceHolderDelta(update.Old.Value(), update.New)
-			if err := b.attrs.Input.AddDiff(batch, index, update.CanonicalKey, delta); err != nil {
+			if err := b.attrs.Input.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {
 				return fmt.Errorf("failed adding input diff: %w", err)
 			}
 		}
@@ -102,8 +100,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("compacting old output base/delta: %w", err)
 			}
 		} else {
-			delta := balanceHolderDelta(update.Old.Value(), update.New)
-			if err := b.attrs.Output.AddDiff(batch, index, update.CanonicalKey, delta); err != nil {
+			if err := b.attrs.Output.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {
 				return fmt.Errorf("failed adding output diff: %w", err)
 			}
 		}
@@ -202,17 +199,6 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, proto.CloneOf),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
 	}
-}
-
-func balanceHolderDelta(from, to *raftcmdpb.VolumeHolder) *commonpb.BigInt {
-	if from == nil {
-		return to.DiffSinceBaseIndex
-	}
-	if from.Known != nil {
-		return commonpb.NewBigInt(new(big.Int).Sub(to.Known.Value(), from.Known.Value()))
-	}
-
-	return commonpb.NewBigInt(new(big.Int).Sub(to.DiffSinceBaseIndex.Value(), from.DiffSinceBaseIndex.Value()))
 }
 
 // Store interface implementation for Buffered
