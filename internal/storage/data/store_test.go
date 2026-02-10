@@ -97,17 +97,17 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *data.Store) {
 		batch := s.NewBatch()
 
 		// world sends 100 (output)
-		worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "world"}, Asset: "USD"}
+		worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
 		require.NoError(t, attrs.Output.AddDiff(batch, 1, worldCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
 
 		// bank receives 100 (input)
-		bankKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "bank"}, Asset: "USD"}
+		bankKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
 		require.NoError(t, attrs.Input.AddDiff(batch, 1, bankCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
 
 		// user receives 50 (input)
-		userKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user"}, Asset: "USD"}
+		userKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user"}, Asset: "USD"}
 		userCanonicalKey := userKey.Bytes()
 		require.NoError(t, attrs.Input.AddDiff(batch, 2, userCanonicalKey, commonpb.NewBigInt(big.NewInt(50))))
 
@@ -475,13 +475,13 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "world"}, Asset: "USD"}
+	worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	require.NoError(t, attrs.Output.AddDiff(batch, 1, worldCanonicalKey, commonpb.NewBigInt(big.NewInt(100))))
-	metadataKey := data.MetadataKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "bank"}, Key: "key"}
+	metadataKey := data.MetadataKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, &commonpb.MetadataValue{Value: "value"}))
-	require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
+	require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
 			{
@@ -546,9 +546,9 @@ func TestInputOutput(t *testing.T) {
 	)
 	registerLedger(t, s, ledgerName, ledgerID)
 
-	bankUSD := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "bank"}, Asset: "USD"}
-	userUSD := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "user"}, Asset: "USD"}
-	bankEUR := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: ledgerName, Account: "bank"}, Asset: "EUR"}
+	bankUSD := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "bank"}, Asset: "USD"}
+	userUSD := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "user"}, Asset: "USD"}
+	bankEUR := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "bank"}, Asset: "EUR"}
 
 	// Pre-compute canonical keys for each key
 	bankUSDKey := bankUSD.Bytes()
@@ -644,7 +644,7 @@ func TestInputOutput(t *testing.T) {
 	require.Equal(t, big.NewInt(0), getOutput(bankEURKey, 100))
 
 	// Non-existing ledger should have 0 input/output
-	nonExistingKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerName: "non-existing", Account: "bank"}, Asset: "USD"}
+	nonExistingKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: 999, Account: "bank"}, Asset: "USD"}
 	nonExistingCanonicalKey := nonExistingKey.Bytes()
 	require.Equal(t, big.NewInt(0), getInput(nonExistingCanonicalKey, 100))
 	require.Equal(t, big.NewInt(0), getOutput(nonExistingCanonicalKey, 100))

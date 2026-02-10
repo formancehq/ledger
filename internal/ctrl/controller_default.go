@@ -56,13 +56,20 @@ func (ctrl *DefaultController) GetAllLedgersInfo(_ context.Context) (data.Cursor
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	return ctrl.buildTransaction(ledgerName, transactionID)
+	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+	return ctrl.buildTransaction(ledgerInfo.Id, transactionID)
 }
 
 // buildTransaction builds a transaction from updates and logs.
-func (ctrl *DefaultController) buildTransaction(ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
 	// Get all updates for this transaction
-	updates, err := ctrl.store.GetTransactionUpdates(ledgerName, transactionID)
+	updates, err := ctrl.store.GetTransactionUpdates(ledgerID, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
@@ -162,29 +169,45 @@ func (ctrl *DefaultController) buildTransaction(ledgerName string, transactionID
 
 // ListTransactions returns a cursor over transactions for a ledger (newest first).
 func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
+	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+
 	// Get transaction ID cursor from store
-	idCursor, err := ctrl.store.ListTransactionIDs(ledgerName, pageSize, afterTxID)
+	idCursor, err := ctrl.store.ListTransactionIDs(ledgerInfo.Id, pageSize, afterTxID)
 	if err != nil {
 		return nil, fmt.Errorf("listing transaction IDs: %w", err)
 	}
 
 	// Return a cursor that builds full transactions from IDs
 	return &transactionCursor{
-		ctrl:       ctrl,
-		ledgerName: ledgerName,
-		idCursor:   idCursor,
+		ctrl:     ctrl,
+		ledgerID: ledgerInfo.Id,
+		idCursor: idCursor,
 	}, nil
 }
 
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+
 	// Get account metadata using attributes
-	metadataMap, err := GetAccountMetadata(ctrl.store, ctrl.attrs, ledgerName, []string{address})
+	metadataMap, err := GetAccountMetadata(ctrl.store, ctrl.attrs, ledgerInfo.Id, []string{address})
 	if err != nil {
 		return nil, fmt.Errorf("getting account metadata: %w", err)
 	}
 
 	// Get account volumes
-	volumes, err := GetAccountVolumes(ctrl.store, ctrl.attrs, ledgerName, address)
+	volumes, err := GetAccountVolumes(ctrl.store, ctrl.attrs, ledgerInfo.Id, address)
 	if err != nil {
 		return nil, fmt.Errorf("getting account volumes: %w", err)
 	}
@@ -238,9 +261,9 @@ var _ Controller = (*DefaultController)(nil)
 
 // transactionCursor wraps a transaction ID cursor to return full transactions.
 type transactionCursor struct {
-	ctrl       *DefaultController
-	ledgerName string
-	idCursor   data.Cursor[uint64]
+	ctrl     *DefaultController
+	ledgerID uint32
+	idCursor data.Cursor[uint64]
 }
 
 func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
@@ -249,7 +272,7 @@ func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
 		return nil, err
 	}
 
-	tx, err := c.ctrl.buildTransaction(c.ledgerName, txID)
+	tx, err := c.ctrl.buildTransaction(c.ledgerID, txID)
 	if err != nil {
 		return nil, fmt.Errorf("building transaction %d: %w", txID, err)
 	}

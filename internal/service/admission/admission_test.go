@@ -139,7 +139,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		require.NoError(t, err)
 
 		// Add TransactionUpdate with TransactionInit to link transaction ID to log sequence
-		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerName: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: testLedgerID, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -206,17 +206,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: source (world) and destination (user:alice)
 		require.Len(t, volumes, 2)
 
 		worldKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "world"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user:alice"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -257,17 +257,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: original destination (alice, now source) and original source (world, now destination)
 		require.Len(t, volumes, 2)
 
 		worldKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "world"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user:alice"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -311,21 +311,21 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 3 volume keys: world, alice, bob (all in USD)
 		require.Len(t, volumes, 3)
 
 		worldKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "world"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user:alice"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
 			Asset:      "USD",
 		}
 		bobKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "user:bob"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user:bob"},
 			Asset:      "USD",
 		}
 
@@ -369,14 +369,14 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractNeededTransactions(orders)
+		transactions := admission.extractNeededTransactions(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 1 transaction key
 		require.Len(t, transactions, 1)
 
 		txKey := data.TransactionKey{
-			LedgerName: testLedgerName,
-			ID:         42,
+			LedgerID: testLedgerID,
+			ID:       42,
 		}
 		_, hasTx := transactions[txKey]
 		require.True(t, hasTx, "should have transaction key for revert")
@@ -409,7 +409,7 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractNeededTransactions(orders)
+		transactions := admission.extractNeededTransactions(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should be empty - create transactions don't need revert status check
 		require.Len(t, transactions, 0)
@@ -449,13 +449,13 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractNeededTransactions(orders)
+		transactions := admission.extractNeededTransactions(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 transaction keys
 		require.Len(t, transactions, 2)
 
-		txKey1 := data.TransactionKey{LedgerName: testLedgerName, ID: 1}
-		txKey2 := data.TransactionKey{LedgerName: testLedgerName, ID: 2}
+		txKey1 := data.TransactionKey{LedgerID: testLedgerID, ID: 1}
+		txKey2 := data.TransactionKey{LedgerID: testLedgerID, ID: 2}
 		_, hasTx1 := transactions[txKey1]
 		_, hasTx2 := transactions[txKey2]
 		require.True(t, hasTx1)
@@ -486,7 +486,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := batch.AppendLogs(txLog)
 		require.NoError(t, err)
-		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerName: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: testLedgerID, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -578,7 +578,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 0 volume keys with force=true - processor stores deltas only
 		require.Len(t, volumes, 0, "force=true should skip volume extraction")
@@ -612,17 +612,17 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: source and destination
 		require.Len(t, volumes, 2, "force=false should extract volumes normally")
 
 		aliceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:alice"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:alice"},
 			Asset:      "USD",
 		}
 		bobKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:bob"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:bob"},
 			Asset:      "USD",
 		}
 
@@ -682,14 +682,14 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have volumes only from force=false order (2 volume keys)
 		require.Len(t, volumes, 2)
 
 		// Verify force=true volumes are NOT present
 		forceSourceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:force_source"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:force_source"},
 			Asset:      "USD",
 		}
 		_, hasForceSource := volumes[forceSourceKey]
@@ -697,7 +697,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		// Verify force=false volumes are present
 		normalSourceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerName: testLedgerName, Account: "users:normal_source"},
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:normal_source"},
 			Asset:      "EUR",
 		}
 		_, hasNormalSource := volumes[normalSourceKey]
@@ -735,7 +735,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders)
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should still have 2 volume keys for revert (even with force=true)
 		// because volume preloading is needed for correct accounting
@@ -800,7 +800,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := batch.AppendLogs(txLog)
 		require.NoError(t, err)
-		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerName: testLedgerName, ID: 42}, &commonpb.TransactionUpdate{
+		require.NoError(t, batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: testLedgerID, ID: 42}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{

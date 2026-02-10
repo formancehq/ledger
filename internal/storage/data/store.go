@@ -240,15 +240,15 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 // ListTransactionIDs returns a cursor over transaction IDs for a ledger (newest first).
 // If afterTxID > 0, it starts after that transaction ID (exclusive).
 // pageSize limits the number of results (0 = no limit).
-func (s *Store) ListTransactionIDs(ledgerName string, pageSize uint32, afterTxID uint64) (Cursor[uint64], error) {
+func (s *Store) ListTransactionIDs(ledgerID uint32, pageSize uint32, afterTxID uint64) (Cursor[uint64], error) {
 	kb := NewKeyBuilder()
-	kb.PutLedgerPrefix(ledgerName).
+	kb.PutLedgerPrefix(ledgerID).
 		PutByte(keyPrefixTransactionUpdate)
 	lowerBound := kb.Snapshot()
 
 	// Calculate the offset where transaction ID starts in the key
-	// Key format: [ledgerName (variable)][keyPrefixTransactionUpdate (1 byte)][transactionID (8 bytes)][byLog (8 bytes)]
-	txIDOffset := len(ledgerName) + 1 // ledgerName length + 1 byte for keyPrefixTransactionUpdate
+	// Key format: [ledgerID (4 bytes)][keyPrefixTransactionUpdate (1 byte)][transactionID (8 bytes)][byLog (8 bytes)]
+	txIDOffset := 4 + 1 // ledgerID (4 bytes) + 1 byte for keyPrefixTransactionUpdate
 
 	// Upper bound: if afterTxID is specified, start from afterTxID - 1
 	// Otherwise, start from the maximum possible transaction ID
@@ -337,9 +337,9 @@ func (c *transactionIDCursor) Close() error {
 }
 
 // GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
-func (s *Store) GetTransactionUpdates(ledgerName string, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
 	kb := NewKeyBuilder()
-	kb.PutLedgerPrefix(ledgerName).
+	kb.PutLedgerPrefix(ledgerID).
 		PutByte(keyPrefixTransactionUpdate).
 		PutUInt64(transactionID)
 	lowerBound := kb.Snapshot()

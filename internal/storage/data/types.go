@@ -1,12 +1,13 @@
 package data
 
 import (
+	"encoding/binary"
 	"fmt"
 )
 
 type AccountKey struct {
-	LedgerName string
-	Account    string
+	LedgerID uint32
+	Account  string
 }
 
 type VolumeKey struct {
@@ -15,14 +16,12 @@ type VolumeKey struct {
 }
 
 // Bytes returns a canonical byte representation of the balance key.
-// Format: [ledger]\x00[account]\x00[asset]
-// The null byte separators ensure unambiguous parsing.
+// Format: [ledgerID (4 bytes)][account]\x00[asset]
+// LedgerID is fixed-length so no separator needed after it.
 func (bk VolumeKey) Bytes() []byte {
-	// ledger + \x00 + account + \x00 + asset
-	ret := make([]byte, len(bk.LedgerName)+1+len(bk.Account)+1+len(bk.Asset))
-	n := copy(ret, bk.LedgerName)
-	ret[n] = 0x00
-	n++
+	ret := make([]byte, 4+len(bk.Account)+1+len(bk.Asset))
+	binary.BigEndian.PutUint32(ret, bk.LedgerID)
+	n := 4
 	n += copy(ret[n:], bk.Account)
 	ret[n] = 0x00
 	n++
@@ -31,14 +30,18 @@ func (bk VolumeKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
-func (bk *VolumeKey) Unmarshal(data []byte) error {
-	parts := splitNullBytes(data, 3)
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid balance key bytes: expected 3 parts, got %d", len(parts))
+func (bk *VolumeKey) Unmarshal(d []byte) error {
+	if len(d) < 4 {
+		return fmt.Errorf("invalid balance key bytes: too short")
 	}
-	bk.LedgerName = string(parts[0])
-	bk.Account = string(parts[1])
-	bk.Asset = string(parts[2])
+	bk.LedgerID = binary.BigEndian.Uint32(d[:4])
+	rest := d[4:]
+	parts := splitNullBytes(rest, 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid balance key bytes: expected 2 parts after ledgerID, got %d", len(parts))
+	}
+	bk.Account = string(parts[0])
+	bk.Asset = string(parts[1])
 	return nil
 }
 
@@ -50,14 +53,12 @@ type MetadataKey struct {
 }
 
 // Bytes returns a canonical byte representation of the metadata key.
-// Format: [ledger]\x00[account]\x01[key]
+// Format: [ledgerID (4 bytes)][account]\x01[key]
 // Uses \x01 as separator before key to distinguish from balance keys.
 func (mk MetadataKey) Bytes() []byte {
-	// ledger + \x00 + account + \x01 + key
-	ret := make([]byte, len(mk.LedgerName)+1+len(mk.Account)+1+len(mk.Key))
-	n := copy(ret, mk.LedgerName)
-	ret[n] = 0x00
-	n++
+	ret := make([]byte, 4+len(mk.Account)+1+len(mk.Key))
+	binary.BigEndian.PutUint32(ret, mk.LedgerID)
+	n := 4
 	n += copy(ret[n:], mk.Account)
 	ret[n] = 0x01
 	n++
@@ -66,22 +67,14 @@ func (mk MetadataKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the MetadataKey.
-func (mk *MetadataKey) Unmarshal(data []byte) error {
-	// First find ledger (separated by \x00)
-	firstNull := -1
-	for i, b := range data {
-		if b == 0x00 {
-			firstNull = i
-			break
-		}
+func (mk *MetadataKey) Unmarshal(d []byte) error {
+	if len(d) < 4 {
+		return fmt.Errorf("invalid metadata key bytes: too short")
 	}
-	if firstNull == -1 {
-		return fmt.Errorf("invalid metadata key bytes: missing ledger separator")
-	}
-	mk.LedgerName = string(data[:firstNull])
+	mk.LedgerID = binary.BigEndian.Uint32(d[:4])
 
 	// Rest is account + \x01 + key
-	rest := data[firstNull+1:]
+	rest := d[4:]
 	separator := -1
 	for i, b := range rest {
 		if b == 0x01 {
@@ -102,91 +95,54 @@ var _ CanonicalBytes = (*MetadataKey)(nil)
 
 // LedgerMetadataKey represents a key for ledger metadata.
 type LedgerMetadataKey struct {
-	LedgerName string
-	Key        string
+	LedgerID uint32
+	Key      string
 }
 
 // Bytes returns a canonical byte representation of the ledger metadata key.
-// Format: [ledger]\x02[key]
-// Uses \x02 as separator to distinguish from other key types.
+// Format: [ledgerID (4 bytes)][key]
+// No separator needed since ledgerID is fixed-length.
 func (lmk LedgerMetadataKey) Bytes() []byte {
-	ret := make([]byte, len(lmk.LedgerName)+1+len(lmk.Key))
-	n := copy(ret, lmk.LedgerName)
-	ret[n] = 0x02
-	n++
-	copy(ret[n:], lmk.Key)
+	ret := make([]byte, 4+len(lmk.Key))
+	binary.BigEndian.PutUint32(ret, lmk.LedgerID)
+	copy(ret[4:], lmk.Key)
 	return ret
 }
 
 // Unmarshal parses canonical bytes into the LedgerMetadataKey.
-func (lmk *LedgerMetadataKey) Unmarshal(data []byte) error {
-	separator := -1
-	for i, b := range data {
-		if b == 0x02 {
-			separator = i
-			break
-		}
+func (lmk *LedgerMetadataKey) Unmarshal(d []byte) error {
+	if len(d) < 4 {
+		return fmt.Errorf("invalid ledger metadata key bytes: too short")
 	}
-	if separator == -1 {
-		return fmt.Errorf("invalid ledger metadata key bytes: missing separator")
-	}
-	lmk.LedgerName = string(data[:separator])
-	lmk.Key = string(data[separator+1:])
+	lmk.LedgerID = binary.BigEndian.Uint32(d[:4])
+	lmk.Key = string(d[4:])
 	return nil
 }
 
 var _ CanonicalBytes = (*LedgerMetadataKey)(nil)
 
 type TransactionKey struct {
-	LedgerName string
-	ID         uint64
+	LedgerID uint32
+	ID       uint64
 }
 
 // Bytes returns a canonical byte representation of the transaction key.
-// Format: [ledger]\x00[8-byte big-endian ID]
+// Format: [ledgerID (4 bytes)][txID (8 bytes)]
+// Both fixed-length, no separator needed.
 func (tk TransactionKey) Bytes() []byte {
-	ret := make([]byte, len(tk.LedgerName)+1+8)
-	n := copy(ret, tk.LedgerName)
-	ret[n] = 0x00
-	n++
-	// Big-endian encoding for proper lexicographic ordering
-	ret[n] = byte(tk.ID >> 56)
-	ret[n+1] = byte(tk.ID >> 48)
-	ret[n+2] = byte(tk.ID >> 40)
-	ret[n+3] = byte(tk.ID >> 32)
-	ret[n+4] = byte(tk.ID >> 24)
-	ret[n+5] = byte(tk.ID >> 16)
-	ret[n+6] = byte(tk.ID >> 8)
-	ret[n+7] = byte(tk.ID)
+	ret := make([]byte, 4+8)
+	binary.BigEndian.PutUint32(ret, tk.LedgerID)
+	binary.BigEndian.PutUint64(ret[4:], tk.ID)
 	return ret
 }
 
 // Unmarshal parses canonical bytes into the TransactionKey.
-func (tk *TransactionKey) Unmarshal(data []byte) error {
-	// Find the null separator
-	separator := -1
-	for i, b := range data {
-		if b == 0x00 {
-			separator = i
-			break
-		}
+func (tk *TransactionKey) Unmarshal(d []byte) error {
+	if len(d) < 12 {
+		return fmt.Errorf("invalid transaction key bytes: expected 12 bytes, got %d", len(d))
 	}
-	if separator == -1 {
-		return fmt.Errorf("invalid transaction key bytes: missing separator")
-	}
-	if len(data) < separator+1+8 {
-		return fmt.Errorf("invalid transaction key bytes: too short for ID")
-	}
-	tk.LedgerName = string(data[:separator])
-	idBytes := data[separator+1:]
-	tk.ID = uint64(idBytes[0])<<56 |
-		uint64(idBytes[1])<<48 |
-		uint64(idBytes[2])<<40 |
-		uint64(idBytes[3])<<32 |
-		uint64(idBytes[4])<<24 |
-		uint64(idBytes[5])<<16 |
-		uint64(idBytes[6])<<8 |
-		uint64(idBytes[7])
+	tk.LedgerID = binary.BigEndian.Uint32(d[:4])
+	tk.ID = binary.BigEndian.Uint64(d[4:12])
 	return nil
 }
 

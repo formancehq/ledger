@@ -12,7 +12,7 @@ import (
 
 // GetAccountMetadata retrieves account metadata for multiple accounts from the store for a specific ledger.
 // It uses the attributes system to list all metadata keys and compute their values.
-func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerName string, accounts []string) (map[string]metadata.Metadata, error) {
+func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	// Initialize with empty metadata for all requested accounts
@@ -41,7 +41,7 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerN
 		}
 
 		// Skip if not the requested ledger
-		if key.LedgerName != ledgerName {
+		if key.LedgerID != ledgerID {
 			continue
 		}
 
@@ -53,8 +53,8 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerN
 		// Compute the metadata value (use max uint64 to get the latest value)
 		value, err := attrs.Metadata.ComputeValue(store, ^uint64(0), entry.CanonicalKey)
 		if err != nil {
-			return nil, fmt.Errorf("computing metadata value for %s/%s/%s: %w",
-				key.LedgerName, key.Account, key.Key, err)
+			return nil, fmt.Errorf("computing metadata value for %d/%s/%s: %w",
+				key.LedgerID, key.Account, key.Key, err)
 		}
 
 		// Skip nil values (deleted metadata)
@@ -74,7 +74,7 @@ type assetEntry struct {
 
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
 // It uses the attributes system to list all keys and compute cumulative values.
-func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName string, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
 	const maxIndex uint64 = 1 << 62
 
@@ -92,7 +92,7 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName s
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			return nil, fmt.Errorf("parsing input key: %w", err)
 		}
-		if key.LedgerName == ledgerName && key.Account == account {
+		if key.LedgerID == ledgerID && key.Account == account {
 			assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}
 		}
 	}
@@ -107,7 +107,7 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerName s
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			return nil, fmt.Errorf("parsing output key: %w", err)
 		}
-		if key.LedgerName == ledgerName && key.Account == account {
+		if key.LedgerID == ledgerID && key.Account == account {
 			// Only add if not already present from input entries
 			if _, exists := assetEntries[key.Asset]; !exists {
 				assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}

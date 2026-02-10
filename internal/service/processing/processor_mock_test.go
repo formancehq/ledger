@@ -362,16 +362,16 @@ func (m *MockpostingProducer) EXPECT() *MockpostingProducerMockRecorder {
 }
 
 // produce mocks base method.
-func (m *MockpostingProducer) produce(s Store, ledgerName string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (m *MockpostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "produce", s, ledgerName, order)
+	ret := m.ctrl.Call(m, "produce", s, ledgerID, order)
 	ret0, _ := ret[0].(*produceResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // produce indicates an expected call of produce.
-func (mr *MockpostingProducerMockRecorder) produce(s, ledgerName, order any) *gomock.Call {
+func (mr *MockpostingProducerMockRecorder) produce(s, ledgerID, order any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "produce", reflect.TypeOf((*MockpostingProducer)(nil).produce), s, ledgerName, order)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "produce", reflect.TypeOf((*MockpostingProducer)(nil).produce), s, ledgerID, order)
 }

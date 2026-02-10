@@ -117,7 +117,7 @@ func (b *Batch) StoreTransactionUpdate(key TransactionKey, update *commonpb.Tran
 	}
 
 	b.KeyBuilder.
-		PutLedgerPrefix(key.LedgerName).
+		PutLedgerPrefix(key.LedgerID).
 		PutByte(keyPrefixTransactionUpdate).
 		PutUInt64(key.ID).
 		PutUInt64(update.ByLog)

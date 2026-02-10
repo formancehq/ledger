@@ -206,8 +206,8 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	if order.Metadata != nil {
 		for _, m := range order.Metadata.Metadata {
 			s.PutLedgerMetadata(data.LedgerMetadataKey{
-				LedgerName: order.Name,
-				Key:        m.Key,
+				LedgerID: ledgerID,
+				Key:      m.Key,
 			}, m.Value)
 		}
 	}
@@ -240,10 +240,17 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 }
 
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Store) (*commonpb.LogPayload, error) {
-	boundaries, ok := s.GetBoundaries(apply.Ledger)
+	ledgerInfo, ok := s.GetLedger(apply.Ledger)
 	if !ok {
 		return nil, fmt.Errorf("ledger does not exist: %s", apply.Ledger)
 	}
+
+	boundaries, ok := s.GetBoundaries(apply.Ledger)
+	if !ok {
+		return nil, fmt.Errorf("ledger boundaries not found: %s", apply.Ledger)
+	}
+
+	ledgerID := ledgerInfo.Id
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
@@ -251,13 +258,13 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Sto
 	)
 	switch applyData := apply.Data.(type) {
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		logPayload, err = p.processAddMetadata(apply.Ledger, boundaries, applyData.AddMetadata, s)
+		logPayload, err = p.processAddMetadata(ledgerID, boundaries, applyData.AddMetadata, s)
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		logPayload, err = p.processDeleteMetadata(apply.Ledger, boundaries, applyData.DeleteMetadata, s)
+		logPayload, err = p.processDeleteMetadata(ledgerID, boundaries, applyData.DeleteMetadata, s)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		logPayload, err = p.processCreateTransaction(apply.Ledger, boundaries, applyData.CreateTransaction, s)
+		logPayload, err = p.processCreateTransaction(ledgerID, boundaries, applyData.CreateTransaction, s)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		logPayload, err = p.processRevertTransaction(apply.Ledger, boundaries, applyData.RevertTransaction, s)
+		logPayload, err = p.processRevertTransaction(ledgerID, boundaries, applyData.RevertTransaction, s)
 	default:
 		return nil, fmt.Errorf("invalid apply type")
 	}
@@ -284,7 +291,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Sto
 	}, nil
 }
 
-func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, errors.New("target is required")
 	}
@@ -294,8 +301,8 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		for _, entry := range order.Metadata.Metadata {
 			s.PutAccountMetadata(data.MetadataKey{
 				AccountKey: data.AccountKey{
-					LedgerName: ledgerName,
-					Account:    target.Account.Addr,
+					LedgerID: ledgerID,
+					Account:  target.Account.Addr,
 				},
 				Key: entry.Key,
 			}, entry.Value)
@@ -316,7 +323,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 				},
 			}
 		}
-		s.AddTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog:   s.GetNextSequenceID(),
 			Updates: updates,
 		})
@@ -332,7 +339,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, errors.New("target is required")
 	}
@@ -345,8 +352,8 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		// TODO: is it necessary to check if the metadata was already present?
 		s.DeleteAccountMetadata(data.MetadataKey{
 			AccountKey: data.AccountKey{
-				LedgerName: ledgerName,
-				Account:    target.Account.Addr,
+				LedgerID: ledgerID,
+				Account:  target.Account.Addr,
 			},
 			Key: order.Key,
 		})
@@ -356,7 +363,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		}
 		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
 		// This ensures each transaction update has a unique key in PebbleDB
-		s.AddTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog: s.GetNextSequenceID(),
 			Updates: []*commonpb.TransactionUpdateType{{
 				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{
@@ -378,7 +385,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 	}, nil
 }
 
-func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.Script != nil && order.Script.Plain != "" {
@@ -388,7 +395,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
-	result, err := producer.produce(s, ledgerName, order)
+	result, err := producer.produce(s, ledgerID, order)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +404,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	boundaries.NextTransactionId = nextTransactionID + 1
 
 	// Store the transaction init update for later indexing
-	s.AddTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: nextTransactionID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: nextTransactionID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(), // Will be set correctly when committing
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
@@ -452,10 +459,10 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	}, nil
 }
 
-func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	txKey := data.TransactionKey{
-		LedgerName: ledgerName,
-		ID:         order.TransactionId,
+		LedgerID: ledgerID,
+		ID:       order.TransactionId,
 	}
 
 	// Check if transaction exists (ID must be less than next transaction ID)
@@ -485,7 +492,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 		}
 
 		// Apply the reversed posting (skip balance check if force is set)
-		if err := applyPosting(s, ledgerName, revertPostings[i], order.Force); err != nil {
+		if err := applyPosting(s, ledgerID, revertPostings[i], order.Force); err != nil {
 			return nil, err
 		}
 	}
@@ -498,7 +505,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	boundaries.NextTransactionId = revertTxID + 1
 
 	// Add transaction update for the original transaction (mark as reverted)
-	s.AddTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: order.TransactionId}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: order.TransactionId}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
@@ -510,7 +517,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	})
 
 	// Add transaction init for the revert transaction
-	s.AddTransactionUpdate(data.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: revertTxID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
@@ -539,11 +546,11 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 // applyPosting applies a single posting by updating volumes.
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
-func applyPosting(s Store, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool) error {
+func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
 	sourceKey := data.VolumeKey{
 		AccountKey: data.AccountKey{
-			LedgerName: ledgerName,
-			Account:    posting.Source,
+			LedgerID: ledgerID,
+			Account:  posting.Source,
 		},
 		Asset: posting.Asset,
 	}
@@ -602,8 +609,8 @@ func applyPosting(s Store, ledgerName string, posting *commonpb.Posting, skipBal
 	// Destination receives credit - increase Input
 	destKey := data.VolumeKey{
 		AccountKey: data.AccountKey{
-			LedgerName: ledgerName,
-			Account:    posting.Destination,
+			LedgerID: ledgerID,
+			Account:  posting.Destination,
 		},
 		Asset: posting.Asset,
 	}
@@ -644,15 +651,15 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s Store, ledgerName string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
+	produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
 }
 
 type stdPostingProducer struct{}
 
-func (p *stdPostingProducer) produce(s Store, ledgerName string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *stdPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	for _, posting := range order.Postings {
 		// Skip balance check when Force is true
-		if err := applyPosting(s, ledgerName, posting, order.Force); err != nil {
+		if err := applyPosting(s, ledgerID, posting, order.Force); err != nil {
 			return nil, err
 		}
 	}

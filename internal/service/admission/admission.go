@@ -158,9 +158,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required volumes, transactions, idempotency keys, ledgers, and boundaries from orders
-	neededVolumes := a.extractNeededVolumes(orders)
-	neededTransactions := a.extractNeededTransactions(orders)
+	// Step 1: Extract required idempotency keys, ledgers, and boundaries from orders (name-based)
 	neededIdempotencyKeys := a.extractNeededIdempotencyKeys(orders)
 	neededLedgers := a.extractNeededLedgers(orders)
 	neededBoundaries := a.extractNeededBoundaries(orders)
@@ -174,12 +172,74 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	threshold := a.cache.GenerationThreshold
 	boundary := cache.BoundaryIndex(nextIndex, threshold)
 
-	// Step 4: Build preload for volumes not guaranteed in cache
-	// Track loaded keys for cleanup after command is applied
+	// Step 4: Build preload - track loaded keys for cleanup after command is applied
 	loadedKeys := NewLoadedKeysTracker()
 
 	cmd := commands.NewCommand(orders...)
 	cmd.Preload.LastPersistedIndex = boundary
+
+	// Phase 1: Preload ledgers first to resolve name→ID mapping
+	ledgerIDs := make(map[string]uint32) // ledgerName → ledgerID
+	for ledgerKey := range neededLedgers {
+		canonicalKey := ledgerKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+
+		if !cache.IsGuaranteed(a.cache.Ledgers, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
+			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
+				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing ledger value at boundary %d for %s: %w", boundary, ledgerKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.Ledgers = append(loadedKeys.Ledgers, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "ledgers")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "ledgers")))
+			}
+
+			if result.Value != nil {
+				ledgerIDs[ledgerKey.Name] = result.Value.Id
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"name":      ledgerKey.Name,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading ledger from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_Ledger{
+						Ledger: &raftcmdpb.PreloadLedger{
+							Id:   attrID,
+							Info: result.Value,
+						},
+					},
+				})
+			}
+		} else {
+			// Ledger is guaranteed in cache — read its ID directly from cache.
+			// We cannot use ComputeValue (which reads from PebbleDB at boundary) because
+			// for recently created ledgers, the boundary may be before the creation index,
+			// causing ComputeValue to return nil even though the ledger exists in cache.
+			entry, ok := a.cache.Ledgers.Get(id)
+			if ok && entry.Data != nil {
+				ledgerIDs[ledgerKey.Name] = entry.Data.Id
+			}
+		}
+	}
+
+	// Phase 2: Extract volumes and transactions using resolved IDs
+	neededVolumes := a.extractNeededVolumes(orders, ledgerIDs)
+	neededTransactions := a.extractNeededTransactions(orders, ledgerIDs)
 
 	for volumeKey := range neededVolumes {
 		canonicalKey := volumeKey.Bytes()
@@ -196,7 +256,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 				return a.attrs.Input.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
-				return nil, fmt.Errorf("computing input value at boundary %d for %s: %w", boundary, volumeKey, err)
+				return nil, fmt.Errorf("computing input value at boundary %d for %v: %w", boundary, volumeKey, err)
 			}
 
 			if result.FromLoad {
@@ -232,7 +292,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 				return a.attrs.Output.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
-				return nil, fmt.Errorf("computing output value at boundary %d for %s: %w", boundary, volumeKey, err)
+				return nil, fmt.Errorf("computing output value at boundary %d for %v: %w", boundary, volumeKey, err)
 			}
 
 			if result.FromLoad {
@@ -369,54 +429,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
-	// Build preload for ledgers not guaranteed in cache
-	for ledgerKey := range neededLedgers {
-		canonicalKey := ledgerKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
-
-		if !cache.IsGuaranteed(a.cache.Ledgers, nextIndex, canonicalKey) {
-			preloadStart := time.Now()
-			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
-				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing ledger value at boundary %d for %s: %w", boundary, ledgerKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Ledgers = append(loadedKeys.Ledgers, id)
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "ledgers")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "ledgers")))
-			}
-
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"name":      ledgerKey.Name,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading ledger from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Ledger{
-						Ledger: &raftcmdpb.PreloadLedger{
-							Id:   attrID,
-							Info: result.Value,
-						},
-					},
-				})
-			}
-		}
-	}
-
 	// Build preload for boundaries not guaranteed in cache
 	for boundaryKey := range neededBoundaries {
 		canonicalKey := boundaryKey.Bytes()
@@ -526,12 +538,13 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 // When Force is true on a CreateTransaction, volume preloading is skipped because:
 // - Balance checks are bypassed anyway
 // - The processor stores deltas (DiffSinceBaseIndex) instead of absolute values
-func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.VolumeKey]struct{} {
+func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.VolumeKey]struct{} {
 	neededVolumes := make(map[data.VolumeKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_Apply:
+			ledgerID := ledgerIDs[orderType.Apply.Ledger]
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 				// Skip volume preloading for force transactions - they store deltas only
@@ -542,16 +555,16 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 					// Source account needs balance check
 					neededVolumes[data.VolumeKey{
 						AccountKey: data.AccountKey{
-							LedgerName: orderType.Apply.Ledger,
-							Account:    posting.Source,
+							LedgerID: ledgerID,
+							Account:  posting.Source,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
 					// Destination account needs to be in cache to apply credit
 					neededVolumes[data.VolumeKey{
 						AccountKey: data.AccountKey{
-							LedgerName: orderType.Apply.Ledger,
-							Account:    posting.Destination,
+							LedgerID: ledgerID,
+							Account:  posting.Destination,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
@@ -565,16 +578,16 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 					// Original destination becomes source in revert - needs balance check
 					neededVolumes[data.VolumeKey{
 						AccountKey: data.AccountKey{
-							LedgerName: orderType.Apply.Ledger,
-							Account:    posting.Destination,
+							LedgerID: ledgerID,
+							Account:  posting.Destination,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
 					// Original source becomes destination in revert - needs to receive credit
 					neededVolumes[data.VolumeKey{
 						AccountKey: data.AccountKey{
-							LedgerName: orderType.Apply.Ledger,
-							Account:    posting.Source,
+							LedgerID: ledgerID,
+							Account:  posting.Source,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
@@ -588,18 +601,19 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order) map[data.Vol
 
 // extractNeededTransactions extracts all transaction keys that need their reverted status checked.
 // This is needed for revert operations to verify the transaction hasn't already been reverted.
-func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order) map[data.TransactionKey]struct{} {
+func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.TransactionKey]struct{} {
 	neededTransactions := make(map[data.TransactionKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_Apply:
+			ledgerID := ledgerIDs[orderType.Apply.Ledger]
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Need to check if the transaction is already reverted
 				neededTransactions[data.TransactionKey{
-					LedgerName: orderType.Apply.Ledger,
-					ID:         applyData.RevertTransaction.TransactionId,
+					LedgerID: ledgerID,
+					ID:       applyData.RevertTransaction.TransactionId,
 				}] = struct{}{}
 			}
 		}
@@ -766,8 +780,14 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It looks up the transaction's creation log to extract the postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
+	// Resolve ledger name to ID for store queries
+	ledgerInfo, err := a.store.GetLedgerByName(ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ledger ID for %s: %w", ledgerName, err)
+	}
+
 	// Get all updates for this transaction to find the creation log sequence
-	updates, err := a.store.GetTransactionUpdates(ledgerName, transactionID)
+	updates, err := a.store.GetTransactionUpdates(ledgerInfo.Id, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}

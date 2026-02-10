@@ -28,7 +28,7 @@ var numscriptFeatureFlags = map[string]struct{}{
 	"experimental-overdraft-function":       {},
 }
 
-func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.Script == nil || order.Script.Plain == "" {
 		return nil, errors.New("numscript: script is required")
 	}
@@ -49,9 +49,9 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:      s,
-		ledgerName: ledgerName,
-		force:      order.Force,
+		store:    s,
+		ledgerID: ledgerID,
+		force:    order.Force,
 	}
 
 	// Execute the script with all feature flags enabled
@@ -73,7 +73,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 		// Update source output (money going out)
 		sourceKey := data.VolumeKey{
 			AccountKey: data.AccountKey{
-				LedgerName: ledgerName,
+				LedgerID: ledgerID,
 				Account:    posting.Source,
 			},
 			Asset: posting.Asset,
@@ -105,7 +105,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 		// Update destination input (money coming in)
 		destKey := data.VolumeKey{
 			AccountKey: data.AccountKey{
-				LedgerName: ledgerName,
+				LedgerID: ledgerID,
 				Account:    posting.Destination,
 			},
 			Asset: posting.Asset,
@@ -145,7 +145,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 				accountsMeta[account][key] = value
 				s.PutAccountMetadata(data.MetadataKey{
 					AccountKey: data.AccountKey{
-						LedgerName: ledgerName,
+						LedgerID: ledgerID,
 						Account:    account,
 					},
 					Key: key,
@@ -172,9 +172,9 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerName string, order *ra
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface
 type numscriptStoreAdapter struct {
-	store      Store
-	ledgerName string
-	force      bool // When true, return unlimited balances to bypass balance checks
+	store    Store
+	ledgerID uint32
+	force    bool // When true, return unlimited balances to bypass balance checks
 }
 
 // maxForceBalance is returned for all accounts when force mode is enabled.
@@ -198,7 +198,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 
 			volumeKey := data.VolumeKey{
 				AccountKey: data.AccountKey{
-					LedgerName: s.ledgerName,
+					LedgerID: s.ledgerID,
 					Account:    account,
 				},
 				Asset: asset,
@@ -256,7 +256,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		for _, key := range keys {
 			metaKey := data.MetadataKey{
 				AccountKey: data.AccountKey{
-					LedgerName: s.ledgerName,
+					LedgerID: s.ledgerID,
 					Account:    account,
 				},
 				Key: key,
