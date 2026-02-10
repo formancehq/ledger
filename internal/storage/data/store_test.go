@@ -571,19 +571,20 @@ func TestInputOutput(t *testing.T) {
 	require.Equal(t, big.NewInt(0), getInput(bankUSDKey, 100))
 	require.Equal(t, big.NewInt(0), getOutput(bankUSDKey, 100))
 
-	// Add some inputs and outputs
+	// Add some cumulative inputs and outputs
+	// Each diff value represents the cumulative total since the last base (or 0 if no base).
 	batch := s.NewBatch()
 	require.NoError(t, attrs.Input.AddDiff(batch, 1, bankUSDKey, commonpb.NewBigInt(big.NewInt(100))))
-	require.NoError(t, attrs.Input.AddDiff(batch, 2, bankUSDKey, commonpb.NewBigInt(big.NewInt(50))))
+	require.NoError(t, attrs.Input.AddDiff(batch, 2, bankUSDKey, commonpb.NewBigInt(big.NewInt(150)))) // cumulative: 100+50
 	require.NoError(t, attrs.Output.AddDiff(batch, 3, bankUSDKey, commonpb.NewBigInt(big.NewInt(30))))
 	require.NoError(t, batch.Commit())
 
-	// Input should be sum of inputs: 100 + 50 = 150
+	// Input should be the last cumulative diff: 150
 	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 100))
 	// Output should be 30
 	require.Equal(t, big.NewInt(30), getOutput(bankUSDKey, 100))
 
-	// Input at index 2 should be: 100 + 50 = 150
+	// Input at index 2 should be the cumulative diff at index 2: 150
 	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 2))
 	// Output at index 2 should be: 0 (output is at index 3)
 	require.Equal(t, big.NewInt(0), getOutput(bankUSDKey, 2))
@@ -606,19 +607,19 @@ func TestInputOutput(t *testing.T) {
 	// Input at index 10 should be the base: 1000
 	require.Equal(t, big.NewInt(1000), getInput(bankUSDKey, 10))
 
-	// Input at index 9 should still use diffs only (base not visible): 100 + 50 = 150
+	// Input at index 9 should still use diffs only (base not visible): cumulative diff at index 2 = 150
 	require.Equal(t, big.NewInt(150), getInput(bankUSDKey, 9))
 
-	// Add diffs after the base
+	// Add cumulative diffs after the base
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Input.AddDiff(batch, 11, bankUSDKey, commonpb.NewBigInt(big.NewInt(200))))
-	require.NoError(t, attrs.Output.AddDiff(batch, 12, bankUSDKey, commonpb.NewBigInt(big.NewInt(50))))
+	require.NoError(t, attrs.Input.AddDiff(batch, 11, bankUSDKey, commonpb.NewBigInt(big.NewInt(200))))       // cumulative diff since base
+	require.NoError(t, attrs.Output.AddDiff(batch, 12, bankUSDKey, commonpb.NewBigInt(big.NewInt(80)))) // cumulative output: 30+50
 	require.NoError(t, batch.Commit())
 
-	// Input at index 100 should be: base(1000) + diff at 11(200) = 1200
+	// Input at index 100 should be: base(1000) + cumulative diff at 11(200) = 1200
 	require.Equal(t, big.NewInt(1200), getInput(bankUSDKey, 100))
 
-	// Output at index 100 should be: 30 + 50 = 80
+	// Output at index 100 should be the last cumulative output diff: 80
 	require.Equal(t, big.NewInt(80), getOutput(bankUSDKey, 100))
 
 	// Input at index 11 should be: base(1000) + diff at 11(200) = 1200
