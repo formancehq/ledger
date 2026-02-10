@@ -1,15 +1,16 @@
 * Register failed transactions
-* Import/Export logs
 * Infinite data storage
-* Export/Compaction data
 * Cold storage
 * Short circuit log ingestion
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
-* Attributes compaction
 * Bounded numscript cache
 * Flat buffer for the hot path
 * Prevent configuration changes
 * Doc performance (ulid, ordered keys, locality)
 * Roll up of existing ledgers
 * Branches
+* Chart of account pattern recognition
+* Backup/restore
+* Add new node
+* Transfer leadership

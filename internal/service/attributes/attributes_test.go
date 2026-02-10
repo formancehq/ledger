@@ -199,6 +199,88 @@ func TestDeleteNonExistentKey(t *testing.T) {
 	require.Nil(t, result)
 }
 
+func TestScanEntriesBaseAndDiffs(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00scan-account\x00USD")
+
+	batch := store.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+
+	// Set base at index 5: value = 1000
+	err := attrs.Input.SetBase(batch, 5, testKey, commonpb.NewBigInt(big.NewInt(1000)))
+	require.NoError(t, err)
+
+	// Write 3 cumulative diffs
+	err = attrs.Input.AddDiff(batch, 10, testKey, commonpb.NewBigInt(big.NewInt(100)))
+	require.NoError(t, err)
+	err = attrs.Input.AddDiff(batch, 15, testKey, commonpb.NewBigInt(big.NewInt(250)))
+	require.NoError(t, err)
+	err = attrs.Input.AddDiff(batch, 20, testKey, commonpb.NewBigInt(big.NewInt(500)))
+	require.NoError(t, err)
+
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	scan, err := attrs.Input.ScanEntries(store, testKey)
+	require.NoError(t, err)
+	require.NotNil(t, scan)
+	require.True(t, scan.HasBase)
+	require.Equal(t, uint64(5), scan.LatestBaseIndex)
+	require.Equal(t, int64(1000), scan.LatestBase.Value().Int64())
+	require.True(t, scan.HasDiff)
+	require.Equal(t, uint64(20), scan.LatestDiffIndex)
+	require.Equal(t, 4, scan.TotalEntries)
+}
+
+func TestScanEntriesDiffsOnly(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00scan-diff-only\x00USD")
+
+	batch := store.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+
+	// Only diffs, no base (like @world)
+	err := attrs.Input.AddDiff(batch, 10, testKey, commonpb.NewBigInt(big.NewInt(100)))
+	require.NoError(t, err)
+	err = attrs.Input.AddDiff(batch, 20, testKey, commonpb.NewBigInt(big.NewInt(200)))
+	require.NoError(t, err)
+
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	scan, err := attrs.Input.ScanEntries(store, testKey)
+	require.NoError(t, err)
+	require.NotNil(t, scan)
+	require.False(t, scan.HasBase)
+	require.True(t, scan.HasDiff)
+	require.Equal(t, uint64(20), scan.LatestDiffIndex)
+	require.Equal(t, 2, scan.TotalEntries)
+}
+
+func TestScanEntriesEmpty(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00nonexistent\x00USD")
+
+	scan, err := attrs.Input.ScanEntries(store, testKey)
+	require.NoError(t, err)
+	require.NotNil(t, scan)
+	require.False(t, scan.HasBase)
+	require.False(t, scan.HasDiff)
+	require.Equal(t, 0, scan.TotalEntries)
+}
+
 func TestSetBaseWithZeroValue(t *testing.T) {
 	t.Parallel()
 

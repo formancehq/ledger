@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
@@ -22,6 +23,7 @@ type Config struct {
 	DataDir         string
 	PebbleConfig    data.Config
 	HealthConfig    HealthConfig
+	CompactorConfig state.CompactorConfig
 	ClusterID       string
 }
 

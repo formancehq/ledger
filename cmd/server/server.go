@@ -109,6 +109,10 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().String("cluster-id", "", "Cluster ID for inter-node communication validation")
 
+	// Compactor configuration flags
+	runCmd.Flags().Bool("compaction-enabled", true, "Enable background volume diff compaction")
+	runCmd.Flags().Int("compaction-batch-size", 100, "Number of keys per Pebble batch during compaction")
+
 	return runCmd
 }
 
@@ -330,6 +334,10 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.HealthConfig.DataThreshold, _ = cmd.Flags().GetFloat64("health-data-threshold")
 
 	cfg.ClusterID = getString("cluster-id", "")
+
+	// Compactor configuration
+	cfg.CompactorConfig.Enabled = getBool("compaction-enabled", true)
+	cfg.CompactorConfig.BatchSize = getInt("compaction-batch-size", 100)
 
 	return cfg, nil
 }

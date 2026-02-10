@@ -175,6 +175,73 @@ func (a *Attribute[V]) DeleteOldest(batch *data.Batch, index uint64, canonicalKe
 	return batch.DeleteRange(lowerBound, upperBound, pebble.NoSync)
 }
 
+// ScanResult holds the results of scanning all entries for a canonical key.
+type ScanResult[V proto.Message] struct {
+	LatestBase      V
+	LatestBaseIndex uint64
+	HasBase         bool
+	LatestDiffIndex uint64
+	HasDiff         bool
+	TotalEntries    int
+}
+
+// ScanEntries scans all entries for a canonical key and returns the latest base/diff info.
+// Thread-safe: creates its own KeyBuilder for concurrent access.
+func (a *Attribute[V]) ScanEntries(s *data.Store, canonicalKey []byte) (*ScanResult[V], error) {
+	kb := data.NewKeyBuilder()
+
+	kb.PutByte(data.KeyPrefixAttributes).
+		PutByte(a.prefix).
+		PutBytes(canonicalKey)
+	lowerBound := kb.Snapshot()
+
+	kb.PutByte(0xFF)
+	upperBound := kb.Build()
+
+	iter, err := s.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	result := &ScanResult[V]{}
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		iterKey := iter.Key()
+		result.TotalEntries++
+
+		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-9 : len(iterKey)-1])
+		entryType := iterKey[len(iterKey)-1]
+
+		switch entryType {
+		case 0: // base
+			if !result.HasBase || raftIndex > result.LatestBaseIndex {
+				valueBytes, err := iter.ValueAndErr()
+				if err != nil {
+					return nil, fmt.Errorf("reading base value: %w", err)
+				}
+				v := a.newValue()
+				if err := proto.Unmarshal(valueBytes, v); err != nil {
+					return nil, fmt.Errorf("unmarshaling base value: %w", err)
+				}
+				result.LatestBase = v
+				result.LatestBaseIndex = raftIndex
+				result.HasBase = true
+			}
+		case 1: // diff
+			if !result.HasDiff || raftIndex > result.LatestDiffIndex {
+				result.LatestDiffIndex = raftIndex
+				result.HasDiff = true
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // ListEntry represents an entry found when listing attributes.
 // It contains the canonical key bytes extracted from the Pebble key.
 type ListEntry struct {

@@ -83,11 +83,12 @@ func NewNode(
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	cache *cache.Cache,
 	attrs *attributes.Attributes,
+	compactor *state.Compactor,
 ) (*Node, error) {
 
 	cfg.SetDefaults()
 
-	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold)
+	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, compactor)
 	if err != nil {
 		return nil, fmt.Errorf("creating Machine: %w", err)
 	}

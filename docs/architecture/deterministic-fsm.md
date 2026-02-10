@@ -508,6 +508,24 @@ This is a **prune-only** strategy — old superseded diffs are deleted, but no n
 
 **Effect:** Entry count per volume key is bounded to approximately `2*K` (entries from the current and previous generation). For K=10000, this means at most ~20000 diff entries per account/asset combination.
 
+### 12.3.1 Background Volume Diff Compactor
+
+The generation-rotation pruning above limits entries to ~2*K per key, but a background compactor further reduces this to 1-2 entries per key.
+
+**Implementation:** `state.Compactor` runs in a background goroutine, triggered via a non-blocking signal after each generation rotation. It operates in two phases:
+
+**Phase 1 — Intermediate Diff Removal (all keys, always safe):**
+For each volume key, scan all entries using `Attribute.ScanEntries()`, keep only the latest base + latest diff, and delete everything else. This removes intermediate cumulative diffs that are redundant (only the latest matters for `ComputeValue`).
+
+**Phase 2 — Cold Key Consolidation (evicted keys only):**
+For keys NOT present in the cache (checked via `KeyHasher.MakeKey()` → `AttributeCache.Get()`), and that have a base entry, consolidate base+diff into a single base entry using `ComputeValue()`. Cold keys won't receive new cumulative diffs, so consolidation is safe. Keys without a base (like `@world`, diff-only) are excluded because the next use may add a cumulative diff relative to the old implicit base.
+
+**Safety:** Phase 1 is always safe (intermediate diffs are redundant). Phase 2 is safe because cold keys are not in the FSM's working set and any future use will go through admission → preload → `SetBase`, superseding the consolidated base. The compactor uses its own `attributes.Attributes` instance and `data.Batch` for thread-safe writes independent of the FSM.
+
+**Effect:** After background compaction, most volume keys have 1 entry (cold, consolidated) or 2 entries (hot, base + latest diff), significantly reducing storage compared to the ~2*K bound from generation-rotation pruning alone.
+
+**Configuration:** `--compaction-enabled` (default: true), `--compaction-batch-size` (default: 100 keys per Pebble batch).
+
 See [System Attributes](./attributes.md#volume-compaction) for a detailed description of all three compaction mechanisms.
 
 ### 12.4 Practical Pebble key layout (suggestion)

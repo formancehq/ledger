@@ -52,12 +52,15 @@ type Machine struct {
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
+	// Background compactor (optional)
+	compactor *Compactor
+
 	// Metrics
 	logsAppendedCounter metric.Int64Counter
 	lastPersistedIndex  atomic.Uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, compactor *Compactor) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -82,6 +85,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		dataStore:                   dataStore,
 		lastAppliedIndex:            lastAppliedIndex,
 		generationRotationThreshold: generationRotationThreshold,
+		compactor:                   compactor,
 		logsAppendedCounter:         logsAppendedCounter,
 		processor:                   processor,
 		Attrs:                       attrs,
@@ -157,6 +161,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex); rotated {
 			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex); err != nil {
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
+			}
+			if fsm.compactor != nil {
+				fsm.compactor.Signal()
 			}
 		}
 		fsm.lastAppliedIndex++
