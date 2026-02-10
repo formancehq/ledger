@@ -45,6 +45,7 @@
             ffmpeg
             ginkgo
             go
+            grpcurl
             go-tools
             gomarkdoc
             goperf

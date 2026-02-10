@@ -149,18 +149,21 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 
 ### CLI Demo (`misc/demo/`)
 
-VHS tape files for generating animated GIF demos of the CLI:
-- **`demo.tape`** : Full demo with Numscript transactions, metadata, etc.
-- **`simple-demo.tape`** : Simple demo using postings directly
+VHS tape files for generating animated GIF demos of the CLI. Each demo is self-contained (creates its own ledger, runs the scenario, cleans up):
+- **`demo_getting_started.tape`** : Create a ledger, interactive wizard, list transactions
+- **`demo_numscript.tape`** : Payment with fees, escrow with dynamic accounts
+- **`demo_transactions.tape`** : Force transactions, revert transactions
+- **`demo_metadata.tape`** : Account and transaction metadata CRUD
+- **`demo_operations.tape`** : Cluster status, store integrity check
 - **`README.md`** : Documentation for generating demos
 
 **Generating demos:**
 ```bash
-# Default server (localhost:8888)
+# Generate all demos (starts a temporary server automatically)
 just generate-demo
 
-# Custom server
-just generate-demo myserver:8888
+# Generate a single demo
+just generate-demo-only demo_numscript
 ```
 
 **Note**: Update these files when adding new CLI commands or flags that should be showcased in the demo.

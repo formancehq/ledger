@@ -39,121 +39,47 @@ just build-client
 go build -o build/ledgerctl ./cmd/ledgerctl
 ```
 
-### Start the Server
+## Available Demos
 
-The demo requires a running ledger server:
+| Demo | File | Description |
+|------|------|-------------|
+| **Getting Started** | `demo_getting_started.tape` | Create a ledger, interactive transaction wizard, list transactions |
+| **Numscript** | `demo_numscript.tape` | Payment with fees, escrow with dynamic accounts (`@escrow:$order_id`) |
+| **Transactions** | `demo_transactions.tape` | Force transactions (bypass balance check), revert transactions |
+| **Metadata** | `demo_metadata.tape` | Set and delete metadata on accounts and transactions |
+| **Operations** | `demo_operations.tape` | Cluster status, store integrity check |
 
-```bash
-# Option 1: Local development server
-just dev
+Each demo is self-contained: it creates its own ledger, runs the scenario, and cleans up.
 
-# Option 2: Docker
-docker compose up -d
+## Generating Demos
 
-# Option 3: Manual
-go run . --node-id 1 --bind-addr localhost:7777 --http-port 9000 --grpc-port 8888
-```
-
-## Generating the Demo GIF
-
-### Using just (recommended)
+### Generate all demos
 
 ```bash
-# Default: localhost:8888 with insecure mode
 just generate-demo
-
-# Custom server address (insecure)
-just generate-demo myserver.example.com:8888 true
-
-# Secure connection (TLS)
-just generate-demo myserver.example.com:443 false
-
-# Simple demo variant
-just generate-demo-simple
-just generate-demo-simple myserver:443 false
 ```
 
-### Manual generation
+### Generate a single demo
 
 ```bash
-# Navigate to demo directory
-cd misc/demo
-
-# Ensure ledgerctl is in PATH
-export PATH="$PATH:$(pwd)/../../build"
-
-# Generate the GIF (default server: localhost:8888)
-vhs demo.tape
-
-# With custom server
-SERVER=myserver.example.com:8888 INSECURE=true vhs demo.tape
-
-# With TLS (secure connection)
-SERVER=myserver.example.com:443 INSECURE=false vhs demo.tape
-
-# Output: demo.gif
+just generate-demo-only demo_numscript
 ```
 
-## Customizing the Demo
+This will:
+1. Start a single-node ledger server in the background (using a temporary directory)
+2. Wait for the server to be ready (via gRPC health check)
+3. Run VHS to generate the demo GIF(s)
+4. Stop the server and clean up temporary files
 
-Edit `demo.tape` to customize:
+## Customizing
+
+Edit any `.tape` file to customize:
 
 - **Output**: Change filename and format (gif, mp4, webm)
 - **Theme**: Try "Dracula", "Nord", "Catppuccin Mocha", etc.
 - **Speed**: Adjust `TypingSpeed` and `PlaybackSpeed`
 - **Size**: Modify `Width` and `Height`
 - **Commands**: Add or remove demonstration steps
-
-### Available Settings
-
-```tape
-# Environment variables
-Env SERVER "localhost:8888"  # Server address (can be overridden)
-
-# Output settings
-Output demo.gif          # Output filename
-Set Width 1200           # Terminal width in pixels
-Set Height 800           # Terminal height in pixels
-
-# Appearance
-Set FontSize 14          # Font size
-Set FontFamily "JetBrains Mono"
-Set Theme "Catppuccin Mocha"
-Set Padding 20           # Padding around terminal
-
-# Timing
-Set TypingSpeed 50ms     # Time between keystrokes
-Set PlaybackSpeed 0.75   # Playback speed multiplier
-Set Framerate 30         # Output framerate
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER` | `localhost:8888` | gRPC server address for ledgerctl |
-| `INSECURE` | `true` | Use insecure connection (no TLS) |
-
-Override from command line:
-```bash
-SERVER=myserver:8888 INSECURE=true vhs demo.tape
-```
-
-### Demo Content
-
-The main demo (`demo.tape`) showcases:
-
-1. **Ledger management**: Create and delete ledgers
-2. **Interactive transaction wizard**: Simple postings with prompts
-3. **Numscript support**: Execute scripts with interactive variable input
-4. **Escrow with dynamic accounts**: Using `@escrow:$order_id` syntax
-5. **Force transactions**: Bypass balance checks with `--force`
-6. **Account metadata**: Set and delete metadata on accounts
-7. **Transaction metadata**: Set and delete metadata on transactions
-8. **Transaction revert**: Undo transactions with counter-transactions
-9. **List transactions**: View all transactions in a ledger
-10. **Cluster status**: Inspect the Raft cluster state and node information
-11. **Cleanup**: Delete the demo ledger
 
 ### VHS Commands
 
@@ -167,31 +93,6 @@ Hide                     # Hide subsequent commands
 Show                     # Show commands again
 ```
 
-## Alternative: Simple Tape
-
-For a quicker demo without Numscript files:
-
-```tape
-Output simple-demo.gif
-Set FontSize 16
-Set Width 1000
-Set Height 600
-Set Theme "Dracula"
-Set TypingSpeed 40ms
-
-Type "ledgerctl ledgers create --name demo"
-Enter
-Sleep 2s
-
-Type "ledgerctl tx create --ledger demo --posting 'world,bank,1000,USD/2'"
-Enter
-Sleep 2s
-
-Type "ledgerctl accounts get bank --ledger demo"
-Enter
-Sleep 2s
-```
-
 ## Troubleshooting
 
 ### "command not found: ledgerctl"
@@ -200,12 +101,11 @@ Ensure `ledgerctl` is in your PATH:
 
 ```bash
 export PATH="$PATH:$(pwd)/../../build"
-# Or use absolute path in the tape file
 ```
 
 ### "connection refused"
 
-The ledger server must be running on `localhost:8888` (or configure `--server` flag).
+When using `just generate-demo`, the server is started automatically. If running VHS manually, ensure a ledger server is running on `localhost:8888`.
 
 ### Fonts not rendering correctly
 
@@ -214,15 +114,4 @@ Install a Nerd Font or specify a system font:
 ```tape
 Set FontFamily "Monaco"  # macOS
 Set FontFamily "Consolas"  # Windows
-```
-
-## Output Formats
-
-VHS supports multiple output formats:
-
-```tape
-Output demo.gif      # Animated GIF (default)
-Output demo.mp4      # MP4 video
-Output demo.webm     # WebM video
-Output demo.png      # PNG frames (creates directory)
 ```

@@ -4,26 +4,26 @@ pre-commit: generate generate-proto tidy lint
 pc: pre-commit
 
 lint:
-    GOEXPERIMENT=jsonv2 golangci-lint run --fix --build-tags it,local --timeout 5m
+    golangci-lint run --fix --build-tags it,local --timeout 5m
 
 tidy:
     go mod tidy
 
 # Build the server application
 build:
-    GOEXPERIMENT=jsonv2 go build -o ./build/ledger-server .
+    go build -o ./build/ledger-server .
 
 # Build the client application
 build-client:
-    GOEXPERIMENT=jsonv2 go build -o ./build/ledgerctl ./cmd/ledgerctl
+    go build -o ./build/ledgerctl ./cmd/ledgerctl
 
 # Run the application locally (single node)
 run:
-    GOEXPERIMENT=jsonv2 go run . run --node-id 1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
+    go run . run --node-id 1 --bind-addr 127.0.0.1:8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
 
 # Run the client application
 run-client *ARGS:
-    GOEXPERIMENT=jsonv2 go run ./cmd/ledgerctl {{ARGS}}
+    go run ./cmd/ledgerctl {{ARGS}}
 
 install-client:
     go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
@@ -32,7 +32,7 @@ install-client:
 
 # Run tests
 test:
-    GOEXPERIMENT=jsonv2 go test ./... -tags it,e2e
+    go test ./... -tags it,e2e
 
 # Clean build artifacts
 clean:
@@ -87,12 +87,61 @@ k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-v3-poc
     kubectl rollout status statefulset/ledger-v3-poc
 
-# Generate CLI demo GIF (requires vhs and running server)
-# Usage: just generate-demo [server_address] [insecure]
-# Example: just generate-demo localhost:8888 true
-#          just generate-demo myserver.example.com:443 false
-generate-demo server="localhost:8888" insecure="false":
-    @echo "Generating CLI demo GIF..."
-    @echo "Server: {{server}} (insecure: {{insecure}})"
-    PATH="{{justfile_directory()}}/build:$PATH" SERVER="{{server}}" INSECURE="{{insecure}}" vhs misc/demo/demo.tape
-    @echo "Demo generated: misc/demo/demo.gif"
+# Available demo tapes
+demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations"
+
+# Generate all CLI demo GIFs (starts a temporary server automatically)
+generate-demo: (_generate-demo demos)
+
+# Generate a single CLI demo GIF
+# Usage: just generate-demo-only demo_numscript
+generate-demo-only name: (_generate-demo name)
+
+_generate-demo tapes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DEMO_DIR=$(mktemp -d)
+    echo "Generating CLI demo GIFs..."
+    echo "Using temporary directory: $DEMO_DIR"
+    echo "Building client..."
+    go build -o ./build/ledgerctl ./cmd/ledgerctl
+    echo "Building server..."
+    go build -o "$DEMO_DIR/ledger-server" .
+    cleanup() {
+        echo "Stopping server (PID: $SERVER_PID)..."
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+        rm -rf "$DEMO_DIR"
+        echo "Cleanup done."
+    }
+    trap cleanup EXIT
+    "$DEMO_DIR/ledger-server" run \
+        --node-id 1 \
+        --bind-addr 127.0.0.1:7777 \
+        --wal-dir "$DEMO_DIR/wal" \
+        --data-dir "$DEMO_DIR/data" \
+        --grpc-port 8888 \
+        &
+    SERVER_PID=$!
+    echo "Waiting for server to be ready (PID: $SERVER_PID)..."
+    for i in $(seq 1 30); do
+        if grpcurl -plaintext 127.0.0.1:8888 grpc.health.v1.Health/Check > /dev/null 2>&1; then
+            echo "Server is ready."
+            break
+        fi
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "Server process died unexpectedly."
+            exit 1
+        fi
+        sleep 1
+    done
+    if ! grpcurl -plaintext 127.0.0.1:8888 grpc.health.v1.Health/Check > /dev/null 2>&1; then
+        echo "Server failed to start within 30 seconds."
+        exit 1
+    fi
+    for tape in {{tapes}}; do
+        echo "==> Generating $tape..."
+        PATH="{{justfile_directory()}}/build:$PATH" SERVER="127.0.0.1:8888" INSECURE="true" vhs "misc/demo/${tape}.tape"
+        echo "==> Done: misc/demo/${tape}.gif"
+    done
+    echo "All demos generated."

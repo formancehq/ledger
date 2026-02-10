@@ -2,7 +2,9 @@
 
 `ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
 
-![CLI Demo](../misc/demo/demo.gif)
+## Getting Started
+
+![Getting Started](../misc/demo/demo_getting_started.gif)
 
 ## Installation
 
@@ -149,6 +151,8 @@ ledgerctl ledgers delete
 
 ### accounts
 
+![Metadata Demo](../misc/demo/demo_metadata.gif)
+
 Manage accounts in a ledger.
 
 **Aliases:** `account`, `acc`, `a`
@@ -255,6 +259,8 @@ ledgerctl accounts delete-metadata
 ---
 
 ### transactions
+
+![Transactions Demo](../misc/demo/demo_transactions.gif)
 
 Manage transactions in a ledger.
 
@@ -543,6 +549,8 @@ ledgerctl transactions delete-metadata
 
 ### store
 
+![Operations Demo](../misc/demo/demo_operations.gif)
+
 Storage operations.
 
 **Aliases:** `s`
@@ -728,6 +736,8 @@ ledgerctl --server ledger.example.com:8888 --insecure ledgers list
 ---
 
 ## Numscript Support
+
+![Numscript Demo](../misc/demo/demo_numscript.gif)
 
 The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
 
