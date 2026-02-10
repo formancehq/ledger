@@ -2,6 +2,7 @@ package attributes
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -186,16 +187,24 @@ type Entry[T any] struct {
 
 type DerivedKeyStore[K Key, T any] struct {
 	*KeyStore[K, T]
-	values  map[K]T
-	cloneFn func(T) T
+	values    map[K]T
+	deletions map[K]struct{}
+	cloneFn   func(T) T
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
+	delete(s.deletions, canonical)
 	s.values[canonical] = value
 }
 
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
-	// First check local values (uncommitted changes)
+	// Check if deleted in this batch
+	if _, ok := s.deletions[canonical]; ok {
+		var zero T
+		return zero, nil
+	}
+
+	// Check local values (uncommitted changes)
 	if localV, ok := s.values[canonical]; ok {
 		return localV, nil
 	}
@@ -215,18 +224,17 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 }
 
 func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
-	var zero T
-	s.values[canonical] = zero
+	delete(s.values, canonical)
+	s.deletions[canonical] = struct{}{}
 }
 
-func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], error) {
+func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
 		overwrite, idWithTag, err := s.KeyStore.Put(k.Bytes(), v)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		// Compute tag for Touch operation
 		touched = append(touched, Update[K, T]{
 			Key:          k,
 			ID:           idWithTag.ID,
@@ -237,14 +245,27 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], error) {
 		})
 	}
 
-	return touched, nil
+	deletions := make([]Deletion[K], 0, len(s.deletions))
+	for k := range s.deletions {
+		_, err := s.KeyStore.Delete(k.Bytes())
+		if err != nil && !errors.Is(err, data.ErrNotFound) {
+			return nil, nil, err
+		}
+		deletions = append(deletions, Deletion[K]{
+			Key:          k,
+			CanonicalKey: k.Bytes(),
+		})
+	}
+
+	return touched, deletions, nil
 }
 
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
-		KeyStore: store,
-		values:   make(map[K]T),
-		cloneFn:  cloneFn,
+		KeyStore:  store,
+		values:    make(map[K]T),
+		deletions: make(map[K]struct{}),
+		cloneFn:   cloneFn,
 	}
 }
 
@@ -255,4 +276,9 @@ type Update[K Key, T any] struct {
 	CanonicalKey []byte
 	Old          kv.Optional[T]
 	New          T
+}
+
+type Deletion[K Key] struct {
+	Key          K
+	CanonicalKey []byte
 }

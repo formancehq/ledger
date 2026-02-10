@@ -101,6 +101,104 @@ func TestComputeValueWithCumulativeDiffs(t *testing.T) {
 	require.Equal(t, int64(1500), result.Value().Int64())
 }
 
+func TestDeleteRemovesAllEntries(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00delete-account\x00status")
+
+	// Set a base value and some diffs for metadata
+	batch := store.NewBatch()
+	err := attrs.Metadata.SetBase(batch, 5, testKey, &commonpb.MetadataValue{Value: "active"})
+	require.NoError(t, err)
+	err = attrs.Metadata.AddDiff(batch, 10, testKey, &commonpb.MetadataValue{Value: "inactive"})
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// Verify data exists before deletion
+	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "inactive", result.Value)
+
+	// Delete all entries for this key
+	batch = store.NewBatch()
+	err = attrs.Metadata.Delete(batch, testKey)
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// Verify data is gone
+	result, err = attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	require.NoError(t, err)
+	require.Nil(t, result)
+
+	// Verify List no longer returns this key
+	entries, err := attrs.Metadata.List(store)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+
+func TestDeleteThenReAdd(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00readd-account\x00status")
+
+	// Set initial value
+	batch := store.NewBatch()
+	err := attrs.Metadata.SetBase(batch, 5, testKey, &commonpb.MetadataValue{Value: "original"})
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// Delete all entries
+	batch = store.NewBatch()
+	err = attrs.Metadata.Delete(batch, testKey)
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// Re-add with a new value
+	batch = store.NewBatch()
+	err = attrs.Metadata.AddDiff(batch, 20, testKey, &commonpb.MetadataValue{Value: "new-value"})
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// Verify new value is returned
+	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "new-value", result.Value)
+}
+
+func TestDeleteNonExistentKey(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	testKey := []byte("test-ledger\x00nonexistent\x00key")
+
+	// Delete on a key with no entries should not error
+	batch := store.NewBatch()
+	err := attrs.Metadata.Delete(batch, testKey)
+	require.NoError(t, err)
+	err = batch.Commit()
+	require.NoError(t, err)
+
+	// ComputeValue should still return nil
+	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	require.NoError(t, err)
+	require.Nil(t, result)
+}
+
 func TestSetBaseWithZeroValue(t *testing.T) {
 	t.Parallel()
 

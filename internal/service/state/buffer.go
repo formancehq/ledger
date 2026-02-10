@@ -31,7 +31,7 @@ type Buffered struct {
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	// Process Ledger updates
-	ledgerUpdates, err := b.Ledgers.Merge()
+	ledgerUpdates, _, err := b.Ledgers.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
@@ -48,7 +48,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Boundary updates
-	boundaryUpdates, err := b.Boundaries.Merge()
+	boundaryUpdates, _, err := b.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
@@ -62,7 +62,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Input updates
-	volumeUpdates, err := b.Input.Merge()
+	volumeUpdates, _, err := b.Input.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge input: %w", err)
 	}
@@ -85,7 +85,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Output updates
-	volumeUpdates, err = b.Output.Merge()
+	volumeUpdates, _, err = b.Output.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge output: %w", err)
 	}
@@ -106,7 +106,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
-	accountMetadataUpdates, err := b.AccountMetadata.Merge()
+	accountMetadataUpdates, accountMetadataDeletions, err := b.AccountMetadata.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
@@ -116,8 +116,13 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 			return fmt.Errorf("failed adding diff between old and new attribute: %v", err)
 		}
 	}
+	for _, deletion := range accountMetadataDeletions {
+		if err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey); err != nil {
+			return fmt.Errorf("failed deleting metadata attribute: %v", err)
+		}
+	}
 
-	ledgerMetadataUpdates, err := b.LedgerMetadata.Merge()
+	ledgerMetadataUpdates, _, err := b.LedgerMetadata.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge ledger metadata: %w", err)
 	}
@@ -129,7 +134,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Reversions updates
-	reversionUpdates, err := b.Reversions.Merge()
+	reversionUpdates, _, err := b.Reversions.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge reversions: %w", err)
 	}
@@ -145,7 +150,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process IdempotencyKeys updates
-	idempotencyUpdates, err := b.IdempotencyKeys.Merge()
+	idempotencyUpdates, _, err := b.IdempotencyKeys.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}

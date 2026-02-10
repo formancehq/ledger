@@ -138,6 +138,24 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 	return a.computeFn(baseValue, lastDiff), nil
 }
 
+// Delete removes all entries (bases and diffs) for the given canonical key at any raft index.
+// This performs a physical deletion, removing all historical data for this key.
+// Note: Uses the instance's KeyBuilder - ensure each Raft node has its own Attribute instance.
+func (a *Attribute[V]) Delete(batch *data.Batch, canonicalKey []byte) error {
+	a.kb.PutByte(data.KeyPrefixAttributes).
+		PutByte(a.prefix).
+		PutBytes(canonicalKey)
+	lowerBound := a.kb.Snapshot()
+
+	// Upper bound: past all possible entries for this canonical key.
+	// Key structure: [prefix][attr_prefix][canonicalKey][index(8 bytes)][type(1 byte)]
+	// Using max index + 0xFF ensures we're past any valid entry type (0 or 1).
+	a.kb.PutUInt64(^uint64(0)).PutByte(0xFF)
+	upperBound := a.kb.Build()
+
+	return batch.DeleteRange(lowerBound, upperBound, pebble.NoSync)
+}
+
 // DeleteOldest deletes all entries (bases and diffs) with raft index strictly less than the given index.
 // This is used to clean up old data after consolidating into a new base.
 // The canonical key is used directly as the Pebble key for better data locality.
