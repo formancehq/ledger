@@ -137,8 +137,15 @@ func Module() fx.Option {
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)
 			},
-			func(node *node.Node, servicePool *transport.ServiceConnectionPool) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node, servicePool)
+			func(cfg Config) *diskusage.Collector {
+				return diskusage.NewCollector(
+					cfg.RaftConfig.WalDir,
+					cfg.DataDir,
+					10*time.Second,
+				)
+			},
+			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node, servicePool, collector)
 			},
 			httpcompat.NewServer,
 			httpcompat.NewHandler,
@@ -372,12 +379,7 @@ func Module() fx.Option {
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
 			},
-			func(lc fx.Lifecycle, cfg Config, meterProvider metric.MeterProvider) error {
-				collector := diskusage.NewCollector(
-					cfg.RaftConfig.WalDir,
-					cfg.DataDir,
-					10*time.Second,
-				)
+			func(lc fx.Lifecycle, collector *diskusage.Collector, meterProvider metric.MeterProvider) error {
 				registration, err := collector.RegisterMetrics(meterProvider.Meter("storage"))
 				if err != nil {
 					return fmt.Errorf("registering disk usage metrics: %w", err)

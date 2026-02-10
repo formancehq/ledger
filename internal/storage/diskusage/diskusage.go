@@ -137,6 +137,21 @@ func (c *Collector) collect() {
 	}
 }
 
+// SpoolBytes returns the last computed spool directory size in bytes.
+func (c *Collector) SpoolBytes() int64 { return c.spoolBytes.Load() }
+
+// WALBytes returns the last computed WAL directory size in bytes (excluding spool).
+func (c *Collector) WALBytes() int64 { return c.walBytes.Load() }
+
+// DataBytes returns the last computed data directory size in bytes.
+func (c *Collector) DataBytes() int64 { return c.dataBytes.Load() }
+
+// WALVolumeBytes returns the last computed total WAL volume size in bytes.
+func (c *Collector) WALVolumeBytes() int64 { return c.walVolumeBytes.Load() }
+
+// DataVolumeBytes returns the last computed total data volume size in bytes.
+func (c *Collector) DataVolumeBytes() int64 { return c.dataVolumeBytes.Load() }
+
 // RegisterMetrics registers observable gauges for disk space consumption.
 // The callback reads cached values computed by the background goroutine.
 func (c *Collector) RegisterMetrics(meter metric.Meter) (metric.Registration, error) {
