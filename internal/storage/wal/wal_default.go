@@ -463,6 +463,14 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
+	if err := s.wal.SaveSnapshot(walpb.Snapshot{
+		Index:     index,
+		Term:      term,
+		ConfState: cs,
+	}); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Snapshot created")
 
 	return nil
