@@ -205,15 +205,6 @@ ingress:
     # - secretName: ledger-v3-poc-tls
     #   hosts:
     #     - ledger-v3-poc.local
-  # Per-pod ingress configuration (for accessing individual pods from outside the cluster)
-  # By default, reuses the host from ingress.hosts[0] and creates pod-{index}.{baseHost}
-  # Example: if ingress.hosts[0].host = "ledger.example.com", creates:
-  #   - pod-0.ledger.example.com
-  #   - pod-1.ledger.example.com
-  #   - pod-2.ledger.example.com
-  perPod:
-    enabled: false
-    annotations: {}
 
 # gRPC Ingress configuration
 # Note: gRPC requires HTTP/2 support. For nginx ingress, backend-protocol annotation is auto-added.

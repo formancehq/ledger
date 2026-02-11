@@ -98,56 +98,6 @@ ingress:
         - ledger.example.com
 ```
 
-### Installation with Per-Pod Ingress (Traefik)
-
-To access each pod individually from outside the cluster using Traefik, the chart automatically reuses the configuration from `ingress.hosts[0]`:
-
-```bash
-helm install ledger-v3-poc ./deployments/chart \
-  --set ingress.enabled=true \
-  --set ingress.hosts[0].host=ledger.example.com \
-  --set ingress.perPod.enabled=true \
-  --set ingress.className=traefik \
-  --set ingress.perPod.annotations."traefik\.ingress\.kubernetes\.io/router\.entrypoints"=web,websecure \
-  --set ingress.perPod.annotations."traefik\.ingress\.kubernetes\.io/router\.tls"=true
-```
-
-This automatically creates:
-- `pod-0.ledger.example.com` → pod 0
-- `pod-1.ledger.example.com` → pod 1
-- `pod-2.ledger.example.com` → pod 2
-
-Or using a values file:
-
-```yaml
-ingress:
-  enabled: true
-  className: traefik
-  hosts:
-    - host: ledger.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: ledger-tls
-      hosts:
-        - ledger.example.com
-  perPod:
-    enabled: true
-    # Automatically uses ingress.hosts[0].host as base (pod-%d.{baseHost})
-    # Automatically reuses ingress.hosts[0].paths and ingress.tls
-    annotations:
-      traefik.ingress.kubernetes.io/router.tls: "true"
-      traefik.ingress.kubernetes.io/router.middlewares: default-headers@kubernetescrd
-```
-
-**Note**: When `ingress.enabled=true` and `ingress.perPod.enabled=true`, the chart:
-- Creates a dedicated Service for each pod (selecting the pod by its StatefulSet pod name)
-- Creates an Ingress resource for each pod pointing to its dedicated service
-- Automatically reuses `ingress.hosts[0]` configuration to create pod hostnames (`pod-{index}.{baseHost}`)
-- Reuses `ingress.hosts[0].paths` and `ingress.tls` configuration automatically
-- Each pod becomes accessible via its own hostname/URL (e.g., `pod-0.ledger.example.com`, `pod-1.ledger.example.com`, etc.)
-
 ## Configuration
 
 The following table lists the configurable parameters and their default values:
@@ -255,13 +205,6 @@ curl http://ledger-v3-poc-0.ledger-v3-poc-headless:9000/health
 | `ingress.annotations` | Ingress annotations | `{}` |
 | `ingress.hosts` | List of host configurations | `[{host: ledger-v3-poc.local, paths: [{path: /, pathType: Prefix}]}]` |
 | `ingress.tls` | TLS configuration | `[]` |
-
-### Per-Pod Ingress Configuration
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `ingress.perPod.enabled` | Enable individual ingress for each pod (requires `ingress.enabled=true`) | `false` |
-| `ingress.perPod.annotations` | Ingress annotations (applied to all pod ingresses) | `{}` |
 
 ### Persistence Configuration
 
@@ -505,36 +448,6 @@ kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
 
 # Test from within the cluster
 kubectl exec -it ledger-v3-poc-1 -- wget -q -O- http://ledger-v3-poc-0.ledger-v3-poc-headless:9000/health
-```
-
-### Test External Access to Individual Pods
-
-When `ingress.enabled=true` and `ingress.perPod.enabled=true`, you can access each pod from outside the cluster:
-
-```bash
-# Test access to pod 0 (replace with your actual hostname)
-curl http://pod-0.ledger.example.com/health
-
-# Test access to pod 1
-curl http://pod-1.ledger.example.com/health
-
-# Test access to pod 2
-curl http://pod-2.ledger.example.com/health
-
-# With HTTPS (if TLS is configured)
-curl https://pod-0.ledger.example.com/health
-```
-
-**Verify ingress resources**:
-```bash
-# List all pod-specific ingresses
-kubectl get ingress -l app.kubernetes.io/component=pod-ingress
-
-# Check a specific pod ingress
-kubectl describe ingress ledger-v3-poc-pod-0
-
-# List pod-specific services
-kubectl get svc -l app.kubernetes.io/component=pod-service
 ```
 
 ### Access Pod Shell

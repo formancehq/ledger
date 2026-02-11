@@ -13,7 +13,6 @@
 * Chart of account pattern recognition
 * Backup/restore
 * Add new node
-* Transfer leadership
 * Signed request
 * Store request body + result in logs instead of resulting logs?
 * Add clock check on health service?
