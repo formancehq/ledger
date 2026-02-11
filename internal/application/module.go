@@ -29,6 +29,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -162,8 +163,8 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node, servicePool, collector, store, logger)
+			func(node *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node, raftTransport, servicePool, collector, store, logger)
 			},
 			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
@@ -216,11 +217,11 @@ func Module() fx.Option {
 		),
 		fx.Decorate(func(
 			params struct {
-				fx.In
-				Handler       http.Handler
-				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-			},
+			fx.In
+			Handler       http.Handler
+			MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+			Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+		},
 		) http.Handler {
 			// If InMemoryExporter is available, wrap handler to add metrics endpoint
 			if params.Exporter != nil && params.MeterProvider != nil {
@@ -375,6 +376,22 @@ func Module() fx.Option {
 					},
 				})
 			},
+			// Wire Observer: handle ConfChange events synchronously to update transport and service pool
+			func(
+				n *node.Node,
+				defaultTransport *node.DefaultTransport,
+				servicePool *transport.ServiceConnectionPool,
+				logger logging.Logger,
+			) {
+				n.SetObserver(node.NewObserver(func(event any) {
+					switch e := event.(type) {
+					case node.ConfChangeEvent:
+						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
+					default:
+						logger.Errorf("Unknown observer event type: %T", event)
+					}
+				}))
+			},
 			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -404,6 +421,44 @@ func Module() fx.Option {
 
 				return node, nil
 			},
+			// Join mode: auto-register as learner on the leader after raft starts.
+			// Any peer will forward the request to the current leader automatically.
+			func(
+				lc fx.Lifecycle,
+				cfg Config,
+				servicePool *transport.ServiceConnectionPool,
+				logger logging.Logger,
+			) {
+				if !cfg.RaftConfig.Join {
+					return
+				}
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						logger.Infof("Join mode: requesting a peer to add this node as learner")
+
+						peer := cfg.RaftConfig.Peers[0]
+						conn := servicePool.GetConnection(peer.ID)
+						if conn == nil {
+							return fmt.Errorf("failed to register as learner: peer %d is not reachable", peer.ID)
+						}
+
+						client := clusterpb.NewClusterServiceClient(conn)
+						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+							NodeId:         cfg.RaftConfig.NodeID,
+							RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
+							ServiceAddress: fmt.Sprintf("0.0.0.0:%d", cfg.GRPCPort),
+						})
+						if err != nil {
+							return fmt.Errorf("failed to register as learner via peer %d: %w", peer.ID, err)
+						}
+
+						logger.WithFields(map[string]any{
+							"peer": peer.ID,
+						}).Infof("Successfully registered as learner")
+						return nil
+					},
+				})
+			},
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -428,10 +483,10 @@ func Module() fx.Option {
 			},
 			func(
 				params struct {
-					fx.In
-					LC        fx.Lifecycle
-					Compactor *state.Compactor `optional:"true"`
-				},
+				fx.In
+				LC        fx.Lifecycle
+				Compactor *state.Compactor `optional:"true"`
+			},
 			) {
 				if params.Compactor == nil {
 					return
@@ -462,4 +517,34 @@ func Module() fx.Option {
 			},
 		),
 	)
+}
+
+// handleConfChangeEvent processes a single ConfChangeEvent by updating the
+// transport and service pool when a node joins the cluster.
+func handleConfChangeEvent(
+	e node.ConfChangeEvent,
+	defaultTransport *node.DefaultTransport,
+	servicePool *transport.ServiceConnectionPool,
+	logger logging.Logger,
+) {
+	switch e.ChangeType {
+	case raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeAddNode:
+		if len(e.Context) == 0 {
+			return
+		}
+		ccCtx, err := node.UnmarshalConfChangeContext(e.Context)
+		if err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange context")
+			return
+		}
+		logger.WithFields(map[string]any{
+			"node_id":         e.NodeID,
+			"raft_address":    ccCtx.RaftAddress,
+			"service_address": ccCtx.ServiceAddress,
+		}).Infof("Adding peer from ConfChange")
+		defaultTransport.AddPeer(e.NodeID, ccCtx.RaftAddress)
+		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
+		}
+	}
 }

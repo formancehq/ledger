@@ -1,0 +1,33 @@
+package node
+
+import (
+	"go.etcd.io/etcd/raft/v3/raftpb"
+)
+
+// ConfChangeEvent is emitted when a Raft configuration change is committed.
+type ConfChangeEvent struct {
+	NodeID     uint64
+	ChangeType raftpb.ConfChangeType
+	Context    []byte
+}
+
+// EventHandler is a callback invoked synchronously for each emitted event.
+// Consumers use a type switch on the event to handle concrete types.
+type EventHandler func(event any)
+
+// Observer dispatches events synchronously to a registered handler.
+// It is called inline in the Raft processing loop so that side-effects
+// (e.g. adding a gRPC peer) are visible before the next message is sent.
+type Observer struct {
+	handler EventHandler
+}
+
+// NewObserver creates an Observer that forwards every event to handler.
+func NewObserver(handler EventHandler) *Observer {
+	return &Observer{handler: handler}
+}
+
+// Emit invokes the handler synchronously with the given event.
+func (o *Observer) Emit(event any) {
+	o.handler(event)
+}

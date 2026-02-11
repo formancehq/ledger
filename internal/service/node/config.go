@@ -21,6 +21,7 @@ type NodeConfig struct {
 	ProposeQueueCapacity int    // Capacity of the propose queue (default: 100)
 	AdvertiseAddr        string
 	BindAddr             string
+	Join                 bool // When true, this node joins as a learner (do not include self as voter)
 }
 
 func (cfg *NodeConfig) Validate() error {

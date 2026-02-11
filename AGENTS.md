@@ -150,6 +150,13 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`audit.go`** : Parent command for audit log operations
 - **`audit_list.go`** : `audit list` command to list audit entries (success + failure) via gRPC streaming
 
+**Cluster commands:**
+- **`cluster.go`** : Parent command for cluster operations
+- **`cluster_status.go`** : `cluster status` command to display cluster state via gRPC
+- **`cluster_disk_usage.go`** : `cluster disk-usage` command to display storage disk usage via gRPC
+- **`cluster_transfer_leader.go`** : `cluster transfer-leader` command to transfer Raft leadership via gRPC
+- **`cluster_add_learner.go`** : `cluster add-learner` command to add a non-voting learner node via gRPC
+
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 

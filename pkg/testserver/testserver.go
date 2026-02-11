@@ -159,3 +159,10 @@ func WithAuditEnabled(v bool) testservice.InstrumentationFunc {
 		return nil
 	}
 }
+
+func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--join", serviceAddr)
+		return nil
+	}
+}

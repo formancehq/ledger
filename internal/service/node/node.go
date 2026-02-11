@@ -42,6 +42,12 @@ var (
 
 	// ErrTransferLeaderTimeout is returned when leadership transfer does not complete in time.
 	ErrTransferLeaderTimeout = fmt.Errorf("leadership transfer timed out")
+
+	// ErrNodeAlreadyInCluster is returned when trying to add a node that already exists.
+	ErrNodeAlreadyInCluster = fmt.Errorf("node already in cluster")
+
+	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
+	ErrLearnerNotEligible = fmt.Errorf("learner nodes are not eligible for leadership")
 )
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
@@ -86,6 +92,7 @@ type Node struct {
 	futures                 SyncMap[uint64, *futures.Future]
 	lastSoftState           atomic.Pointer[raft.SoftState]
 	snapshotFetcherProvider state.SnapshotFetcherProvider
+	observer                *Observer
 
 	store             *data.Store
 	spool             spool.Spool
@@ -142,11 +149,27 @@ func NewNode(
 	var initialConfState raftpb.ConfState
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
-		voters := make([]uint64, 0, len(cfg.Peers)+1)
-		voters = append(voters, cfg.NodeID)
 
-		for _, peerEntry := range cfg.Peers {
-			voters = append(voters, peerEntry.ID)
+		var (
+			voters   []uint64
+			learners []uint64
+		)
+
+		if cfg.Join {
+			// Join mode: only include existing peers as voters.
+			// Self is NOT included – the leader will add us as a learner via ConfChange.
+			voters = make([]uint64, 0, len(cfg.Peers))
+			for _, peerEntry := range cfg.Peers {
+				voters = append(voters, peerEntry.ID)
+			}
+			learners = []uint64{cfg.NodeID}
+		} else {
+			// Normal mode: include self and all peers as voters.
+			voters = make([]uint64, 0, len(cfg.Peers)+1)
+			voters = append(voters, cfg.NodeID)
+			for _, peerEntry := range cfg.Peers {
+				voters = append(voters, peerEntry.ID)
+			}
 		}
 
 		data, err := fsm.CreateSnapshot(context.Background())
@@ -155,7 +178,8 @@ func NewNode(
 		}
 
 		initialConfState = raftpb.ConfState{
-			Voters: voters,
+			Voters:   voters,
+			Learners: learners,
 		}
 		if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
 			return nil, fmt.Errorf("creating initial snapshot: %w", err)
@@ -481,6 +505,8 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 				return fmt.Errorf("unmarshaling ConfChange: %w", err)
 			}
 			cc = ccV1.AsV2()
+			// V1→V2 conversion does not copy Context; propagate it manually.
+			cc.Context = ccV1.Context
 		case raftpb.EntryConfChangeV2:
 			if err := cc.Unmarshal(entry.Data); err != nil {
 				return fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
@@ -492,6 +518,17 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 			WithFields(map[string]any{"transition": cc.Transition.String()}).
 			Infof("Applying configuration change")
 		node.confState = node.rawNode.ApplyConfChange(cc)
+
+		// Notify observers about configuration changes
+		if node.observer != nil {
+			for _, change := range cc.Changes {
+				node.observer.Emit(ConfChangeEvent{
+					NodeID:     change.NodeID,
+					ChangeType: change.Type,
+					Context:    cc.Context,
+				})
+			}
+		}
 	}
 
 	if len(rd.CommittedEntries) > 0 {
@@ -817,8 +854,13 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 		return ErrNotLeader
 	}
 
-	if _, ok := status.Progress[transferee]; !ok {
+	prog, ok := status.Progress[transferee]
+	if !ok {
 		return ErrUnknownTransferee
+	}
+
+	if prog.IsLearner {
+		return ErrLearnerNotEligible
 	}
 
 	node.rawNode.TransferLeader(transferee)
@@ -960,21 +1002,25 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 				RecentActive:    prog.RecentActive,
 				ProbeSent:       prog.ProbeSent,
 				IsPaused:        prog.IsPaused(),
+				IsLearner:       prog.IsLearner,
 			}
 		}
 
 		// Build nodes list with progress information
 		nodes = make([]*clusterpb.NodeInfo, 0, len(status.Progress))
-		for id := range status.Progress {
+		for id, prog := range status.Progress {
 			suffrage := "Voter"
+			if prog.IsLearner {
+				suffrage = "Learner"
+			}
 
 			nodeInfo := &clusterpb.NodeInfo{
 				Id:       uint32(id),
 				Suffrage: suffrage,
 			}
 
-			if prog, ok := progress[id]; ok {
-				nodeInfo.Progress = prog
+			if progressInfo, ok := progress[id]; ok {
+				nodeInfo.Progress = progressInfo
 			}
 
 			nodes = append(nodes, nodeInfo)
@@ -1035,6 +1081,10 @@ func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
 			if id == node.config.NodeID {
 				continue
 			}
+			// Skip learner nodes – they cannot become leader
+			if prog.IsLearner {
+				continue
+			}
 			if prog.Match > bestMatch {
 				bestMatch = prog.Match
 				best = id
@@ -1086,6 +1136,47 @@ func (node *Node) Stop(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+// SetObserver sets the observer that receives events emitted by the node.
+func (node *Node) SetObserver(obs *Observer) {
+	node.observer = obs
+}
+
+// AddLearner proposes adding a non-voting learner node to the Raft cluster.
+// Must be called on the leader.
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
+	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling conf change context: %w", err)
+	}
+
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		// Check if node already exists in the cluster
+		if _, ok := status.Progress[nodeID]; ok {
+			return ErrNodeAlreadyInCluster
+		}
+
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{
+				{
+					Type:   raftpb.ConfChangeAddLearnerNode,
+					NodeID: nodeID,
+				},
+			},
+			Context: ccCtx,
+		}
+
+		return node.rawNode.ProposeConfChange(cc)
+	})
 }
 
 type Proposal struct {

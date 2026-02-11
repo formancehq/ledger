@@ -794,6 +794,36 @@ ledgerctl cluster transfer-leader 2
 ledgerctl cluster transfer-leader 3 --timeout 5s
 ```
 
+#### cluster add-learner
+
+Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
+
+```bash
+ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- The request is forwarded to the current leader if sent to a follower
+- The leader proposes a ConfChange to add the node as a learner (non-voting member)
+- Once committed, all nodes add the learner to their transport and service pool
+- The learner receives log entries and snapshots but cannot vote or become leader
+
+**Example:**
+
+```bash
+# Add node 4 as a learner
+ledgerctl cluster add-learner 4 node-4:7777 node-4:8888
+
+# Add a learner using custom timeout
+ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 --timeout 30s
+```
+
 #### cluster disk-usage
 
 Display disk space used by storage components on the connected node.

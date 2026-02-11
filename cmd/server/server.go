@@ -15,12 +15,15 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/tracesampling"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,6 +119,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Audit configuration flags
 	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
+
+	// Join mode: join an existing cluster as a learner node
+	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
 	return runCmd
 }
@@ -347,7 +353,62 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	// Audit configuration
 	cfg.AuditEnabled = getBool("audit-enabled", true)
 
+	// Join mode: discover peers from an existing cluster member
+	joinAddr := getString("join", "")
+	if joinAddr != "" {
+		if len(cfg.RaftConfig.Peers) > 0 {
+			return nil, fmt.Errorf("--join and --peers are mutually exclusive")
+		}
+
+		peers, err := discoverPeersFromCluster(joinAddr)
+		if err != nil {
+			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
+		}
+
+		cfg.RaftConfig.Peers = peers
+		cfg.RaftConfig.Join = true
+	}
+
 	return cfg, nil
+}
+
+// discoverPeersFromCluster connects to an existing cluster member and discovers
+// all voter nodes and their addresses via GetClusterState.
+func discoverPeersFromCluster(serviceAddr string) ([]node.Peer, error) {
+	conn, err := grpc.NewClient(serviceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := clusterpb.NewClusterServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("getting cluster state from %s: %w", serviceAddr, err)
+	}
+
+	var peers []node.Peer
+	for _, nodeInfo := range state.Nodes {
+		if nodeInfo.RaftAddress == "" || nodeInfo.ServiceAddress == "" {
+			continue
+		}
+		peers = append(peers, node.Peer{
+			ID:             uint64(nodeInfo.Id),
+			Address:        nodeInfo.RaftAddress,
+			ServiceAddress: nodeInfo.ServiceAddress,
+		})
+	}
+
+	if len(peers) == 0 {
+		return nil, fmt.Errorf("no peers with addresses found in cluster state from %s", serviceAddr)
+	}
+
+	return peers, nil
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.

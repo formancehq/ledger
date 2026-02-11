@@ -240,8 +240,12 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 	return t.connectionPool.Close()
 }
 
-// AddPeer adds a peer to the transport
+// AddPeer adds a peer to the transport. If the peer already exists, it is a no-op.
 func (t *DefaultTransport) AddPeer(id uint64, addr string) {
+	if _, exists := t.peers[id]; exists {
+		return
+	}
+
 	if err := t.connectionPool.AddPeer(id, addr); err != nil {
 		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
 		return
