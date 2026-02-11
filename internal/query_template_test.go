@@ -112,7 +112,7 @@ func TestQueryTemplateValidation(t *testing.T) {
 			source: `{
 				"resource": "volumes",
 				"params": {
-					"groupLvl": false
+					"groupBy": false
 				}
 			}`,
 			expectedError: "cannot unmarshal",
