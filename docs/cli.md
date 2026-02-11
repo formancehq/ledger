@@ -670,6 +670,37 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+#### cluster transfer-leader
+
+Transfer the Raft cluster leadership to a specific node. The request is automatically forwarded to the current leader.
+
+**Aliases:** `tl`
+
+```bash
+ledgerctl cluster transfer-leader <node-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- The request is forwarded to the current leader if sent to a follower
+- The leader synchronizes logs with the target node, then triggers an immediate election
+- The command blocks until the new leader is confirmed or the timeout is reached
+
+**Example:**
+
+```bash
+# Transfer leadership to node 2
+ledgerctl cluster transfer-leader 2
+
+# Transfer with custom timeout
+ledgerctl cluster transfer-leader 3 --timeout 5s
+```
+
 #### cluster disk-usage
 
 Display disk space used by storage components on the connected node.

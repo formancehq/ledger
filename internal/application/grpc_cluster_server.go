@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -60,6 +61,38 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 	client := clusterpb.NewClusterServiceClient(grpcConn)
 	return client.GetClusterState(ctx, req)
+}
+
+func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+	if req.Transferee == 0 {
+		return nil, fmt.Errorf("transferee node ID must be non-zero")
+	}
+
+	transferee := uint64(req.Transferee)
+
+	// If this node is not the leader, forward to the leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+		return client.TransferLeadership(ctx, req)
+	}
+
+	if err := impl.node.TransferLeader(ctx, transferee); err != nil {
+		return nil, fmt.Errorf("leadership transfer failed: %w", err)
+	}
+
+	return &clusterpb.TransferLeadershipResponse{
+		NewLeader: req.Transferee,
+	}, nil
 }
 
 func (impl *ClusterServiceServerImpl) GetDiskUsage(_ context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {

@@ -15,6 +15,7 @@ func newClusterCommand() *cobra.Command {
 
 	cmd.AddCommand(newClusterStatusCommand())
 	cmd.AddCommand(newClusterDiskUsageCommand())
+	cmd.AddCommand(newClusterTransferLeaderCommand())
 
 	return cmd
 }

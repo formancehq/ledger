@@ -30,8 +30,47 @@ const (
 	statusOutOfSync
 )
 
-// ErrProposalQueueFull is returned when the proposal queue is full.
-var ErrProposalQueueFull = fmt.Errorf("propose channel full")
+var (
+	// ErrProposalQueueFull is returned when the proposal queue is full.
+	ErrProposalQueueFull = fmt.Errorf("propose channel full")
+
+	// ErrNotLeader is returned when a leadership transfer is attempted on a non-leader node.
+	ErrNotLeader = fmt.Errorf("this node is not the leader")
+
+	// ErrUnknownTransferee is returned when the transferee is not a known cluster member.
+	ErrUnknownTransferee = fmt.Errorf("transferee is not a known cluster member")
+
+	// ErrTransferLeaderTimeout is returned when leadership transfer does not complete in time.
+	ErrTransferLeaderTimeout = fmt.Errorf("leadership transfer timed out")
+)
+
+// clusterCommand represents an operation that must execute in the orchestrate loop
+// because rawNode is not thread-safe. Implementations return an error via errCh.
+type clusterCommand struct {
+	fn    func() error
+	errCh chan error
+}
+
+// execClusterCommand dispatches a function to the orchestrate loop and waits for its result.
+func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error {
+	cmd := &clusterCommand{
+		fn:    fn,
+		errCh: make(chan error, 1),
+	}
+
+	select {
+	case node.clusterCommandCh <- cmd:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	select {
+	case err := <-cmd.errCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
@@ -42,6 +81,7 @@ type Node struct {
 	transport               Transport
 	config                  NodeConfig
 	proposeCh               chan *Proposal
+	clusterCommandCh        chan *clusterCommand
 	confState               *raftpb.ConfState
 	futures                 SyncMap[uint64, *futures.Future]
 	lastSoftState           atomic.Pointer[raft.SoftState]
@@ -147,6 +187,7 @@ func NewNode(
 		transport:               transport,
 		config:                  cfg,
 		proposeCh:               make(chan *Proposal, cfg.ProposeQueueCapacity),
+		clusterCommandCh:        make(chan *clusterCommand, 1),
 		store:                   store,
 		fsm:                     fsm,
 		spool:                   spool,
@@ -593,6 +634,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				}
 			case p := <-node.proposeCh:
 				p.Resolve(nil, node.rawNode.Propose(p.data))
+			case cmd := <-node.clusterCommandCh:
+				cmd.errCh <- cmd.fn()
 			default:
 				select {
 				case rd := <-node.readyTerminated:
@@ -631,6 +674,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					}
 				case p := <-node.proposeCh:
 					p.Resolve(nil, node.rawNode.Propose(p.data))
+				case cmd := <-node.clusterCommandCh:
+					cmd.errCh <- cmd.fn()
 				case err := <-node.taskExecutor.error():
 					return fmt.Errorf("task executor error: %w", err)
 				}
@@ -760,6 +805,65 @@ func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.
 
 		return node.replaySpool(ctx, frozenAtIndex)
 	})
+}
+
+// handleTransferLeader validates preconditions and calls rawNode.TransferLeader.
+// Must be called from the orchestrate loop (rawNode is not thread-safe).
+func (node *Node) handleTransferLeader(transferee uint64) error {
+	status := node.rawNode.Status()
+
+	if status.RaftState != raft.StateLeader {
+		return ErrNotLeader
+	}
+
+	if _, ok := status.Progress[transferee]; !ok {
+		return ErrUnknownTransferee
+	}
+
+	node.rawNode.TransferLeader(transferee)
+	return nil
+}
+
+// TransferLeader initiates a leadership transfer to the given node.
+// It dispatches the request to the orchestrate loop (since rawNode is not thread-safe)
+// and then polls lastSoftState to confirm the leader has changed.
+func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
+	// No-op if transferee is this node and we're already leader
+	if transferee == node.config.NodeID && node.IsLeader() {
+		return nil
+	}
+
+	if err := node.execClusterCommand(ctx, func() error {
+		return node.handleTransferLeader(transferee)
+	}); err != nil {
+		return err
+	}
+
+	// Poll lastSoftState to confirm the leader has changed
+	timeout := time.Duration(2*node.config.ElectionTick) * node.config.TickInterval
+	if timeout == 0 {
+		timeout = 2 * time.Second
+	}
+
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
+
+	for {
+		select {
+		case <-deadline.C:
+			return ErrTransferLeaderTimeout
+		case <-poll.C:
+			ss := node.lastSoftState.Load()
+			if ss != nil && ss.Lead == transferee {
+				return nil
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // Propose implements the Proposer interface.

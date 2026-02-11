@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClusterService_GetClusterState_FullMethodName = "/cluster.ClusterService/GetClusterState"
-	ClusterService_GetDiskUsage_FullMethodName    = "/cluster.ClusterService/GetDiskUsage"
+	ClusterService_GetClusterState_FullMethodName    = "/cluster.ClusterService/GetClusterState"
+	ClusterService_GetDiskUsage_FullMethodName       = "/cluster.ClusterService/GetDiskUsage"
+	ClusterService_TransferLeadership_FullMethodName = "/cluster.ClusterService/TransferLeadership"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -33,6 +34,8 @@ type ClusterServiceClient interface {
 	GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*ClusterState, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(ctx context.Context, in *GetDiskUsageRequest, opts ...grpc.CallOption) (*DiskUsage, error)
+	// TransferLeadership transfers Raft leadership to a specific node
+	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
 }
 
 type clusterServiceClient struct {
@@ -63,6 +66,16 @@ func (c *clusterServiceClient) GetDiskUsage(ctx context.Context, in *GetDiskUsag
 	return out, nil
 }
 
+func (c *clusterServiceClient) TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TransferLeadershipResponse)
+	err := c.cc.Invoke(ctx, ClusterService_TransferLeadership_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -73,6 +86,8 @@ type ClusterServiceServer interface {
 	GetClusterState(context.Context, *GetClusterStateRequest) (*ClusterState, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error)
+	// TransferLeadership transfers Raft leadership to a specific node
+	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -88,6 +103,9 @@ func (UnimplementedClusterServiceServer) GetClusterState(context.Context, *GetCl
 }
 func (UnimplementedClusterServiceServer) GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDiskUsage not implemented")
+}
+func (UnimplementedClusterServiceServer) TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TransferLeadership not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -146,6 +164,24 @@ func _ClusterService_GetDiskUsage_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_TransferLeadership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferLeadershipRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).TransferLeadership(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_TransferLeadership_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).TransferLeadership(ctx, req.(*TransferLeadershipRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -160,6 +196,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDiskUsage",
 			Handler:    _ClusterService_GetDiskUsage_Handler,
+		},
+		{
+			MethodName: "TransferLeadership",
+			Handler:    _ClusterService_TransferLeadership_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -15,6 +15,9 @@ service ClusterService {
 
   // GetDiskUsage returns the disk usage of the local node
   rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage);
+
+  // TransferLeadership transfers Raft leadership to a specific node
+  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
 }
 
 message GetClusterStateRequest {
@@ -68,6 +71,14 @@ message ClusterState {
 // ============================================================================
 // Disk Usage Messages
 // ============================================================================
+
+message TransferLeadershipRequest {
+  uint32 transferee = 1;  // Target node ID
+}
+
+message TransferLeadershipResponse {
+  uint32 new_leader = 1;  // Confirmed new leader ID
+}
 
 message GetDiskUsageRequest {}
 
