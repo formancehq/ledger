@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
@@ -109,6 +110,19 @@ func convertToGRPCError(err error) error {
 	var notFoundErr *commonpb.NotFoundError
 	if errors.As(err, &notFoundErr) {
 		return status.Error(codes.NotFound, notFoundErr.Error())
+	}
+
+	// Convert ErrAuditDisabled to FailedPrecondition with ErrorInfo
+	if errors.Is(err, processing.ErrAuditDisabled) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: processing.ErrReasonAuditDisabled,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
 	}
 
 	// Convert BusinessError to proper gRPC status with ErrorInfo details

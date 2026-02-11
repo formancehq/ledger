@@ -5,6 +5,7 @@ package ledger;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb";
 
 import "common.proto";
+import "audit.proto";
 
 // ============================================================================
 // gRPC Service
@@ -28,6 +29,8 @@ service BucketService {
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
   // CheckStore verifies store integrity (hash chain and derived data consistency)
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
+  // ListAuditEntries streams audit trail entries (success and failure)
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
 }
 
 // ============================================================================
@@ -271,4 +274,14 @@ message CheckStoreError {
 message CheckStoreProgress {
   uint64 logs_checked = 1;
   uint64 total_logs = 2;
+}
+
+// ============================================================================
+// Audit Log Messages
+// ============================================================================
+
+message ListAuditEntriesRequest {
+  uint64 after_sequence = 1;
+  string ledger = 2;
+  bool failures_only = 3;
 }

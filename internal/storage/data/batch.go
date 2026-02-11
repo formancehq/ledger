@@ -7,6 +7,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -178,6 +179,30 @@ func (b *Batch) Commit() error {
 
 func (b *Batch) Set(key, value []byte, options *pebble.WriteOptions) error {
 	return b.batch.Set(key, value, options)
+}
+
+// AppendAuditEntries appends audit entries to the batch.
+func (b *Batch) AppendAuditEntries(entries ...*auditpb.AuditEntry) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	for _, entry := range entries {
+		entryBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, entry)
+		if err != nil {
+			return fmt.Errorf("marshaling audit entry to protobuf: %w", err)
+		}
+
+		b.KeyBuilder.
+			PutByte(keyPrefixAudit).
+			PutUInt64(entry.Sequence)
+
+		if err := b.batch.Set(b.KeyBuilder.Build(), entryBinary, pebble.NoSync); err != nil {
+			return fmt.Errorf("inserting audit entry: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // DeleteRange deletes all keys in the range [start, end).

@@ -26,6 +26,7 @@ type Config struct {
 	HealthConfig    HealthConfig
 	CompactorConfig state.CompactorConfig
 	ClusterID       string
+	AuditEnabled    bool
 }
 
 func (c Config) Validate() error {

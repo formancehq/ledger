@@ -1,4 +1,3 @@
-* Register failed transactions
 * Infinite data storage
 * Cold storage
 * Short circuit log ingestion
@@ -11,7 +10,7 @@
 * Roll up of existing ledgers
 * Branches
 * Chart of account pattern recognition
-* Backup/restore
+* Backup restoration
 * Add new node
 * Signed request
 * Store request body + result in logs instead of resulting logs?
@@ -19,3 +18,6 @@
 * Learners/bootstrap cluster
 * Extract HTTP layer into a compat service
 * Date precision nano?
+* Checker add transactions
+* Logs export CLI (filtrage par date/ledger)
+* Sign logs hash with private key

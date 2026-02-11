@@ -172,7 +172,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		// Try to get postings for a transaction that doesn't exist
 		_, err := admission.getTransactionPostings(testLedgerName, 999)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "transaction 999 not found")
+		require.Contains(t, err.Error(), "transaction 999 does not exist")
 	})
 }
 

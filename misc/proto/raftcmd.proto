@@ -209,6 +209,7 @@ message MemorySnapshot {
   uint64 checkpoint_id = 6;
   uint64 current_generation = 7;
   uint64 last_applied_timestamp = 8;  // HLC timestamp (microseconds since epoch)
+  uint64 next_audit_sequence_id = 9;  // Next audit log sequence ID
 }
 
 message GenerationSnapshot {

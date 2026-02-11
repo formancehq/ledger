@@ -96,7 +96,8 @@ func Module() fx.Option {
 			func(
 				params struct {
 					fx.In
-					Config                  node.NodeConfig
+					Config                  Config
+					NodeConfig              node.NodeConfig
 					Logger                  logging.Logger
 					Transport               *node.DefaultTransport
 					MeterProvider           metric.MeterProvider
@@ -110,7 +111,7 @@ func Module() fx.Option {
 				},
 			) (*node.Node, error) {
 				return node.NewNode(
-					params.Config,
+					params.NodeConfig,
 					params.Transport,
 					params.Store,
 					params.Logger,
@@ -121,6 +122,7 @@ func Module() fx.Option {
 					params.Cache,
 					params.Attrs,
 					params.Compactor,
+					params.Config.AuditEnabled,
 				)
 			},
 			func(cfg Config) node.NodeConfig {
@@ -147,8 +149,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger) *ServiceServer {
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
 			},
-			func(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
-				return NewBucketServiceServer(logger, ctrl, s, attrs)
+			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled)
 			},
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)

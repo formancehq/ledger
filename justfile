@@ -50,8 +50,8 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/auditpb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb internal/proto/auditpb
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
@@ -61,7 +61,8 @@ generate-proto:
         misc/proto/cluster.proto \
         misc/proto/service.proto \
         misc/proto/raftcmd.proto \
-        misc/proto/snapshot.proto
+        misc/proto/snapshot.proto \
+        misc/proto/audit.proto
 
 # Docker builds are handled via Pulumi
 
@@ -88,7 +89,7 @@ k8s-rollout-restart:
     kubectl rollout status statefulset/ledger-v3-poc
 
 # Available demo tapes
-demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations"
+demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations demo_audit"
 
 # Generate all CLI demo GIFs (starts a temporary server automatically)
 generate-demo: (_generate-demo demos)

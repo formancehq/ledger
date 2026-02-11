@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -40,15 +41,17 @@ type Machine struct {
 	Ledgers         *attributes.KeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries      *attributes.KeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
 
-	nextLedgerID     uint32
-	nextSequenceID   uint64
-	lastLogHash      []byte
-	lastCheckpointID uint64
+	nextLedgerID        uint32
+	nextSequenceID      uint64
+	nextAuditSequenceID uint64
+	lastLogHash         []byte
+	lastCheckpointID    uint64
 
 	lastAppliedIndex            uint64
 	lastAppliedTimestamp        uint64
 	snapshotIndex               uint64
 	generationRotationThreshold uint64
+	auditEnabled                bool
 
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
@@ -61,7 +64,7 @@ type Machine struct {
 	lastPersistedIndex  atomic.Uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, compactor *Compactor) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, compactor *Compactor, auditEnabled bool) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -95,6 +98,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		compactor:                   compactor,
 		logsAppendedCounter:         logsAppendedCounter,
 		processor:                   processor,
+		auditEnabled:                auditEnabled,
 		Attrs:                       attrs,
 		Cache:                       cache,
 		Input: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder](
@@ -534,6 +538,23 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Process the proposal
 	response, err := fsm.processor.ProcessProposal(proposal, buffer)
 	if err != nil {
+		// FAILURE: write audit entry and return business error
+		if fsm.auditEnabled {
+			auditEntry := &auditpb.AuditEntry{
+				Sequence:   fsm.nextAuditSequenceID,
+				Timestamp:  effectiveDate,
+				ProposalId: proposal.Id,
+				Orders:     proposal.Orders,
+				Outcome: &auditpb.AuditEntry_Failure{
+					Failure: buildAuditFailure(err),
+				},
+			}
+			fsm.nextAuditSequenceID++
+			if appendErr := batch.AppendAuditEntries(auditEntry); appendErr != nil {
+				return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+			}
+		}
+
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: err},
@@ -568,6 +589,25 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
+	// SUCCESS: write audit entry
+	if fsm.auditEnabled {
+		auditEntry := &auditpb.AuditEntry{
+			Sequence:   fsm.nextAuditSequenceID,
+			Timestamp:  effectiveDate,
+			ProposalId: proposal.Id,
+			Orders:     proposal.Orders,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{
+					LogSequences: extractLogSequences(responseLogs),
+				},
+			},
+		}
+		fsm.nextAuditSequenceID++
+		if err := batch.AppendAuditEntries(auditEntry); err != nil {
+			return nil, fmt.Errorf("appending audit entry for success: %w", err)
+		}
+	}
+
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
 
 	return &ApplyResult{
@@ -584,14 +624,15 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	snapshot := &raftcmdpb.MemorySnapshot{
-		NextLedgerId:        fsm.nextLedgerID,
-		NextSequenceId:      fsm.nextSequenceID,
-		LastLogHash:         fsm.lastLogHash,
-		Gen0:                serializeCacheGeneration(fsm.Cache, 0),
-		Gen1:                serializeCacheGeneration(fsm.Cache, 1),
-		CheckpointId:        checkpointID,
-		CurrentGeneration:   fsm.Cache.CurrentGeneration,
+		NextLedgerId:         fsm.nextLedgerID,
+		NextSequenceId:       fsm.nextSequenceID,
+		LastLogHash:          fsm.lastLogHash,
+		Gen0:                 serializeCacheGeneration(fsm.Cache, 0),
+		Gen1:                 serializeCacheGeneration(fsm.Cache, 1),
+		CheckpointId:         checkpointID,
+		CurrentGeneration:    fsm.Cache.CurrentGeneration,
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
+		NextAuditSequenceId: fsm.nextAuditSequenceID,
 	}
 
 	return proto.Marshal(snapshot)
@@ -764,6 +805,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Restore memory state from snapshot
 	fsm.nextLedgerID = memSnapshot.NextLedgerId
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
+	fsm.nextAuditSequenceID = memSnapshot.NextAuditSequenceId
 	fsm.lastLogHash = memSnapshot.LastLogHash
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 	fsm.lastAppliedTimestamp = memSnapshot.LastAppliedTimestamp

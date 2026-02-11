@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -49,6 +50,7 @@ var (
 	keyPrefixLastAppliedTimestamp byte = 0x04 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 	KeyPrefixAttributes        byte = 0x09
+	keyPrefixAudit             byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
 
 	AttributePrefixInput          = byte('I')
 	AttributePrefixOutput         = byte('O')
@@ -686,6 +688,31 @@ func (s *Store) GetLastSequence() (uint64, error) {
 	}
 
 	return log.Sequence, nil
+}
+
+// ListAuditEntries returns a cursor over audit entries after the given sequence.
+func (s *Store) ListAuditEntries(afterSequence uint64) (Cursor[*auditpb.AuditEntry], error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixAudit)
+	if afterSequence > 0 {
+		kb.PutUInt64(afterSequence + 1)
+	}
+	lowerBound := kb.Build()
+
+	kb2 := NewKeyBuilder()
+	kb2.PutByte(keyPrefixAudit).
+		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	upperBound := kb2.Build()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
+	}
+
+	return newCursor[*auditpb.AuditEntry](iter), nil
 }
 
 // cursor implements Cursor[T] for Pebble where T is a proto.Message pointer.

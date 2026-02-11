@@ -47,6 +47,9 @@ This document compares the POC's API with the original Formance ledger API and d
 | Idempotency key | ✅ | ✅ | |
 | **Reference Uniqueness** |
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
+| **Audit Log** |
+| Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
+| Audit log disable/enable | ✅ | ❌ | `--audit-enabled` flag |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Store Operations** |
@@ -356,6 +359,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetTransaction` | Get transaction by ID | ✅ |
 | `StreamLogs` | Stream logs from a ledger | ✅ |
 | `Apply` | Apply a ledger action (write operations) | ✅ |
+| `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 
 ### Apply Method
 
@@ -403,6 +407,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
+| Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 
 **Client-side usage (Go):**
 ```go

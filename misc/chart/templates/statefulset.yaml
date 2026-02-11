@@ -120,6 +120,10 @@ spec:
           value: {{ .Values.config.raft.compactionMargin | quote }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
+        {{- if hasKey .Values.config "audit" }}
+        - name: AUDIT_ENABLED
+          value: {{ .Values.config.audit.enabled | default true | toString | quote }}
+        {{- end }}
         # Health check configuration
         {{- if .Values.config.health }}
         {{- if .Values.config.health.interval }}

@@ -8,6 +8,7 @@ package servicepb
 
 import (
 	context "context"
+	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -28,6 +29,7 @@ const (
 	BucketService_Apply_FullMethodName             = "/ledger.BucketService/Apply"
 	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
 	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
+	BucketService_ListAuditEntries_FullMethodName  = "/ledger.BucketService/ListAuditEntries"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -52,6 +54,8 @@ type BucketServiceClient interface {
 	GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
+	// ListAuditEntries streams audit trail entries (success and failure)
+	ListAuditEntries(ctx context.Context, in *ListAuditEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error)
 }
 
 type bucketServiceClient struct {
@@ -169,6 +173,25 @@ func (c *bucketServiceClient) CheckStore(ctx context.Context, in *CheckStoreRequ
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_CheckStoreClient = grpc.ServerStreamingClient[CheckStoreEvent]
 
+func (c *bucketServiceClient) ListAuditEntries(ctx context.Context, in *ListAuditEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[3], BucketService_ListAuditEntries_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListAuditEntriesRequest, auditpb.AuditEntry]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListAuditEntriesClient = grpc.ServerStreamingClient[auditpb.AuditEntry]
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -191,6 +214,8 @@ type BucketServiceServer interface {
 	GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error
+	// ListAuditEntries streams audit trail entries (success and failure)
+	ListAuditEntries(*ListAuditEntriesRequest, grpc.ServerStreamingServer[auditpb.AuditEntry]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -224,6 +249,9 @@ func (UnimplementedBucketServiceServer) GetStoreMetrics(context.Context, *GetSto
 }
 func (UnimplementedBucketServiceServer) CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method CheckStore not implemented")
+}
+func (UnimplementedBucketServiceServer) ListAuditEntries(*ListAuditEntriesRequest, grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
+	return status.Errorf(codes.Unimplemented, "method ListAuditEntries not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -369,6 +397,17 @@ func _BucketService_CheckStore_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_CheckStoreServer = grpc.ServerStreamingServer[CheckStoreEvent]
 
+func _BucketService_ListAuditEntries_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListAuditEntriesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListAuditEntries(m, &grpc.GenericServerStream[ListAuditEntriesRequest, auditpb.AuditEntry]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListAuditEntriesServer = grpc.ServerStreamingServer[auditpb.AuditEntry]
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -411,6 +450,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "CheckStore",
 			Handler:       _BucketService_CheckStore_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListAuditEntries",
+			Handler:       _BucketService_ListAuditEntries_Handler,
 			ServerStreams: true,
 		},
 	},

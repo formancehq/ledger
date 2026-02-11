@@ -114,6 +114,9 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("compaction-enabled", true, "Enable background volume diff compaction")
 	runCmd.Flags().Int("compaction-batch-size", 100, "Number of keys per Pebble batch during compaction")
 
+	// Audit configuration flags
+	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
+
 	return runCmd
 }
 
@@ -340,6 +343,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	// Compactor configuration
 	cfg.CompactorConfig.Enabled = getBool("compaction-enabled", true)
 	cfg.CompactorConfig.BatchSize = getInt("compaction-batch-size", 100)
+
+	// Audit configuration
+	cfg.AuditEnabled = getBool("audit-enabled", true)
 
 	return cfg, nil
 }

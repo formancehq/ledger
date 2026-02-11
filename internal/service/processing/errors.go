@@ -19,6 +19,7 @@ const (
 	ErrReasonBalanceNotPreloaded          = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError          = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonValidation                   = "VALIDATION"
+	ErrReasonAuditDisabled                = "AUDIT_DISABLED"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -41,6 +42,7 @@ var (
 	ErrTargetRequired      = errors.New("target is required")
 	ErrMetadataKeyRequired = errors.New("key is required")
 	ErrScriptRequired      = errors.New("numscript: script is required")
+	ErrAuditDisabled       = errors.New("audit log is disabled on this server")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.

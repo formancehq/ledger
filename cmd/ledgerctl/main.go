@@ -35,6 +35,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newTransactionsCommand())
 	rootCmd.AddCommand(newStoreCommand())
 	rootCmd.AddCommand(newClusterCommand())
+	rootCmd.AddCommand(newAuditCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd

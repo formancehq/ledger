@@ -146,6 +146,10 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`store_check.go`** : `store check` command to verify store integrity (hash chain + derived data) via gRPC
 - **`store_backup.go`** : `store backup` command to download a point-in-time backup as a tar archive via gRPC
 
+**Audit commands:**
+- **`audit.go`** : Parent command for audit log operations
+- **`audit_list.go`** : `audit list` command to list audit entries (success + failure) via gRPC streaming
+
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
@@ -157,6 +161,7 @@ VHS tape files for generating animated GIF demos of the CLI. Each demo is self-c
 - **`demo_transactions.tape`** : Force transactions, revert transactions
 - **`demo_metadata.tape`** : Account and transaction metadata CRUD
 - **`demo_operations.tape`** : Cluster status, store integrity check, store backup
+- **`demo_audit.tape`** : Audit log listing, failures-only filter, ledger filter
 - **`README.md`** : Documentation for generating demos
 
 **Generating demos:**
@@ -358,6 +363,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/service.proto` - gRPC service definitions (LedgerService)
   - `misc/proto/cluster.proto` - Cluster state messages
   - `misc/proto/snapshot.proto` - Snapshot service definitions
+  - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
 - **Generated code**: 
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
   - `internal/proto/commonpb/` - Common types (common.pb.go, etc.)
@@ -365,6 +371,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `internal/proto/servicepb/` - gRPC service (service.pb.go, service_grpc.pb.go, etc.)
   - `internal/proto/clusterpb/` - Cluster state (cluster.pb.go, etc.)
   - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go)
+  - `internal/proto/auditpb/` - Audit log types (audit.pb.go)
 
 ### Regenerating Code
 

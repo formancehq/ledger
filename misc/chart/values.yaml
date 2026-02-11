@@ -113,6 +113,10 @@ config:
     # Maximum allowed clock skew between nodes (default: 500ms, "0" to disable)
     clockSkewThreshold: "500ms"
 
+  # Audit log configuration
+  audit:
+    enabled: true
+
   # Debug logging
   debug: false
   

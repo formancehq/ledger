@@ -1837,6 +1837,7 @@ type MemorySnapshot struct {
 	CheckpointId         uint64                 `protobuf:"varint,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	CurrentGeneration    uint64                 `protobuf:"varint,7,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
 	LastAppliedTimestamp uint64                 `protobuf:"varint,8,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // HLC timestamp (microseconds since epoch)
+	NextAuditSequenceId  uint64                 `protobuf:"varint,9,opt,name=next_audit_sequence_id,json=nextAuditSequenceId,proto3" json:"next_audit_sequence_id,omitempty"`  // Next audit log sequence ID
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1923,6 +1924,13 @@ func (x *MemorySnapshot) GetCurrentGeneration() uint64 {
 func (x *MemorySnapshot) GetLastAppliedTimestamp() uint64 {
 	if x != nil {
 		return x.LastAppliedTimestamp
+	}
+	return 0
+}
+
+func (x *MemorySnapshot) GetNextAuditSequenceId() uint64 {
+	if x != nil {
+		return x.NextAuditSequenceId
 	}
 	return 0
 }
@@ -2485,7 +2493,7 @@ const file_raftcmd_proto_rawDesc = "" +
 	"boundaries\"g\n" +
 	"\x1bPreloadTransactionReference\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12%\n" +
-	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"\xea\x02\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"\x9f\x03\n" +
 	"\x0eMemorySnapshot\x12$\n" +
 	"\x0enext_ledger_id\x18\x01 \x01(\rR\fnextLedgerId\x12(\n" +
 	"\x10next_sequence_id\x18\x02 \x01(\x04R\x0enextSequenceId\x12\"\n" +
@@ -2494,7 +2502,8 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x04gen1\x18\x05 \x01(\v2\x18.raft.GenerationSnapshotR\x04gen1\x12#\n" +
 	"\rcheckpoint_id\x18\x06 \x01(\x04R\fcheckpointId\x12-\n" +
 	"\x12current_generation\x18\a \x01(\x04R\x11currentGeneration\x124\n" +
-	"\x16last_applied_timestamp\x18\b \x01(\x04R\x14lastAppliedTimestamp\"\xd8\x03\n" +
+	"\x16last_applied_timestamp\x18\b \x01(\x04R\x14lastAppliedTimestamp\x123\n" +
+	"\x16next_audit_sequence_id\x18\t \x01(\x04R\x13nextAuditSequenceId\"\xd8\x03\n" +
 	"\x12GenerationSnapshot\x12\x1d\n" +
 	"\n" +
 	"base_index\x18\x01 \x01(\x04R\tbaseIndex\x120\n" +

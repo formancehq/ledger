@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package audit;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb";
+
+import "common.proto";
+import "raftcmd.proto";
+
+// ============================================================================
+// Audit Log
+// ============================================================================
+
+// AuditEntry represents a single audit trail entry for a proposal.
+// Each proposal (success or failure) generates exactly one audit entry.
+message AuditEntry {
+  uint64 sequence = 1;
+  common.Timestamp timestamp = 2;
+  uint64 proposal_id = 3;
+  repeated raft.Order orders = 4;
+  oneof outcome {
+    AuditSuccess success = 5;
+    AuditFailure failure = 6;
+  }
+}
+
+// AuditSuccess records the log sequences created by a successful proposal.
+message AuditSuccess {
+  repeated uint64 log_sequences = 1;
+}
+
+// AuditFailure records the reason and context for a failed proposal.
+message AuditFailure {
+  string error_type = 1;
+  string message = 2;
+  map<string, string> context = 3;
+}

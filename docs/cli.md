@@ -660,6 +660,62 @@ ledgerctl s bk -o backup.tar
 
 ---
 
+### audit
+
+View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
+
+**Aliases:** `a`
+
+#### audit list
+
+List audit log entries via gRPC streaming.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl audit list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--failures-only` | `false` | Show only failed entries |
+| `--ledger` | | Filter by ledger name |
+| `--after` | `0` | Show entries after this sequence number |
+| `--limit` | `0` | Maximum number of entries to display (0 = unlimited) |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Streams audit entries from the server
+- Each entry shows: sequence number, timestamp, proposal ID, outcome (OK/FAIL), and ledger name
+- If audit is disabled on the server, a warning message is displayed instead of an error
+
+**Example:**
+
+```bash
+# List all audit entries
+ledgerctl audit list
+
+# Show only failures
+ledgerctl audit list --failures-only
+
+# Filter by ledger
+ledgerctl audit list --ledger my-ledger
+
+# Show entries after sequence 100
+ledgerctl audit list --after 100
+
+# Limit to 20 entries
+ledgerctl audit list --limit 20
+
+# Output as JSON
+ledgerctl audit list --json
+```
+
+---
+
 ### cluster
 
 Manage and inspect the Raft cluster.

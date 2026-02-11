@@ -7,6 +7,7 @@
 package servicepb
 
 import (
+	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -2231,11 +2232,71 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 	return 0
 }
 
+type ListAuditEntriesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AfterSequence uint64                 `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3" json:"after_sequence,omitempty"`
+	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	FailuresOnly  bool                   `protobuf:"varint,3,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAuditEntriesRequest) Reset() {
+	*x = ListAuditEntriesRequest{}
+	mi := &file_service_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAuditEntriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAuditEntriesRequest) ProtoMessage() {}
+
+func (x *ListAuditEntriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAuditEntriesRequest.ProtoReflect.Descriptor instead.
+func (*ListAuditEntriesRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListAuditEntriesRequest) GetAfterSequence() uint64 {
+	if x != nil {
+		return x.AfterSequence
+	}
+	return 0
+}
+
+func (x *ListAuditEntriesRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *ListAuditEntriesRequest) GetFailuresOnly() bool {
+	if x != nil {
+		return x.FailuresOnly
+	}
+	return false
+}
+
 var File_service_proto protoreflect.FileDescriptor
 
 const file_service_proto_rawDesc = "" +
 	"\n" +
-	"\rservice.proto\x12\x06ledger\x1a\fcommon.proto\"E\n" +
+	"\rservice.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\"E\n" +
 	"\x11GetAccountRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\"V\n" +
@@ -2402,14 +2463,18 @@ const file_service_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs*\x95\x02\n" +
+	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"}\n" +
+	"\x17ListAuditEntriesRequest\x12%\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x04R\rafterSequence\x12\x16\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12#\n" +
+	"\rfailures_only\x18\x03 \x01(\bR\ffailuresOnly*\x95\x02\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
 	"#CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP\x10\x02\x12*\n" +
 	"&CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH\x10\x03\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
-	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x052\xad\x04\n" +
+	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x052\xf7\x04\n" +
 	"\rBucketService\x12G\n" +
 	"\x11GetAllLedgersInfo\x12\x1c.ledger.GetAllLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -2420,7 +2485,8 @@ const file_service_proto_rawDesc = "" +
 	"\x05Apply\x12\x14.ledger.ApplyRequest\x1a\x15.ledger.ApplyResponse\x12R\n" +
 	"\x0fGetStoreMetrics\x12\x1e.ledger.GetStoreMetricsRequest\x1a\x1f.ledger.GetStoreMetricsResponse\x12B\n" +
 	"\n" +
-	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01B>Z<github.com/formancehq/ledger-v3-poc/internal/proto/servicepbb\x06proto3"
+	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12H\n" +
+	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry0\x01B>Z<github.com/formancehq/ledger-v3-poc/internal/proto/servicepbb\x06proto3"
 
 var (
 	file_service_proto_rawDescOnce sync.Once
@@ -2435,7 +2501,7 @@ func file_service_proto_rawDescGZIP() []byte {
 }
 
 var file_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_service_proto_goTypes = []any{
 	(CheckStoreErrorType)(0),               // 0: ledger.CheckStoreErrorType
 	(*GetAccountRequest)(nil),              // 1: ledger.GetAccountRequest
@@ -2469,35 +2535,37 @@ var file_service_proto_goTypes = []any{
 	(*CheckStoreEvent)(nil),                // 29: ledger.CheckStoreEvent
 	(*CheckStoreError)(nil),                // 30: ledger.CheckStoreError
 	(*CheckStoreProgress)(nil),             // 31: ledger.CheckStoreProgress
-	nil,                                    // 32: ledger.CreateTransactionPayload.AccountMetadataEntry
-	(*commonpb.MetadataSet)(nil),           // 33: common.MetadataSet
-	(*commonpb.Log)(nil),                   // 34: common.Log
-	(*commonpb.Posting)(nil),               // 35: common.Posting
-	(*commonpb.Script)(nil),                // 36: common.Script
-	(*commonpb.Timestamp)(nil),             // 37: common.Timestamp
-	(*commonpb.SaveMetadataCommand)(nil),   // 38: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil), // 39: common.DeleteMetadataCommand
-	(*commonpb.LedgerInfo)(nil),            // 40: common.LedgerInfo
-	(*commonpb.Account)(nil),               // 41: common.Account
-	(*commonpb.Transaction)(nil),           // 42: common.Transaction
+	(*ListAuditEntriesRequest)(nil),        // 32: ledger.ListAuditEntriesRequest
+	nil,                                    // 33: ledger.CreateTransactionPayload.AccountMetadataEntry
+	(*commonpb.MetadataSet)(nil),           // 34: common.MetadataSet
+	(*commonpb.Log)(nil),                   // 35: common.Log
+	(*commonpb.Posting)(nil),               // 36: common.Posting
+	(*commonpb.Script)(nil),                // 37: common.Script
+	(*commonpb.Timestamp)(nil),             // 38: common.Timestamp
+	(*commonpb.SaveMetadataCommand)(nil),   // 39: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil), // 40: common.DeleteMetadataCommand
+	(*commonpb.LedgerInfo)(nil),            // 41: common.LedgerInfo
+	(*commonpb.Account)(nil),               // 42: common.Account
+	(*commonpb.Transaction)(nil),           // 43: common.Transaction
+	(*auditpb.AuditEntry)(nil),             // 44: audit.AuditEntry
 }
 var file_service_proto_depIdxs = []int32{
-	33, // 0: ledger.CreateLedgerRequest.metadata:type_name -> common.MetadataSet
+	34, // 0: ledger.CreateLedgerRequest.metadata:type_name -> common.MetadataSet
 	11, // 1: ledger.ApplyRequest.requests:type_name -> ledger.Request
-	34, // 2: ledger.ApplyResponse.logs:type_name -> common.Log
+	35, // 2: ledger.ApplyResponse.logs:type_name -> common.Log
 	14, // 3: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	4,  // 4: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
 	5,  // 5: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
-	35, // 6: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	36, // 7: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	37, // 8: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	33, // 9: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
-	32, // 10: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	33, // 11: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
+	36, // 6: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	37, // 7: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	38, // 8: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	34, // 9: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
+	33, // 10: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	34, // 11: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
 	12, // 12: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
-	38, // 13: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
+	39, // 13: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
 	13, // 14: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	39, // 15: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
+	40, // 15: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
 	17, // 16: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
 	18, // 17: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
 	19, // 18: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
@@ -2512,7 +2580,7 @@ var file_service_proto_depIdxs = []int32{
 	30, // 27: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
 	31, // 28: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
 	0,  // 29: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
-	33, // 30: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	34, // 30: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
 	7,  // 31: ledger.BucketService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
 	8,  // 32: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
 	1,  // 33: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
@@ -2521,16 +2589,18 @@ var file_service_proto_depIdxs = []int32{
 	9,  // 36: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
 	15, // 37: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
 	28, // 38: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
-	40, // 39: ledger.BucketService.GetAllLedgersInfo:output_type -> common.LedgerInfo
-	40, // 40: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
-	41, // 41: ledger.BucketService.GetAccount:output_type -> common.Account
-	42, // 42: ledger.BucketService.GetTransaction:output_type -> common.Transaction
-	42, // 43: ledger.BucketService.ListTransactions:output_type -> common.Transaction
-	10, // 44: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	16, // 45: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	29, // 46: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	39, // [39:47] is the sub-list for method output_type
-	31, // [31:39] is the sub-list for method input_type
+	32, // 39: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
+	41, // 40: ledger.BucketService.GetAllLedgersInfo:output_type -> common.LedgerInfo
+	41, // 41: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
+	42, // 42: ledger.BucketService.GetAccount:output_type -> common.Account
+	43, // 43: ledger.BucketService.GetTransaction:output_type -> common.Transaction
+	43, // 44: ledger.BucketService.ListTransactions:output_type -> common.Transaction
+	10, // 45: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
+	16, // 46: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
+	29, // 47: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
+	44, // 48: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
+	40, // [40:49] is the sub-list for method output_type
+	31, // [31:40] is the sub-list for method input_type
 	31, // [31:31] is the sub-list for extension type_name
 	31, // [31:31] is the sub-list for extension extendee
 	0,  // [0:31] is the sub-list for field type_name
@@ -2562,7 +2632,7 @@ func file_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_proto_rawDesc), len(file_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   32,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

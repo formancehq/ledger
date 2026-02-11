@@ -6,29 +6,34 @@ import (
 	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
 )
 
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
-	logger logging.Logger
-	ctrl   ctrl.Controller
-	store  *data.Store
-	attrs  *attributes.Attributes
+	logger       logging.Logger
+	ctrl         ctrl.Controller
+	store        *data.Store
+	attrs        *attributes.Attributes
+	auditEnabled bool
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, auditEnabled bool) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
-		logger: logger,
-		ctrl:   ctrl,
-		store:  s,
-		attrs:  attrs,
+		logger:       logger,
+		ctrl:         ctrl,
+		store:        s,
+		attrs:        attrs,
+		auditEnabled: auditEnabled,
 	}
 }
 
@@ -151,6 +156,67 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
 	})
+}
+
+func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
+	if !impl.auditEnabled {
+		return processing.ErrAuditDisabled
+	}
+
+	cursor, err := impl.store.ListAuditEntries(req.AfterSequence)
+	if err != nil {
+		return fmt.Errorf("listing audit entries: %w", err)
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		entry, err := cursor.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading audit entry: %w", err)
+		}
+
+		// Apply ledger filter: check if any order targets the requested ledger
+		if req.Ledger != "" && !auditEntryMatchesLedger(entry, req.Ledger) {
+			continue
+		}
+
+		// Apply failures-only filter
+		if req.FailuresOnly && entry.GetFailure() == nil {
+			continue
+		}
+
+		if err := stream.Send(entry); err != nil {
+			return fmt.Errorf("sending audit entry: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// auditEntryMatchesLedger checks if any order in the audit entry targets the given ledger.
+func auditEntryMatchesLedger(entry *auditpb.AuditEntry, ledger string) bool {
+	for _, order := range entry.Orders {
+		switch t := order.Type.(type) {
+		case *raftcmdpb.Order_Apply:
+			if t.Apply.Ledger == ledger {
+				return true
+			}
+		case *raftcmdpb.Order_CreateLedger:
+			if t.CreateLedger.Name == ledger {
+				return true
+			}
+		case *raftcmdpb.Order_DeleteLedger:
+			if t.DeleteLedger.Name == ledger {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {
