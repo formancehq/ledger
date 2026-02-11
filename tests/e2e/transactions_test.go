@@ -48,7 +48,7 @@ func listAllTransactions(ctx context.Context, client servicepb.BucketServiceClie
 	return transactions, nil
 }
 
-var _ = Describe("Transactions", func() {
+var _ = Describe("Transactions", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
@@ -59,14 +59,14 @@ var _ = Describe("Transactions", func() {
 		grpcPort = 8300
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When creating transactions", func() {
+	Context("When creating transactions", Ordered, func() {
 		var ledgerName = "tx-create-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -198,9 +198,9 @@ var _ = Describe("Transactions", func() {
 				amount      *big.Int
 				asset       string
 			}{
-				{"world", "account-1", big.NewInt(100), "USD"},
-				{"world", "account-2", big.NewInt(200), "USD"},
-				{"account-1", "account-2", big.NewInt(50), "USD"},
+				{"world", "seq-account-1", big.NewInt(100), "USD"},
+				{"world", "seq-account-2", big.NewInt(200), "USD"},
+				{"seq-account-1", "seq-account-2", big.NewInt(50), "USD"},
 			}
 
 			for i, tx := range transactions {
@@ -219,14 +219,14 @@ var _ = Describe("Transactions", func() {
 			// Verify final balances
 			account1, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account-1",
+				Address: "seq-account-1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1.Volumes["USD"].Balance).To(Equal("50")) // 100 - 50
 
 			account2, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account-2",
+				Address: "seq-account-2",
 			})
 			Expect(err).To(Succeed())
 			Expect(account2.Volumes["USD"].Balance).To(Equal("250")) // 200 + 50
@@ -376,10 +376,10 @@ var _ = Describe("Transactions", func() {
 		})
 	})
 
-	Context("When creating transactions with validation errors", func() {
+	Context("When creating transactions with validation errors", Ordered, func() {
 		var ledgerName = "tx-validation-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -451,20 +451,28 @@ var _ = Describe("Transactions", func() {
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
+			// Recipient should have the exact amount
+			recipient, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: "recipient",
+			})
+			Expect(err).To(Succeed())
+			Expect(recipient.Volumes["USD"].Balance).To(Equal("1000000"))
+
 			// World's balance should be negative
 			world, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "world",
 			})
 			Expect(err).To(Succeed())
-			Expect(world.Volumes["USD"].Balance).To(Equal("-1000000"))
+			Expect(world.Volumes["USD"].Balance).To(HavePrefix("-"))
 		})
 	})
 
-	Context("When reading transactions", func() {
+	Context("When reading transactions", Ordered, func() {
 		var ledgerName = "tx-read-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -512,10 +520,10 @@ var _ = Describe("Transactions", func() {
 		})
 	})
 
-	Context("When verifying account balances after transactions", func() {
+	Context("When verifying account balances after transactions", Ordered, func() {
 		var ledgerName = "tx-balance-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -604,11 +612,11 @@ var _ = Describe("Transactions", func() {
 		})
 	})
 
-	Context("When listing transactions", func() {
+	Context("When listing transactions", Ordered, func() {
 		var ledgerName = "tx-list-ledger"
 		var createdTxIDs []uint64
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			// Create ledger
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},

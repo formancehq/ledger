@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -338,6 +339,153 @@ func getAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient
 	}
 
 	return ledgers, nil
+}
+
+// multiNodeOptions holds configuration options for setupMultiNodeCluster.
+type multiNodeOptions struct {
+	withGateway      bool
+	raftTickInterval time.Duration
+}
+
+// MultiNodeOption is a functional option for setupMultiNodeCluster.
+type MultiNodeOption func(*multiNodeOptions)
+
+// WithGateway enables the test gateway for intercepting Raft traffic.
+func WithGateway() MultiNodeOption {
+	return func(o *multiNodeOptions) {
+		o.withGateway = true
+	}
+}
+
+// WithTickInterval sets the Raft tick interval (default: 10ms).
+func WithTickInterval(d time.Duration) MultiNodeOption {
+	return func(o *multiNodeOptions) {
+		o.raftTickInterval = d
+	}
+}
+
+// setupMultiNodeCluster creates a multi-node Raft cluster for e2e tests.
+// It returns the context, the list of services with clients, the gateway (if enabled), and a pointer to the current leader ID.
+// Cleanup is handled automatically via DeferCleanup.
+func setupMultiNodeCluster(
+	countInstances int,
+	raftBasePort, serviceBasePort, httpBasePort, gatewayBasePort int,
+	opts ...MultiNodeOption,
+) (context.Context, []*serviceWithClient, *testserver.Gateway, *uint64) {
+	options := multiNodeOptions{
+		raftTickInterval: 10 * time.Millisecond,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	ctx := logging.TestingContext()
+
+	var gw *testserver.Gateway
+	if options.withGateway {
+		gatewayPorts := make([]int, countInstances)
+		nodeRaftAddresses := make([]string, countInstances)
+		for i := range countInstances {
+			gatewayPorts[i] = gatewayBasePort + i
+			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", raftBasePort+i)
+		}
+
+		var err error
+		gw, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeRaftAddresses)
+		Expect(err).To(Succeed())
+
+		Expect(gw.Start(ctx)).To(Succeed())
+		DeferCleanup(func() {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(gw.Stop(stopCtx)).To(Succeed())
+		})
+	}
+
+	servers := make([]*serviceWithClient, 0, countInstances)
+	for i := range countInstances {
+		walTmpDir := GinkgoT().TempDir()
+		dataTmpDir := GinkgoT().TempDir()
+		DeferCleanup(func() {
+			Expect(os.RemoveAll(walTmpDir)).To(Succeed())
+			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
+		})
+
+		// Peer Raft addresses go through the gateway when enabled, otherwise direct
+		peerRaftAddress := func(j int) string {
+			if options.withGateway {
+				return fmt.Sprintf("127.0.0.1:%d", gatewayBasePort+j)
+			}
+			return fmt.Sprintf("127.0.0.1:%d", raftBasePort+j)
+		}
+
+		server := testservice.New(cmdserver.NewRunCommand,
+			testservice.WithInstruments(
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+				testserver.WithNodeID(i+1),
+				testserver.WithHTTPPort(httpBasePort+i),
+				testserver.WithWalDir(walTmpDir),
+				testserver.WithDataDir(dataTmpDir),
+				testserver.WithRaftPort(raftBasePort+i),
+				testserver.WithGRPCPort(serviceBasePort+i),
+				testserver.WithSnapshotThreshold(10),
+				testserver.WithRaftCompactionMargin(1),
+				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+				testserver.WithRaftTickInterval(options.raftTickInterval),
+				testserver.WithRaftHeartbeatTick(1),
+				testserver.WithRaftElectionTick(10),
+				testserver.WithPeers(func() []node.Peer {
+					ret := make([]node.Peer, 0, countInstances-1)
+					for j := range countInstances {
+						if i == j {
+							continue
+						}
+						ret = append(ret, node.Peer{
+							ID:             uint64(j + 1),
+							Address:        peerRaftAddress(j),
+							ServiceAddress: fmt.Sprintf("127.0.0.1:%d", serviceBasePort+j),
+						})
+					}
+					return ret
+				}()...),
+			),
+		)
+		Expect(server.Start(ctx)).To(Succeed())
+
+		grpcClient, clusterClient, grpcConn, err := newGRPCClient(serviceBasePort + i)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() {
+			_ = grpcConn.Close()
+		})
+
+		servers = append(servers, &serviceWithClient{
+			service:       server,
+			client:        grpcClient,
+			clusterClient: clusterClient,
+			grpcConn:      grpcConn,
+			walDir:        walTmpDir,
+			dataDir:       dataTmpDir,
+			grpcPort:      serviceBasePort + i,
+			nodeID:        uint32(i + 1),
+		})
+	}
+
+	var leaderID uint64
+	Eventually(servers[0]).To(HaveALeader(&leaderID))
+
+	return ctx, servers, gw, &leaderID
+}
+
+// stopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
+func stopServers(ctx context.Context, servers []*serviceWithClient) {
+	for i, server := range servers {
+		By(fmt.Sprintf("Stopping node %d", i+1), func() {
+			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			DeferCleanup(cancel)
+			Expect(server.service.Stop(stopCtx)).To(Succeed())
+		})
+	}
 }
 
 // setupSingleNode creates a single-node cluster for tests that don't need Raft consensus.

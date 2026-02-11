@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var _ = Describe("Reversions", func() {
+var _ = Describe("Reversions", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
@@ -27,14 +27,14 @@ var _ = Describe("Reversions", func() {
 		grpcPort = 8800
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When reverting transactions", func() {
+	Context("When reverting transactions", Ordered, func() {
 		var ledgerName = "revert-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -241,10 +241,10 @@ var _ = Describe("Reversions", func() {
 		})
 	})
 
-	Context("When verifying balance restoration after revert", func() {
+	Context("When verifying balance restoration after revert", Ordered, func() {
 		var ledgerName = "revert-balance-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -375,10 +375,10 @@ var _ = Describe("Reversions", func() {
 		})
 	})
 
-	Context("When verifying reverted transaction status", func() {
+	Context("When verifying reverted transaction status", Ordered, func() {
 		var ledgerName = "revert-status-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -461,10 +461,10 @@ var _ = Describe("Reversions", func() {
 		})
 	})
 
-	Context("When reverting with insufficient funds", func() {
+	Context("When reverting with insufficient funds", Ordered, func() {
 		var ledgerName = "revert-insufficient-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})

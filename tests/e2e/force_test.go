@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Force Transactions", func() {
+var _ = Describe("Force Transactions", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
@@ -23,14 +23,14 @@ var _ = Describe("Force Transactions", func() {
 		grpcPort = 8500
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When creating transactions with force=true", func() {
+	Context("When creating transactions with force=true", Ordered, func() {
 		var ledgerName = "force-tx-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -93,7 +93,7 @@ var _ = Describe("Force Transactions", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createTransactionAction(ledgerName, []*commonpb.Posting{
-						newPosting("empty-account", "destination", big.NewInt(100), "USD"),
+						newPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -103,7 +103,7 @@ var _ = Describe("Force Transactions", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createForceTransactionAction(ledgerName, []*commonpb.Posting{
-						newPosting("empty-account", "destination", big.NewInt(100), "USD"),
+						newPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -122,7 +122,7 @@ var _ = Describe("Force Transactions", func() {
 			// The destination account should have positive balance
 			destAccount, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "destination",
+				Address: "zero-dest",
 			})
 			Expect(err).To(Succeed())
 			Expect(destAccount.Volumes["USD"].Balance).To(Equal("100"))
@@ -217,10 +217,10 @@ var _ = Describe("Force Transactions", func() {
 		})
 	})
 
-	Context("When using Numscript with force=true", func() {
+	Context("When using Numscript with force=true", Ordered, func() {
 		var ledgerName = "force-numscript-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -319,10 +319,10 @@ var _ = Describe("Force Transactions", func() {
 		})
 	})
 
-	Context("Verifying volumes are correctly tracked after force transactions", func() {
+	Context("Verifying volumes are correctly tracked after force transactions", Ordered, func() {
 		var ledgerName = "force-volumes-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})

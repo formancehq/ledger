@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var _ = Describe("Transaction Reference Uniqueness", func() {
+var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 	var (
 		httpPort = 9200
 		grpcPort = 8200
@@ -26,14 +26,14 @@ var _ = Describe("Transaction Reference Uniqueness", func() {
 		client servicepb.BucketServiceClient
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("Within a single ledger", func() {
+	Context("Within a single ledger", Ordered, func() {
 		var ledgerName = "ref-test-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createLedgerAction(ledgerName, nil),
@@ -136,13 +136,13 @@ var _ = Describe("Transaction Reference Uniqueness", func() {
 		})
 	})
 
-	Context("Across different ledgers", func() {
+	Context("Across different ledgers", Ordered, func() {
 		var (
 			ledgerA = "ref-ledger-a"
 			ledgerB = "ref-ledger-b"
 		)
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createLedgerAction(ledgerA, nil),
