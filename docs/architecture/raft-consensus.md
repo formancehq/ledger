@@ -14,8 +14,11 @@ A Raft node can be in one of the following states:
 
 - **Leader**: Handles all write requests and replicates data to followers
 - **Follower**: Receives updates from the leader and votes in elections
+- **Learner**: Receives updates from the leader but does not vote (non-voting replica)
 - **Candidate**: Transient state during leader election
 - **PreCandidate**: Transient state before becoming candidate (optional)
+
+Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](./cluster-lifecycle.md) for the complete bootstrap/join/promotion flow.
 
 ```mermaid
 stateDiagram-v2
@@ -403,7 +406,8 @@ Reads can be served locally without going through Raft:
 
 To deepen your understanding:
 
-1. [Ledgers](./buckets-ledgers.md) - How ledgers are managed
-2. [Storage and Persistence](./storage.md) - Raft storage implementation
-3. [Data Flows](./data-flows.md) - Detailed Raft operation flows
-4. [gRPC Connections](./grpc-connections.md) - Transport layer, reconnection strategies, and rolling deployment optimizations
+1. [Cluster Lifecycle](./cluster-lifecycle.md) - Bootstrap, join, synchronization, and learner promotion
+2. [Ledgers](./buckets-ledgers.md) - How ledgers are managed
+3. [Storage and Persistence](./storage.md) - Raft storage implementation
+4. [Data Flows](./data-flows.md) - Detailed Raft operation flows
+5. [gRPC Connections](./grpc-connections.md) - Transport layer, reconnection strategies, and rolling deployment optimizations

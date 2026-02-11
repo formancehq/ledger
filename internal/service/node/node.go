@@ -636,9 +636,15 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
 	defer processingTick.Stop()
 
-	// Helper to process a batch of messages
+	// Helper to process a batch of messages.
+	// Filters out MsgTimeoutNow while the node is syncing to prevent a
+	// not-yet-caught-up node from being forced into leadership.
 	stepMessages := func(msgs []raftpb.Message) error {
 		for _, msg := range msgs {
+			if msg.Type == raftpb.MsgTimeoutNow && node.isSyncing() {
+				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
+				continue
+			}
 			if err := node.rawNode.Step(msg); err != nil {
 				return err
 			}
@@ -941,6 +947,13 @@ func (node *Node) IsLeader() bool {
 		return false
 	}
 	return lastSoftState.RaftState == raft.StateLeader
+}
+
+// isSyncing returns true when the node is restoring a snapshot or checkpoint
+// and is not yet ready to serve as leader.
+func (node *Node) isSyncing() bool {
+	s := node.status.Load()
+	return s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync
 }
 
 func (node *Node) GetLeader() uint64 {

@@ -137,8 +137,9 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			attributes.DefaultKeys,
 			cache.Boundaries,
 		),
-		nextLedgerID:   1,
-		nextSequenceID: 1,
+		nextLedgerID:        1,
+		nextSequenceID:      1,
+		nextAuditSequenceID: 1,
 	}
 
 	return fsm, nil
