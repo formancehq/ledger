@@ -226,4 +226,55 @@ var _ = Describe("Leadership transfer", func() {
 		})
 		Expect(err).To(HaveOccurred())
 	})
+
+	It("should transfer leadership automatically when leader stops gracefully", func() {
+		// Create a ledger and some transactions so the cluster is active
+		_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{createLedgerAction("auto-transfer-test", nil)},
+		})
+		Expect(err).To(Succeed())
+
+		for i := 0; i < 3; i++ {
+			_, err := servers[leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction("auto-transfer-test", []*commonpb.Posting{
+						newPosting("world", "bank", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		}
+
+		// Stop only the leader gracefully — this should trigger automatic leadership transfer
+		oldLeaderID := leaderID
+		GinkgoLogr.Info(fmt.Sprintf("Stopping leader node %d gracefully", oldLeaderID))
+
+		stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		Expect(servers[oldLeaderID-1].service.Stop(stopCtx)).To(Succeed())
+
+		// Pick a follower to check for new leader
+		followerIdx := int(oldLeaderID) % countInstances // 0-indexed follower
+		var newLeaderID uint64
+		Eventually(func(g Gomega) bool {
+			state, err := servers[followerIdx].clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+				NodeId: servers[followerIdx].nodeID,
+			})
+			g.Expect(err).To(Succeed())
+			newLeaderID = uint64(state.Leader)
+			return newLeaderID != 0 && newLeaderID != oldLeaderID
+		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
+
+		// Verify the cluster continues to function: create transactions via the new leader
+		for i := 0; i < 3; i++ {
+			_, err := servers[newLeaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction("auto-transfer-test", []*commonpb.Posting{
+						newPosting("world", "bank", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		}
+	})
 })

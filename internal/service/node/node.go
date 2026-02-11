@@ -1020,8 +1020,59 @@ func (node *Node) IsHealthy() bool {
 	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
 }
 
+// pickBestTransferee selects the follower with the highest Match index (most synchronized).
+// Must be dispatched via execClusterCommand because rawNode is not thread-safe.
+func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
+	var best uint64
+	err := node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+		var bestMatch uint64
+		for id, prog := range status.Progress {
+			if id == node.config.NodeID {
+				continue
+			}
+			if prog.Match > bestMatch {
+				bestMatch = prog.Match
+				best = id
+			}
+		}
+		return nil
+	})
+	return best, err
+}
+
+// tryTransferLeadershipBeforeShutdown attempts a best-effort leadership transfer
+// before shutting down. If the transfer fails for any reason, the shutdown continues
+// normally and the cluster will elect a new leader via the standard election mechanism.
+func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
+	transferee, err := node.pickBestTransferee(ctx)
+	if err != nil || transferee == 0 {
+		node.logger.Infof("No eligible transferee, skipping pre-shutdown leadership transfer")
+		return
+	}
+
+	node.logger.WithFields(map[string]any{"transferee": transferee}).
+		Infof("Attempting leadership transfer before shutdown")
+
+	if err := node.TransferLeader(ctx, transferee); err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).
+			Errorf("Pre-shutdown leadership transfer failed, proceeding with normal shutdown")
+		return
+	}
+
+	node.logger.Infof("Leadership transferred successfully before shutdown")
+}
+
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
+
+	if node.IsLeader() {
+		node.tryTransferLeadershipBeforeShutdown(ctx)
+	}
+
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
