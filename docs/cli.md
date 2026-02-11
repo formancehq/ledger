@@ -621,6 +621,43 @@ ledgerctl store check
 ledgerctl store check --json
 ```
 
+#### store backup
+
+Download a point-in-time backup of the Pebble store as a tar archive. The request is forwarded to the cluster leader to ensure the most up-to-date state.
+
+**Aliases:** `bk`
+
+```bash
+ledgerctl store backup [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o, --output` | | Output file path (required if stdout is a terminal) |
+| `--timeout` | `100s` | Request timeout |
+
+**Behavior:**
+- Creates a fresh Pebble checkpoint on the leader node
+- Streams the checkpoint as a tar archive
+- Verifies SHA256 integrity on completion
+- If connected to a follower, the request is automatically forwarded to the leader
+- Refuses to write binary data to a terminal; use `--output` or pipe to a file
+
+**Example:**
+
+```bash
+# Save backup to a file
+ledgerctl store backup --output backup.tar
+
+# Pipe to gzip
+ledgerctl store backup | gzip > backup.tar.gz
+
+# Short form
+ledgerctl s bk -o backup.tar
+```
+
 ---
 
 ### cluster

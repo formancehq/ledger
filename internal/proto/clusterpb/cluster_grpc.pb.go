@@ -23,6 +23,7 @@ const (
 	ClusterService_GetDiskUsage_FullMethodName       = "/cluster.ClusterService/GetDiskUsage"
 	ClusterService_GetNodeTime_FullMethodName        = "/cluster.ClusterService/GetNodeTime"
 	ClusterService_TransferLeadership_FullMethodName = "/cluster.ClusterService/TransferLeadership"
+	ClusterService_Backup_FullMethodName             = "/cluster.ClusterService/Backup"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -39,6 +40,9 @@ type ClusterServiceClient interface {
 	GetNodeTime(ctx context.Context, in *GetNodeTimeRequest, opts ...grpc.CallOption) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
+	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
+	// The request is forwarded to the leader to ensure the most up-to-date state.
+	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupResponse], error)
 }
 
 type clusterServiceClient struct {
@@ -89,6 +93,25 @@ func (c *clusterServiceClient) TransferLeadership(ctx context.Context, in *Trans
 	return out, nil
 }
 
+func (c *clusterServiceClient) Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[0], ClusterService_Backup_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[BackupRequest, BackupResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClusterService_BackupClient = grpc.ServerStreamingClient[BackupResponse]
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -103,6 +126,9 @@ type ClusterServiceServer interface {
 	GetNodeTime(context.Context, *GetNodeTimeRequest) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
+	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
+	// The request is forwarded to the leader to ensure the most up-to-date state.
+	Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -124,6 +150,9 @@ func (UnimplementedClusterServiceServer) GetNodeTime(context.Context, *GetNodeTi
 }
 func (UnimplementedClusterServiceServer) TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransferLeadership not implemented")
+}
+func (UnimplementedClusterServiceServer) Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Backup not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -218,6 +247,17 @@ func _ClusterService_TransferLeadership_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_Backup_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(BackupRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).Backup(m, &grpc.GenericServerStream[BackupRequest, BackupResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClusterService_BackupServer = grpc.ServerStreamingServer[BackupResponse]
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -242,6 +282,12 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClusterService_TransferLeadership_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Backup",
+			Handler:       _ClusterService_Backup_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "cluster.proto",
 }

@@ -2,13 +2,17 @@ package application
 
 import (
 	"context"
-	"time"
 	"fmt"
+	"io"
+	"strconv"
+	"time"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"google.golang.org/grpc"
 )
@@ -18,13 +22,23 @@ type ClusterServiceServerImpl struct {
 	node        *node.Node
 	servicePool *transport.ServiceConnectionPool
 	collector   *diskusage.Collector
+	store       *data.Store
+	logger      logging.Logger
 }
 
-func NewClusterServiceServer(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector) clusterpb.ClusterServiceServer {
+func NewClusterServiceServer(
+	node *node.Node,
+	servicePool *transport.ServiceConnectionPool,
+	collector *diskusage.Collector,
+	store *data.Store,
+	logger logging.Logger,
+) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
 		node:        node,
 		servicePool: servicePool,
 		collector:   collector,
+		store:       store,
+		logger:      logger.WithField("component", "cluster-server"),
 	}
 }
 
@@ -112,6 +126,84 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(_ context.Context, _ *clusterp
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
+}
+
+func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, stream grpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
+	// If this node is the leader, create a checkpoint and stream it
+	if impl.node.IsLeader() {
+		return impl.backupLocal(stream)
+	}
+
+	// Forward to leader
+	leaderID := impl.node.GetLeader()
+	if leaderID == 0 {
+		return commonpb.ErrNoLeader
+	}
+
+	grpcConn := impl.servicePool.GetConnection(leaderID)
+	if grpcConn == nil {
+		return commonpb.ErrNoLeader
+	}
+
+	impl.logger.WithFields(map[string]any{
+		"leader_id": leaderID,
+	}).Infof("Forwarding backup request to leader")
+
+	client := clusterpb.NewClusterServiceClient(grpcConn)
+	backupStream, err := client.Backup(stream.Context(), req)
+	if err != nil {
+		return fmt.Errorf("forwarding backup to leader: %w", err)
+	}
+
+	// Relay chunks from leader to caller
+	for {
+		resp, err := backupStream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("receiving backup chunk from leader: %w", err)
+		}
+		if err := stream.Send(resp); err != nil {
+			return fmt.Errorf("sending backup chunk to client: %w", err)
+		}
+	}
+}
+
+func (impl *ClusterServiceServerImpl) backupLocal(stream grpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
+	// Use a unique backup ID based on the current timestamp to avoid collisions
+	backupID := strconv.FormatInt(time.Now().UnixNano(), 10)
+
+	impl.logger.WithFields(map[string]any{
+		"backup_id": backupID,
+	}).Infof("Creating backup checkpoint")
+
+	backupPath, err := impl.store.CreateBackupCheckpoint(backupID)
+	if err != nil {
+		return fmt.Errorf("creating backup checkpoint: %w", err)
+	}
+	defer func() {
+		if err := impl.store.RemoveBackupCheckpoint(backupID); err != nil {
+			impl.logger.WithFields(map[string]any{
+				"backup_id": backupID,
+				"error":     err,
+			}).Errorf("Failed to remove backup checkpoint")
+		}
+	}()
+
+	impl.logger.WithFields(map[string]any{
+		"backup_id": backupID,
+	}).Infof("Streaming backup checkpoint")
+
+	return StreamDirAsTar(backupPath, 0, func(chunk TarStreamChunk) error {
+		return stream.Send(&clusterpb.BackupResponse{
+			ChunkOffset:   chunk.ChunkOffset,
+			Data:          chunk.Data,
+			Eof:           chunk.IsEOF,
+			ContentSha256: chunk.ContentSHA256,
+			ContentSize:   chunk.ContentSize,
+		})
+	})
 }
 
 func RegisterClusterService(server *grpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {

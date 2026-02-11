@@ -144,6 +144,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`store.go`** : Parent command for store operations
 - **`store_metrics.go`** : `store metrics` command to retrieve Pebble storage metrics via gRPC
 - **`store_check.go`** : `store check` command to verify store integrity (hash chain + derived data) via gRPC
+- **`store_backup.go`** : `store backup` command to download a point-in-time backup as a tar archive via gRPC
 
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
@@ -155,7 +156,7 @@ VHS tape files for generating animated GIF demos of the CLI. Each demo is self-c
 - **`demo_numscript.tape`** : Payment with fees, escrow with dynamic accounts
 - **`demo_transactions.tape`** : Force transactions, revert transactions
 - **`demo_metadata.tape`** : Account and transaction metadata CRUD
-- **`demo_operations.tape`** : Cluster status, store integrity check
+- **`demo_operations.tape`** : Cluster status, store integrity check, store backup
 - **`README.md`** : Documentation for generating demos
 
 **Generating demos:**

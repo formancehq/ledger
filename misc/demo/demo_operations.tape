@@ -11,7 +11,7 @@ Set PlaybackSpeed 0.8
 Set Shell zsh
 
 # Operations Demo
-# Shows: cluster status, store integrity check
+# Shows: cluster status, store integrity check, store backup
 
 Sleep 300ms
 
@@ -51,6 +51,30 @@ Sleep 200ms
 Type "ledgerctl store check"
 Enter
 Sleep 3s
+
+# ============================================================================
+# Store Backup
+# ============================================================================
+
+Type "clear"
+Enter
+Sleep 200ms
+
+Type "ledgerctl store backup -o /tmp/demo-backup.tar"
+Enter
+Sleep 4s
+
+# Show the backup file
+Type "ls -lh /tmp/demo-backup.tar"
+Enter
+Sleep 2s
+
+# Cleanup backup file
+Hide
+Type "rm -f /tmp/demo-backup.tar"
+Enter
+Sleep 200ms
+Show
 
 # ============================================================================
 # Cleanup

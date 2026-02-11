@@ -25,6 +25,7 @@ const (
 	liveDir               = "live"
 	currentCheckpointFile = "CURRENT_CHECKPOINT"
 	checkpointsDir        = "checkpoints"
+	backupsDir            = "backups"
 )
 
 // Store is a Pebble implementation of data.Store
@@ -168,7 +169,7 @@ func NewStore(
 		oldestCheckpoint = currentCheckpoint - uint64(cfg.MaxCheckpoints) + 1
 	}
 
-	return &Store{
+	store := &Store{
 		db:                db,
 		opts:              opts,
 		logger:            logger.WithField("cmp", "pebble"),
@@ -176,7 +177,12 @@ func NewStore(
 		currentCheckPoint: currentCheckpoint,
 		oldestCheckpoint:  oldestCheckpoint,
 		maxCheckpoints:    cfg.MaxCheckpoints,
-	}, nil
+	}
+
+	// Clean up any orphaned backup checkpoints from a previous crash
+	store.cleanupOrphanedBackups()
+
+	return store, nil
 }
 
 // Close closes the Pebble database
@@ -476,6 +482,49 @@ func (s *Store) GetCheckpointPath(checkpointID uint64) (string, error) {
 // GetCurrentCheckpointID returns the current checkpoint ID.
 func (s *Store) GetCurrentCheckpointID() uint64 {
 	return s.currentCheckPoint
+}
+
+// CreateBackupCheckpoint creates a Pebble checkpoint in a separate backups/ directory.
+// Unlike CreateSnapshot, this does not modify currentCheckPoint, CURRENT_CHECKPOINT,
+// or interfere with the Raft snapshot lifecycle in any way.
+// The caller must call RemoveBackupCheckpoint when the backup is complete.
+func (s *Store) CreateBackupCheckpoint(backupID string) (string, error) {
+	backupPath := filepath.Join(s.dataDir, backupsDir, backupID)
+
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0755); err != nil {
+		return "", fmt.Errorf("creating backups directory: %w", err)
+	}
+
+	if err := os.RemoveAll(backupPath); err != nil {
+		return "", fmt.Errorf("removing existing backup directory: %w", err)
+	}
+
+	if err := s.db.Checkpoint(backupPath, pebble.WithFlushedWAL()); err != nil {
+		return "", fmt.Errorf("creating backup checkpoint: %w", err)
+	}
+
+	return backupPath, nil
+}
+
+// RemoveBackupCheckpoint removes a backup checkpoint created by CreateBackupCheckpoint.
+func (s *Store) RemoveBackupCheckpoint(backupID string) error {
+	backupPath := filepath.Join(s.dataDir, backupsDir, backupID)
+	if err := os.RemoveAll(backupPath); err != nil {
+		return fmt.Errorf("removing backup checkpoint: %w", err)
+	}
+	return nil
+}
+
+// cleanupOrphanedBackups removes the entire backups/ directory on startup.
+// Backup checkpoints are ephemeral and only needed during streaming;
+// any leftover entries are from a previous crash and can be safely deleted.
+func (s *Store) cleanupOrphanedBackups() {
+	backupsPath := filepath.Join(s.dataDir, backupsDir)
+	if err := os.RemoveAll(backupsPath); err != nil {
+		s.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Failed to clean up orphaned backup checkpoints")
+	}
 }
 
 // PrepareCheckpointRestore prepares a directory for restoring a checkpoint from a remote peer.

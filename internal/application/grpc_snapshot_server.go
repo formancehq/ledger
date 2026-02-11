@@ -1,12 +1,8 @@
 package application
 
 import (
-	"archive/tar"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -14,11 +10,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
-)
-
-const (
-	// defaultChunkSize is the default size of each chunk sent in FetchSnapshot stream (64KB)
-	defaultChunkSize = 64 * 1024
 )
 
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
@@ -90,144 +81,23 @@ func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotR
 		return fmt.Errorf("checkpoint not found: %w", err)
 	}
 
-	// Create a pipe to stream tar data
-	pr, pw := io.Pipe()
-
-	// Hash writer to calculate SHA256
-	hash := sha256.New()
-
-	// Channel to collect errors from the tar writer goroutine
-	errCh := make(chan error, 1)
-
-	// Start tar writer in a goroutine
-	go func() {
-		defer func() {
-			_ = pw.Close()
-		}()
-
-		tw := tar.NewWriter(io.MultiWriter(pw, hash))
-		defer func() {
-			_ = tw.Close()
-		}()
-
-		err := filepath.Walk(checkpointPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			// Get relative path
-			relPath, err := filepath.Rel(checkpointPath, path)
-			if err != nil {
-				return err
-			}
-
-			// Create tar header
-			header, err := tar.FileInfoHeader(info, "")
-			if err != nil {
-				return err
-			}
-			header.Name = relPath
-
-			if err := tw.WriteHeader(header); err != nil {
-				return err
-			}
-
-			// Write file content if not a directory
-			if !info.IsDir() {
-				f, err := os.Open(path)
-				if err != nil {
-					return err
-				}
-				defer func() {
-					_ = f.Close()
-				}()
-
-				if _, err := io.Copy(tw, f); err != nil {
-					return err
-				}
-			}
-
-			return nil
+	err = StreamDirAsTar(checkpointPath, req.Offset, func(chunk TarStreamChunk) error {
+		return stream.Send(&snapshotpb.FetchSnapshotResponse{
+			Header:        chunk.IsFirst,
+			SnapshotId:    req.SnapshotId,
+			ChunkOffset:   chunk.ChunkOffset,
+			Data:          chunk.Data,
+			Eof:           chunk.IsEOF,
+			ContentSha256: chunk.ContentSHA256,
+			ContentSize:   chunk.ContentSize,
 		})
-
-		errCh <- err
-	}()
-
-	// Stream data in chunks
-	var (
-		offset      uint64
-		totalSize   uint64
-		headerSent  bool
-		contentHash string
-	)
-
-	buf := make([]byte, defaultChunkSize)
-	for {
-		n, err := pr.Read(buf)
-		if n > 0 {
-			// Skip bytes if we're resuming from an offset
-			if offset < req.Offset {
-				skip := req.Offset - offset
-				if skip >= uint64(n) {
-					offset += uint64(n)
-					continue
-				}
-				buf = buf[skip:]
-				n -= int(skip)
-				offset = req.Offset
-			}
-
-			resp := &snapshotpb.FetchSnapshotResponse{
-				Header:      !headerSent,
-				SnapshotId:  req.SnapshotId,
-				ChunkOffset: offset,
-				Data:        buf[:n],
-				Eof:         false,
-			}
-			headerSent = true
-
-			if err := stream.Send(resp); err != nil {
-				return fmt.Errorf("sending chunk: %w", err)
-			}
-
-			offset += uint64(n)
-			totalSize += uint64(n)
-		}
-
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("reading tar data: %w", err)
-		}
-	}
-
-	// Wait for tar writer to finish and check for errors
-	if err := <-errCh; err != nil {
-		return fmt.Errorf("creating tar archive: %w", err)
-	}
-
-	// Calculate final hash
-	contentHash = hex.EncodeToString(hash.Sum(nil))
-
-	// Send final chunk with EOF
-	finalResp := &snapshotpb.FetchSnapshotResponse{
-		Header:        !headerSent,
-		SnapshotId:    req.SnapshotId,
-		ContentSha256: contentHash,
-		ContentSize:   totalSize,
-		ChunkOffset:   offset,
-		Eof:           true,
-	}
-
-	if err := stream.Send(finalResp); err != nil {
-		return fmt.Errorf("sending final chunk: %w", err)
+	})
+	if err != nil {
+		return fmt.Errorf("streaming snapshot: %w", err)
 	}
 
 	s.logger.WithFields(map[string]any{
-		"snapshot_id":  req.SnapshotId,
-		"total_size":   totalSize,
-		"content_hash": contentHash,
+		"snapshot_id": req.SnapshotId,
 	}).Infof("FetchSnapshot completed")
 
 	return nil

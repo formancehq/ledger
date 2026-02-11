@@ -21,6 +21,10 @@ service ClusterService {
 
   // TransferLeadership transfers Raft leadership to a specific node
   rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
+
+  // Backup streams a point-in-time backup of the Pebble store as a tar archive.
+  // The request is forwarded to the leader to ensure the most up-to-date state.
+  rpc Backup(BackupRequest) returns (stream BackupResponse);
 }
 
 message GetClusterStateRequest {
@@ -105,4 +109,18 @@ message DiskUsage {
   int64 data_volume_bytes = 5;        // Total data volume size in bytes
   int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
   int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
+}
+
+// ============================================================================
+// Backup Messages
+// ============================================================================
+
+message BackupRequest {}
+
+message BackupResponse {
+  uint64 chunk_offset = 1;   // Byte offset of this chunk in the stream
+  bytes data = 2;            // Tar archive chunk data
+  bool eof = 3;              // True for the final (empty) chunk
+  string content_sha256 = 4; // SHA256 hash of the full archive (set on EOF)
+  uint64 content_size = 5;   // Total size of the archive in bytes (set on EOF)
 }

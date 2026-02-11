@@ -15,6 +15,7 @@ func newStoreCommand() *cobra.Command {
 
 	cmd.AddCommand(newStoreMetricsCommand())
 	cmd.AddCommand(newStoreCheckCommand())
+	cmd.AddCommand(newStoreBackupCommand())
 
 	return cmd
 }

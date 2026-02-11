@@ -160,8 +160,8 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node, servicePool, collector)
+			func(node *node.Node, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(node, servicePool, collector, store, logger)
 			},
 			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(

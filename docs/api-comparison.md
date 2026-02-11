@@ -52,6 +52,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
+| Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
 | **Volumes (responses)** |
 | postCommitVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |

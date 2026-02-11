@@ -696,6 +696,118 @@ func (x *DiskUsage) GetDataVolumeTotalBytes() int64 {
 	return 0
 }
 
+type BackupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupRequest) Reset() {
+	*x = BackupRequest{}
+	mi := &file_cluster_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupRequest) ProtoMessage() {}
+
+func (x *BackupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupRequest.ProtoReflect.Descriptor instead.
+func (*BackupRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{11}
+}
+
+type BackupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkOffset   uint64                 `protobuf:"varint,1,opt,name=chunk_offset,json=chunkOffset,proto3" json:"chunk_offset,omitempty"`      // Byte offset of this chunk in the stream
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`                                        // Tar archive chunk data
+	Eof           bool                   `protobuf:"varint,3,opt,name=eof,proto3" json:"eof,omitempty"`                                         // True for the final (empty) chunk
+	ContentSha256 string                 `protobuf:"bytes,4,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"` // SHA256 hash of the full archive (set on EOF)
+	ContentSize   uint64                 `protobuf:"varint,5,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`      // Total size of the archive in bytes (set on EOF)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupResponse) Reset() {
+	*x = BackupResponse{}
+	mi := &file_cluster_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupResponse) ProtoMessage() {}
+
+func (x *BackupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupResponse.ProtoReflect.Descriptor instead.
+func (*BackupResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *BackupResponse) GetChunkOffset() uint64 {
+	if x != nil {
+		return x.ChunkOffset
+	}
+	return 0
+}
+
+func (x *BackupResponse) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *BackupResponse) GetEof() bool {
+	if x != nil {
+		return x.Eof
+	}
+	return false
+}
+
+func (x *BackupResponse) GetContentSha256() string {
+	if x != nil {
+		return x.ContentSha256
+	}
+	return ""
+}
+
+func (x *BackupResponse) GetContentSize() uint64 {
+	if x != nil {
+		return x.ContentSize
+	}
+	return 0
+}
+
 var File_cluster_proto protoreflect.FileDescriptor
 
 const file_cluster_proto_rawDesc = "" +
@@ -758,12 +870,20 @@ const file_cluster_proto_rawDesc = "" +
 	"\x10wal_volume_bytes\x18\x04 \x01(\x03R\x0ewalVolumeBytes\x12*\n" +
 	"\x11data_volume_bytes\x18\x05 \x01(\x03R\x0fdataVolumeBytes\x123\n" +
 	"\x16wal_volume_total_bytes\x18\x06 \x01(\x03R\x13walVolumeTotalBytes\x125\n" +
-	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes2\xbb\x02\n" +
+	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes\"\x0f\n" +
+	"\rBackupRequest\"\xa3\x01\n" +
+	"\x0eBackupResponse\x12!\n" +
+	"\fchunk_offset\x18\x01 \x01(\x04R\vchunkOffset\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12\x10\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\x12%\n" +
+	"\x0econtent_sha256\x18\x04 \x01(\tR\rcontentSha256\x12!\n" +
+	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize2\xf8\x02\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
 	"\vGetNodeTime\x12\x1b.cluster.GetNodeTimeRequest\x1a\x11.cluster.NodeTime\x12]\n" +
-	"\x12TransferLeadership\x12\".cluster.TransferLeadershipRequest\x1a#.cluster.TransferLeadershipResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
+	"\x12TransferLeadership\x12\".cluster.TransferLeadershipRequest\x1a#.cluster.TransferLeadershipResponse\x12;\n" +
+	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse0\x01B>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once
@@ -777,7 +897,7 @@ func file_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_proto_rawDescData
 }
 
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_cluster_proto_goTypes = []any{
 	(*GetClusterStateRequest)(nil),     // 0: cluster.GetClusterStateRequest
 	(*NodeInfo)(nil),                   // 1: cluster.NodeInfo
@@ -790,11 +910,13 @@ var file_cluster_proto_goTypes = []any{
 	(*GetNodeTimeRequest)(nil),         // 8: cluster.GetNodeTimeRequest
 	(*NodeTime)(nil),                   // 9: cluster.NodeTime
 	(*DiskUsage)(nil),                  // 10: cluster.DiskUsage
-	nil,                                // 11: cluster.RaftStatus.ProgressEntry
+	(*BackupRequest)(nil),              // 11: cluster.BackupRequest
+	(*BackupResponse)(nil),             // 12: cluster.BackupResponse
+	nil,                                // 13: cluster.RaftStatus.ProgressEntry
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
-	11, // 1: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
+	13, // 1: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
 	1,  // 2: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
 	3,  // 3: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
 	2,  // 4: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
@@ -802,12 +924,14 @@ var file_cluster_proto_depIdxs = []int32{
 	7,  // 6: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
 	8,  // 7: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
 	5,  // 8: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
-	4,  // 9: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	10, // 10: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	9,  // 11: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	6,  // 12: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	9,  // [9:13] is the sub-list for method output_type
-	5,  // [5:9] is the sub-list for method input_type
+	11, // 9: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
+	4,  // 10: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	10, // 11: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	9,  // 12: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	6,  // 13: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	12, // 14: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -824,7 +948,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
