@@ -165,6 +165,34 @@ func (ik *IdempotencyKey) Unmarshal(data []byte) error {
 
 var _ CanonicalBytes = (*IdempotencyKey)(nil)
 
+// TransactionReferenceKey represents a unique reference scoped to a ledger.
+type TransactionReferenceKey struct {
+	LedgerID  uint32
+	Reference string
+}
+
+// Bytes returns a canonical byte representation of the transaction reference key.
+// Format: [ledgerID (4 bytes)][reference]
+// No separator needed since ledgerID is fixed-length.
+func (trk TransactionReferenceKey) Bytes() []byte {
+	ret := make([]byte, 4+len(trk.Reference))
+	binary.BigEndian.PutUint32(ret, trk.LedgerID)
+	copy(ret[4:], trk.Reference)
+	return ret
+}
+
+// Unmarshal parses canonical bytes into the TransactionReferenceKey.
+func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
+	if len(d) < 4 {
+		return fmt.Errorf("invalid transaction reference key bytes: too short")
+	}
+	trk.LedgerID = binary.BigEndian.Uint32(d[:4])
+	trk.Reference = string(d[4:])
+	return nil
+}
+
+var _ CanonicalBytes = (*TransactionReferenceKey)(nil)
+
 type LedgerKey struct {
 	Name string
 }

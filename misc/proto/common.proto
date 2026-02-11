@@ -271,3 +271,8 @@ message IdempotencyKeyValue {
   uint64 log_sequence = 1;
   bytes hash = 2;
 }
+
+// TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
+message TransactionReferenceValue {
+  uint64 transaction_id = 1;
+}

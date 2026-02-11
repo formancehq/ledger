@@ -27,6 +27,7 @@ type Buffered struct {
 	LedgerMetadata      *attributes.DerivedKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
 	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
 	IdempotencyKeys     *attributes.DerivedKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References          *attributes.DerivedKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
 	TransactionsUpdates map[data.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs         []*commonpb.Log
 }
@@ -167,6 +168,22 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
+	// Process References updates
+	referenceUpdates, _, err := b.References.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge references: %w", err)
+	}
+	for _, update := range referenceUpdates {
+		// References are immutable once set, store as base value
+		err := b.attrs.References.SetBase(batch, index, update.CanonicalKey, update.New)
+		if err != nil {
+			return fmt.Errorf("failed setting reference base: %w", err)
+		}
+		if err := b.attrs.References.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+			return fmt.Errorf("compacting old reference base: %w", err)
+		}
+	}
+
 	for key, updates := range b.TransactionsUpdates {
 		for _, update := range updates {
 			// todo: use transaction id as key for better locality
@@ -206,6 +223,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, proto.CloneOf),
 		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, proto.CloneOf),
+		References:          attributes.NewDerivedKeyStore(fsm.References, proto.CloneOf),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
 	}
 }
@@ -282,6 +300,14 @@ func (b *Buffered) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.Idempot
 
 func (b *Buffered) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	b.IdempotencyKeys.Put(key, value)
+}
+
+func (b *Buffered) GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+	return b.References.Get(key)
+}
+
+func (b *Buffered) PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+	b.References.Put(key, value)
 }
 
 func (b *Buffered) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {

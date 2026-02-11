@@ -54,6 +54,7 @@ type testEngine struct {
 	metadata       map[string]*commonpb.MetadataValue
 	reverted       map[string]bool
 	idempotency    map[string]*commonpb.IdempotencyKeyValue
+	references     map[string]*commonpb.TransactionReferenceValue
 	hasher         *blake3.Hasher
 	raftIndex      uint64
 }
@@ -86,6 +87,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		metadata:       make(map[string]*commonpb.MetadataValue),
 		reverted:       make(map[string]bool),
 		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
+		references:     make(map[string]*commonpb.TransactionReferenceValue),
 		hasher:         blake3.New(),
 		raftIndex:      1,
 	}
@@ -319,6 +321,18 @@ func (s *inMemoryStore) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.Id
 
 func (s *inMemoryStore) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	s.engine.idempotency[key.Key] = value
+}
+
+func (s *inMemoryStore) GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+	v, ok := s.engine.references[string(key.Bytes())]
+	if !ok {
+		return nil, data.ErrNotFound
+	}
+	return v, nil
+}
+
+func (s *inMemoryStore) PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+	s.engine.references[string(key.Bytes())] = value
 }
 
 func (s *inMemoryStore) AddTransactionUpdate(_ data.TransactionKey, _ *commonpb.TransactionUpdate) {}

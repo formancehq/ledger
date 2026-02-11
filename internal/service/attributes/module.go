@@ -18,6 +18,7 @@ type Attributes struct {
 	LedgerMetadata  *Attribute[*commonpb.MetadataValue]
 	Reverted        *Attribute[*commonpb.RevertedValue]
 	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
+	References      *Attribute[*commonpb.TransactionReferenceValue]
 	Ledger          *Attribute[*commonpb.LedgerInfo]
 	Boundary        *Attribute[*raftcmdpb.LedgerBoundaries]
 }
@@ -31,6 +32,7 @@ func New() *Attributes {
 		LedgerMetadata:  NewLedgerMetadataAttribute(),
 		Reverted:        NewRevertedAttribute(),
 		IdempotencyKeys: NewIdempotencyKeysAttribute(),
+		References:      NewReferenceAttribute(),
 		Ledger:          NewLedgerAttribute(),
 		Boundary:        NewBoundaryAttribute(),
 	}
@@ -128,6 +130,21 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 		prefix:   data.AttributePrefixIdempotencyKey,
 		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
 		computeFn: func(base *commonpb.IdempotencyKeyValue, lastDiff *commonpb.IdempotencyKeyValue) *commonpb.IdempotencyKeyValue {
+			if base != nil {
+				return base
+			}
+			return lastDiff
+		},
+		kb: data.NewKeyBuilder(),
+	}
+}
+
+// NewReferenceAttribute creates a new Reference attribute for storing transaction reference mappings.
+func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
+	return &Attribute[*commonpb.TransactionReferenceValue]{
+		prefix:   data.AttributePrefixReference,
+		newValue: func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} },
+		computeFn: func(base *commonpb.TransactionReferenceValue, lastDiff *commonpb.TransactionReferenceValue) *commonpb.TransactionReferenceValue {
 			if base != nil {
 				return base
 			}

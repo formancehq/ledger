@@ -166,10 +166,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required idempotency keys, ledgers, and boundaries from orders (name-based)
+	// Step 1: Extract required idempotency keys, references, ledgers, and boundaries from orders (name-based)
 	neededIdempotencyKeys := a.extractNeededIdempotencyKeys(orders)
 	neededLedgers := a.extractNeededLedgers(orders)
 	neededBoundaries := a.extractNeededBoundaries(orders)
+	// References are extracted after ledger IDs are resolved (Phase 2.5)
 
 	// Step 2: Read nextIndex under lock (don't increment yet)
 	a.admissionLock.Lock()
@@ -437,6 +438,58 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	// Build preload for transaction references not guaranteed in cache
+	// Only preload if the reference exists (has a value), to reduce command size
+	neededReferences := a.extractNeededReferences(orders, ledgerIDs)
+	for refKey := range neededReferences {
+		canonicalKey := refKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+
+		if !cache.IsGuaranteed(a.cache.References, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
+			result, err := a.loaders.References.LoadOrWait(id, boundary, func() (*commonpb.TransactionReferenceValue, error) {
+				return a.attrs.References.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing transaction reference value at boundary %d for ref %s: %w", boundary, refKey.Reference, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.References = append(loadedKeys.References, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "references")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "references")))
+			}
+
+			// Only send preload if the reference exists in the store
+			if result.Value != nil {
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":            id.Hex(),
+					"boundary":      boundary,
+					"nextIndex":     nextIndex,
+					"reference":     refKey.Reference,
+					"transactionId": result.Value.TransactionId,
+					"fromLoad":      result.FromLoad,
+				}).Debug("Preloading transaction reference from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_TransactionReference{
+						TransactionReference: &raftcmdpb.PreloadTransactionReference{
+							Id:            attrID,
+							TransactionId: result.Value.TransactionId,
+						},
+					},
+				})
+			}
+		}
+	}
+
 	// Build preload for boundaries not guaranteed in cache
 	for boundaryKey := range neededBoundaries {
 		canonicalKey := boundaryKey.Bytes()
@@ -658,6 +711,31 @@ func (a *Admission) extractNeededBoundaries(orders []*raftcmdpb.Order) map[data.
 		}
 	}
 	return needed
+}
+
+// extractNeededReferences extracts all transaction reference keys that need to be checked.
+// Only non-empty references from CreateTransactionOrder are included.
+func (a *Admission) extractNeededReferences(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.TransactionReferenceKey]struct{} {
+	neededRefs := make(map[data.TransactionReferenceKey]struct{})
+
+	for _, order := range orders {
+		switch orderType := order.Type.(type) {
+		case *raftcmdpb.Order_Apply:
+			switch applyData := orderType.Apply.Data.(type) {
+			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+				if applyData.CreateTransaction.Reference == "" {
+					continue
+				}
+				ledgerID := ledgerIDs[orderType.Apply.Ledger]
+				neededRefs[data.TransactionReferenceKey{
+					LedgerID:  ledgerID,
+					Reference: applyData.CreateTransaction.Reference,
+				}] = struct{}{}
+			}
+		}
+	}
+
+	return neededRefs
 }
 
 // extractNeededIdempotencyKeys extracts all idempotency keys that need to be checked.

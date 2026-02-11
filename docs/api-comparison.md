@@ -45,6 +45,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
 | **Idempotency** |
 | Idempotency key | ✅ | ✅ | |
+| **Reference Uniqueness** |
+| Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
@@ -183,17 +185,16 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 - Output format (JSON lines, protobuf, etc.)
 - Pagination/cursor for large volumes
 
-### 3. ⚠️ Unique Reference Validation
+### 3. ✅ Unique Reference Validation
 
 **Description:** In the original ledger, transaction reference must be unique within a ledger.
 
-**Current status:** 
-- Lock on reference is implemented (`tx/references/{reference}`)
-- But duplication check needs to be confirmed at store level
-
-**To verify:**
-- Ensure the runtime store checks reference uniqueness
-- Return appropriate error if reference already exists
+**Current status:** Fully implemented.
+- Transaction references are validated for uniqueness within a ledger using the attribute system
+- References are stored as `TransactionReferenceValue` (containing the transaction ID) keyed by `[ledgerID][reference]`
+- Duplicate references within the same ledger return HTTP 409 Conflict (`ErrTransactionReferenceConflict`)
+- Empty references are allowed and not validated
+- The same reference can exist in different ledgers
 
 ### 4. ❌ Ledger Metadata Update
 
@@ -313,8 +314,7 @@ Read endpoints comparison with the original ledger:
 1. **Import/Export** - Critical for migration and backups
 
 ### Medium Priority
-2. **Unique reference validation** - Verify and document behavior
-3. **Ledger metadata update** - Useful for ledger management
+2. **Ledger metadata update** - Useful for ledger management
 
 ### Low Priority
 4. **Ledger config update** - Can be done manually via recreation

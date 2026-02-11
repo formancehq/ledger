@@ -126,6 +126,7 @@ type Loaders struct {
 	Output          *AttributeLoader[*commonpb.BigInt]
 	Reversions      *AttributeLoader[bool]
 	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
+	References      *AttributeLoader[*commonpb.TransactionReferenceValue]
 	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
 	Boundaries      *AttributeLoader[*raftcmdpb.LedgerBoundaries]
 }
@@ -137,6 +138,7 @@ func NewLoaders() *Loaders {
 		Output:          NewAttributeLoader[*commonpb.BigInt](),
 		Reversions:      NewAttributeLoader[bool](),
 		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
+		References:      NewAttributeLoader[*commonpb.TransactionReferenceValue](),
 		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
 		Boundaries:      NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
 	}
@@ -149,6 +151,7 @@ type LoadedKeysTracker struct {
 	Output          []attributes.U128
 	Reversions      []attributes.U128
 	IdempotencyKeys []attributes.U128
+	References      []attributes.U128
 	Ledgers         []attributes.U128
 	Boundaries      []attributes.U128
 }
@@ -171,6 +174,9 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	}
 	for _, key := range t.IdempotencyKeys {
 		loaders.IdempotencyKeys.MarkApplied(key)
+	}
+	for _, key := range t.References {
+		loaders.References.MarkApplied(key)
 	}
 	for _, key := range t.Ledgers {
 		loaders.Ledgers.MarkApplied(key)

@@ -227,6 +227,21 @@ func (mr *MockStoreMockRecorder) GetReverted(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReverted", reflect.TypeOf((*MockStore)(nil).GetReverted), key)
 }
 
+// GetTransactionReference mocks base method.
+func (m *MockStore) GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTransactionReference", key)
+	ret0, _ := ret[0].(*commonpb.TransactionReferenceValue)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTransactionReference indicates an expected call of GetTransactionReference.
+func (mr *MockStoreMockRecorder) GetTransactionReference(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionReference", reflect.TypeOf((*MockStore)(nil).GetTransactionReference), key)
+}
+
 // IncrementNextLedgerID mocks base method.
 func (m *MockStore) IncrementNextLedgerID() uint32 {
 	m.ctrl.T.Helper()
@@ -349,6 +364,18 @@ func (m *MockStore) PutReverted(key data.TransactionKey, reverted bool) {
 func (mr *MockStoreMockRecorder) PutReverted(key, reverted any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutReverted", reflect.TypeOf((*MockStore)(nil).PutReverted), key, reverted)
+}
+
+// PutTransactionReference mocks base method.
+func (m *MockStore) PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutTransactionReference", key, value)
+}
+
+// PutTransactionReference indicates an expected call of PutTransactionReference.
+func (mr *MockStoreMockRecorder) PutTransactionReference(key, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionReference", reflect.TypeOf((*MockStore)(nil).PutTransactionReference), key, value)
 }
 
 // SetLastLogHash mocks base method.

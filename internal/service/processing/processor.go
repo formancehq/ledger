@@ -52,6 +52,10 @@ type Store interface {
 	GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
 	PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
+	// Transaction reference operations
+	GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
+	PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
+
 	// Transaction updates
 	AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate)
 
@@ -91,6 +95,9 @@ func NewRequestProcessor(m metric.Meter) (*RequestProcessor, error) {
 
 // ErrIdempotencyKeyConflict is returned when an idempotency key is reused with different content.
 var ErrIdempotencyKeyConflict = errors.New("idempotency key conflict: same key used with different request content")
+
+// ErrTransactionReferenceConflict is returned when a transaction reference already exists in the same ledger.
+var ErrTransactionReferenceConflict = errors.New("transaction reference already exists in this ledger")
 
 // ProcessProposal processes a proposal (batch of orders) and returns the resulting response.
 func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store) (*raftcmdpb.ProposalResponse, error) {
@@ -412,6 +419,18 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 }
 
 func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+	// Check transaction reference uniqueness if reference is provided
+	if order.Reference != "" {
+		refKey := data.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference}
+		existingRef, err := s.GetTransactionReference(refKey)
+		if err != nil && !errors.Is(err, data.ErrNotFound) {
+			return nil, fmt.Errorf("checking transaction reference: %w", err)
+		}
+		if existingRef != nil {
+			return nil, ErrTransactionReferenceConflict
+		}
+	}
+
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.Script != nil && order.Script.Plain != "" {
@@ -465,6 +484,14 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 			metaMap[account] = metadata.Metadata(meta)
 		}
 		accountMetadata = commonpb.AccountMetadataFromMap(metaMap)
+	}
+
+	// Store transaction reference if provided
+	if order.Reference != "" {
+		s.PutTransactionReference(
+			data.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference},
+			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
+		)
 	}
 
 	return &commonpb.LedgerLogPayload{

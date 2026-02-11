@@ -156,6 +156,7 @@ message Preload {
      PreloadIdempotencyKey idempotency_key = 4;
      PreloadLedger ledger = 5;
      PreloadBoundary boundary = 6;
+     PreloadTransactionReference transaction_reference = 7;
   }
 }
 
@@ -190,6 +191,11 @@ message PreloadBoundary {
   LedgerBoundaries boundaries = 2;
 }
 
+message PreloadTransactionReference {
+  AttributeID id = 1;
+  uint64 transaction_id = 2;
+}
+
 // ============================================================================
 // Memory Snapshot (for Raft snapshots)
 // ============================================================================
@@ -212,6 +218,7 @@ message GenerationSnapshot {
   repeated MetadataAttributeEntry ledger_metadata = 5;  // Ledger metadata
   repeated LedgerAttributeEntry ledgers = 6;
   repeated BoundaryAttributeEntry boundaries = 7;
+  repeated TransactionReferenceAttributeEntry references = 8;
 }
 
 // KeyStoreEntry stores a single entry from KeyStore[*VolumeHolder]
@@ -238,6 +245,12 @@ message LedgerAttributeEntry {
 message BoundaryAttributeEntry {
   AttributeID id = 1;
   LedgerBoundaries boundaries = 2;
+}
+
+// TransactionReferenceAttributeEntry stores a single entry from KeyStore[*TransactionReferenceValue]
+message TransactionReferenceAttributeEntry {
+  AttributeID id = 1;
+  common.TransactionReferenceValue value = 2;
 }
 
 message AttributeID {

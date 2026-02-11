@@ -151,6 +151,7 @@ type Cache struct {
 	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
 	Reversions          *AttributeCache[bool]
 	IdempotencyKeys     *AttributeCache[*commonpb.IdempotencyKeyValue]
+	References          *AttributeCache[*commonpb.TransactionReferenceValue]
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
 	BaseIndex           DualGen[uint64]
@@ -173,6 +174,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.LedgerMetadata.Rotate()
 	c.Reversions.Rotate()
 	c.IdempotencyKeys.Rotate()
+	c.References.Rotate()
 	c.Ledgers.Rotate()
 	c.Boundaries.Rotate()
 	c.BaseIndex.Rotate(index)
@@ -201,6 +203,7 @@ func (c *Cache) Reset() {
 	c.LedgerMetadata.reset()
 	c.Reversions.reset()
 	c.IdempotencyKeys.reset()
+	c.References.reset()
 	c.Ledgers.reset()
 	c.Boundaries.reset()
 	c.BaseIndex = newDualGen[uint64](1, 0)
@@ -269,6 +272,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "reversions")))
 			o.ObserveInt64(sizeGauge, int64(c.IdempotencyKeys.Size()),
 				metric.WithAttributes(attribute.String("type", "idempotency_keys")))
+			o.ObserveInt64(sizeGauge, int64(c.References.Size()),
+				metric.WithAttributes(attribute.String("type", "references")))
 			o.ObserveInt64(sizeGauge, int64(c.Ledgers.Size()),
 				metric.WithAttributes(attribute.String("type", "ledgers")))
 			o.ObserveInt64(sizeGauge, int64(c.Boundaries.Size()),
@@ -324,6 +329,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
 	ret.Reversions = newAttributeCache[bool](ret, "reversions")
 	ret.IdempotencyKeys = newAttributeCache[*commonpb.IdempotencyKeyValue](ret, "idempotency_keys")
+	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
 
