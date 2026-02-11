@@ -120,7 +120,7 @@ var _ = Describe("Metadata", func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Verify deletion (deleted keys have empty string value)
+			// Verify deletion (deleted keys should not exist)
 			account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
@@ -128,8 +128,9 @@ var _ = Describe("Metadata", func() {
 			Expect(err).To(Succeed())
 			metaMap := account.Metadata.ToMap()
 			Expect(metaMap["keep"]).To(Equal("this"))
-			// Deleted metadata key should have empty value
-			Expect(metaMap["delete"]).To(Equal(""))
+			// Deleted metadata key should not exist in the map
+			_, exists := metaMap["delete"]
+			Expect(exists).To(BeFalse())
 		})
 
 		It("Should set metadata on account that doesn't have transactions yet", func() {
@@ -196,15 +197,17 @@ var _ = Describe("Metadata", func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Verify: key1 and key2 should be empty, key3 should remain
+			// Verify: key1 and key2 should not exist, key3 should remain
 			account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
 			metaMap := account.Metadata.ToMap()
-			Expect(metaMap["key1"]).To(Equal(""))
-			Expect(metaMap["key2"]).To(Equal(""))
+			_, key1Exists := metaMap["key1"]
+			Expect(key1Exists).To(BeFalse())
+			_, key2Exists := metaMap["key2"]
+			Expect(key2Exists).To(BeFalse())
 			Expect(metaMap["key3"]).To(Equal("value3"))
 		})
 	})
@@ -395,7 +398,7 @@ var _ = Describe("Metadata", func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Verify deletion (deleted keys have empty string value)
+			// Verify deletion (deleted keys should not exist)
 			tx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
@@ -403,8 +406,9 @@ var _ = Describe("Metadata", func() {
 			Expect(err).To(Succeed())
 			metaMap := tx.Metadata.ToMap()
 			Expect(metaMap["keep"]).To(Equal("this"))
-			// Deleted metadata key should have empty value
-			Expect(metaMap["delete"]).To(Equal(""))
+			// Deleted metadata key should not exist in the map
+			_, exists := metaMap["delete"]
+			Expect(exists).To(BeFalse())
 		})
 
 		It("Should preserve metadata set at transaction creation", func() {
@@ -479,16 +483,18 @@ var _ = Describe("Metadata", func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Verify: key1 and key3 should be empty, key2 and key4 should remain
+			// Verify: key1 and key3 should not exist, key2 and key4 should remain
 			tx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
 			metaMap := tx.Metadata.ToMap()
-			Expect(metaMap["key1"]).To(Equal(""))
+			_, key1Exists := metaMap["key1"]
+			Expect(key1Exists).To(BeFalse())
 			Expect(metaMap["key2"]).To(Equal("value2"))
-			Expect(metaMap["key3"]).To(Equal(""))
+			_, key3Exists := metaMap["key3"]
+			Expect(key3Exists).To(BeFalse())
 			Expect(metaMap["key4"]).To(Equal("value4"))
 		})
 

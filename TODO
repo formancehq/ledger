@@ -15,3 +15,8 @@
 * Add new node
 * Transfer leadership
 * Signed request
+* Test with reference + CLI
+* Delete transaction metadata still give empty value
+* Insufficient funds errors not well handled (check all errors)
+* Store request body + result in logs instead of resulting logs?
+* Add clock check on health service?

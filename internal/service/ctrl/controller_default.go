@@ -155,9 +155,9 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 			existingMeta[key] = value
 		}
 
-		// Apply deletions (set to empty string, as per the system convention)
+		// Apply deletions (remove key from map entirely)
 		for key := range metadataToDelete {
-			existingMeta[key] = ""
+			delete(existingMeta, key)
 		}
 
 		// Convert back to MetadataSet
