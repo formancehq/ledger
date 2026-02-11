@@ -15,9 +15,7 @@
 * Add new node
 * Transfer leadership
 * Signed request
-* Timestamp on created transaction empty
-* Test with reference + CLI
-* Insufficient funds errors not well handled (check all errors)
 * Store request body + result in logs instead of resulting logs?
 * Add clock check on health service?
 * Delete per pod service in helm chart
+* Mirror mode

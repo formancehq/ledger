@@ -11,7 +11,7 @@ Set PlaybackSpeed 0.8
 Set Shell zsh
 
 # Transactions Demo
-# Shows: force transaction (bypass balance check), revert transaction
+# Shows: reference, force transaction (bypass balance check), revert transaction
 
 Sleep 300ms
 
@@ -27,6 +27,24 @@ Sleep 1500ms
 Type "ledgerctl transactions create --ledger demo-tx --posting 'world,platform:fees,5000,USD/2'"
 Enter
 Sleep 1500ms
+
+# ============================================================================
+# Transaction with Reference
+# ============================================================================
+
+Type "clear"
+Enter
+Sleep 200ms
+
+# Create a transaction with a reference
+Type "ledgerctl transactions create --ledger demo-tx --posting 'world,users:alice,2500,USD/2' --reference 'payment-001'"
+Enter
+Sleep 2s
+
+# Try to create another transaction with the same reference (will fail)
+Type "ledgerctl transactions create --ledger demo-tx --posting 'world,users:bob,1000,USD/2' --reference 'payment-001'"
+Enter
+Sleep 2s
 
 # ============================================================================
 # Force Transaction (bypass balance check)

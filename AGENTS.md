@@ -48,6 +48,7 @@ The `docs/cli.md` file documents all CLI commands and their usage. When modifyin
 3. **Update examples** - Ensure examples are accurate and demonstrate common use cases
 4. **Update Numscript examples** - If adding new Numscript-related features, update `misc/numscript/examples/`
 5. **Update CLI demo** - If adding new commands or flags that should be showcased, update `misc/demo/demo.tape` and `misc/demo/simple-demo.tape`
+6. **Regenerate demo GIFs** - After any CLI change (new commands, flags, output format, error messages), regenerate the demo GIFs by running `just generate-demo`. This ensures the recorded demos always reflect the current CLI behavior.
 
 ## Pre-commit Checks
 
