@@ -24,10 +24,24 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
 
+	// Hot path: single transaction
+	store.EXPECT().
+		BeginTX(gomock.Any(), gomock.Any()).
+		Return(store, &bun.Tx{}, nil)
+
 	store.EXPECT().
 		ReadLogWithIdempotencyKey(gomock.Any(), "foo").
 		Return(nil, postgres.ErrNotFound)
 
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
+
+	store.EXPECT().
+		Rollback(gomock.Any()).
+		Return(nil)
+
+	// Retry path after ErrIdempotencyKeyConflict
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
 		Return(store, &bun.Tx{}, nil)
