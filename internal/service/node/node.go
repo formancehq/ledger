@@ -156,8 +156,12 @@ func NewNode(
 		)
 
 		if cfg.Bootstrap {
-			// Bootstrap mode: this node is the sole voter in a new cluster.
-			voters = []uint64{cfg.NodeID}
+			// Bootstrap mode: this node + any known peers start as voters.
+			voters = make([]uint64, 0, len(cfg.Peers)+1)
+			voters = append(voters, cfg.NodeID)
+			for _, peerEntry := range cfg.Peers {
+				voters = append(voters, peerEntry.ID)
+			}
 		} else if len(cfg.Peers) > 0 {
 			// Join mode: existing peers are voters, self joins as learner.
 			// The leader will add us via ConfChange after we start.

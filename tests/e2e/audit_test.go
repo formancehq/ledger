@@ -189,8 +189,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(len(allEntries)).To(BeNumerically(">=", 2))
 
 		// Get entries after the first one
+		afterSeq := allEntries[0].Sequence
 		afterEntries, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{
-			AfterSequence: allEntries[0].Sequence,
+			AfterSequence: &afterSeq,
 		})
 		Expect(err).To(Succeed())
 		Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))

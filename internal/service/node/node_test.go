@@ -285,6 +285,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			SnapshotThreshold: config.SnapshotThreshold,
 			Peers:             peers,
 			ElectionTick:      20,
+			Bootstrap:         true,
 		}
 		nodeConfig.SetDefaults()
 		nodeCache, err := cache.New(nodeConfig.RotationThreshold, nil)

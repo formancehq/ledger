@@ -691,11 +691,12 @@ func (s *Store) GetLastSequence() (uint64, error) {
 }
 
 // ListAuditEntries returns a cursor over audit entries after the given sequence.
-func (s *Store) ListAuditEntries(afterSequence uint64) (Cursor[*auditpb.AuditEntry], error) {
+// Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
+func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEntry], error) {
 	kb := NewKeyBuilder()
 	kb.PutByte(keyPrefixAudit)
-	if afterSequence > 0 {
-		kb.PutUInt64(afterSequence + 1)
+	if afterSequence != nil {
+		kb.PutUInt64(*afterSequence + 1)
 	}
 	lowerBound := kb.Build()
 

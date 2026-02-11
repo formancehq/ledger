@@ -163,7 +163,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return processing.ErrAuditDisabled
 	}
 
-	cursor, err := impl.store.ListAuditEntries(req.AfterSequence)
+	cursor, err := impl.store.ListAuditEntries(req.AfterSequence) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}

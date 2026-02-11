@@ -281,7 +281,7 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
-  uint64 after_sequence = 1;
+  optional uint64 after_sequence = 1;
   string ledger = 2;
   bool failures_only = 3;
 }

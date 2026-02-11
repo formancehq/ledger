@@ -2234,7 +2234,7 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 
 type ListAuditEntriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AfterSequence uint64                 `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3" json:"after_sequence,omitempty"`
+	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	FailuresOnly  bool                   `protobuf:"varint,3,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2272,8 +2272,8 @@ func (*ListAuditEntriesRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *ListAuditEntriesRequest) GetAfterSequence() uint64 {
-	if x != nil {
-		return x.AfterSequence
+	if x != nil && x.AfterSequence != nil {
+		return *x.AfterSequence
 	}
 	return 0
 }
@@ -2463,11 +2463,12 @@ const file_service_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"}\n" +
-	"\x17ListAuditEntriesRequest\x12%\n" +
-	"\x0eafter_sequence\x18\x01 \x01(\x04R\rafterSequence\x12\x16\n" +
+	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x95\x01\n" +
+	"\x17ListAuditEntriesRequest\x12*\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12#\n" +
-	"\rfailures_only\x18\x03 \x01(\bR\ffailuresOnly*\x95\x02\n" +
+	"\rfailures_only\x18\x03 \x01(\bR\ffailuresOnlyB\x11\n" +
+	"\x0f_after_sequence*\x95\x02\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -2626,6 +2627,7 @@ func file_service_proto_init() {
 		(*CheckStoreEvent_Error)(nil),
 		(*CheckStoreEvent_Progress)(nil),
 	}
+	file_service_proto_msgTypes[31].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

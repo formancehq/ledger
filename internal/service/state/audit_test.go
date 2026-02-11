@@ -43,9 +43,14 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *data.S
 }
 
 // listAuditEntries collects all audit entries from the store into a slice.
+// Pass afterSequence=0 to return all entries.
 func listAuditEntries(t *testing.T, store *data.Store, afterSequence uint64) []*auditpb.AuditEntry {
 	t.Helper()
-	cursor, err := store.ListAuditEntries(afterSequence)
+	var filter *uint64
+	if afterSequence > 0 {
+		filter = &afterSequence
+	}
+	cursor, err := store.ListAuditEntries(filter)
 	require.NoError(t, err)
 	defer func() { _ = cursor.Close() }()
 

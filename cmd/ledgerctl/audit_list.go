@@ -55,11 +55,15 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 		limit, _        = cmd.Flags().GetInt("limit")
 	)
 
-	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		AfterSequence: after,
-		Ledger:        ledger,
-		FailuresOnly:  failuresOnly,
-	})
+	req := &servicepb.ListAuditEntriesRequest{
+		Ledger:       ledger,
+		FailuresOnly: failuresOnly,
+	}
+	if cmd.Flags().Changed("after") {
+		req.AfterSequence = &after
+	}
+
+	stream, err := client.ListAuditEntries(ctx, req)
 	if err != nil {
 		if isAuditDisabledError(err) {
 			pterm.Warning.Println("Audit log is disabled on this server.")

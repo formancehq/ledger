@@ -139,7 +139,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		),
 		nextLedgerID:        1,
 		nextSequenceID:      1,
-		nextAuditSequenceID: 1,
+		nextAuditSequenceID: 0,
 	}
 
 	return fsm, nil
