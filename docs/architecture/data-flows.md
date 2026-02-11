@@ -204,56 +204,57 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 
 ### Node Synchronization State Machine
 
-The **Node** manages the synchronization process directly. It has two states:
+The **Node** manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](./cluster-lifecycle.md).
 
-| State | Value | Description |
-|-------|-------|-------------|
-| `statusNormal` | 0 | Normal operation, entries applied directly to FSM |
-| `statusSyncing` | 1 | Synchronization in progress, entries spooled |
+| Status | Value | Description |
+|--------|-------|-------------|
+| `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM |
+| `statusSyncing` | 1 | Checkpoint fetch in progress: entries spooled |
+| `statusSnapshotting` | 2 | Local snapshot creation in progress: entries spooled |
+| `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
+
+#### State Transitions
+
+```
+                    ┌────────────────────────────────────────────┐
+                    │                                            │
+                    ▼                                            │
+             ┌─────────────┐                                    │
+  startup ──►│ statusNormal │◄──────────────────────┐           │
+             └──────┬───────┘                       │           │
+                    │                               │           │
+        snapshot    │                    replay      │           │
+        threshold   │                    complete    │           │
+        reached     │                               │           │
+                    ▼                               │           │
+           ┌─────────────────┐               ┌──────┴──────┐   │
+           │statusSnapshotting│──── done ────►│ unspool &   │   │
+           └─────────────────┘               │ resume      │   │
+                                             └─────────────┘   │
+                                                    ▲           │
+  startup ──►┌──────────────┐  leader    ┌─────────────────┐   │
+  (store     │statusOutOfSync│──found───►│  statusSyncing   │──┘
+   behind)   └──────────────┘            └────────┬────────┘
+                    ▲                             │
+                    │         peer unavailable     │
+                    └─────────────────────────────┘
+```
 
 #### Synchronization Trigger
 
-When a `MsgSnap` is received from the leader, the following sequence occurs:
+When the node starts with an out-of-date store, or when a `MsgSnap` is received from the leader:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Snapshot Synchronization                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  1. Snapshot applied to WAL                                             │
-│     └── wal.ApplySnapshot(snapshot)                                     │
-│                                                                          │
-│  2. FSM state restored (fast, in-memory)                                │
-│     └── fsm.InstallSnapshot(snapshotData)                               │
-│                                                                          │
-│  3. Status change: Normal → Syncing                                     │
-│     └── status.Swap(statusSyncing)                                      │
-│                                                                          │
-│  4. If already syncing: interrupt previous sync                         │
-│     └── taskExecutor.interrupt()                                        │
-│                                                                          │
-│  5. Create termination channel                                          │
-│     └── syncTerminated = make(chan struct{})                            │
-│                                                                          │
-│  6. Start background goroutine (taskExecutor.run)                       │
-│     ┌──────────────────────────────────────────────────────────────┐    │
-│     │  Background task:                                            │    │
-│     │  a. fsm.SynchronizeWithLeader() - sync store from leader     │    │
-│     │     - Reconcile ledgers (delete/register)                    │    │
-│     │     - Stream missing logs via gRPC                           │    │
-│     │  b. spool.End() - get current watermark                      │    │
-│     │  c. spool.ReplayUntil() - apply spooled entries              │    │
-│     │  d. close(syncTerminated) - signal completion                │    │
-│     └──────────────────────────────────────────────────────────────┘    │
-│                                                                          │
-│  7. Return immediately (non-blocking)                                   │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+1. Snapshot is applied to WAL and FSM state is restored (fast, in-memory)
+2. If the store is behind, status transitions to `statusOutOfSync`
+3. When a leader is discovered (`SoftState` with non-zero leader), status transitions to `statusSyncing`
+4. A background task fetches the Pebble checkpoint from the leader via gRPC
+5. On completion, spooled entries are replayed and status returns to `statusNormal`
+
+If the leader is unreachable during sync, the node falls back to `statusOutOfSync` and retries when a new leader is found.
 
 #### Entry Processing During Sync
 
-While synchronization is in progress (`status == statusSyncing`), entry processing behaves differently:
+While synchronization is in progress (`status != statusNormal`), entry processing behaves differently:
 
 ```go
 // In node.processReady():
@@ -261,32 +262,32 @@ switch node.status.Load() {
 case statusNormal:
     // Normal: apply directly to FSM
     results, err = node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
-    
-case statusSyncing:
-    // Syncing: spool entries for later
+
+case statusSyncing, statusSnapshotting:
+    // Syncing/Snapshotting: spool entries for later
     node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
     results = make([]ApplyResult, len(rd.CommittedEntries))
 }
 ```
 
-This ensures that new Raft entries committed during synchronization are not lost—they are buffered in the Spool.
+This ensures that new Raft entries committed during synchronization are not lost -- they are buffered in the Spool.
+
+#### Protection Against Premature Leadership
+
+Two mechanisms prevent a syncing node from becoming leader prematurely:
+
+1. **Tick suppression**: During `statusSyncing` and `statusOutOfSync`, `rawNode.Tick()` is not called. Without ticks, the node cannot trigger election timeouts.
+2. **MsgTimeoutNow rejection**: If a leader tries to transfer leadership to a syncing node via `TransferLeadership`, the `MsgTimeoutNow` message is silently dropped.
 
 #### Sync Completion
 
 When the background sync completes:
 
-1. The `syncTerminated` channel is closed
-2. The Node's event loop detects the channel close and calls `finalizeSynchronization()`:
-   ```go
-   func (node *Node) finalizeSynchronization(ctx context.Context) error {
-       // Replay any remaining spooled entries
-       node.spool.ReplayUntil(ctx, position, lastAppliedIndex, applyFn)
-       // Prune applied entries
-       node.spool.Prune(lastAppliedIndex)
-       // Return to normal mode
-       node.status.Store(statusNormal)
-   }
-   ```
+1. The `gatingTerminated` channel is closed
+2. The `processReadies` goroutine detects this and calls `unspoolAndResume`:
+   - Replays remaining spooled entries
+   - Prunes applied spool entries
+   - Sets status to `statusNormal`
 
 #### Complete Timeline
 
@@ -298,35 +299,30 @@ sequenceDiagram
     participant FSM
     participant Store
     participant Leader as Leader (gRPC)
-    
-    Note over Node: MsgSnap received
-    Node->>WAL: ApplySnapshot(snapshot)
-    Node->>FSM: InstallSnapshot(data)
-    FSM->>FSM: Restore in-memory state
+
+    Note over Node: Store behind snapshot at startup
+    Node->>Node: status = OutOfSync
+    Note over Node: SoftState reveals leader
     Node->>Node: status = Syncing
     Node->>Node: Start background task
-    
+
     par Background Sync
         Node->>FSM: SynchronizeWithLeader()
-        FSM->>Store: Reconcile ledgers
-        loop For each ledger
-            FSM->>Leader: StreamLogs gRPC
-            Leader-->>FSM: Business logs
-            FSM->>Store: AppendLogs()
-        end
+        FSM->>Leader: Fetch Pebble checkpoint (SnapshotService gRPC)
+        Leader-->>FSM: Checkpoint stream
+        FSM->>Store: Restore checkpoint
         FSM-->>Node: Sync complete
-        Node->>Spool: End() → watermark
         Node->>Spool: ReplayUntil(watermark)
         Spool-->>FSM: Apply spooled entries
-        Node->>Node: close(syncTerminated)
+        Node->>Node: close(gatingTerminated)
     and Normal Raft Operations
         Note over Node: New entries committed
         Node->>Spool: AppendCommittedEntries()
         Note over Spool: Entries buffered
     end
-    
-    Node->>Node: Detect syncTerminated closed
-    Node->>Node: finalizeSynchronization()
+
+    Node->>Node: Detect gatingTerminated closed
+    Node->>Node: unspoolAndResume()
     Node->>Spool: ReplayUntil() + Prune()
     Node->>Node: status = Normal
     Node->>FSM: Apply directly

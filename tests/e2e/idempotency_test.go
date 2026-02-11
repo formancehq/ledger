@@ -12,18 +12,18 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Idempotency Keys", func() {
+var _ = Describe("Idempotency Keys", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
 	)
 
 	const (
-		httpPort = 9900
-		grpcPort = 8900
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
@@ -97,10 +97,10 @@ var _ = Describe("Idempotency Keys", func() {
 		})
 	})
 
-	Context("When using idempotency keys for transactions", func() {
+	Context("When using idempotency keys for transactions", Ordered, func() {
 		var ledgerName = "idempotency-tx-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -243,10 +243,10 @@ var _ = Describe("Idempotency Keys", func() {
 		})
 	})
 
-	Context("When using idempotency keys in bulk operations", func() {
+	Context("When using idempotency keys in bulk operations", Ordered, func() {
 		var ledgerName = "idempotency-bulk-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})

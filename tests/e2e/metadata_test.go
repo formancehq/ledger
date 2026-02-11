@@ -12,25 +12,25 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Metadata", func() {
+var _ = Describe("Metadata", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
 	)
 
 	const (
-		httpPort = 9700
-		grpcPort = 8700
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("Account Metadata", func() {
+	Context("Account Metadata", Ordered, func() {
 		var ledgerName = "account-metadata-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			// Create ledger
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
@@ -212,10 +212,10 @@ var _ = Describe("Metadata", func() {
 		})
 	})
 
-	Context("Transaction Metadata", func() {
+	Context("Transaction Metadata", Ordered, func() {
 		var ledgerName = "tx-metadata-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			// Create ledger
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},

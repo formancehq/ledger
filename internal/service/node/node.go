@@ -42,6 +42,12 @@ var (
 
 	// ErrTransferLeaderTimeout is returned when leadership transfer does not complete in time.
 	ErrTransferLeaderTimeout = fmt.Errorf("leadership transfer timed out")
+
+	// ErrNodeAlreadyInCluster is returned when trying to add a node that already exists.
+	ErrNodeAlreadyInCluster = fmt.Errorf("node already in cluster")
+
+	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
+	ErrLearnerNotEligible = fmt.Errorf("learner nodes are not eligible for leadership")
 )
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
@@ -86,6 +92,7 @@ type Node struct {
 	futures                 SyncMap[uint64, *futures.Future]
 	lastSoftState           atomic.Pointer[raft.SoftState]
 	snapshotFetcherProvider state.SnapshotFetcherProvider
+	observer                *Observer
 
 	store             *data.Store
 	spool             spool.Spool
@@ -97,7 +104,7 @@ type Node struct {
 	readies           chan raft.Ready
 	readyTerminated   chan raft.Ready
 	tasks             *taskSet
-	stopChannel       chan chan struct{}
+	stopChannel chan chan struct{}
 
 	// Metrics
 	applyEntriesHistogram             metric.Int64Histogram
@@ -142,11 +149,25 @@ func NewNode(
 	var initialConfState raftpb.ConfState
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
-		voters := make([]uint64, 0, len(cfg.Peers)+1)
-		voters = append(voters, cfg.NodeID)
 
-		for _, peerEntry := range cfg.Peers {
-			voters = append(voters, peerEntry.ID)
+		var (
+			voters   []uint64
+			learners []uint64
+		)
+
+		if cfg.Bootstrap {
+			// Bootstrap mode: this node is the sole voter in a new cluster.
+			voters = []uint64{cfg.NodeID}
+		} else if len(cfg.Peers) > 0 {
+			// Join mode: existing peers are voters, self joins as learner.
+			// The leader will add us via ConfChange after we start.
+			voters = make([]uint64, 0, len(cfg.Peers))
+			for _, peerEntry := range cfg.Peers {
+				voters = append(voters, peerEntry.ID)
+			}
+			learners = []uint64{cfg.NodeID}
+		} else {
+			return nil, fmt.Errorf("first start requires --bootstrap or --join")
 		}
 
 		data, err := fsm.CreateSnapshot(context.Background())
@@ -155,7 +176,8 @@ func NewNode(
 		}
 
 		initialConfState = raftpb.ConfState{
-			Voters: voters,
+			Voters:   voters,
+			Learners: learners,
 		}
 		if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
 			return nil, fmt.Errorf("creating initial snapshot: %w", err)
@@ -201,7 +223,7 @@ func NewNode(
 		readies:                 make(chan raft.Ready, 1),
 		readyTerminated:         make(chan raft.Ready, 1),
 		tasks:                   newTaskSet(),
-		stopChannel:             make(chan chan struct{}),
+		stopChannel: make(chan chan struct{}),
 	}
 
 	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
@@ -481,6 +503,8 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 				return fmt.Errorf("unmarshaling ConfChange: %w", err)
 			}
 			cc = ccV1.AsV2()
+			// V1→V2 conversion does not copy Context; propagate it manually.
+			cc.Context = ccV1.Context
 		case raftpb.EntryConfChangeV2:
 			if err := cc.Unmarshal(entry.Data); err != nil {
 				return fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
@@ -492,6 +516,17 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 			WithFields(map[string]any{"transition": cc.Transition.String()}).
 			Infof("Applying configuration change")
 		node.confState = node.rawNode.ApplyConfChange(cc)
+
+		// Notify observers about configuration changes
+		if node.observer != nil {
+			for _, change := range cc.Changes {
+				node.observer.Emit(ConfChangeEvent{
+					NodeID:     change.NodeID,
+					ChangeType: change.Type,
+					Context:    cc.Context,
+				})
+			}
+		}
 	}
 
 	if len(rd.CommittedEntries) > 0 {
@@ -601,9 +636,15 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
 	defer processingTick.Stop()
 
-	// Helper to process a batch of messages
+	// Helper to process a batch of messages.
+	// Filters out MsgTimeoutNow while the node is syncing to prevent a
+	// not-yet-caught-up node from being forced into leadership.
 	stepMessages := func(msgs []raftpb.Message) error {
 		for _, msg := range msgs {
+			if msg.Type == raftpb.MsgTimeoutNow && node.isSyncing() {
+				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
+				continue
+			}
 			if err := node.rawNode.Step(msg); err != nil {
 				return err
 			}
@@ -618,6 +659,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			status := node.status.Load()
 			if status != statusSyncing && status != statusOutOfSync {
 				node.rawNode.Tick()
+				if node.config.AutoPromoteThreshold > 0 {
+					node.checkAndPromoteLearners()
+				}
 			}
 		case msgs := <-node.transport.RecvHighPriority():
 			if err := stepMessages(msgs); err != nil {
@@ -817,8 +861,13 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 		return ErrNotLeader
 	}
 
-	if _, ok := status.Progress[transferee]; !ok {
+	prog, ok := status.Progress[transferee]
+	if !ok {
 		return ErrUnknownTransferee
+	}
+
+	if prog.IsLearner {
+		return ErrLearnerNotEligible
 	}
 
 	node.rawNode.TransferLeader(transferee)
@@ -842,7 +891,7 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 
 	// Poll lastSoftState to confirm the leader has changed
 	timeout := time.Duration(2*node.config.ElectionTick) * node.config.TickInterval
-	if timeout == 0 {
+	if timeout < 2*time.Second {
 		timeout = 2 * time.Second
 	}
 
@@ -898,6 +947,13 @@ func (node *Node) IsLeader() bool {
 		return false
 	}
 	return lastSoftState.RaftState == raft.StateLeader
+}
+
+// isSyncing returns true when the node is restoring a snapshot or checkpoint
+// and is not yet ready to serve as leader.
+func (node *Node) isSyncing() bool {
+	s := node.status.Load()
+	return s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync
 }
 
 func (node *Node) GetLeader() uint64 {
@@ -960,21 +1016,25 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 				RecentActive:    prog.RecentActive,
 				ProbeSent:       prog.ProbeSent,
 				IsPaused:        prog.IsPaused(),
+				IsLearner:       prog.IsLearner,
 			}
 		}
 
 		// Build nodes list with progress information
 		nodes = make([]*clusterpb.NodeInfo, 0, len(status.Progress))
-		for id := range status.Progress {
+		for id, prog := range status.Progress {
 			suffrage := "Voter"
+			if prog.IsLearner {
+				suffrage = "Learner"
+			}
 
 			nodeInfo := &clusterpb.NodeInfo{
 				Id:       uint32(id),
 				Suffrage: suffrage,
 			}
 
-			if prog, ok := progress[id]; ok {
-				nodeInfo.Progress = prog
+			if progressInfo, ok := progress[id]; ok {
+				nodeInfo.Progress = progressInfo
 			}
 
 			nodes = append(nodes, nodeInfo)
@@ -1035,6 +1095,10 @@ func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
 			if id == node.config.NodeID {
 				continue
 			}
+			// Skip learner nodes – they cannot become leader
+			if prog.IsLearner {
+				continue
+			}
 			if prog.Match > bestMatch {
 				bestMatch = prog.Match
 				best = id
@@ -1084,6 +1148,116 @@ func (node *Node) Stop(ctx context.Context) error {
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+	}
+}
+
+// SetObserver sets the observer that receives events emitted by the node.
+func (node *Node) SetObserver(obs *Observer) {
+	node.observer = obs
+}
+
+// AddLearner proposes adding a non-voting learner node to the Raft cluster.
+// Must be called on the leader.
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
+	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling conf change context: %w", err)
+	}
+
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		// Check if node already exists in the cluster
+		if _, ok := status.Progress[nodeID]; ok {
+			return ErrNodeAlreadyInCluster
+		}
+
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{
+				{
+					Type:   raftpb.ConfChangeAddLearnerNode,
+					NodeID: nodeID,
+				},
+			},
+			Context: ccCtx,
+		}
+
+		return node.rawNode.ProposeConfChange(cc)
+	})
+}
+
+// PromoteLearner proposes promoting a learner node to a full voter.
+// Must be called on the leader.
+func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		prog, ok := status.Progress[nodeID]
+		if !ok {
+			return fmt.Errorf("node %d is not a known cluster member", nodeID)
+		}
+		if !prog.IsLearner {
+			return fmt.Errorf("node %d is already a voter", nodeID)
+		}
+
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{
+				{
+					Type:   raftpb.ConfChangeAddNode,
+					NodeID: nodeID,
+				},
+			},
+		}
+
+		return node.rawNode.ProposeConfChange(cc)
+	})
+}
+
+// checkAndPromoteLearners checks all learner nodes and promotes those that are
+// caught up (within AutoPromoteThreshold of the commit index).
+// Must be called from the orchestrate loop (rawNode is not thread-safe).
+func (node *Node) checkAndPromoteLearners() {
+	status := node.rawNode.Status()
+	if status.RaftState != raft.StateLeader {
+		return
+	}
+
+	for id, prog := range status.Progress {
+		if !prog.IsLearner || !prog.RecentActive || prog.Match == 0 {
+			continue
+		}
+		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
+			node.logger.WithFields(map[string]any{
+				"node_id":   id,
+				"match":     prog.Match,
+				"commit":    status.Commit,
+				"threshold": node.config.AutoPromoteThreshold,
+			}).Infof("Auto-promoting learner to voter")
+
+			cc := raftpb.ConfChangeV2{
+				Changes: []raftpb.ConfChangeSingle{
+					{
+						Type:   raftpb.ConfChangeAddNode,
+						NodeID: id,
+					},
+				},
+			}
+			if err := node.rawNode.ProposeConfChange(cc); err != nil {
+				node.logger.WithFields(map[string]any{
+					"node_id": id,
+					"error":   err,
+				}).Errorf("Failed to propose learner promotion")
+			}
 		}
 	}
 }

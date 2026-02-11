@@ -18,7 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Backup", func() {
+var _ = Describe("Backup", Ordered, func() {
 	var (
 		ctx           context.Context
 		client        servicepb.BucketServiceClient
@@ -26,11 +26,11 @@ var _ = Describe("Backup", func() {
 	)
 
 	const (
-		httpPort = 11000
-		grpcPort = 10000
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, clusterClient = setupSingleNode(httpPort, grpcPort)
 
 		// Create a ledger with some data so the backup is non-trivial

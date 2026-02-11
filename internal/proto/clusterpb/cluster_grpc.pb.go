@@ -24,6 +24,8 @@ const (
 	ClusterService_GetNodeTime_FullMethodName        = "/cluster.ClusterService/GetNodeTime"
 	ClusterService_TransferLeadership_FullMethodName = "/cluster.ClusterService/TransferLeadership"
 	ClusterService_Backup_FullMethodName             = "/cluster.ClusterService/Backup"
+	ClusterService_AddLearner_FullMethodName         = "/cluster.ClusterService/AddLearner"
+	ClusterService_PromoteLearner_FullMethodName     = "/cluster.ClusterService/PromoteLearner"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -43,6 +45,12 @@ type ClusterServiceClient interface {
 	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
 	// The request is forwarded to the leader to ensure the most up-to-date state.
 	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupResponse], error)
+	// AddLearner adds a non-voting (learner) node to the Raft cluster.
+	// The request is forwarded to the leader.
+	AddLearner(ctx context.Context, in *AddLearnerRequest, opts ...grpc.CallOption) (*AddLearnerResponse, error)
+	// PromoteLearner promotes a learner node to a full voter.
+	// The request is forwarded to the leader.
+	PromoteLearner(ctx context.Context, in *PromoteLearnerRequest, opts ...grpc.CallOption) (*PromoteLearnerResponse, error)
 }
 
 type clusterServiceClient struct {
@@ -112,6 +120,26 @@ func (c *clusterServiceClient) Backup(ctx context.Context, in *BackupRequest, op
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ClusterService_BackupClient = grpc.ServerStreamingClient[BackupResponse]
 
+func (c *clusterServiceClient) AddLearner(ctx context.Context, in *AddLearnerRequest, opts ...grpc.CallOption) (*AddLearnerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddLearnerResponse)
+	err := c.cc.Invoke(ctx, ClusterService_AddLearner_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) PromoteLearner(ctx context.Context, in *PromoteLearnerRequest, opts ...grpc.CallOption) (*PromoteLearnerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromoteLearnerResponse)
+	err := c.cc.Invoke(ctx, ClusterService_PromoteLearner_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -129,6 +157,12 @@ type ClusterServiceServer interface {
 	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
 	// The request is forwarded to the leader to ensure the most up-to-date state.
 	Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error
+	// AddLearner adds a non-voting (learner) node to the Raft cluster.
+	// The request is forwarded to the leader.
+	AddLearner(context.Context, *AddLearnerRequest) (*AddLearnerResponse, error)
+	// PromoteLearner promotes a learner node to a full voter.
+	// The request is forwarded to the leader.
+	PromoteLearner(context.Context, *PromoteLearnerRequest) (*PromoteLearnerResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -153,6 +187,12 @@ func (UnimplementedClusterServiceServer) TransferLeadership(context.Context, *Tr
 }
 func (UnimplementedClusterServiceServer) Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Backup not implemented")
+}
+func (UnimplementedClusterServiceServer) AddLearner(context.Context, *AddLearnerRequest) (*AddLearnerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddLearner not implemented")
+}
+func (UnimplementedClusterServiceServer) PromoteLearner(context.Context, *PromoteLearnerRequest) (*PromoteLearnerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PromoteLearner not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -258,6 +298,42 @@ func _ClusterService_Backup_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ClusterService_BackupServer = grpc.ServerStreamingServer[BackupResponse]
 
+func _ClusterService_AddLearner_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddLearnerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).AddLearner(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_AddLearner_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).AddLearner(ctx, req.(*AddLearnerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_PromoteLearner_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromoteLearnerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).PromoteLearner(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_PromoteLearner_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).PromoteLearner(ctx, req.(*PromoteLearnerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -280,6 +356,14 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TransferLeadership",
 			Handler:    _ClusterService_TransferLeadership_Handler,
+		},
+		{
+			MethodName: "AddLearner",
+			Handler:    _ClusterService_AddLearner_Handler,
+		},
+		{
+			MethodName: "PromoteLearner",
+			Handler:    _ClusterService_PromoteLearner_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

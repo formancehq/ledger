@@ -15,25 +15,25 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var _ = Describe("Numscript", func() {
+var _ = Describe("Numscript", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
 	)
 
 	const (
-		httpPort = 9400
-		grpcPort = 8400
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When creating transactions with Numscript", func() {
+	Context("When creating transactions with Numscript", Ordered, func() {
 		var ledgerName = "numscript-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})

@@ -26,10 +26,15 @@ func NewServiceConnectionPool() *ServiceConnectionPool {
 	}
 }
 
-// AddPeer adds a peer to the pool and creates a gRPC connection to its service port
+// AddPeer adds a peer to the pool and creates a gRPC connection to its service port.
+// If the peer already exists, it is a no-op.
 func (p *ServiceConnectionPool) AddPeer(id uint64, serviceAddr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if _, exists := p.connections[id]; exists {
+		return nil
+	}
 
 	conn, err := p.connect(serviceAddr)
 	if err != nil {
@@ -71,6 +76,26 @@ func (p *ServiceConnectionPool) GetConnection(peerID uint64) *grpc.ClientConn {
 	defer p.mu.Unlock()
 
 	return p.connections[peerID]
+}
+
+// GetPeerAddress returns the service address for a specific peer, if it exists.
+func (p *ServiceConnectionPool) GetPeerAddress(peerID uint64) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.peers[peerID]
+}
+
+// PeerIDs returns the IDs of all known peers.
+func (p *ServiceConnectionPool) PeerIDs() []uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ids := make([]uint64, 0, len(p.peers))
+	for id := range p.peers {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // Close closes all gRPC connections

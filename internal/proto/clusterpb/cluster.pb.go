@@ -68,12 +68,14 @@ func (x *GetClusterStateRequest) GetNodeId() uint32 {
 
 // NodeInfo represents information about a node in the cluster
 type NodeInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Suffrage      string                 `protobuf:"bytes,2,opt,name=suffrage,proto3" json:"suffrage,omitempty"` // Voter or Nonvoter
-	Progress      *ProgressInfo          `protobuf:"bytes,3,opt,name=progress,proto3" json:"progress,omitempty"` // Progress information (only available when querying leader)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Suffrage       string                 `protobuf:"bytes,2,opt,name=suffrage,proto3" json:"suffrage,omitempty"`                                   // Voter or Learner
+	Progress       *ProgressInfo          `protobuf:"bytes,3,opt,name=progress,proto3" json:"progress,omitempty"`                                   // Progress information (only available when querying leader)
+	RaftAddress    string                 `protobuf:"bytes,4,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address
+	ServiceAddress string                 `protobuf:"bytes,5,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *NodeInfo) Reset() {
@@ -127,6 +129,20 @@ func (x *NodeInfo) GetProgress() *ProgressInfo {
 	return nil
 }
 
+func (x *NodeInfo) GetRaftAddress() string {
+	if x != nil {
+		return x.RaftAddress
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetServiceAddress() string {
+	if x != nil {
+		return x.ServiceAddress
+	}
+	return ""
+}
+
 // ProgressInfo represents the progress information for a node
 type ProgressInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -137,6 +153,7 @@ type ProgressInfo struct {
 	RecentActive    bool                   `protobuf:"varint,5,opt,name=recent_active,json=recentActive,proto3" json:"recent_active,omitempty"`          // Whether this node is recently active
 	ProbeSent       bool                   `protobuf:"varint,6,opt,name=probe_sent,json=probeSent,proto3" json:"probe_sent,omitempty"`                   // Whether probe message was sent (paused)
 	IsPaused        bool                   `protobuf:"varint,7,opt,name=is_paused,json=isPaused,proto3" json:"is_paused,omitempty"`                      // Whether this node is paused
+	IsLearner       bool                   `protobuf:"varint,8,opt,name=is_learner,json=isLearner,proto3" json:"is_learner,omitempty"`                   // Whether this node is a learner (non-voting)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -216,6 +233,13 @@ func (x *ProgressInfo) GetProbeSent() bool {
 func (x *ProgressInfo) GetIsPaused() bool {
 	if x != nil {
 		return x.IsPaused
+	}
+	return false
+}
+
+func (x *ProgressInfo) GetIsLearner() bool {
+	if x != nil {
+		return x.IsLearner
 	}
 	return false
 }
@@ -696,6 +720,182 @@ func (x *DiskUsage) GetDataVolumeTotalBytes() int64 {
 	return 0
 }
 
+type AddLearnerRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                        // Numeric ID for the new learner node
+	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address of the learner
+	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address of the learner
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AddLearnerRequest) Reset() {
+	*x = AddLearnerRequest{}
+	mi := &file_cluster_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddLearnerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddLearnerRequest) ProtoMessage() {}
+
+func (x *AddLearnerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddLearnerRequest.ProtoReflect.Descriptor instead.
+func (*AddLearnerRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AddLearnerRequest) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *AddLearnerRequest) GetRaftAddress() string {
+	if x != nil {
+		return x.RaftAddress
+	}
+	return ""
+}
+
+func (x *AddLearnerRequest) GetServiceAddress() string {
+	if x != nil {
+		return x.ServiceAddress
+	}
+	return ""
+}
+
+type AddLearnerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddLearnerResponse) Reset() {
+	*x = AddLearnerResponse{}
+	mi := &file_cluster_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddLearnerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddLearnerResponse) ProtoMessage() {}
+
+func (x *AddLearnerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddLearnerResponse.ProtoReflect.Descriptor instead.
+func (*AddLearnerResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{12}
+}
+
+type PromoteLearnerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // Numeric ID of the learner node to promote
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PromoteLearnerRequest) Reset() {
+	*x = PromoteLearnerRequest{}
+	mi := &file_cluster_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PromoteLearnerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PromoteLearnerRequest) ProtoMessage() {}
+
+func (x *PromoteLearnerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PromoteLearnerRequest.ProtoReflect.Descriptor instead.
+func (*PromoteLearnerRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PromoteLearnerRequest) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+type PromoteLearnerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PromoteLearnerResponse) Reset() {
+	*x = PromoteLearnerResponse{}
+	mi := &file_cluster_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PromoteLearnerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PromoteLearnerResponse) ProtoMessage() {}
+
+func (x *PromoteLearnerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PromoteLearnerResponse.ProtoReflect.Descriptor instead.
+func (*PromoteLearnerResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{14}
+}
+
 type BackupRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -704,7 +904,7 @@ type BackupRequest struct {
 
 func (x *BackupRequest) Reset() {
 	*x = BackupRequest{}
-	mi := &file_cluster_proto_msgTypes[11]
+	mi := &file_cluster_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -716,7 +916,7 @@ func (x *BackupRequest) String() string {
 func (*BackupRequest) ProtoMessage() {}
 
 func (x *BackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[11]
+	mi := &file_cluster_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -729,7 +929,7 @@ func (x *BackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupRequest.ProtoReflect.Descriptor instead.
 func (*BackupRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{11}
+	return file_cluster_proto_rawDescGZIP(), []int{15}
 }
 
 type BackupResponse struct {
@@ -745,7 +945,7 @@ type BackupResponse struct {
 
 func (x *BackupResponse) Reset() {
 	*x = BackupResponse{}
-	mi := &file_cluster_proto_msgTypes[12]
+	mi := &file_cluster_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -757,7 +957,7 @@ func (x *BackupResponse) String() string {
 func (*BackupResponse) ProtoMessage() {}
 
 func (x *BackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[12]
+	mi := &file_cluster_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,7 +970,7 @@ func (x *BackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupResponse.ProtoReflect.Descriptor instead.
 func (*BackupResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{12}
+	return file_cluster_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *BackupResponse) GetChunkOffset() uint64 {
@@ -814,11 +1014,13 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"\rcluster.proto\x12\acluster\"1\n" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"i\n" +
+	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xb5\x01\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
-	"\bprogress\x18\x03 \x01(\v2\x15.cluster.ProgressInfoR\bprogress\"\xda\x01\n" +
+	"\bprogress\x18\x03 \x01(\v2\x15.cluster.ProgressInfoR\bprogress\x12!\n" +
+	"\fraft_address\x18\x04 \x01(\tR\vraftAddress\x12'\n" +
+	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\"\xf9\x01\n" +
 	"\fProgressInfo\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\x04R\x05match\x12\x12\n" +
 	"\x04next\x18\x02 \x01(\x04R\x04next\x12\x14\n" +
@@ -827,7 +1029,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\rrecent_active\x18\x05 \x01(\bR\frecentActive\x12\x1d\n" +
 	"\n" +
 	"probe_sent\x18\x06 \x01(\bR\tprobeSent\x12\x1b\n" +
-	"\tis_paused\x18\a \x01(\bR\bisPaused\"\xc6\x02\n" +
+	"\tis_paused\x18\a \x01(\bR\bisPaused\x12\x1d\n" +
+	"\n" +
+	"is_learner\x18\b \x01(\bR\tisLearner\"\xc6\x02\n" +
 	"\n" +
 	"RaftStatus\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
@@ -870,20 +1074,31 @@ const file_cluster_proto_rawDesc = "" +
 	"\x10wal_volume_bytes\x18\x04 \x01(\x03R\x0ewalVolumeBytes\x12*\n" +
 	"\x11data_volume_bytes\x18\x05 \x01(\x03R\x0fdataVolumeBytes\x123\n" +
 	"\x16wal_volume_total_bytes\x18\x06 \x01(\x03R\x13walVolumeTotalBytes\x125\n" +
-	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes\"\x0f\n" +
+	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes\"x\n" +
+	"\x11AddLearnerRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
+	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x14\n" +
+	"\x12AddLearnerResponse\"0\n" +
+	"\x15PromoteLearnerRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"\x18\n" +
+	"\x16PromoteLearnerResponse\"\x0f\n" +
 	"\rBackupRequest\"\xa3\x01\n" +
 	"\x0eBackupResponse\x12!\n" +
 	"\fchunk_offset\x18\x01 \x01(\x04R\vchunkOffset\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x10\n" +
 	"\x03eof\x18\x03 \x01(\bR\x03eof\x12%\n" +
 	"\x0econtent_sha256\x18\x04 \x01(\tR\rcontentSha256\x12!\n" +
-	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize2\xf8\x02\n" +
+	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize2\x92\x04\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
 	"\vGetNodeTime\x12\x1b.cluster.GetNodeTimeRequest\x1a\x11.cluster.NodeTime\x12]\n" +
 	"\x12TransferLeadership\x12\".cluster.TransferLeadershipRequest\x1a#.cluster.TransferLeadershipResponse\x12;\n" +
-	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse0\x01B>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
+	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse0\x01\x12E\n" +
+	"\n" +
+	"AddLearner\x12\x1a.cluster.AddLearnerRequest\x1a\x1b.cluster.AddLearnerResponse\x12Q\n" +
+	"\x0ePromoteLearner\x12\x1e.cluster.PromoteLearnerRequest\x1a\x1f.cluster.PromoteLearnerResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once
@@ -897,7 +1112,7 @@ func file_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_proto_rawDescData
 }
 
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_cluster_proto_goTypes = []any{
 	(*GetClusterStateRequest)(nil),     // 0: cluster.GetClusterStateRequest
 	(*NodeInfo)(nil),                   // 1: cluster.NodeInfo
@@ -910,13 +1125,17 @@ var file_cluster_proto_goTypes = []any{
 	(*GetNodeTimeRequest)(nil),         // 8: cluster.GetNodeTimeRequest
 	(*NodeTime)(nil),                   // 9: cluster.NodeTime
 	(*DiskUsage)(nil),                  // 10: cluster.DiskUsage
-	(*BackupRequest)(nil),              // 11: cluster.BackupRequest
-	(*BackupResponse)(nil),             // 12: cluster.BackupResponse
-	nil,                                // 13: cluster.RaftStatus.ProgressEntry
+	(*AddLearnerRequest)(nil),          // 11: cluster.AddLearnerRequest
+	(*AddLearnerResponse)(nil),         // 12: cluster.AddLearnerResponse
+	(*PromoteLearnerRequest)(nil),      // 13: cluster.PromoteLearnerRequest
+	(*PromoteLearnerResponse)(nil),     // 14: cluster.PromoteLearnerResponse
+	(*BackupRequest)(nil),              // 15: cluster.BackupRequest
+	(*BackupResponse)(nil),             // 16: cluster.BackupResponse
+	nil,                                // 17: cluster.RaftStatus.ProgressEntry
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
-	13, // 1: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
+	17, // 1: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
 	1,  // 2: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
 	3,  // 3: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
 	2,  // 4: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
@@ -924,14 +1143,18 @@ var file_cluster_proto_depIdxs = []int32{
 	7,  // 6: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
 	8,  // 7: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
 	5,  // 8: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
-	11, // 9: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
-	4,  // 10: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	10, // 11: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	9,  // 12: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	6,  // 13: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	12, // 14: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
+	15, // 9: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
+	11, // 10: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
+	13, // 11: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
+	4,  // 12: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	10, // 13: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	9,  // 14: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	6,  // 15: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	16, // 16: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	12, // 17: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	14, // 18: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -948,7 +1171,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

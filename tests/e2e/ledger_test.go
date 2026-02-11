@@ -15,25 +15,25 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var _ = Describe("Ledger", func() {
+var _ = Describe("Ledger", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
 	)
 
 	const (
-		httpPort = 9100
-		grpcPort = 8100
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When saving account metadata via direct endpoint", func() {
+	Context("When saving account metadata via direct endpoint", Ordered, func() {
 		var ledgerName = "test-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -111,10 +111,10 @@ var _ = Describe("Ledger", func() {
 		})
 	})
 
-	Context("When saving account metadata via bulk endpoint", func() {
+	Context("When saving account metadata via bulk endpoint", Ordered, func() {
 		var ledgerName = "bulk-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -221,10 +221,10 @@ var _ = Describe("Ledger", func() {
 		})
 	})
 
-	Context("When saving transaction metadata via direct endpoint", func() {
+	Context("When saving transaction metadata via direct endpoint", Ordered, func() {
 		var ledgerName = "transaction-metadata-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})
@@ -287,10 +287,10 @@ var _ = Describe("Ledger", func() {
 		})
 	})
 
-	Context("When saving transaction metadata via bulk endpoint", func() {
+	Context("When saving transaction metadata via bulk endpoint", Ordered, func() {
 		var ledgerName = "transaction-metadata-bulk-ledger"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 			})

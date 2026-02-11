@@ -25,6 +25,14 @@ service ClusterService {
   // Backup streams a point-in-time backup of the Pebble store as a tar archive.
   // The request is forwarded to the leader to ensure the most up-to-date state.
   rpc Backup(BackupRequest) returns (stream BackupResponse);
+
+  // AddLearner adds a non-voting (learner) node to the Raft cluster.
+  // The request is forwarded to the leader.
+  rpc AddLearner(AddLearnerRequest) returns (AddLearnerResponse);
+
+  // PromoteLearner promotes a learner node to a full voter.
+  // The request is forwarded to the leader.
+  rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse);
 }
 
 message GetClusterStateRequest {
@@ -39,8 +47,10 @@ message GetClusterStateRequest {
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
   uint32 id = 1;
-  string suffrage = 2;  // Voter or Nonvoter
+  string suffrage = 2;  // Voter or Learner
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
+  string raft_address = 4;  // Raft transport address
+  string service_address = 5;  // Service API address
 }
 
 // ProgressInfo represents the progress information for a node
@@ -52,6 +62,7 @@ message ProgressInfo {
   bool recent_active = 5;       // Whether this node is recently active
   bool probe_sent = 6;          // Whether probe message was sent (paused)
   bool is_paused = 7;           // Whether this node is paused
+  bool is_learner = 8;          // Whether this node is a learner (non-voting)
 }
 
 // RaftStatus represents the complete Raft status information
@@ -110,6 +121,28 @@ message DiskUsage {
   int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
   int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
 }
+
+// ============================================================================
+// Add Learner Messages
+// ============================================================================
+
+message AddLearnerRequest {
+  uint64 node_id = 1;          // Numeric ID for the new learner node
+  string raft_address = 2;     // Raft transport address of the learner
+  string service_address = 3;  // Service API address of the learner
+}
+
+message AddLearnerResponse {}
+
+// ============================================================================
+// Promote Learner Messages
+// ============================================================================
+
+message PromoteLearnerRequest {
+  uint64 node_id = 1;  // Numeric ID of the learner node to promote
+}
+
+message PromoteLearnerResponse {}
 
 // ============================================================================
 // Backup Messages

@@ -24,6 +24,7 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 Core design and technical architecture documentation.
 
 - [Overview](./architecture/architecture.md) - System architecture and component interactions
+- [Cluster Lifecycle](./architecture/cluster-lifecycle.md) - Bootstrap, join, synchronization, and learner promotion
 - [Raft Consensus](./architecture/raft-consensus.md) - Raft consensus implementation details
 - [Deterministic FSM](./architecture/deterministic-fsm.md) - FSM design with generation-based caching and AttributeLoader
 - [Attributes](./architecture/attributes.md) - System attributes (volumes, metadata, reversions, idempotency)

@@ -25,6 +25,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Common port constants shared by all e2e tests.
+// All tests run sequentially, so they can safely reuse the same ports.
+// Using high ports (15xxx) to avoid conflicts with host services.
+const (
+	// Multi-node test ports (up to 4 nodes: base+0, base+1, base+2, base+3)
+	testRaftBasePort    = 15000
+	testServiceBasePort = 15100
+	testHTTPBasePort    = 15200
+	testGatewayBasePort = 15300
+
+	// Single-node test ports (raft port is derived as testSingleGRPCPort - 1000)
+	testSingleHTTPPort = 15200
+	testSingleGRPCPort = 15100
+)
+
 // extractGRPCErrorInfo extracts the ErrorInfo detail from a gRPC error.
 func extractGRPCErrorInfo(err error) *errdetails.ErrorInfo {
 	st, ok := status.FromError(err)
@@ -340,6 +355,191 @@ func getAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient
 	return ledgers, nil
 }
 
+// multiNodeOptions holds configuration options for setupMultiNodeCluster.
+type multiNodeOptions struct {
+	withGateway      bool
+	raftTickInterval time.Duration
+}
+
+// MultiNodeOption is a functional option for setupMultiNodeCluster.
+type MultiNodeOption func(*multiNodeOptions)
+
+// WithGateway enables the test gateway for intercepting Raft traffic.
+func WithGateway() MultiNodeOption {
+	return func(o *multiNodeOptions) {
+		o.withGateway = true
+	}
+}
+
+// WithTickInterval sets the Raft tick interval (default: 10ms).
+func WithTickInterval(d time.Duration) MultiNodeOption {
+	return func(o *multiNodeOptions) {
+		o.raftTickInterval = d
+	}
+}
+
+// setupMultiNodeCluster creates a multi-node Raft cluster for e2e tests.
+// It returns the context, the list of services with clients, the gateway (if enabled), and a pointer to the current leader ID.
+// Cleanup is handled automatically via DeferCleanup.
+func setupMultiNodeCluster(
+	countInstances int,
+	raftBasePort, serviceBasePort, httpBasePort, gatewayBasePort int,
+	opts ...MultiNodeOption,
+) (context.Context, []*serviceWithClient, *testserver.Gateway, *uint64) {
+	options := multiNodeOptions{
+		raftTickInterval: 10 * time.Millisecond,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	ctx := logging.TestingContext()
+
+	var gw *testserver.Gateway
+	if options.withGateway {
+		gatewayPorts := make([]int, countInstances)
+		nodeRaftAddresses := make([]string, countInstances)
+		for i := range countInstances {
+			gatewayPorts[i] = gatewayBasePort + i
+			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", raftBasePort+i)
+		}
+
+		var err error
+		gw, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeRaftAddresses)
+		Expect(err).To(Succeed())
+
+		Expect(gw.Start(ctx)).To(Succeed())
+		DeferCleanup(func() {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(gw.Stop(stopCtx)).To(Succeed())
+		})
+	}
+
+	// Common instruments shared by all nodes
+	commonInstruments := func(i int, walDir, dataDir string) []testservice.Instrumentation {
+		return []testservice.Instrumentation{
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			testserver.WithNodeID(i + 1),
+			testserver.WithHTTPPort(httpBasePort + i),
+			testserver.WithWalDir(walDir),
+			testserver.WithDataDir(dataDir),
+			testserver.WithRaftPort(raftBasePort + i),
+			testserver.WithGRPCPort(serviceBasePort + i),
+			testserver.WithSnapshotThreshold(10),
+			testserver.WithRaftCompactionMargin(1),
+			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+			testserver.WithRaftTickInterval(options.raftTickInterval),
+			testserver.WithRaftHeartbeatTick(1),
+			testserver.WithRaftElectionTick(10),
+			testserver.WithAutoPromoteThreshold(10),
+		}
+	}
+
+	servers := make([]*serviceWithClient, 0, countInstances)
+
+	startNode := func(i int, extraInstruments ...testservice.Instrumentation) {
+		walTmpDir := GinkgoT().TempDir()
+		dataTmpDir := GinkgoT().TempDir()
+		DeferCleanup(func() {
+			Expect(os.RemoveAll(walTmpDir)).To(Succeed())
+			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
+		})
+
+		instruments := commonInstruments(i, walTmpDir, dataTmpDir)
+		instruments = append(instruments, extraInstruments...)
+
+		server := testservice.New(cmdserver.NewRunCommand,
+			testservice.WithInstruments(instruments...),
+		)
+		Expect(server.Start(ctx)).To(Succeed())
+
+		grpcClient, clusterClient, grpcConn, err := newGRPCClient(serviceBasePort + i)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() {
+			_ = grpcConn.Close()
+		})
+
+		servers = append(servers, &serviceWithClient{
+			service:       server,
+			client:        grpcClient,
+			clusterClient: clusterClient,
+			grpcConn:      grpcConn,
+			walDir:        walTmpDir,
+			dataDir:       dataTmpDir,
+			grpcPort:      serviceBasePort + i,
+			nodeID:        uint32(i + 1),
+		})
+	}
+
+	// Node 0: bootstrap a single-node cluster
+	startNode(0, testserver.WithBootstrap())
+
+	// Wait for node 0 to become leader before joining other nodes
+	var leaderID uint64
+	Eventually(func(g Gomega) {
+		state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		g.Expect(err).To(Succeed())
+		g.Expect(state.Leader).NotTo(BeZero())
+		leaderID = uint64(state.Leader)
+	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+	// Nodes 1..N-1: join the bootstrap node
+	bootstrapServiceAddr := fmt.Sprintf("127.0.0.1:%d", serviceBasePort)
+	for i := 1; i < countInstances; i++ {
+		startNode(i, testserver.WithJoin(bootstrapServiceAddr))
+	}
+
+	// Wait for all nodes to be promoted to voters
+	if countInstances > 1 {
+		Eventually(func(g Gomega) {
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			g.Expect(err).To(Succeed())
+			voterCount := 0
+			for _, n := range state.Nodes {
+				if n.Suffrage == "Voter" {
+					voterCount++
+				}
+			}
+			g.Expect(voterCount).To(Equal(countInstances))
+		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+	}
+
+	return ctx, servers, gw, &leaderID
+}
+
+// stopNode gracefully stops a node by first closing its gRPC connection
+// to prevent in-flight requests from racing with pebble shutdown.
+func stopNode(ctx context.Context, srv *serviceWithClient) {
+	_ = srv.grpcConn.Close()
+	Expect(srv.service.Stop(ctx)).To(Succeed())
+}
+
+// restartNode starts a previously stopped node and recreates its gRPC client connection.
+func restartNode(ctx context.Context, srv *serviceWithClient) {
+	Expect(srv.service.Start(ctx)).To(Succeed())
+	client, clusterClient, conn, err := newGRPCClient(srv.grpcPort)
+	Expect(err).To(Succeed())
+	srv.client = client
+	srv.clusterClient = clusterClient
+	srv.grpcConn = conn
+}
+
+// stopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
+func stopServers(ctx context.Context, servers []*serviceWithClient) {
+	for _, server := range servers {
+		_ = server.grpcConn.Close()
+	}
+	for i, server := range servers {
+		By(fmt.Sprintf("Stopping node %d", i+1), func() {
+			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			DeferCleanup(cancel)
+			Expect(server.service.Stop(stopCtx)).To(Succeed())
+		})
+	}
+}
+
 // setupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
 // This simplifies test setup and speeds up test execution.
 // Returns the context, client, and cleanup function.
@@ -369,9 +569,9 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 			testserver.WithSnapshotThreshold(10),
 			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 			testserver.WithRaftTickInterval(10*time.Millisecond),
-			testserver.WithRaftHeartbeatTick(10),
-			testserver.WithRaftElectionTick(100),
-			// No peers needed for single-node cluster
+			testserver.WithRaftHeartbeatTick(1),
+			testserver.WithRaftElectionTick(10),
+			testserver.WithBootstrap(),
 		),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
@@ -395,7 +595,7 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		return state.Leader != 0
-	}).Within(15 * time.Second).To(BeTrue())
+	}).Within(5 * time.Second).To(BeTrue())
 
 	return ctx, grpcClient, clusterClient
 }

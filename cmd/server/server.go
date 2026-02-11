@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -15,12 +13,15 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/tracesampling"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v3"
 )
 
@@ -73,7 +74,8 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("grpc-port", 8888, "gRPC port for service API (external client-facing)")
 	runCmd.Flags().String("wal-dir", "./wal", "WAL directory for Raft")
 	runCmd.Flags().String("data-dir", "./data", "Data directory for application storage")
-	runCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<raftAddress>/<serviceAddress>, e.g., \"1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888\")")
+	runCmd.Flags().Bool("bootstrap", false, "Initialize a new single-node cluster (mutually exclusive with --join)")
+	runCmd.Flags().Uint64("learner-promotion-threshold", 100, "Max log entry lag before auto-promoting a caught-up learner to voter (0 = disable)")
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	runCmd.Flags().Uint64("snapshot-threshold", 5000, "Number of logs before triggering a snapshot (0 = use Raft default)")
 	// todo: remove
@@ -116,6 +118,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Audit configuration flags
 	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
+
+	// Join mode: join an existing cluster as a learner node
+	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
 	return runCmd
 }
@@ -242,14 +247,6 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 		return defaultValue
 	}
 
-	// Helper function to get string slice from flag
-	getStringSlice := func(flagName string) []string {
-		if val, _ := cmd.Flags().GetStringSlice(flagName); len(val) > 0 {
-			return val
-		}
-		return []string{}
-	}
-
 	// Helper function to get int slice from flag
 	getIntSlice := func(flagName string) []int {
 		if val, _ := cmd.Flags().GetIntSlice(flagName); len(val) > 0 {
@@ -274,25 +271,8 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
 	cfg.RaftConfig.WalDir = getString("wal-dir", "./wal")
 	cfg.DataDir = getString("data-dir", "./data")
-	cfg.RaftConfig.Peers = make([]node.Peer, 0)
-	for _, peer := range getStringSlice("peers") {
-		// Format: <id>/<raftAddress>/<serviceAddress>
-		parts := strings.Split(peer, "/")
-		if len(parts) != 3 {
-			return nil, fmt.Errorf("invalid peer format: expected <id>/<raftAddress>/<serviceAddress>, got %q", peer)
-		}
-
-		id, err := strconv.ParseUint(parts[0], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid peer ID: %w", err)
-		}
-
-		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, node.Peer{
-			ID:             id,
-			Address:        parts[1],
-			ServiceAddress: parts[2],
-		})
-	}
+	cfg.RaftConfig.Bootstrap = getBool("bootstrap", false)
+	cfg.RaftConfig.AutoPromoteThreshold = getUint64("learner-promotion-threshold", 100)
 	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)
 	cfg.RaftConfig.SnapshotInterval = getDuration("snapshot-interval", 0)
 	cfg.RaftConfig.ElectionTick = getInt("raft-election-tick", 0)
@@ -347,7 +327,88 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	// Audit configuration
 	cfg.AuditEnabled = getBool("audit-enabled", true)
 
+	// Join mode: discover peers from an existing cluster member
+	joinAddr := getString("join", "")
+	if joinAddr != "" {
+		if cfg.RaftConfig.Bootstrap {
+			return nil, fmt.Errorf("--join and --bootstrap are mutually exclusive")
+		}
+
+		peers, err := discoverPeersFromClusterWithRetry(joinAddr)
+		if err != nil {
+			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
+		}
+
+		cfg.RaftConfig.Peers = peers
+	}
+
 	return cfg, nil
+}
+
+// discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
+// for up to 60 seconds, allowing the bootstrap node time to start.
+func discoverPeersFromClusterWithRetry(serviceAddr string) ([]node.Peer, error) {
+	var (
+		lastErr  error
+		delay    = 500 * time.Millisecond
+		deadline = time.After(60 * time.Second)
+	)
+
+	for {
+		peers, err := discoverPeersFromCluster(serviceAddr)
+		if err == nil {
+			return peers, nil
+		}
+		lastErr = err
+
+		select {
+		case <-deadline:
+			return nil, fmt.Errorf("timed out after 60s discovering peers from %s: %w", serviceAddr, lastErr)
+		case <-time.After(delay):
+			if delay < 5*time.Second {
+				delay = delay * 2
+			}
+		}
+	}
+}
+
+// discoverPeersFromCluster connects to an existing cluster member and discovers
+// all voter nodes and their addresses via GetClusterState.
+func discoverPeersFromCluster(serviceAddr string) ([]node.Peer, error) {
+	conn, err := grpc.NewClient(serviceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := clusterpb.NewClusterServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("getting cluster state from %s: %w", serviceAddr, err)
+	}
+
+	var peers []node.Peer
+	for _, nodeInfo := range state.Nodes {
+		if nodeInfo.RaftAddress == "" || nodeInfo.ServiceAddress == "" {
+			continue
+		}
+		peers = append(peers, node.Peer{
+			ID:             uint64(nodeInfo.Id),
+			Address:        nodeInfo.RaftAddress,
+			ServiceAddress: nodeInfo.ServiceAddress,
+		})
+	}
+
+	if len(peers) == 0 {
+		return nil, fmt.Errorf("no peers with addresses found in cluster state from %s", serviceAddr)
+	}
+
+	return peers, nil
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.

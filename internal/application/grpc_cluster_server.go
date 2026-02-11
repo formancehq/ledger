@@ -19,26 +19,35 @@ import (
 
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
-	node        *node.Node
-	servicePool *transport.ServiceConnectionPool
-	collector   *diskusage.Collector
-	store       *data.Store
-	logger      logging.Logger
+	node              *node.Node
+	raftTransport     *node.DefaultTransport
+	servicePool       *transport.ServiceConnectionPool
+	collector         *diskusage.Collector
+	store             *data.Store
+	logger            logging.Logger
+	localRaftAddr     string // This node's own Raft advertise address
+	localServiceAddr  string // This node's own gRPC service address
 }
 
 func NewClusterServiceServer(
 	node *node.Node,
+	raftTransport *node.DefaultTransport,
 	servicePool *transport.ServiceConnectionPool,
 	collector *diskusage.Collector,
 	store *data.Store,
 	logger logging.Logger,
+	localRaftAddr string,
+	localServiceAddr string,
 ) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
-		node:        node,
-		servicePool: servicePool,
-		collector:   collector,
-		store:       store,
-		logger:      logger.WithField("component", "cluster-server"),
+		node:             node,
+		raftTransport:    raftTransport,
+		servicePool:      servicePool,
+		collector:        collector,
+		store:            store,
+		logger:           logger.WithField("component", "cluster-server"),
+		localRaftAddr:    localRaftAddr,
+		localServiceAddr: localServiceAddr,
 	}
 }
 
@@ -50,7 +59,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
 			// This node is the leader, handle locally
-			return impl.node.GetClusterState(ctx)
+			return impl.getClusterStateLocal(ctx)
 		}
 
 		// Get the leader ID
@@ -64,7 +73,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 		// If requesting this node, handle locally
 		if targetNodeID == impl.node.GetNodeID() {
-			return impl.node.GetClusterState(ctx)
+			return impl.getClusterStateLocal(ctx)
 		}
 	}
 
@@ -76,6 +85,29 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 	client := clusterpb.NewClusterServiceClient(grpcConn)
 	return client.GetClusterState(ctx, req)
+}
+
+// getClusterStateLocal returns cluster state with peer address information populated.
+func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) (*clusterpb.ClusterState, error) {
+	state, err := impl.node.GetClusterState(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate peer addresses from transport and service pool
+	localNodeID := impl.node.GetNodeID()
+	for _, nodeInfo := range state.Nodes {
+		nodeID := uint64(nodeInfo.Id)
+		if nodeID == localNodeID {
+			nodeInfo.RaftAddress = impl.localRaftAddr
+			nodeInfo.ServiceAddress = impl.localServiceAddr
+		} else {
+			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
+			nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
+		}
+	}
+
+	return state, nil
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
@@ -204,6 +236,75 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream grpc.ServerStreamingSer
 			ContentSize:   chunk.ContentSize,
 		})
 	})
+}
+
+func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
+	if req.NodeId == 0 {
+		return nil, fmt.Errorf("node_id must be non-zero")
+	}
+	if req.RaftAddress == "" {
+		return nil, fmt.Errorf("raft_address is required")
+	}
+	if req.ServiceAddress == "" {
+		return nil, fmt.Errorf("service_address is required")
+	}
+
+	// Forward to leader if not leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+		return client.AddLearner(ctx, req)
+	}
+
+	// On the leader: add peer to transport and service pool so we can reach it
+	impl.raftTransport.AddPeer(req.NodeId, req.RaftAddress)
+	if err := impl.servicePool.AddPeer(req.NodeId, req.ServiceAddress); err != nil {
+		impl.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add learner to service pool")
+	}
+
+	// Propose the ConfChange
+	if err := impl.node.AddLearner(ctx, req.NodeId, req.RaftAddress, req.ServiceAddress); err != nil {
+		return nil, fmt.Errorf("adding learner: %w", err)
+	}
+
+	return &clusterpb.AddLearnerResponse{}, nil
+}
+
+func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+	if req.NodeId == 0 {
+		return nil, fmt.Errorf("node_id must be non-zero")
+	}
+
+	// Forward to leader if not leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+		return client.PromoteLearner(ctx, req)
+	}
+
+	if err := impl.node.PromoteLearner(ctx, req.NodeId); err != nil {
+		return nil, fmt.Errorf("promoting learner: %w", err)
+	}
+
+	return &clusterpb.PromoteLearnerResponse{}, nil
 }
 
 func RegisterClusterService(server *grpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {

@@ -240,8 +240,12 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 	return t.connectionPool.Close()
 }
 
-// AddPeer adds a peer to the transport
+// AddPeer adds a peer to the transport. If the peer already exists, it is a no-op.
 func (t *DefaultTransport) AddPeer(id uint64, addr string) {
+	if _, exists := t.peers[id]; exists {
+		return
+	}
+
 	if err := t.connectionPool.AddPeer(id, addr); err != nil {
 		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
 		return
@@ -448,9 +452,11 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 
 	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
 	// This is a best effort to notify the send loop than the peer is now reachable
-	select {
-	case t.peers[peerID].reconnected <- struct{}{}:
-	default:
+	if peer, ok := t.peers[peerID]; ok {
+		select {
+		case peer.reconnected <- struct{}{}:
+		default:
+		}
 	}
 
 	// Receive all messages from the stream

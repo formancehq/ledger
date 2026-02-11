@@ -14,25 +14,25 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Ledger Deletion", func() {
+var _ = Describe("Ledger Deletion", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
 	)
 
 	const (
-		httpPort = 9600
-		grpcPort = 8600
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 	})
 
-	Context("When deleting a ledger", func() {
+	Context("When deleting a ledger", Ordered, func() {
 		var ledgerName = "test-ledger-to-delete"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			// Create a ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
@@ -93,10 +93,10 @@ var _ = Describe("Ledger Deletion", func() {
 		})
 	})
 
-	Context("When deleting a ledger with transactions", func() {
+	Context("When deleting a ledger with transactions", Ordered, func() {
 		var ledgerName = "ledger-with-transactions"
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			// Create a ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
