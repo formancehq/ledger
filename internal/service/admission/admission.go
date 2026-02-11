@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -612,6 +613,29 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs ma
 				if applyData.CreateTransaction.Force {
 					continue
 				}
+
+				// Numscript emulation: discover required accounts by running with infinite balances.
+				// This is needed because Numscript transactions have no explicit postings at admission
+				// time — the accounts are determined dynamically by the script at runtime.
+				if applyData.CreateTransaction.Script != nil &&
+					applyData.CreateTransaction.Script.Plain != "" &&
+					len(applyData.CreateTransaction.Postings) == 0 {
+					discovered, err := processing.DiscoverNumscriptVolumes(
+						applyData.CreateTransaction.Script.Plain,
+						applyData.CreateTransaction.Script.Vars,
+						ledgerID,
+					)
+					if err != nil {
+						a.logger.WithFields(map[string]any{
+							"error": err.Error(),
+						}).Info("Numscript emulation failed during volume discovery, skipping preload")
+					}
+					for key := range discovered {
+						neededVolumes[key] = struct{}{}
+					}
+					continue
+				}
+
 				for _, posting := range applyData.CreateTransaction.Postings {
 					// Source account needs balance check
 					neededVolumes[data.VolumeKey{

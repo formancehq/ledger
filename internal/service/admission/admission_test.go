@@ -847,3 +847,140 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		require.Equal(t, "EUR", revertOrder.OriginalPostings[0].Asset)
 	})
 }
+
+func TestExtractNeededVolumes_Numscript(t *testing.T) {
+	t.Parallel()
+
+	t.Run("discovers volumes from numscript script", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{
+									Plain: `
+										send [USD/2 1000] (
+											source = @users:alice
+											destination = @users:bob
+										)
+									`,
+								},
+								// No explicit postings — Numscript emulation should discover them
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+
+		// Numscript emulation should discover both source and destination
+		require.NotEmpty(t, volumes, "numscript emulation should discover volumes")
+
+		aliceKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:alice"},
+			Asset:      "USD/2",
+		}
+		bobKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "users:bob"},
+			Asset:      "USD/2",
+		}
+
+		_, hasAlice := volumes[aliceKey]
+		_, hasBob := volumes[bobKey]
+		require.True(t, hasAlice, "should discover source account from numscript")
+		require.True(t, hasBob, "should discover destination account from numscript")
+	})
+
+	t.Run("skips numscript emulation when force is true", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Force: true,
+								Script: &commonpb.Script{
+									Plain: `
+										send [USD/2 1000] (
+											source = @users:alice
+											destination = @users:bob
+										)
+									`,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+
+		// Force=true should skip volume extraction entirely
+		require.Empty(t, volumes, "force=true should skip numscript emulation")
+	})
+
+	t.Run("falls back to postings when script has explicit postings", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission := createTestAdmission(t, store)
+
+		// When both Script and Postings are present, explicit Postings take precedence
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{
+									Plain: `send [USD/2 1000] ( source = @world destination = @treasury )`,
+								},
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "bank",
+										Destination: "merchant",
+										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Asset:       "EUR",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+
+		// Should use explicit postings, not numscript emulation
+		require.Len(t, volumes, 2)
+
+		bankKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "bank"},
+			Asset:      "EUR",
+		}
+		merchantKey := data.VolumeKey{
+			AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "merchant"},
+			Asset:      "EUR",
+		}
+
+		_, hasBank := volumes[bankKey]
+		_, hasMerchant := volumes[merchantKey]
+		require.True(t, hasBank, "should use explicit posting source")
+		require.True(t, hasMerchant, "should use explicit posting destination")
+	})
+}

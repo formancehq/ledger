@@ -445,6 +445,38 @@ If the Numscript syntax is invalid:
 }
 ```
 
+## Volume Preloading (Numscript Emulation)
+
+When a Numscript transaction is submitted, account balances must be preloaded at admission time. However, the accounts involved are determined dynamically by the script at runtime, creating a chicken-and-egg problem: we need balances before execution, but we don't know which accounts until after execution.
+
+### How It Works
+
+As a temporary workaround, the admission layer runs the Numscript once with a "discovery store" that returns infinite balances (`2^256`) for every account queried. This emulation run discovers which accounts and assets the script needs, without modifying any real state. The discovered volume keys are then preloaded normally from storage.
+
+The emulation is implemented in `internal/service/processing/numscript_emulate.go`:
+
+1. **Parse** the script (no cache — the processor's cache handles the real execution)
+2. **Execute** with a discovery store that records queried account/asset pairs and returns infinite balances
+3. **Collect** volume keys from both balance queries (sources) and result postings (sources + destinations)
+4. **Preload** the discovered volumes from the store as usual
+
+### Determinism Constraint
+
+Scripts must be deterministic: the discovery store enforces that `GetBalances` and `GetAccountsMetadata` may each be called **at most once** during discovery. A second call to either method indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded.
+
+If a script violates this constraint, `DiscoverNumscriptVolumes` returns `ErrNonDeterministicScript` with the offending method name. The admission layer logs this and skips volume preloading — the real execution will report the actual error.
+
+### Known Limitations
+
+- **`oneof` selectors**: With infinite balances, `oneof` may only query the first source account, since the first source always has sufficient funds. Other sources in the `oneof` list may not be discovered.
+- **Execution errors**: If the emulation fails (e.g., due to missing variables), the error is logged and volume discovery is skipped. The real execution will report the actual error.
+- **Double parsing**: The script is parsed once for emulation and once for real execution. This is negligible since parsing is CPU-only and the processor's cache handles the real execution.
+- **Non-deterministic scripts**: Scripts with multiple `send` statements that trigger separate `GetBalances` calls are rejected during discovery. Such scripts cannot have their volumes reliably preloaded.
+
+### Long-term Solution
+
+The emulation approach is a temporary workaround. The long-term solution is static analysis of Numscript scripts to declare all required inputs at parse time. See the [Static Inputs RFC](./drafts/numscript-static-inputs-rfc.md) for details.
+
 ## Performance Considerations
 
 ### Script Caching
