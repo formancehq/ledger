@@ -17,3 +17,4 @@
 * Store request body + result in logs instead of resulting logs?
 * Mirror mode
 * Learners/bootstrap cluster
+* Extract HTTP layer into a compat service
