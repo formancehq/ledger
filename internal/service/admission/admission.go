@@ -917,7 +917,7 @@ func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint
 	}
 
 	if sequence == 0 {
-		return nil, fmt.Errorf("transaction %d not found", transactionID)
+		return nil, &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: transactionID}}
 	}
 
 	// Get the system log containing the transaction

@@ -107,6 +107,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
 	runCmd.Flags().Float64("health-wal-threshold", 0.8, "WAL volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
+	runCmd.Flags().Duration("health-clock-skew-threshold", 500*time.Millisecond, "Maximum allowed clock skew between nodes (0 to disable)")
 	runCmd.Flags().String("cluster-id", "", "Cluster ID for inter-node communication validation")
 
 	// Compactor configuration flags
@@ -332,6 +333,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.HealthConfig.Interval = getDuration("health-check-interval", 30*time.Second)
 	cfg.HealthConfig.WALThreshold, _ = cmd.Flags().GetFloat64("health-wal-threshold")
 	cfg.HealthConfig.DataThreshold, _ = cmd.Flags().GetFloat64("health-data-threshold")
+	cfg.HealthConfig.ClockSkewThreshold = getDuration("health-clock-skew-threshold", 500*time.Millisecond)
 
 	cfg.ClusterID = getString("cluster-id", "")
 

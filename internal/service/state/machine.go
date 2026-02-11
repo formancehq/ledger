@@ -46,6 +46,7 @@ type Machine struct {
 	lastCheckpointID uint64
 
 	lastAppliedIndex            uint64
+	lastAppliedTimestamp        uint64
 	snapshotIndex               uint64
 	generationRotationThreshold uint64
 
@@ -62,6 +63,11 @@ type Machine struct {
 
 func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, compactor *Compactor) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	lastAppliedTimestamp, err := dataStore.GetLastAppliedTimestamp()
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +90,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		logger:                      logger,
 		dataStore:                   dataStore,
 		lastAppliedIndex:            lastAppliedIndex,
+		lastAppliedTimestamp:        lastAppliedTimestamp,
 		generationRotationThreshold: generationRotationThreshold,
 		compactor:                   compactor,
 		logsAppendedCounter:         logsAppendedCounter,
@@ -196,6 +203,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
 		return nil, fmt.Errorf("setting applied index: %w", err)
+	}
+	if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
+		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 	if err := batch.Commit(); err != nil {
 		return nil, fmt.Errorf("committing batch: %w", err)
@@ -495,6 +505,19 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	return nil
 }
 
+// hlcTimestamp advances the Hybrid Logical Clock and returns the effective timestamp.
+// It guarantees monotonicity: each returned timestamp is strictly greater than the previous one.
+// If the proposal date is ahead of the last applied timestamp, it is used directly.
+// Otherwise, the last applied timestamp is incremented by 1 microsecond.
+func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Timestamp {
+	if proposalDate.Data > fsm.lastAppliedTimestamp {
+		fsm.lastAppliedTimestamp = proposalDate.Data
+	} else {
+		fsm.lastAppliedTimestamp++
+	}
+	return &commonpb.Timestamp{Data: fsm.lastAppliedTimestamp}
+}
+
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
@@ -502,8 +525,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
+	// Compute the effective date using the HLC to guarantee monotonicity
+	effectiveDate := fsm.hlcTimestamp(proposal.Date)
+
 	// Create buffer for this proposal
-	buffer := NewBuffer(proposal.Date, fsm)
+	buffer := NewBuffer(effectiveDate, fsm)
 
 	// Process the proposal
 	response, err := fsm.processor.ProcessProposal(proposal, buffer)
@@ -558,13 +584,14 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	snapshot := &raftcmdpb.MemorySnapshot{
-		NextLedgerId:      fsm.nextLedgerID,
-		NextSequenceId:    fsm.nextSequenceID,
-		LastLogHash:       fsm.lastLogHash,
-		Gen0:              serializeCacheGeneration(fsm.Cache, 0),
-		Gen1:              serializeCacheGeneration(fsm.Cache, 1),
-		CheckpointId:      checkpointID,
-		CurrentGeneration: fsm.Cache.CurrentGeneration,
+		NextLedgerId:        fsm.nextLedgerID,
+		NextSequenceId:      fsm.nextSequenceID,
+		LastLogHash:         fsm.lastLogHash,
+		Gen0:                serializeCacheGeneration(fsm.Cache, 0),
+		Gen1:                serializeCacheGeneration(fsm.Cache, 1),
+		CheckpointId:        checkpointID,
+		CurrentGeneration:   fsm.Cache.CurrentGeneration,
+		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
 	}
 
 	return proto.Marshal(snapshot)
@@ -739,6 +766,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
 	fsm.lastLogHash = memSnapshot.LastLogHash
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
+	fsm.lastAppliedTimestamp = memSnapshot.LastAppliedTimestamp
 
 	// Reset the cache and deserialize both generations into it
 	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)

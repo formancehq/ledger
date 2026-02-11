@@ -41,11 +41,12 @@ type Store struct {
 
 // Key prefixes for Pebble storage
 var (
-	keyPrefixLastAppliedIndex  byte = 0x00 // [keyPrefixLastAppliedIndex] -> uint64
-	keyPrefixLog               byte = 0x01 // [keyPrefixLog][sequence] -> Log
-	keyPrefixIdempotency       byte = 0x02 // [keyPrefixIdempotency][key] -> sequence
-	keyPrefixLedgerInfo        byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
-	keyPrefixTransactionUpdate byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
+	keyPrefixLastAppliedIndex     byte = 0x00 // [keyPrefixLastAppliedIndex] -> uint64
+	keyPrefixLog                  byte = 0x01 // [keyPrefixLog][sequence] -> Log
+	keyPrefixIdempotency          byte = 0x02 // [keyPrefixIdempotency][key] -> sequence
+	keyPrefixLedgerInfo           byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
+	keyPrefixLastAppliedTimestamp byte = 0x04 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
+	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 	KeyPrefixAttributes        byte = 0x09
 
 	AttributePrefixInput          = byte('I')
@@ -558,6 +559,26 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 func (s *Store) GetLastAppliedIndex() (uint64, error) {
 	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedIndex})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	if len(get) == 0 {
+		return 0, nil
+	}
+
+	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+// GetLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch).
+func (s *Store) GetLastAppliedTimestamp() (uint64, error) {
+	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedTimestamp})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil

@@ -170,6 +170,7 @@ func Module() fx.Option {
 					cfg.HealthConfig.Interval,
 					cfg.HealthConfig.WALThreshold,
 					cfg.HealthConfig.DataThreshold,
+					cfg.HealthConfig.ClockSkewThreshold,
 				)
 			},
 			httpcompat.NewServer,

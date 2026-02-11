@@ -58,7 +58,6 @@ Draft documents, RFCs, and exploratory designs.
 | [Testing](./testing.md) | Testing strategy and guidelines |
 | [Metrics](./metrics.md) | Application metrics reference |
 | [Correctness](./correctness.md) | Log integrity, hash chaining, and store verification |
-| [Sanity Check](./sanity-check.md) | Storage verification and troubleshooting |
 
 ### Numscript
 
