@@ -9,9 +9,10 @@ import (
 )
 
 type HealthConfig struct {
-	Interval      time.Duration
-	WALThreshold  float64
-	DataThreshold float64
+	Interval           time.Duration
+	WALThreshold       float64
+	DataThreshold      float64
+	ClockSkewThreshold time.Duration
 }
 
 type Config struct {

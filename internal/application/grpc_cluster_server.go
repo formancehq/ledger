@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"time"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -104,6 +105,12 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(_ context.Context, _ *cluster
 		DataVolumeBytes:      impl.collector.DataVolumeBytes(),
 		WalVolumeTotalBytes:  impl.collector.WALVolumeTotalBytes(),
 		DataVolumeTotalBytes: impl.collector.DataVolumeTotalBytes(),
+	}, nil
+}
+
+func (impl *ClusterServiceServerImpl) GetNodeTime(_ context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
+	return &clusterpb.NodeTime{
+		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
 }
 

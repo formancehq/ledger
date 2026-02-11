@@ -102,7 +102,7 @@ config:
       receptionQueues: [10, 2048, 2048]  # Reception queue capacities per priority (default: [10, 512, 512])
       sendQueues: [10, 1024, 1024]       # Send queue capacities per priority (default: [10, 512, 512])
 
-  # Health check configuration (disk usage thresholds)
+  # Health check configuration (disk usage and clock skew thresholds)
   health:
     # Interval between health checks (default: 30s)
     interval: "30s"
@@ -110,6 +110,8 @@ config:
     walThreshold: 0.8
     # Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)
     dataThreshold: 0.8
+    # Maximum allowed clock skew between nodes (default: 500ms, "0" to disable)
+    clockSkewThreshold: "500ms"
 
   # Debug logging
   debug: false

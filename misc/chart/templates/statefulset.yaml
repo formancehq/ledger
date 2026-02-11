@@ -134,6 +134,10 @@ spec:
         - name: HEALTH_DATA_THRESHOLD
           value: {{ .Values.config.health.dataThreshold | toString | quote }}
         {{- end }}
+        {{- if .Values.config.health.clockSkewThreshold }}
+        - name: HEALTH_CLOCK_SKEW_THRESHOLD
+          value: {{ .Values.config.health.clockSkewThreshold | quote }}
+        {{- end }}
         {{- end }}
         # Pebble configuration
         {{- if .Values.config.pebble }}

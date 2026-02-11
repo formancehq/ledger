@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ClusterService_GetClusterState_FullMethodName    = "/cluster.ClusterService/GetClusterState"
 	ClusterService_GetDiskUsage_FullMethodName       = "/cluster.ClusterService/GetDiskUsage"
+	ClusterService_GetNodeTime_FullMethodName        = "/cluster.ClusterService/GetNodeTime"
 	ClusterService_TransferLeadership_FullMethodName = "/cluster.ClusterService/TransferLeadership"
 )
 
@@ -34,6 +35,8 @@ type ClusterServiceClient interface {
 	GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*ClusterState, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(ctx context.Context, in *GetDiskUsageRequest, opts ...grpc.CallOption) (*DiskUsage, error)
+	// GetNodeTime returns the current physical clock time of the local node
+	GetNodeTime(ctx context.Context, in *GetNodeTimeRequest, opts ...grpc.CallOption) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
 }
@@ -66,6 +69,16 @@ func (c *clusterServiceClient) GetDiskUsage(ctx context.Context, in *GetDiskUsag
 	return out, nil
 }
 
+func (c *clusterServiceClient) GetNodeTime(ctx context.Context, in *GetNodeTimeRequest, opts ...grpc.CallOption) (*NodeTime, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeTime)
+	err := c.cc.Invoke(ctx, ClusterService_GetNodeTime_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clusterServiceClient) TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TransferLeadershipResponse)
@@ -86,6 +99,8 @@ type ClusterServiceServer interface {
 	GetClusterState(context.Context, *GetClusterStateRequest) (*ClusterState, error)
 	// GetDiskUsage returns the disk usage of the local node
 	GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error)
+	// GetNodeTime returns the current physical clock time of the local node
+	GetNodeTime(context.Context, *GetNodeTimeRequest) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
@@ -103,6 +118,9 @@ func (UnimplementedClusterServiceServer) GetClusterState(context.Context, *GetCl
 }
 func (UnimplementedClusterServiceServer) GetDiskUsage(context.Context, *GetDiskUsageRequest) (*DiskUsage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDiskUsage not implemented")
+}
+func (UnimplementedClusterServiceServer) GetNodeTime(context.Context, *GetNodeTimeRequest) (*NodeTime, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNodeTime not implemented")
 }
 func (UnimplementedClusterServiceServer) TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransferLeadership not implemented")
@@ -164,6 +182,24 @@ func _ClusterService_GetDiskUsage_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_GetNodeTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeTimeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetNodeTime(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_GetNodeTime_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetNodeTime(ctx, req.(*GetNodeTimeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ClusterService_TransferLeadership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TransferLeadershipRequest)
 	if err := dec(in); err != nil {
@@ -196,6 +232,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDiskUsage",
 			Handler:    _ClusterService_GetDiskUsage_Handler,
+		},
+		{
+			MethodName: "GetNodeTime",
+			Handler:    _ClusterService_GetNodeTime_Handler,
 		},
 		{
 			MethodName: "TransferLeadership",

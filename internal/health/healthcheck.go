@@ -13,8 +13,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 )
 
-// ErrUnhealthy is returned when the cluster is not healthy (e.g. disk usage exceeded threshold).
-var ErrUnhealthy = errors.New("cluster is unhealthy: disk usage exceeds threshold")
+// ErrUnhealthy is returned when the cluster is not healthy (e.g. disk usage or clock skew exceeded threshold).
+var ErrUnhealthy = errors.New("cluster is unhealthy")
 
 // Checker is the interface for health checking. It allows consumers (e.g. admission)
 // to query the cluster health without depending on a concrete implementation.
@@ -24,7 +24,7 @@ type Checker interface {
 	IsHealthy() bool
 }
 
-// HealthChecker periodically checks disk usage across all cluster nodes.
+// HealthChecker periodically checks disk usage and clock skew across all cluster nodes.
 // It runs on every node but only performs checks when the node is the leader.
 // The health state is stored and can be queried via IsHealthy().
 type HealthChecker struct {
@@ -35,8 +35,9 @@ type HealthChecker struct {
 	logger      logging.Logger
 	interval    time.Duration
 
-	walThreshold  float64
-	dataThreshold float64
+	walThreshold       float64
+	dataThreshold      float64
+	clockSkewThreshold time.Duration
 
 	healthy atomic.Bool
 
@@ -45,7 +46,7 @@ type HealthChecker struct {
 }
 
 // NewHealthChecker creates a new HealthChecker that periodically polls disk usage
-// from all cluster nodes and logs warnings when usage exceeds the per-volume thresholds.
+// and clock skew from all cluster nodes and logs warnings when thresholds are exceeded.
 func NewHealthChecker(
 	n *node.Node,
 	collector *diskusage.Collector,
@@ -55,18 +56,20 @@ func NewHealthChecker(
 	interval time.Duration,
 	walThreshold float64,
 	dataThreshold float64,
+	clockSkewThreshold time.Duration,
 ) *HealthChecker {
 	hc := &HealthChecker{
-		node:          n,
-		collector:     collector,
-		servicePool:   servicePool,
-		peers:         peers,
-		logger:        logger,
-		interval:      interval,
-		walThreshold:  walThreshold,
-		dataThreshold: dataThreshold,
-		stopCh:        make(chan struct{}),
-		doneCh:        make(chan struct{}),
+		node:               n,
+		collector:          collector,
+		servicePool:        servicePool,
+		peers:              peers,
+		logger:             logger,
+		interval:           interval,
+		walThreshold:       walThreshold,
+		dataThreshold:      dataThreshold,
+		clockSkewThreshold: clockSkewThreshold,
+		stopCh:             make(chan struct{}),
+		doneCh:             make(chan struct{}),
 	}
 	hc.healthy.Store(true)
 	return hc
@@ -124,21 +127,20 @@ func (hc *HealthChecker) check() {
 		if conn == nil {
 			hc.logger.WithFields(map[string]any{
 				"node_id": peer.ID,
-			}).Errorf("No connection to peer, skipping disk usage check")
+			}).Errorf("No connection to peer, skipping health check")
 			continue
 		}
 
 		client := clusterpb.NewClusterServiceClient(conn)
+
+		// Check disk usage
 		resp, err := client.GetDiskUsage(context.Background(), &clusterpb.GetDiskUsageRequest{})
 		if err != nil {
 			hc.logger.WithFields(map[string]any{
 				"node_id": peer.ID,
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
-			continue
-		}
-
-		if hc.exceedsThreshold(
+		} else if hc.exceedsThreshold(
 			peer.ID,
 			resp.WalVolumeBytes,
 			resp.WalVolumeTotalBytes,
@@ -146,6 +148,13 @@ func (hc *HealthChecker) check() {
 			resp.DataVolumeTotalBytes,
 		) {
 			healthy = false
+		}
+
+		// Check clock skew
+		if hc.clockSkewThreshold > 0 {
+			if hc.exceedsClockSkew(client, peer.ID) {
+				healthy = false
+			}
 		}
 	}
 
@@ -186,4 +195,38 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 	}
 
 	return exceeded
+}
+
+// exceedsClockSkew queries a peer's physical clock and returns true if the skew
+// exceeds the configured threshold.
+func (hc *HealthChecker) exceedsClockSkew(client clusterpb.ClusterServiceClient, nodeID uint64) bool {
+	beforeCall := time.Now()
+	resp, err := client.GetNodeTime(context.Background(), &clusterpb.GetNodeTimeRequest{})
+	if err != nil {
+		hc.logger.WithFields(map[string]any{
+			"node_id": nodeID,
+			"error":   err,
+		}).Errorf("Failed to get node time from peer")
+		return false
+	}
+	afterCall := time.Now()
+
+	// Use the midpoint of the request as the local reference time to account for network RTT
+	localTime := beforeCall.Add(afterCall.Sub(beforeCall) / 2)
+	remoteTime := time.UnixMicro(int64(resp.TimestampUs))
+
+	skew := localTime.Sub(remoteTime)
+	if skew < 0 {
+		skew = -skew
+	}
+
+	if skew > hc.clockSkewThreshold {
+		hc.logger.WithFields(map[string]any{
+			"node_id": nodeID,
+			"skew":    skew.String(),
+		}).Errorf("Clock skew exceeds threshold (%s)", hc.clockSkewThreshold)
+		return true
+	}
+
+	return false
 }

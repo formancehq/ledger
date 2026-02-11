@@ -138,6 +138,67 @@ The checker (`internal/service/check/checker.go`) takes a `*data.Store` and `*at
 
 Progress events are emitted every 100 logs and at the end of the replay.
 
+## Hybrid Logical Clock (HLC)
+
+A Hybrid Logical Clock ensures that all timestamps produced by the FSM are **strictly monotonically increasing**, regardless of clock skew between Raft nodes. This is critical because the leader can change at any time, and the new leader's physical clock may be behind the previous leader's clock.
+
+### Problem
+
+Without an HLC, when the leader changes:
+
+1. Leader A proposes entries with timestamp `T=1000`
+2. Leader B takes over, but its clock reads `T=950`
+3. Leader B's proposals would get timestamps **earlier** than Leader A's, breaking monotonicity
+
+This can lead to logs and transactions with out-of-order timestamps, violating the expected temporal ordering.
+
+### Algorithm
+
+The HLC is computed in the FSM during `applyProposal()`:
+
+```
+effectiveDate = max(proposalDate, lastAppliedTimestamp + 1)
+```
+
+Since timestamps are stored as `uint64` microseconds since epoch, `+1` represents a 1-microsecond increment.
+
+More precisely:
+
+```go
+if proposalDate > lastAppliedTimestamp {
+    lastAppliedTimestamp = proposalDate
+} else {
+    lastAppliedTimestamp++
+}
+```
+
+This guarantees `timestamp(entry N+1) > timestamp(entry N)` for all entries.
+
+### Why at the FSM Level
+
+The HLC is implemented in the FSM (not in the admission layer) for several reasons:
+
+1. **Deterministic**: All nodes (leader + followers) compute the same effective timestamp for each entry
+2. **No leader-change handling needed**: The FSM state persists the last applied timestamp; a new leader automatically benefits from the HLC state
+3. **Minimal surface area**: Only the FSM and persistence layer are affected; admission and processor remain untouched
+
+### State Persistence
+
+The `lastAppliedTimestamp` is maintained as volatile state in the `Machine` (FSM). It is:
+
+- **Persisted to disk** via `SetLastAppliedTimestamp()` in every `ApplyEntries()` batch, alongside the Raft applied index
+- **Loaded at startup** from the data store via `GetLastAppliedTimestamp()`
+- **Included in Raft snapshots** via the `last_applied_timestamp` field in `MemorySnapshot`
+- **Restored** when a node installs a snapshot from the leader
+
+See [Hybrid Logical Clock Architecture](./architecture/hybrid-logical-clock.md) for a detailed technical description.
+
+### Clock Skew Check
+
+As a complementary safety mechanism, the `HealthChecker` periodically queries each peer's physical clock via the `GetNodeTime` gRPC RPC. If the absolute skew between any two nodes exceeds the configured threshold (`--health-clock-skew-threshold`, default 500ms), the cluster is marked unhealthy and the admission layer rejects new write operations. This ensures operators are alerted to NTP issues before the HLC has to compensate excessively, which would degrade timestamp quality.
+
+See [Clock Skew Check](./architecture/hybrid-logical-clock.md#clock-skew-check) for details.
+
 ## Integrity Guarantees
 
 1. **Tamper detection**: Modifying any historical log invalidates all subsequent hashes in the chain
@@ -146,3 +207,4 @@ Progress events are emitted every 100 logs and at the end of the replay.
 4. **Crash recovery**: The hash chain survives node restarts via Raft snapshot persistence
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
 6. **Full store verification**: The `store check` command validates the entire log chain and all derived data (volumes, metadata) against the source of truth (logs)
+7. **Timestamp monotonicity**: The Hybrid Logical Clock guarantees that every log has a strictly increasing timestamp, even across leader changes and clock skew

@@ -51,3 +51,6 @@ Idempotency key mechanism for safe request retries, hash-based conflict detectio
 
 ### [Disk Space Limiting](./disk-space-limiting.md)
 Cluster-wide disk space monitoring with per-volume thresholds that automatically reject write operations when storage usage is too high.
+
+### [Hybrid Logical Clock](./hybrid-logical-clock.md)
+Monotonic timestamp generation using a Hybrid Logical Clock (HLC) in the FSM to guarantee strictly increasing timestamps across leader changes and clock skew.

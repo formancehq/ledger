@@ -16,6 +16,9 @@ service ClusterService {
   // GetDiskUsage returns the disk usage of the local node
   rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage);
 
+  // GetNodeTime returns the current physical clock time of the local node
+  rpc GetNodeTime(GetNodeTimeRequest) returns (NodeTime);
+
   // TransferLeadership transfers Raft leadership to a specific node
   rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
 }
@@ -81,6 +84,17 @@ message TransferLeadershipResponse {
 }
 
 message GetDiskUsageRequest {}
+
+// ============================================================================
+// Node Time Messages
+// ============================================================================
+
+message GetNodeTimeRequest {}
+
+// NodeTime represents the current physical clock time of a node
+message NodeTime {
+  uint64 timestamp_us = 1;  // Current time in microseconds since epoch
+}
 
 // DiskUsage represents the disk space used by storage components on a node
 message DiskUsage {

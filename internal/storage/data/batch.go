@@ -47,6 +47,21 @@ func (b *Batch) SetAppliedIndex(index uint64) error {
 	return nil
 }
 
+// SetLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
+func (b *Batch) SetLastAppliedTimestamp(ts uint64) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixLastAppliedTimestamp)
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, ts)
+	if err := b.batch.Set(b.KeyBuilder.Build(), value, pebble.NoSync); err != nil {
+		return fmt.Errorf("updating last applied timestamp: %w", err)
+	}
+	return nil
+}
+
 // AppendLogs appends system logs to the batch.
 func (b *Batch) AppendLogs(logs ...*commonpb.Log) error {
 	if b.committed {

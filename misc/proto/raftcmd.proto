@@ -208,6 +208,7 @@ message MemorySnapshot {
   GenerationSnapshot gen1 = 5;  // May be nil
   uint64 checkpoint_id = 6;
   uint64 current_generation = 7;
+  uint64 last_applied_timestamp = 8;  // HLC timestamp (microseconds since epoch)
 }
 
 message GenerationSnapshot {
