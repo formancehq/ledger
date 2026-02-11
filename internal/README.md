@@ -1019,8 +1019,8 @@ type GetAggregatedVolumesOptions struct {
 
 ```go
 type GetVolumesOptions struct {
-    UseInsertionDate bool `json:"useInsertionDate"`
-    GroupLvl         int  `json:"groupLvl"`
+    UseInsertionDate bool `json:"insertionDate"`
+    GroupLvl         int  `json:"groupBy"`
 }
 ```
 
