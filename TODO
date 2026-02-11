@@ -11,11 +11,9 @@
 * Branches
 * Chart of account pattern recognition
 * Backup restoration
-* Add new node
 * Signed request
 * Store request body + result in logs instead of resulting logs?
 * Mirror mode
-* Learners/bootstrap cluster
 * Extract HTTP layer into a compat service
 * Date precision nano?
 * Checker add transactions
