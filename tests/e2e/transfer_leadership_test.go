@@ -79,9 +79,9 @@ var _ = Describe("Leadership transfer", func() {
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1),
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-					testserver.WithRaftTickInterval(100*time.Millisecond),
+					testserver.WithRaftTickInterval(50*time.Millisecond),
 					testserver.WithRaftHeartbeatTick(1),
-					testserver.WithRaftElectionTick(20),
+					testserver.WithRaftElectionTick(10),
 					testserver.WithPeers(func() []node.Peer {
 						ret := make([]node.Peer, 0, countInstances-1)
 						for j := range countInstances {

@@ -369,8 +369,8 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 			testserver.WithSnapshotThreshold(10),
 			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
 			testserver.WithRaftTickInterval(10*time.Millisecond),
-			testserver.WithRaftHeartbeatTick(10),
-			testserver.WithRaftElectionTick(100),
+			testserver.WithRaftHeartbeatTick(1),
+			testserver.WithRaftElectionTick(10),
 			// No peers needed for single-node cluster
 		),
 	)
@@ -395,7 +395,7 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		return state.Leader != 0
-	}).Within(15 * time.Second).To(BeTrue())
+	}).Within(5 * time.Second).To(BeTrue())
 
 	return ctx, grpcClient, clusterClient
 }

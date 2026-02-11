@@ -81,9 +81,9 @@ var _ = Describe("Simple cluster", func() {
 					testserver.WithSnapshotThreshold(10),
 					testserver.WithRaftCompactionMargin(1), // Default is 1000, since we override the default snapshot threshold, we need to adjust this value
 					testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-					testserver.WithRaftTickInterval(100*time.Millisecond),
+					testserver.WithRaftTickInterval(10*time.Millisecond),
 					testserver.WithRaftHeartbeatTick(1),
-					testserver.WithRaftElectionTick(20),
+					testserver.WithRaftElectionTick(10),
 					testserver.WithPeers(func() []node.Peer {
 						ret := make([]node.Peer, 0, countInstances-1)
 						for j := range countInstances {
@@ -146,7 +146,7 @@ var _ = Describe("Simple cluster", func() {
 		BeforeEach(func() {
 			followerID = ((leaderID + 1) % countInstances) + 1
 			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
-			<-time.After(time.Second)
+			<-time.After(200 * time.Millisecond)
 			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 		})
 		It("Should properly rejoin the cluster", func() {
@@ -325,7 +325,7 @@ var _ = Describe("Simple cluster", func() {
 							By("Stopping the follower", func() {
 								Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
 							})
-							<-time.After(time.Second)
+							<-time.After(500 * time.Millisecond)
 							By("Starting the follower", func() {
 								Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 							})

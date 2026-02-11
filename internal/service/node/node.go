@@ -884,7 +884,7 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 
 	// Poll lastSoftState to confirm the leader has changed
 	timeout := time.Duration(2*node.config.ElectionTick) * node.config.TickInterval
-	if timeout == 0 {
+	if timeout < 2*time.Second {
 		timeout = 2 * time.Second
 	}
 
