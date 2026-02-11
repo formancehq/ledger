@@ -279,37 +279,31 @@ spec:
         - |
           # Calculate node ID from pod index (pod index 0 -> node ID 1, etc.)
           NODE_ID=$((POD_INDEX + 1))
-          
+
           # Extract Raft transport port from BIND_ADDR (format: 0.0.0.0:7777)
           RAFT_PORT=$(echo $BIND_ADDR | cut -d: -f2)
-          
+
           # Generate ADVERTISE_ADDR from pod name (uses Raft transport port)
           ADVERTISE_ADDR="${POD_NAME}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${RAFT_PORT}"
-          
-          # Generate peers list (all nodes except current)
-          # Format: <id>/<raftAddress>/<serviceAddress>
-          PEERS_LIST=""
-          for i in $(seq 0 $(({{ .Values.replicaCount }} - 1))); do
-            if [ $i -ne $POD_INDEX ]; then
-              NODE_NUM=$((i + 1))
-              PEER_HOST="{{ include "ledger-v3-poc.fullname" . }}-${i}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local"
-              RAFT_ADDR="${PEER_HOST}:${RAFT_PORT}"
-              SERVICE_ADDR="${PEER_HOST}:${GRPC_PORT}"
-              if [ -z "$PEERS_LIST" ]; then
-                PEERS_LIST="--peers ${NODE_NUM}/${RAFT_ADDR}/${SERVICE_ADDR}"
-              else
-                PEERS_LIST="${PEERS_LIST} --peers ${NODE_NUM}/${RAFT_ADDR}/${SERVICE_ADDR}"
-              fi
-            fi
-          done
+
+          # Bootstrap/Join: pod-0 bootstraps, others join pod-0
+          if [ "$POD_INDEX" = "0" ]; then
+            CLUSTER_FLAG="--bootstrap"
+          else
+            BOOTSTRAP_HOST="{{ include "ledger-v3-poc.fullname" . }}-0.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local"
+            CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
+          fi
 
           OTEL_RESOURCE_ATTRIBUTES="service.node_id=$NODE_ID"
-          
+
           # Execute the application
           exec ./ledger-v3-poc run \
             --node-id $NODE_ID \
             --advertise-addr "$ADVERTISE_ADDR" \
-            $PEERS_LIST
+            {{- if .Values.config.raft.learnerPromotionThreshold }}
+            --learner-promotion-threshold {{ .Values.config.raft.learnerPromotionThreshold }} \
+            {{- end }}
+            $CLUSTER_FLAG
         volumeMounts:
         - name: wal
           mountPath: {{ .Values.config.walDir }}

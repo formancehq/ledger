@@ -156,6 +156,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`cluster_disk_usage.go`** : `cluster disk-usage` command to display storage disk usage via gRPC
 - **`cluster_transfer_leader.go`** : `cluster transfer-leader` command to transfer Raft leadership via gRPC
 - **`cluster_add_learner.go`** : `cluster add-learner` command to add a non-voting learner node via gRPC
+- **`cluster_promote_learner.go`** : `cluster promote-learner` command to promote a learner to voter via gRPC
 
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
@@ -368,7 +369,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/common.proto` - Common types (Posting, Transaction, Log, etc.)
   - `misc/proto/raftcmd.proto` - FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
   - `misc/proto/service.proto` - gRPC service definitions (LedgerService)
-  - `misc/proto/cluster.proto` - Cluster state messages
+  - `misc/proto/cluster.proto` - Cluster management (ClusterService: GetClusterState, TransferLeader, AddLearner, PromoteLearner, Backup)
   - `misc/proto/snapshot.proto` - Snapshot service definitions
   - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
 - **Generated code**: 

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 )
 
 // Option functions
@@ -60,12 +59,16 @@ func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
 	}
 }
 
-func WithPeers(peers ...node.Peer) testservice.InstrumentationFunc {
+func WithBootstrap() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		for _, peer := range peers {
-			// Format: <id>/<raftAddress>/<serviceAddress>
-			cfg.AppendArgs("--peers", fmt.Sprintf("%d/%s/%s", peer.ID, peer.Address, peer.ServiceAddress))
-		}
+		cfg.AppendArgs("--bootstrap")
+		return nil
+	}
+}
+
+func WithAutoPromoteThreshold(threshold uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--learner-promotion-threshold", fmt.Sprintf("%d", threshold))
 		return nil
 	}
 }

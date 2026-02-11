@@ -104,7 +104,7 @@ type Node struct {
 	readies           chan raft.Ready
 	readyTerminated   chan raft.Ready
 	tasks             *taskSet
-	stopChannel       chan chan struct{}
+	stopChannel chan chan struct{}
 
 	// Metrics
 	applyEntriesHistogram             metric.Int64Histogram
@@ -155,21 +155,19 @@ func NewNode(
 			learners []uint64
 		)
 
-		if cfg.Join {
-			// Join mode: only include existing peers as voters.
-			// Self is NOT included – the leader will add us as a learner via ConfChange.
+		if cfg.Bootstrap {
+			// Bootstrap mode: this node is the sole voter in a new cluster.
+			voters = []uint64{cfg.NodeID}
+		} else if len(cfg.Peers) > 0 {
+			// Join mode: existing peers are voters, self joins as learner.
+			// The leader will add us via ConfChange after we start.
 			voters = make([]uint64, 0, len(cfg.Peers))
 			for _, peerEntry := range cfg.Peers {
 				voters = append(voters, peerEntry.ID)
 			}
 			learners = []uint64{cfg.NodeID}
 		} else {
-			// Normal mode: include self and all peers as voters.
-			voters = make([]uint64, 0, len(cfg.Peers)+1)
-			voters = append(voters, cfg.NodeID)
-			for _, peerEntry := range cfg.Peers {
-				voters = append(voters, peerEntry.ID)
-			}
+			return nil, fmt.Errorf("first start requires --bootstrap or --join")
 		}
 
 		data, err := fsm.CreateSnapshot(context.Background())
@@ -225,7 +223,7 @@ func NewNode(
 		readies:                 make(chan raft.Ready, 1),
 		readyTerminated:         make(chan raft.Ready, 1),
 		tasks:                   newTaskSet(),
-		stopChannel:             make(chan chan struct{}),
+		stopChannel: make(chan chan struct{}),
 	}
 
 	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
@@ -655,6 +653,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			status := node.status.Load()
 			if status != statusSyncing && status != statusOutOfSync {
 				node.rawNode.Tick()
+				if node.config.AutoPromoteThreshold > 0 {
+					node.checkAndPromoteLearners()
+				}
 			}
 		case msgs := <-node.transport.RecvHighPriority():
 			if err := stepMessages(msgs); err != nil {
@@ -1177,6 +1178,75 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 		return node.rawNode.ProposeConfChange(cc)
 	})
+}
+
+// PromoteLearner proposes promoting a learner node to a full voter.
+// Must be called on the leader.
+func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		prog, ok := status.Progress[nodeID]
+		if !ok {
+			return fmt.Errorf("node %d is not a known cluster member", nodeID)
+		}
+		if !prog.IsLearner {
+			return fmt.Errorf("node %d is already a voter", nodeID)
+		}
+
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{
+				{
+					Type:   raftpb.ConfChangeAddNode,
+					NodeID: nodeID,
+				},
+			},
+		}
+
+		return node.rawNode.ProposeConfChange(cc)
+	})
+}
+
+// checkAndPromoteLearners checks all learner nodes and promotes those that are
+// caught up (within AutoPromoteThreshold of the commit index).
+// Must be called from the orchestrate loop (rawNode is not thread-safe).
+func (node *Node) checkAndPromoteLearners() {
+	status := node.rawNode.Status()
+	if status.RaftState != raft.StateLeader {
+		return
+	}
+
+	for id, prog := range status.Progress {
+		if !prog.IsLearner || !prog.RecentActive || prog.Match == 0 {
+			continue
+		}
+		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
+			node.logger.WithFields(map[string]any{
+				"node_id":   id,
+				"match":     prog.Match,
+				"commit":    status.Commit,
+				"threshold": node.config.AutoPromoteThreshold,
+			}).Infof("Auto-promoting learner to voter")
+
+			cc := raftpb.ConfChangeV2{
+				Changes: []raftpb.ConfChangeSingle{
+					{
+						Type:   raftpb.ConfChangeAddNode,
+						NodeID: id,
+					},
+				},
+			}
+			if err := node.rawNode.ProposeConfChange(cc); err != nil {
+				node.logger.WithFields(map[string]any{
+					"node_id": id,
+					"error":   err,
+				}).Errorf("Failed to propose learner promotion")
+			}
+		}
+	}
 }
 
 type Proposal struct {

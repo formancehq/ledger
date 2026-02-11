@@ -97,6 +97,7 @@ config:
     maxInflightMsgs: 512      # Maximum number of in-flight messages (default: 256)
     tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
     proposeQueueCapacity: 512 # Capacity of the propose queue (default: 100)
+    learnerPromotionThreshold: 100 # Max log entry lag before auto-promoting a learner to voter (0 = disable)
     # Transport queue configuration
     transport:
       receptionQueues: [10, 2048, 2048]  # Reception queue capacities per priority (default: [10, 512, 512])

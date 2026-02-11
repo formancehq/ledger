@@ -34,13 +34,7 @@ func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint6
 }
 
 var _ = Describe("Learner node", func() {
-	const (
-		countInstances      = 3
-		nodeRaftBasePort    = 6400
-		nodeServiceBasePort = 8400
-		nodeHTTPBasePort    = 9400
-		gatewayBasePort     = 6500
-	)
+	const countInstances = 3
 
 	Context("When adding a learner via AddLearner RPC", Ordered, func() {
 		var (
@@ -51,13 +45,13 @@ var _ = Describe("Learner node", func() {
 
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = setupMultiNodeCluster(
-				countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 			)
 
 			_, err := servers[*leaderID-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:16400",
-				ServiceAddress: "127.0.0.1:18400",
+				RaftAddress:    "127.0.0.1:19000",
+				ServiceAddress: "127.0.0.1:19100",
 			})
 			Expect(err).To(Succeed())
 
@@ -160,6 +154,143 @@ var _ = Describe("Learner node", func() {
 		})
 	})
 
+	Context("When promoting a learner via PromoteLearner RPC", Ordered, func() {
+		var (
+			ctx      context.Context
+			servers  []*serviceWithClient
+			leaderID *uint64
+		)
+
+		BeforeAll(func() {
+			ctx, servers, _, leaderID = setupMultiNodeCluster(
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
+			)
+
+			_, err := servers[*leaderID-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+				NodeId:         4,
+				RaftAddress:    "127.0.0.1:19000",
+				ServiceAddress: "127.0.0.1:19100",
+			})
+			Expect(err).To(Succeed())
+
+			waitForLearner(servers[*leaderID-1].clusterClient, *leaderID, 4)
+		})
+
+		AfterAll(func() {
+			stopServers(ctx, servers)
+		})
+
+		It("should promote the learner to voter", func() {
+			lid := *leaderID
+			_, err := servers[lid-1].clusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
+				NodeId: 4,
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				state, err := servers[lid-1].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				for _, n := range state.Nodes {
+					if n.Id == 4 {
+						g.Expect(n.Suffrage).To(Equal("Voter"))
+						return
+					}
+				}
+				g.Expect(false).To(BeTrue(), "Node 4 should be in cluster state")
+			}).Should(Succeed())
+		})
+
+		It("should have 4 voters after promotion", func() {
+			lid := *leaderID
+			state, err := servers[lid-1].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			Expect(err).To(Succeed())
+
+			voterCount := 0
+			for _, n := range state.Nodes {
+				if n.Suffrage == "Voter" {
+					voterCount++
+				}
+			}
+			Expect(voterCount).To(Equal(4), "should have 4 voters after promotion")
+		})
+
+		It("should forward promote-learner from follower to leader", func() {
+			lid := *leaderID
+
+			_, err := servers[lid-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+				NodeId:         5,
+				RaftAddress:    "127.0.0.1:19001",
+				ServiceAddress: "127.0.0.1:19101",
+			})
+			Expect(err).To(Succeed())
+			waitForLearner(servers[lid-1].clusterClient, lid, 5)
+
+			followerID := ((lid + 1) % countInstances) + 1
+			_, err = servers[followerID-1].clusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
+				NodeId: 5,
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				state, err := servers[lid-1].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				for _, n := range state.Nodes {
+					if n.Id == 5 {
+						g.Expect(n.Suffrage).To(Equal("Voter"))
+						return
+					}
+				}
+				g.Expect(false).To(BeTrue(), "Node 5 should be in cluster state")
+			}).Should(Succeed())
+		})
+	})
+
+	Context("Auto-promotion of learner nodes via bootstrap/join", Ordered, func() {
+		var (
+			ctx     context.Context
+			servers []*serviceWithClient
+		)
+
+		BeforeAll(func() {
+			ctx, servers, _, _ = setupMultiNodeCluster(
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
+			)
+		})
+
+		AfterAll(func() {
+			stopServers(ctx, servers)
+		})
+
+		It("should have all nodes as voters after auto-promotion", func() {
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			Expect(err).To(Succeed())
+
+			Expect(state.Nodes).To(HaveLen(countInstances))
+			for _, n := range state.Nodes {
+				Expect(n.Suffrage).To(Equal("Voter"), fmt.Sprintf("Node %d should be a voter", n.Id))
+			}
+		})
+
+		It("should accept transactions through all nodes after auto-promotion", func() {
+			ledgerName := "auto-promote-test"
+			_, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			for i := range countInstances {
+				_, err := servers[i].client.Apply(ctx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						}, nil, nil),
+					},
+				})
+				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
+			}
+		})
+	})
+
 	Context("Learner edge cases", Ordered, func() {
 		var (
 			ctx      context.Context
@@ -169,7 +300,7 @@ var _ = Describe("Learner node", func() {
 
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = setupMultiNodeCluster(
-				countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 			)
 		})
 
@@ -181,8 +312,8 @@ var _ = Describe("Learner node", func() {
 			lid := *leaderID
 			_, err := servers[lid-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:16400",
-				ServiceAddress: "127.0.0.1:18400",
+				RaftAddress:    "127.0.0.1:19000",
+				ServiceAddress: "127.0.0.1:19100",
 			})
 			Expect(err).To(Succeed())
 
@@ -190,8 +321,8 @@ var _ = Describe("Learner node", func() {
 
 			_, err = servers[lid-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:16400",
-				ServiceAddress: "127.0.0.1:18400",
+				RaftAddress:    "127.0.0.1:19000",
+				ServiceAddress: "127.0.0.1:19100",
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -202,8 +333,8 @@ var _ = Describe("Learner node", func() {
 
 			_, err := servers[followerID-1].clusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         5,
-				RaftAddress:    "127.0.0.1:16500",
-				ServiceAddress: "127.0.0.1:18500",
+				RaftAddress:    "127.0.0.1:19001",
+				ServiceAddress: "127.0.0.1:19101",
 			})
 			Expect(err).To(Succeed())
 

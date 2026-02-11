@@ -22,11 +22,18 @@ Correspondingly, each node maintains **two connection pools**:
 
 ### Peer Configuration
 
-Peers are configured with both addresses using the format: `<id>/<raftAddress>/<serviceAddress>`
+Peers are discovered dynamically using the bootstrap/join model:
 
 ```bash
---peers "1/node-1:7777/node-1:8888,2/node-2:7777/node-2:8888"
+# First node bootstraps a new cluster
+./ledger-v3-poc run --node-id 1 --bootstrap
+
+# Other nodes join the bootstrap node
+./ledger-v3-poc run --node-id 2 --join node-1:8888
+./ledger-v3-poc run --node-id 3 --join node-1:8888
 ```
+
+When a node joins, it discovers all existing cluster members via `GetClusterState` and registers itself as a learner. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
 
 The Raft transport handles internal inter-node communication for consensus:
 

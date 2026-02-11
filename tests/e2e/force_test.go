@@ -19,8 +19,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9500
-		grpcPort = 8500
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

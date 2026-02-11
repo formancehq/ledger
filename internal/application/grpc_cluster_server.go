@@ -19,12 +19,14 @@ import (
 
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
-	node           *node.Node
-	raftTransport  *node.DefaultTransport
-	servicePool    *transport.ServiceConnectionPool
-	collector      *diskusage.Collector
-	store          *data.Store
-	logger         logging.Logger
+	node              *node.Node
+	raftTransport     *node.DefaultTransport
+	servicePool       *transport.ServiceConnectionPool
+	collector         *diskusage.Collector
+	store             *data.Store
+	logger            logging.Logger
+	localRaftAddr     string // This node's own Raft advertise address
+	localServiceAddr  string // This node's own gRPC service address
 }
 
 func NewClusterServiceServer(
@@ -34,14 +36,18 @@ func NewClusterServiceServer(
 	collector *diskusage.Collector,
 	store *data.Store,
 	logger logging.Logger,
+	localRaftAddr string,
+	localServiceAddr string,
 ) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
-		node:          node,
-		raftTransport: raftTransport,
-		servicePool:   servicePool,
-		collector:     collector,
-		store:         store,
-		logger:        logger.WithField("component", "cluster-server"),
+		node:             node,
+		raftTransport:    raftTransport,
+		servicePool:      servicePool,
+		collector:        collector,
+		store:            store,
+		logger:           logger.WithField("component", "cluster-server"),
+		localRaftAddr:    localRaftAddr,
+		localServiceAddr: localServiceAddr,
 	}
 }
 
@@ -89,10 +95,16 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	}
 
 	// Populate peer addresses from transport and service pool
+	localNodeID := impl.node.GetNodeID()
 	for _, nodeInfo := range state.Nodes {
 		nodeID := uint64(nodeInfo.Id)
-		nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
-		nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
+		if nodeID == localNodeID {
+			nodeInfo.RaftAddress = impl.localRaftAddr
+			nodeInfo.ServiceAddress = impl.localServiceAddr
+		} else {
+			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
+			nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
+		}
 	}
 
 	return state, nil
@@ -265,6 +277,34 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 	}
 
 	return &clusterpb.AddLearnerResponse{}, nil
+}
+
+func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+	if req.NodeId == 0 {
+		return nil, fmt.Errorf("node_id must be non-zero")
+	}
+
+	// Forward to leader if not leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+		return client.PromoteLearner(ctx, req)
+	}
+
+	if err := impl.node.PromoteLearner(ctx, req.NodeId); err != nil {
+		return nil, fmt.Errorf("promoting learner: %w", err)
+	}
+
+	return &clusterpb.PromoteLearnerResponse{}, nil
 }
 
 func RegisterClusterService(server *grpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {

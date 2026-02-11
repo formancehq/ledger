@@ -21,17 +21,11 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		servers  []*serviceWithClient
 		leaderID *uint64
 	)
-	const (
-		countInstances      = 3
-		gatewayBasePort     = 6300
-		nodeRaftBasePort    = 6100
-		nodeServiceBasePort = 8100
-		nodeHTTPBasePort    = 9100
-	)
+	const countInstances = 3
 
 	BeforeAll(func() {
 		ctx, servers, _, leaderID = setupMultiNodeCluster(
-			countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+			countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 			WithGateway(),
 			WithTickInterval(50*time.Millisecond),
 		)

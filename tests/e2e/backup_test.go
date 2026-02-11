@@ -26,8 +26,8 @@ var _ = Describe("Backup", Ordered, func() {
 	)
 
 	const (
-		httpPort = 11000
-		grpcPort = 10000
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

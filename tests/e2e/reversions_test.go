@@ -23,8 +23,8 @@ var _ = Describe("Reversions", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9800
-		grpcPort = 8800
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

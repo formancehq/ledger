@@ -55,8 +55,8 @@ var _ = Describe("Transactions", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9300
-		grpcPort = 8300
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

@@ -31,7 +31,6 @@ type HealthChecker struct {
 	node        *node.Node
 	collector   *diskusage.Collector
 	servicePool *transport.ServiceConnectionPool
-	peers       []node.Peer
 	logger      logging.Logger
 	interval    time.Duration
 
@@ -51,7 +50,6 @@ func NewHealthChecker(
 	n *node.Node,
 	collector *diskusage.Collector,
 	servicePool *transport.ServiceConnectionPool,
-	peers []node.Peer,
 	logger logging.Logger,
 	interval time.Duration,
 	walThreshold float64,
@@ -62,7 +60,6 @@ func NewHealthChecker(
 		node:               n,
 		collector:          collector,
 		servicePool:        servicePool,
-		peers:              peers,
 		logger:             logger,
 		interval:           interval,
 		walThreshold:       walThreshold,
@@ -121,13 +118,10 @@ func (hc *HealthChecker) check() {
 		hc.collector.DataVolumeTotalBytes(),
 	)
 
-	// Check peers
-	for _, peer := range hc.peers {
-		conn := hc.servicePool.GetConnection(peer.ID)
+	// Check peers dynamically from the service pool
+	for _, peerID := range hc.servicePool.PeerIDs() {
+		conn := hc.servicePool.GetConnection(peerID)
 		if conn == nil {
-			hc.logger.WithFields(map[string]any{
-				"node_id": peer.ID,
-			}).Errorf("No connection to peer, skipping health check")
 			continue
 		}
 
@@ -137,11 +131,11 @@ func (hc *HealthChecker) check() {
 		resp, err := client.GetDiskUsage(context.Background(), &clusterpb.GetDiskUsageRequest{})
 		if err != nil {
 			hc.logger.WithFields(map[string]any{
-				"node_id": peer.ID,
+				"node_id": peerID,
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
 		} else if hc.exceedsThreshold(
-			peer.ID,
+			peerID,
 			resp.WalVolumeBytes,
 			resp.WalVolumeTotalBytes,
 			resp.DataVolumeBytes,
@@ -152,7 +146,7 @@ func (hc *HealthChecker) check() {
 
 		// Check clock skew
 		if hc.clockSkewThreshold > 0 {
-			if hc.exceedsClockSkew(client, peer.ID) {
+			if hc.exceedsClockSkew(client, peerID) {
 				healthy = false
 			}
 		}

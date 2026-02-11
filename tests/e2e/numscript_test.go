@@ -22,8 +22,8 @@ var _ = Describe("Numscript", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9400
-		grpcPort = 8400
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

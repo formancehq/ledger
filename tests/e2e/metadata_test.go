@@ -19,8 +19,8 @@ var _ = Describe("Metadata", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9700
-		grpcPort = 8700
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

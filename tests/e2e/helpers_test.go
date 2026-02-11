@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,6 +23,21 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+)
+
+// Common port constants shared by all e2e tests.
+// All tests run sequentially, so they can safely reuse the same ports.
+// Using high ports (15xxx) to avoid conflicts with host services.
+const (
+	// Multi-node test ports (up to 4 nodes: base+0, base+1, base+2, base+3)
+	testRaftBasePort    = 15000
+	testServiceBasePort = 15100
+	testHTTPBasePort    = 15200
+	testGatewayBasePort = 15300
+
+	// Single-node test ports (raft port is derived as testSingleGRPCPort - 1000)
+	testSingleHTTPPort = 15200
+	testSingleGRPCPort = 15100
 )
 
 // extractGRPCErrorInfo extracts the ErrorInfo detail from a gRPC error.
@@ -402,8 +416,30 @@ func setupMultiNodeCluster(
 		})
 	}
 
+	// Common instruments shared by all nodes
+	commonInstruments := func(i int, walDir, dataDir string) []testservice.Instrumentation {
+		return []testservice.Instrumentation{
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			testserver.WithNodeID(i + 1),
+			testserver.WithHTTPPort(httpBasePort + i),
+			testserver.WithWalDir(walDir),
+			testserver.WithDataDir(dataDir),
+			testserver.WithRaftPort(raftBasePort + i),
+			testserver.WithGRPCPort(serviceBasePort + i),
+			testserver.WithSnapshotThreshold(10),
+			testserver.WithRaftCompactionMargin(1),
+			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+			testserver.WithRaftTickInterval(options.raftTickInterval),
+			testserver.WithRaftHeartbeatTick(1),
+			testserver.WithRaftElectionTick(10),
+			testserver.WithAutoPromoteThreshold(10),
+		}
+	}
+
 	servers := make([]*serviceWithClient, 0, countInstances)
-	for i := range countInstances {
+
+	startNode := func(i int, extraInstruments ...testservice.Instrumentation) {
 		walTmpDir := GinkgoT().TempDir()
 		dataTmpDir := GinkgoT().TempDir()
 		DeferCleanup(func() {
@@ -411,45 +447,11 @@ func setupMultiNodeCluster(
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
-		// Peer Raft addresses go through the gateway when enabled, otherwise direct
-		peerRaftAddress := func(j int) string {
-			if options.withGateway {
-				return fmt.Sprintf("127.0.0.1:%d", gatewayBasePort+j)
-			}
-			return fmt.Sprintf("127.0.0.1:%d", raftBasePort+j)
-		}
+		instruments := commonInstruments(i, walTmpDir, dataTmpDir)
+		instruments = append(instruments, extraInstruments...)
 
 		server := testservice.New(cmdserver.NewRunCommand,
-			testservice.WithInstruments(
-				testservice.DebugInstrumentation(debug),
-				testservice.OutputInstrumentation(GinkgoWriter),
-				testserver.WithNodeID(i+1),
-				testserver.WithHTTPPort(httpBasePort+i),
-				testserver.WithWalDir(walTmpDir),
-				testserver.WithDataDir(dataTmpDir),
-				testserver.WithRaftPort(raftBasePort+i),
-				testserver.WithGRPCPort(serviceBasePort+i),
-				testserver.WithSnapshotThreshold(10),
-				testserver.WithRaftCompactionMargin(1),
-				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-				testserver.WithRaftTickInterval(options.raftTickInterval),
-				testserver.WithRaftHeartbeatTick(1),
-				testserver.WithRaftElectionTick(10),
-				testserver.WithPeers(func() []node.Peer {
-					ret := make([]node.Peer, 0, countInstances-1)
-					for j := range countInstances {
-						if i == j {
-							continue
-						}
-						ret = append(ret, node.Peer{
-							ID:             uint64(j + 1),
-							Address:        peerRaftAddress(j),
-							ServiceAddress: fmt.Sprintf("127.0.0.1:%d", serviceBasePort+j),
-						})
-					}
-					return ret
-				}()...),
-			),
+			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 
@@ -471,14 +473,64 @@ func setupMultiNodeCluster(
 		})
 	}
 
+	// Node 0: bootstrap a single-node cluster
+	startNode(0, testserver.WithBootstrap())
+
+	// Wait for node 0 to become leader before joining other nodes
 	var leaderID uint64
-	Eventually(servers[0]).To(HaveALeader(&leaderID))
+	Eventually(func(g Gomega) {
+		state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		g.Expect(err).To(Succeed())
+		g.Expect(state.Leader).NotTo(BeZero())
+		leaderID = uint64(state.Leader)
+	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+	// Nodes 1..N-1: join the bootstrap node
+	bootstrapServiceAddr := fmt.Sprintf("127.0.0.1:%d", serviceBasePort)
+	for i := 1; i < countInstances; i++ {
+		startNode(i, testserver.WithJoin(bootstrapServiceAddr))
+	}
+
+	// Wait for all nodes to be promoted to voters
+	if countInstances > 1 {
+		Eventually(func(g Gomega) {
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			g.Expect(err).To(Succeed())
+			voterCount := 0
+			for _, n := range state.Nodes {
+				if n.Suffrage == "Voter" {
+					voterCount++
+				}
+			}
+			g.Expect(voterCount).To(Equal(countInstances))
+		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+	}
 
 	return ctx, servers, gw, &leaderID
 }
 
+// stopNode gracefully stops a node by first closing its gRPC connection
+// to prevent in-flight requests from racing with pebble shutdown.
+func stopNode(ctx context.Context, srv *serviceWithClient) {
+	_ = srv.grpcConn.Close()
+	Expect(srv.service.Stop(ctx)).To(Succeed())
+}
+
+// restartNode starts a previously stopped node and recreates its gRPC client connection.
+func restartNode(ctx context.Context, srv *serviceWithClient) {
+	Expect(srv.service.Start(ctx)).To(Succeed())
+	client, clusterClient, conn, err := newGRPCClient(srv.grpcPort)
+	Expect(err).To(Succeed())
+	srv.client = client
+	srv.clusterClient = clusterClient
+	srv.grpcConn = conn
+}
+
 // stopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
 func stopServers(ctx context.Context, servers []*serviceWithClient) {
+	for _, server := range servers {
+		_ = server.grpcConn.Close()
+	}
 	for i, server := range servers {
 		By(fmt.Sprintf("Stopping node %d", i+1), func() {
 			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -519,7 +571,7 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 			testserver.WithRaftTickInterval(10*time.Millisecond),
 			testserver.WithRaftHeartbeatTick(1),
 			testserver.WithRaftElectionTick(10),
-			// No peers needed for single-node cluster
+			testserver.WithBootstrap(),
 		),
 	)
 	Expect(server.Start(ctx)).To(Succeed())

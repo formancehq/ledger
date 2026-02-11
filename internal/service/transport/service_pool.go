@@ -86,6 +86,18 @@ func (p *ServiceConnectionPool) GetPeerAddress(peerID uint64) string {
 	return p.peers[peerID]
 }
 
+// PeerIDs returns the IDs of all known peers.
+func (p *ServiceConnectionPool) PeerIDs() []uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ids := make([]uint64, 0, len(p.peers))
+	for id := range p.peers {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Close closes all gRPC connections
 func (p *ServiceConnectionPool) Close() error {
 	p.mu.Lock()

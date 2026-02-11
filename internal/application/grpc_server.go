@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -70,6 +71,56 @@ type RaftServer struct {
 // ServiceServer is the gRPC server for service API (external client-facing)
 type ServiceServer struct {
 	baseServer
+}
+
+// Stop gracefully shuts down the service server, waiting up to 2 seconds for
+// in-flight handlers to complete before forcing a stop. This prevents panics
+// from handlers accessing resources (e.g. pebble) that are closed after the
+// gRPC server stops.
+func (s *ServiceServer) Stop() error {
+	s.logger.Infof("Stopping %s server", s.name)
+	if s.server != nil {
+		done := make(chan struct{})
+		go func() {
+			s.server.GracefulStop()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			s.server.Stop()
+		}
+		s.server = nil
+	}
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+	return nil
+}
+
+// recoveryInterceptor catches panics
+func recoveryInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = status.Errorf(codes.Unavailable, "server shutting down: %v", r)
+			}
+		}()
+		return handler(ctx, req)
+	}
+}
+
+// recoveryStreamInterceptor catches panics in streaming RPCs during shutdown.
+func recoveryStreamInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = status.Errorf(codes.Unavailable, "server shutting down: %v", r)
+			}
+		}()
+		return handler(srv, ss)
+	}
 }
 
 // errorConversionInterceptor converts known errors to proper gRPC status codes
@@ -163,11 +214,13 @@ func NewRaftServer(port int, logger logging.Logger) *RaftServer {
 // NewServiceServer creates a new gRPC server for service API (external)
 // This server includes OpenTelemetry instrumentation and error conversion
 func NewServiceServer(port int, logger logging.Logger, debug bool) *ServiceServer {
-	// Always add error conversion interceptor
+	// Recovery interceptor must be first (outermost) to catch panics from all handlers
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		recoveryInterceptor(),
 		errorConversionInterceptor(),
 	}
 	streamInterceptors := []grpc.StreamServerInterceptor{
+		recoveryStreamInterceptor(),
 		errorConversionStreamInterceptor(),
 	}
 

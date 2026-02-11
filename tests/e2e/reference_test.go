@@ -17,8 +17,8 @@ import (
 
 var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 	var (
-		httpPort = 9200
-		grpcPort = 8200
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	var (

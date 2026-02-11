@@ -29,6 +29,10 @@ service ClusterService {
   // AddLearner adds a non-voting (learner) node to the Raft cluster.
   // The request is forwarded to the leader.
   rpc AddLearner(AddLearnerRequest) returns (AddLearnerResponse);
+
+  // PromoteLearner promotes a learner node to a full voter.
+  // The request is forwarded to the leader.
+  rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse);
 }
 
 message GetClusterStateRequest {
@@ -129,6 +133,16 @@ message AddLearnerRequest {
 }
 
 message AddLearnerResponse {}
+
+// ============================================================================
+// Promote Learner Messages
+// ============================================================================
+
+message PromoteLearnerRequest {
+  uint64 node_id = 1;  // Numeric ID of the learner node to promote
+}
+
+message PromoteLearnerResponse {}
 
 // ============================================================================
 // Backup Messages

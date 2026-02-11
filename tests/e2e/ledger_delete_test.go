@@ -21,8 +21,8 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9600
-		grpcPort = 8600
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

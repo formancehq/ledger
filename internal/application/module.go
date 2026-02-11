@@ -38,6 +38,18 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+// walFreshStart indicates whether the WAL was empty before the node was created.
+// It is used to decide whether a joining node needs to register as a learner.
+type walFreshStart bool
+
+// nodeProvideResult groups the outputs of the Node provider so we can also
+// expose the WAL-fresh-start indicator through the fx dependency graph.
+type nodeProvideResult struct {
+	fx.Out
+	Node       *node.Node
+	FreshStart walFreshStart
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -110,8 +122,15 @@ func Module() fx.Option {
 					Attrs                   *attributes.Attributes
 					Compactor               *state.Compactor `optional:"true"`
 				},
-			) (*node.Node, error) {
-				return node.NewNode(
+			) (nodeProvideResult, error) {
+				// Check WAL emptiness before NewNode writes the initial snapshot.
+				snapshot, err := params.WAL.Snapshot()
+				if err != nil {
+					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
+				}
+				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
+
+				n, err := node.NewNode(
 					params.NodeConfig,
 					params.Transport,
 					params.Store,
@@ -125,6 +144,10 @@ func Module() fx.Option {
 					params.Compactor,
 					params.Config.AuditEnabled,
 				)
+				if err != nil {
+					return nodeProvideResult{}, err
+				}
+				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.SetDefaults()
@@ -163,13 +186,16 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(node *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(node, raftTransport, servicePool, collector, store, logger)
+			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, logger,
+					cfg.RaftConfig.AdvertiseAddr,
+					fmt.Sprintf("0.0.0.0:%d", cfg.GRPCPort),
+				)
 			},
 			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
-					cfg.RaftConfig.Peers, logger,
+					logger,
 					cfg.HealthConfig.Interval,
 					cfg.HealthConfig.WALThreshold,
 					cfg.HealthConfig.DataThreshold,
@@ -426,15 +452,21 @@ func Module() fx.Option {
 			func(
 				lc fx.Lifecycle,
 				cfg Config,
+				freshStart walFreshStart,
 				servicePool *transport.ServiceConnectionPool,
 				logger logging.Logger,
 			) {
-				if !cfg.RaftConfig.Join {
+				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
 					return
 				}
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						logger.Infof("Join mode: requesting a peer to add this node as learner")
+						// Only register as learner on the very first start;
+						// on restart the node is already a cluster member.
+						if !freshStart {
+							logger.Infof("Restart detected, skipping learner registration")
+							return nil
+						}
 
 						peer := cfg.RaftConfig.Peers[0]
 						conn := servicePool.GetConnection(peer.ID)
@@ -442,6 +474,7 @@ func Module() fx.Option {
 							return fmt.Errorf("failed to register as learner: peer %d is not reachable", peer.ID)
 						}
 
+						logger.Infof("Join mode: requesting a peer to add this node as learner")
 						client := clusterpb.NewClusterServiceClient(conn)
 						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 							NodeId:         cfg.RaftConfig.NodeID,

@@ -17,13 +17,7 @@ import (
 )
 
 var _ = Describe("Simple cluster", func() {
-	const (
-		countInstances      = 3
-		gatewayBasePort     = 6200
-		nodeRaftBasePort    = 6000
-		nodeServiceBasePort = 8000
-		nodeHTTPBasePort    = 9000
-	)
+	const countInstances = 3
 
 	Context("Basic cluster operations", Ordered, func() {
 		var (
@@ -34,7 +28,7 @@ var _ = Describe("Simple cluster", func() {
 
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = setupMultiNodeCluster(
-				countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 				WithGateway(),
 			)
 		})
@@ -76,9 +70,8 @@ var _ = Describe("Simple cluster", func() {
 
 		It("should rejoin the cluster after a follower restart", func() {
 			followerID := ((*leaderID + 1) % countInstances) + 1
-			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
-			<-time.After(200 * time.Millisecond)
-			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
+			stopNode(ctx, servers[followerID-1])
+			restartNode(ctx, servers[followerID-1])
 
 			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
 			Consistently(servers[followerID-1]).Should(BeFollower())
@@ -94,7 +87,12 @@ var _ = Describe("Simple cluster", func() {
 		})
 	})
 
-	Context("When losing a follower", func() {
+	Context("When losing a follower", Ordered, func() {
+		const (
+			ledgerName        = "ledger2"
+			countTransactions = 15
+		)
+
 		var (
 			ctx        context.Context
 			servers    []*serviceWithClient
@@ -102,27 +100,23 @@ var _ = Describe("Simple cluster", func() {
 			followerID uint64
 		)
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			ctx, servers, _, leaderID = setupMultiNodeCluster(
-				countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 				WithGateway(),
 			)
 
 			// Find and stop a follower
 			followerID = ((*leaderID + 1) % countInstances) + 1
-			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
+			stopNode(ctx, servers[followerID-1])
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
 			stopServers(ctx, servers)
 		})
 
-		It("Should continue to work", func() {
+		It("should continue to work with a downed follower", func() {
 			lid := *leaderID
-			Expect(lid).NotTo(BeZero(), "leaderID should not be zero")
-			Expect(lid).To(BeNumerically(">", 0))
-			Expect(lid).To(BeNumerically("<=", countInstances))
-
 			Eventually(servers[lid-1]).To(HaveALeader(nil))
 
 			_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
@@ -142,81 +136,60 @@ var _ = Describe("Simple cluster", func() {
 			}
 		})
 
-		Context("Then creating a new ledger", func() {
-			var ledgerName string
+		It("should restore the state after follower comes back", func() {
+			lid := *leaderID
 
-			BeforeEach(func() {
-				ledgerName = "ledger2"
-				_, err := servers[*leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			restartNode(ctx, servers[followerID-1])
+
+			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
+			Eventually(func(g Gomega) bool {
+				ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
+				g.Expect(err).To(Succeed())
+				_, found := ledgers[ledgerName]
+				return found
+			}).To(BeTrue())
+
+			ledger, err := servers[followerID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(Succeed())
+			Expect(ledger.Name).To(Equal(ledgerName))
+		})
+
+		It("should restore the state from a snapshot sent by the leader", func() {
+			By("Stopping the follower")
+			stopNode(ctx, servers[followerID-1])
+
+			By("Creating transactions past the snapshot threshold")
+			lid := *leaderID
+			for i := 0; i < countTransactions; i++ {
+				_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", "bank", big.NewInt(100), "USD"),
+						}, nil, nil),
+					},
 				})
 				Expect(err).To(Succeed())
-			})
+			}
 
-			Context("Then the follower come back", func() {
-				BeforeEach(func() {
-					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
-				})
-				It("Should restore the state", func() {
-					Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
-					Eventually(func(g Gomega) bool {
-						ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
-						g.Expect(err).To(Succeed())
-						_, found := ledgers[ledgerName]
-						return found
-					}).To(BeTrue())
+			By("Starting the follower")
+			restartNode(ctx, servers[followerID-1])
+			Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
+		})
 
-					ledger, err := servers[followerID-1].client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-						Ledger: ledgerName,
-					})
-					Expect(err).To(Succeed())
-					Expect(ledger.Name).To(Equal(ledgerName))
-				})
-			})
+		It("should restart as expected after a second restart", func() {
+			By("Stopping the follower")
+			stopNode(ctx, servers[followerID-1])
 
-			Context("Then creating more transactions than the snapshot threshold", func() {
-				const countTransactions = 15
-				BeforeEach(func() {
-					GinkgoLogr.Info("Creating transactions")
-					for i := 0; i < countTransactions; i++ {
-						_, err := servers[*leaderID-1].client.Apply(ctx, &servicepb.ApplyRequest{
-							Requests: []*servicepb.Request{
-								createTransactionAction(ledgerName, []*commonpb.Posting{
-									newPosting("world", "bank", big.NewInt(100), "USD"),
-								}, nil, nil),
-							},
-						})
-						Expect(err).To(Succeed())
-						GinkgoLogr.Info(fmt.Sprintf("Transactions %d created", i))
-					}
-					GinkgoLogr.Info("Transactions created")
-				})
-
-				Context("Then the follower come back", func() {
-					BeforeEach(func() {
-						By("Starting the follower", func() {
-							Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
-						})
-						Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
-					})
-
-					It("Should restore the state from a snapshot sent by the leader", func() {})
-					Context("Then restarting again the follower", func() {
-						BeforeEach(func() {
-							By("Stopping the follower", func() {
-								Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
-							})
-							<-time.After(500 * time.Millisecond)
-							By("Starting the follower", func() {
-								Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
-							})
-						})
-						It("Should restart as expected", func() {
-							Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
-						})
-					})
-				})
-			})
+			By("Starting the follower")
+			restartNode(ctx, servers[followerID-1])
+			Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
 		})
 	})
 
@@ -230,7 +203,7 @@ var _ = Describe("Simple cluster", func() {
 
 		BeforeEach(func() {
 			ctx, servers, gateway, leaderID = setupMultiNodeCluster(
-				countInstances, nodeRaftBasePort, nodeServiceBasePort, nodeHTTPBasePort, gatewayBasePort,
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
 				WithGateway(),
 			)
 		})

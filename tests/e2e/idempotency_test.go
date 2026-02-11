@@ -19,8 +19,8 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9900
-		grpcPort = 8900
+		httpPort = testSingleHTTPPort
+		grpcPort = testSingleGRPCPort
 	)
 
 	BeforeAll(func() {

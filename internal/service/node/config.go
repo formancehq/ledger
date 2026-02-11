@@ -21,7 +21,8 @@ type NodeConfig struct {
 	ProposeQueueCapacity int    // Capacity of the propose queue (default: 100)
 	AdvertiseAddr        string
 	BindAddr             string
-	Join                 bool // When true, this node joins as a learner (do not include self as voter)
+	Bootstrap              bool   // When true, initialize a new single-node cluster (this node is the sole voter)
+	AutoPromoteThreshold   uint64 // Number of log entries a learner may lag behind the commit index before auto-promotion (0 = disable)
 }
 
 func (cfg *NodeConfig) Validate() error {

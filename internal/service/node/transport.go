@@ -452,9 +452,11 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 
 	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
 	// This is a best effort to notify the send loop than the peer is now reachable
-	select {
-	case t.peers[peerID].reconnected <- struct{}{}:
-	default:
+	if peer, ok := t.peers[peerID]; ok {
+		select {
+		case peer.reconnected <- struct{}{}:
+		default:
+		}
 	}
 
 	// Receive all messages from the stream
