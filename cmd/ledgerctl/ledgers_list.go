@@ -42,7 +42,7 @@ func runLedgersList(cmd *cobra.Command, _ []string) error {
 	ledgers, err := getAllLedgersInfo(ctx, client)
 	if err != nil {
 		spinner.Fail("Failed to fetch ledgers")
-		return fmt.Errorf("failed to list ledgers: %w", err)
+		return formatGRPCError("failed to list ledgers", err)
 	}
 
 	_ = spinner.Stop()

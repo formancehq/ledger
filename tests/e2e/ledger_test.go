@@ -8,8 +8,11 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Ledger", func() {
@@ -191,6 +194,30 @@ var _ = Describe("Ledger", func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(ledger.Name).To(Equal(ledgerName))
+		})
+
+		It("Should return ALREADY_EXISTS with LEDGER_ALREADY_EXISTS reason when creating a duplicate ledger", func() {
+			// Create ledger
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction("dup-ledger", nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// Try to create the same ledger again
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction("dup-ledger", nil)},
+			})
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.AlreadyExists))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonLedgerAlreadyExists))
+			Expect(info.Domain).To(Equal("ledger"))
+			Expect(info.Metadata["name"]).To(Equal("dup-ledger"))
 		})
 	})
 

@@ -10,8 +10,11 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // timestampToStdTime converts a commonpb.Timestamp to standard time.Time
@@ -403,7 +406,17 @@ var _ = Describe("Transactions", func() {
 				},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("insufficient"))
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonInsufficientFunds))
+			Expect(info.Domain).To(Equal("ledger"))
+			Expect(info.Metadata["account"]).To(Equal("limited-account"))
+			Expect(info.Metadata["asset"]).To(Equal("USD"))
 		})
 
 		It("Should fail when ledger does not exist", func() {
@@ -415,6 +428,15 @@ var _ = Describe("Transactions", func() {
 				},
 			})
 			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.NotFound))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonLedgerNotFound))
+			Expect(info.Domain).To(Equal("ledger"))
 		})
 
 		It("Should allow world account to have negative balance", func() {

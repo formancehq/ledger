@@ -8,27 +8,62 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 )
 
-// handleError handles errors and returns appropriate HTTP responses
-// If the error is ErrNoLeader, it returns 503 Service Unavailable with Retry-After header
-// If the error is NotFoundError, it returns 404 Not Found
+// handleError handles errors and returns appropriate HTTP responses.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, commonpb.ErrNoLeader) {
+	var (
+		notFoundErr    *commonpb.NotFoundError
+		refConflict    *processing.ErrTransactionReferenceConflict
+		ikConflict     *processing.ErrIdempotencyKeyConflict
+		ledgerExists   *processing.ErrLedgerAlreadyExists
+		ledgerNotFound *processing.ErrLedgerNotFound
+		txNotFound     *processing.ErrTransactionNotFound
+		txReverted     *processing.ErrTransactionAlreadyReverted
+		insufficient   *processing.ErrInsufficientFunds
+		balNotFound    *processing.ErrBalanceNotFound
+		parseErr       *processing.ErrNumscriptParse
+	)
+
+	switch {
+	case errors.Is(err, commonpb.ErrNoLeader):
 		w.Header().Set("Retry-After", "1")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
-		return
-	}
-	var notFoundErr *commonpb.NotFoundError
-	if errors.As(err, &notFoundErr) {
+
+	case errors.As(err, &notFoundErr):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-		return
-	}
-	if errors.Is(err, processing.ErrTransactionReferenceConflict) {
+
+	case errors.As(err, &ledgerExists):
 		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-		return
-	}
-	if errors.Is(err, processing.ErrIdempotencyKeyConflict) {
+
+	case errors.As(err, &ledgerNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &refConflict):
 		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-		return
+
+	case errors.As(err, &ikConflict):
+		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
+
+	case errors.As(err, &txNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &txReverted):
+		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
+
+	case errors.As(err, &insufficient):
+		writeErrorResponse(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", err)
+
+	case errors.As(err, &balNotFound):
+		writeErrorResponse(w, http.StatusBadRequest, "BALANCE_NOT_FOUND", err)
+
+	case errors.As(err, &parseErr):
+		writeErrorResponse(w, http.StatusBadRequest, "SCRIPT_PARSE_ERROR", err)
+
+	case errors.Is(err, processing.ErrTargetRequired),
+		errors.Is(err, processing.ErrMetadataKeyRequired),
+		errors.Is(err, processing.ErrScriptRequired):
+		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
+
+	default:
+		writeInternalServerError(w, r, err)
 	}
-	writeInternalServerError(w, r, err)
 }

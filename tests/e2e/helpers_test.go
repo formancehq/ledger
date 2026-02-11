@@ -19,9 +19,25 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
+
+// extractGRPCErrorInfo extracts the ErrorInfo detail from a gRPC error.
+func extractGRPCErrorInfo(err error) *errdetails.ErrorInfo {
+	st, ok := status.FromError(err)
+	if !ok {
+		return nil
+	}
+	for _, detail := range st.Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok {
+			return info
+		}
+	}
+	return nil
+}
 
 // serviceWithClient is a shared type used across e2e tests to hold a test service instance
 // along with its gRPC clients and directory paths.

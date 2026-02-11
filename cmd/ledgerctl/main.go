@@ -19,9 +19,10 @@ func main() {
 // newRootCommand creates the root command for the ledger client CLI.
 func newRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "ledgerctl",
-		Short: "Ledger v3 CLI client",
-		Long:  "Command-line client for interacting with Ledger v3 servers via gRPC",
+		Use:          "ledgerctl",
+		Short:        "Ledger v3 CLI client",
+		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
+		SilenceUsage: true,
 	}
 
 	// Add persistent flags for server connection

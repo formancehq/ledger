@@ -2,7 +2,6 @@ package processing
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/formancehq/numscript"
@@ -70,7 +69,9 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 	// Check for parsing errors
 	var parseErr error
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-		parseErr = fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource()))
+		parseErr = &ErrNumscriptParse{
+			Details: numscript.ParseErrorsToString(errs, parsed.GetSource()),
+		}
 	}
 
 	// Store in cache (even if there are errors, to avoid re-parsing invalid scripts)

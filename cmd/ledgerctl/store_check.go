@@ -42,7 +42,7 @@ func runStoreCheck(cmd *cobra.Command, _ []string) error {
 
 	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 	if err != nil {
-		return fmt.Errorf("failed to start store check: %w", err)
+		return formatGRPCError("failed to start store check", err)
 	}
 
 	var (
@@ -64,7 +64,7 @@ func runStoreCheck(cmd *cobra.Command, _ []string) error {
 			if spinner != nil {
 				spinner.Fail("Failed to check store")
 			}
-			return fmt.Errorf("receiving check event: %w", err)
+			return formatGRPCError("receiving check event", err)
 		}
 
 		switch t := event.Type.(type) {

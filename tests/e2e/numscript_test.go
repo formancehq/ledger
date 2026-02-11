@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Numscript", func() {
@@ -552,6 +555,15 @@ send [USD/2 100] (
 				},
 			})
 			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonNumscriptParseError))
+			Expect(info.Domain).To(Equal("ledger"))
 		})
 
 		It("Should fail with missing variable", func() {

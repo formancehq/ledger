@@ -9,8 +9,11 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Reversions", func() {
@@ -157,6 +160,15 @@ var _ = Describe("Reversions", func() {
 				Requests: []*servicepb.Request{revertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)},
 			})
 			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.NotFound))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionNotFound))
+			Expect(info.Domain).To(Equal("ledger"))
 		})
 
 		It("Should fail to revert an already reverted transaction", func() {
@@ -186,7 +198,15 @@ var _ = Describe("Reversions", func() {
 				Requests: []*servicepb.Request{revertTransactionAction(ledgerName, transactionID, false, false, nil)},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("already reverted"))
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionAlreadyReverted))
+			Expect(info.Domain).To(Equal("ledger"))
 		})
 
 		It("Should revert multiple transactions in bulk", func() {

@@ -50,7 +50,7 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 		NodeId: nodeID,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get cluster state: %w", err)
+		return formatGRPCError("failed to get cluster state", err)
 	}
 
 	// Display cluster status

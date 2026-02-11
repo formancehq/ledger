@@ -80,7 +80,7 @@ func runAccountsGet(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		spinner.Fail("Failed to get account")
-		return fmt.Errorf("failed to get account: %w", err)
+		return formatGRPCError("failed to get account", err)
 	}
 
 	_ = spinner.Stop()

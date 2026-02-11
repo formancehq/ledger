@@ -153,7 +153,7 @@ func runTransactionsRevert(cmd *cobra.Command, args []string) error {
 	resp, err := client.Apply(ctx, req)
 	if err != nil {
 		spinner.Fail("Failed to revert transaction")
-		return fmt.Errorf("failed to revert transaction: %w", err)
+		return formatGRPCError("failed to revert transaction", err)
 	}
 
 	spinner.Success("Reverted")

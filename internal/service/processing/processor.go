@@ -93,11 +93,6 @@ func NewRequestProcessor(m metric.Meter) (*RequestProcessor, error) {
 	}, nil
 }
 
-// ErrIdempotencyKeyConflict is returned when an idempotency key is reused with different content.
-var ErrIdempotencyKeyConflict = errors.New("idempotency key conflict: same key used with different request content")
-
-// ErrTransactionReferenceConflict is returned when a transaction reference already exists in the same ledger.
-var ErrTransactionReferenceConflict = errors.New("transaction reference already exists in this ledger")
 
 // ProcessProposal processes a proposal (batch of orders) and returns the resulting response.
 func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store) (*raftcmdpb.ProposalResponse, error) {
@@ -117,7 +112,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 				// Idempotency key exists - compute hash from order and compare
 				hash := computeOrderHash(order)
 				if !bytes.Equal(hash, storedValue.Hash) {
-					return nil, ErrIdempotencyKeyConflict
+					return nil, &ErrIdempotencyKeyConflict{Key: order.Idempotency.Key}
 				}
 
 				// Hash matches - return reference to existing log without processing
@@ -220,7 +215,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s Store) (*commonpb.LogPayload, error) {
 	_, ok := s.GetLedger(order.Name)
 	if ok {
-		return nil, fmt.Errorf("ledger already exists: %s", order.Name)
+		return nil, &ErrLedgerAlreadyExists{Name: order.Name}
 	}
 
 	ledgerID := s.IncrementNextLedgerID()
@@ -257,7 +252,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s Store) (*commonpb.LogPayload, error) {
 	l, ok := s.GetLedger(order.Name)
 	if !ok {
-		return nil, fmt.Errorf("ledger does not exist: %s", order.Name)
+		return nil, &ErrLedgerNotFound{Name: order.Name}
 	}
 	l.DeletedAt = s.GetDate()
 
@@ -275,12 +270,12 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Store) (*commonpb.LogPayload, error) {
 	ledgerInfo, ok := s.GetLedger(apply.Ledger)
 	if !ok {
-		return nil, fmt.Errorf("ledger does not exist: %s", apply.Ledger)
+		return nil, &ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
 	boundaries, ok := s.GetBoundaries(apply.Ledger)
 	if !ok {
-		return nil, fmt.Errorf("ledger boundaries not found: %s", apply.Ledger)
+		return nil, &ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
 	ledgerID := ledgerInfo.Id
@@ -326,7 +321,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Sto
 
 func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
-		return nil, errors.New("target is required")
+		return nil, ErrTargetRequired
 	}
 
 	switch target := order.Target.Target.(type) {
@@ -342,7 +337,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 		}
 	case *commonpb.Target_Transaction:
 		if target.Transaction.Id >= boundaries.NextTransactionId {
-			return nil, fmt.Errorf("transaction id out of range: %d", target.Transaction.Id)
+			return nil, &ErrTransactionNotFound{TransactionID: target.Transaction.Id}
 		}
 		// Group all metadata updates into a single TransactionUpdate
 		// to avoid key collisions in PebbleDB (all updates in same request share the same ByLog)
@@ -374,10 +369,10 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 
 func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
-		return nil, errors.New("target is required")
+		return nil, ErrTargetRequired
 	}
 	if order.Key == "" {
-		return nil, errors.New("key is required")
+		return nil, ErrMetadataKeyRequired
 	}
 
 	switch target := order.Target.Target.(type) {
@@ -392,7 +387,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 		})
 	case *commonpb.Target_Transaction:
 		if target.Transaction.Id >= boundaries.NextTransactionId {
-			return nil, fmt.Errorf("transaction id out of range: %d", target.Transaction.Id)
+			return nil, &ErrTransactionNotFound{TransactionID: target.Transaction.Id}
 		}
 		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
 		// This ensures each transaction update has a unique key in PebbleDB
@@ -427,7 +422,10 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 			return nil, fmt.Errorf("checking transaction reference: %w", err)
 		}
 		if existingRef != nil {
-			return nil, ErrTransactionReferenceConflict
+			return nil, &ErrTransactionReferenceConflict{
+				LedgerID:  ledgerID,
+				Reference: order.Reference,
+			}
 		}
 	}
 
@@ -526,7 +524,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 
 	// Check if transaction exists (ID must be less than next transaction ID)
 	if order.TransactionId >= boundaries.NextTransactionId {
-		return nil, fmt.Errorf("transaction %d does not exist", order.TransactionId)
+		return nil, &ErrTransactionNotFound{TransactionID: order.TransactionId}
 	}
 
 	// Check if the transaction is already reverted
@@ -535,7 +533,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 		return nil, fmt.Errorf("checking reverted status: %w", err)
 	}
 	if reverted {
-		return nil, fmt.Errorf("transaction %d is already reverted", order.TransactionId)
+		return nil, &ErrTransactionAlreadyReverted{TransactionID: order.TransactionId}
 	}
 
 	// Create reversed postings and update volumes
@@ -627,7 +625,7 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.Source != "world" {
 		if sourceInput == nil || sourceInput.Known == nil {
-			return fmt.Errorf("balance not found for %s", posting.Source)
+			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
 		if sourceOutput == nil {
 			sourceOutput = &raftcmdpb.VolumeHolder{}
@@ -640,7 +638,12 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		}
 		balance := new(big.Int).Sub(sourceInput.Known.Value(), outputValue)
 		if balance.Cmp(posting.Amount.Value()) < 0 {
-			return fmt.Errorf("insufficient funds: %s", posting.Source)
+			return &ErrInsufficientFunds{
+				Account: posting.Source,
+				Asset:   posting.Asset,
+				Amount:  posting.Amount.Value(),
+				Balance: balance,
+			}
 		}
 	}
 

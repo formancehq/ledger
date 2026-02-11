@@ -76,7 +76,7 @@ func runLedgersCreate(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		spinner.Fail("Failed to create ledger")
-		return fmt.Errorf("failed to create ledger: %w", err)
+		return formatGRPCError("failed to create ledger", err)
 	}
 
 	// Extract the created ledger info from the response

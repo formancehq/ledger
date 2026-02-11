@@ -348,7 +348,7 @@ func runTransactionsCreate(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		spinner.Fail("Failed to create transaction")
-		return fmt.Errorf("failed to create transaction: %w", err)
+		return formatGRPCError("failed to create transaction", err)
 	}
 
 	// Extract the created transaction from the response

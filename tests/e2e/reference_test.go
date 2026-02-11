@@ -8,8 +8,11 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Transaction Reference Uniqueness", func() {
@@ -83,7 +86,16 @@ var _ = Describe("Transaction Reference Uniqueness", func() {
 				},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("reference already exists"))
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.AlreadyExists))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionReferenceConflict))
+			Expect(info.Domain).To(Equal("ledger"))
+			Expect(info.Metadata["reference"]).To(Equal("dup-ref"))
 		})
 
 		It("Should allow transactions without a reference", func() {

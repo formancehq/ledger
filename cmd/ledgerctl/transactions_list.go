@@ -82,7 +82,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	})
 	if err != nil {
 		spinner.Fail("Failed to list transactions")
-		return fmt.Errorf("failed to list transactions: %w", err)
+		return formatGRPCError("failed to list transactions", err)
 	}
 
 	var transactions []*commonpb.Transaction
@@ -93,7 +93,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		}
 		if err != nil {
 			spinner.Fail("Failed to receive transaction")
-			return fmt.Errorf("failed to receive transaction: %w", err)
+			return formatGRPCError("failed to receive transaction", err)
 		}
 		transactions = append(transactions, tx)
 	}
@@ -133,7 +133,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		if err != nil {
 			cancel()
 			spinner.Fail("Failed to list transactions")
-			return fmt.Errorf("failed to list transactions: %w", err)
+			return formatGRPCError("failed to list transactions", err)
 		}
 
 		var transactions []*commonpb.Transaction
@@ -145,7 +145,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			if err != nil {
 				cancel()
 				spinner.Fail("Failed to receive transaction")
-				return fmt.Errorf("failed to receive transaction: %w", err)
+				return formatGRPCError("failed to receive transaction", err)
 			}
 			transactions = append(transactions, tx)
 		}

@@ -100,7 +100,7 @@ func runLedgersDelete(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		spinner.Fail("Failed to delete ledger")
-		return fmt.Errorf("failed to delete ledger: %w", err)
+		return formatGRPCError("failed to delete ledger", err)
 	}
 
 	// Extract the deleted ledger info from the response

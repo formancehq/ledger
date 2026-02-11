@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -143,7 +142,10 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	defer fsm.mu.Unlock()
 
 	if fsm.snapshotIndex > fsm.lastAppliedIndex {
-		return nil, fmt.Errorf("last snapshot index is %d, expecting lower than %d, node out of sync", fsm.snapshotIndex, fsm.lastAppliedIndex)
+		return nil, &ErrNodeOutOfSync{
+			SnapshotIndex:    fsm.snapshotIndex,
+			LastAppliedIndex: fsm.lastAppliedIndex,
+		}
 	}
 
 	batch := fsm.dataStore.NewBatch()
@@ -160,7 +162,10 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 		if entry.Index > fsm.lastAppliedIndex+1 {
-			return nil, fmt.Errorf("invalid index, got %d, expected %d", entry.Index, fsm.lastAppliedIndex+1)
+			return nil, &ErrInvalidEntryIndex{
+				ReceivedIndex: entry.Index,
+				ExpectedIndex: fsm.lastAppliedIndex + 1,
+			}
 		}
 
 		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex); rotated {
@@ -249,7 +254,11 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	case fsm.Cache.BaseIndex.Gen1:
 		fsm.logger.Debug("Selecting cache generation 1")
 	default:
-		return errors.New("invalid preload, generation mismatch")
+		return &ErrGenerationMismatch{
+			LastPersistedIndex: preloadSet.LastPersistedIndex,
+			Gen0BaseIndex:      fsm.Cache.BaseIndex.Gen0,
+			Gen1BaseIndex:      fsm.Cache.BaseIndex.Gen1,
+		}
 	}
 
 	// Helper function to put a preloaded amount into a cache generation
@@ -501,7 +510,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if err != nil {
 		return &ApplyResult{
 			ProposalID: proposal.Id,
-			Error:      err,
+			Error:      &processing.BusinessError{Err: err},
 		}, nil
 	}
 

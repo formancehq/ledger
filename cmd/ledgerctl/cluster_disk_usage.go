@@ -37,7 +37,7 @@ func runClusterDiskUsage(cmd *cobra.Command, _ []string) error {
 
 	usage, err := client.GetDiskUsage(ctx, &clusterpb.GetDiskUsageRequest{})
 	if err != nil {
-		return fmt.Errorf("failed to get disk usage: %w", err)
+		return formatGRPCError("failed to get disk usage", err)
 	}
 
 	jsonMode, _ := cmd.Flags().GetBool("json")

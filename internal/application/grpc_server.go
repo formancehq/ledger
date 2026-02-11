@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -108,6 +109,12 @@ func convertToGRPCError(err error) error {
 	var notFoundErr *commonpb.NotFoundError
 	if errors.As(err, &notFoundErr) {
 		return status.Error(codes.NotFound, notFoundErr.Error())
+	}
+
+	// Convert BusinessError to proper gRPC status with ErrorInfo details
+	var bizErr *processing.BusinessError
+	if errors.As(err, &bizErr) {
+		return businessErrorToGRPCStatus(bizErr).Err()
 	}
 
 	// Default: return as Unknown (preserves the original error message)

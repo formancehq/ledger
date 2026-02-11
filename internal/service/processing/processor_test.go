@@ -166,7 +166,7 @@ func TestProcessProposal_WithIdempotencyKey_Conflict(t *testing.T) {
 	response, err := processor.ProcessProposal(proposal, mockStore)
 	require.Error(t, err)
 	require.Nil(t, response)
-	require.ErrorIs(t, err, ErrIdempotencyKeyConflict)
+	require.ErrorAs(t, err, new(*ErrIdempotencyKeyConflict))
 }
 
 func TestProcessProposal_WithoutIdempotencyKey(t *testing.T) {

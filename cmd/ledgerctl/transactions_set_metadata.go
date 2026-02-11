@@ -144,7 +144,7 @@ func runTransactionsSetMetadata(cmd *cobra.Command, args []string) error {
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		spinner.Fail("Failed to set metadata")
-		return fmt.Errorf("failed to set metadata: %w", err)
+		return formatGRPCError("failed to set metadata", err)
 	}
 
 	spinner.Success("Metadata set")

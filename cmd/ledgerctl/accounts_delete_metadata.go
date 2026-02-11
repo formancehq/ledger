@@ -133,7 +133,7 @@ func runAccountsDeleteMetadata(cmd *cobra.Command, args []string) error {
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		spinner.Fail("Failed to delete metadata")
-		return fmt.Errorf("failed to delete metadata: %w", err)
+		return formatGRPCError("failed to delete metadata", err)
 	}
 
 	spinner.Success("Deleted")

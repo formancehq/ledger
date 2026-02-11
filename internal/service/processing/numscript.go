@@ -30,7 +30,7 @@ var numscriptFeatureFlags = map[string]struct{}{
 
 func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.Script == nil || order.Script.Plain == "" {
-		return nil, errors.New("numscript: script is required")
+		return nil, ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
@@ -219,7 +219,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 			// Note: In the future, static analysis of Numscript will allow extracting
 			// impacted accounts at admission time for automatic preloading.
 			if input == nil || (input.Known == nil && input.DiffSinceBaseIndex == nil) {
-				return nil, fmt.Errorf("balance not preloaded for account %q asset %q", account, asset)
+				return nil, &ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output

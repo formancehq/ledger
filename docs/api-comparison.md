@@ -47,6 +47,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Idempotency key | ✅ | ✅ | |
 | **Reference Uniqueness** |
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
+| **Error Handling** |
+| Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
@@ -377,3 +379,48 @@ The `Apply` method is the **single entry point for all ledger write operations**
 **Response:** `common.Log` - The log entry created by the action
 
 **Note:** Individual RPC methods like `CreateTransaction`, `RevertTransaction`, `SaveAccountMetadata`, etc. have been consolidated into the `Apply` method for a cleaner API.
+
+### gRPC Error Mapping
+
+Business errors from the processing layer are mapped to proper gRPC status codes with structured `ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
+
+Each error response includes a `google.rpc.ErrorInfo` detail with:
+- **`reason`**: Machine-readable error reason constant (e.g., `LEDGER_ALREADY_EXISTS`)
+- **`domain`**: Always `"ledger"`
+- **`metadata`**: Error-specific key-value pairs with context (e.g., account name, asset, amount)
+
+| Error | gRPC Code | Reason | Metadata |
+|-------|-----------|--------|----------|
+| Ledger already exists | `ALREADY_EXISTS` | `LEDGER_ALREADY_EXISTS` | `name` |
+| Ledger not found | `NOT_FOUND` | `LEDGER_NOT_FOUND` | `name` |
+| Idempotency key conflict | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_CONFLICT` | `key` |
+| Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledgerId`, `reference` |
+| Transaction not found | `NOT_FOUND` | `TRANSACTION_NOT_FOUND` | `transactionId` |
+| Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
+| Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
+| Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
+| Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
+| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
+
+**Client-side usage (Go):**
+```go
+import (
+    "google.golang.org/genproto/googleapis/rpc/errdetails"
+    "google.golang.org/grpc/status"
+)
+
+st, ok := status.FromError(err)
+if ok {
+    for _, detail := range st.Details() {
+        if info, ok := detail.(*errdetails.ErrorInfo); ok && info.Domain == "ledger" {
+            switch info.Reason {
+            case "INSUFFICIENT_FUNDS":
+                // Handle insufficient funds using info.Metadata
+            case "LEDGER_NOT_FOUND":
+                // Handle ledger not found
+            }
+        }
+    }
+}
+```

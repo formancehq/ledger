@@ -454,42 +454,117 @@ See [Idempotency](./idempotency.md) for detailed documentation.
 
 ## Error Handling
 
+### BusinessError Wrapper
+
+Processing errors (insufficient funds, ledger not found, etc.) are wrapped in a `BusinessError` struct in the FSM layer. The gRPC interceptor converts `BusinessError` instances to proper gRPC status codes with structured `google.rpc.ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
+
+Each business error response includes:
+- A **gRPC status code** (e.g., `NOT_FOUND`, `ALREADY_EXISTS`, `FAILED_PRECONDITION`)
+- A **human-readable message** (the original error string)
+- An **`ErrorInfo` detail** with:
+  - `reason`: Machine-readable constant (e.g., `LEDGER_ALREADY_EXISTS`)
+  - `domain`: Always `"ledger"`
+  - `metadata`: Error-specific key-value pairs with context
+
 ### gRPC Status Codes
 
 | Code | Condition |
 |------|-----------|
 | `OK` | Request succeeded |
 | `NOT_FOUND` | Ledger, account, or transaction not found |
-| `ALREADY_EXISTS` | Ledger already exists |
-| `INVALID_ARGUMENT` | Invalid request parameters |
-| `FAILED_PRECONDITION` | Insufficient balance, transaction already reverted |
-| `UNAVAILABLE` | No leader available |
-| `UNKNOWN` | Internal error |
+| `ALREADY_EXISTS` | Ledger already exists, idempotency key conflict, reference conflict |
+| `INVALID_ARGUMENT` | Invalid request parameters, Numscript parse error, validation error |
+| `FAILED_PRECONDITION` | Insufficient balance, transaction already reverted, balance not found |
+| `UNAVAILABLE` | No leader available (client should retry) |
+| `INTERNAL` | Unrecognized business error |
 
-### Error Handling Example
+### Error Reason Constants
+
+All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/service/processing/errors.go` and shared between server and client.
+
+| Error | gRPC Code | Reason | Metadata |
+|-------|-----------|--------|----------|
+| Ledger already exists | `ALREADY_EXISTS` | `LEDGER_ALREADY_EXISTS` | `name` |
+| Ledger not found | `NOT_FOUND` | `LEDGER_NOT_FOUND` | `name` |
+| Idempotency key conflict | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_CONFLICT` | `key` |
+| Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledgerId`, `reference` |
+| Transaction not found | `NOT_FOUND` | `TRANSACTION_NOT_FOUND` | `transactionId` |
+| Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
+| Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
+| Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
+| Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
+| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
+
+### Error Handling Example (with ErrorInfo)
 
 ```go
+import (
+    "google.golang.org/genproto/googleapis/rpc/errdetails"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+)
+
 resp, err := client.Apply(ctx, req)
 if err != nil {
     st, ok := status.FromError(err)
     if !ok {
         return fmt.Errorf("unknown error: %w", err)
     }
-    
+
+    // Extract structured error details
+    for _, detail := range st.Details() {
+        if info, ok := detail.(*errdetails.ErrorInfo); ok && info.Domain == "ledger" {
+            switch info.Reason {
+            case "INSUFFICIENT_FUNDS":
+                fmt.Printf("Account %s has insufficient %s: needed %s, available %s\n",
+                    info.Metadata["account"], info.Metadata["asset"],
+                    info.Metadata["amount"], info.Metadata["balance"])
+            case "LEDGER_NOT_FOUND":
+                fmt.Printf("Ledger %s does not exist\n", info.Metadata["name"])
+            case "LEDGER_ALREADY_EXISTS":
+                fmt.Printf("Ledger %s already exists\n", info.Metadata["name"])
+            case "TRANSACTION_ALREADY_REVERTED":
+                fmt.Printf("Transaction %s is already reverted\n", info.Metadata["transactionId"])
+            case "NUMSCRIPT_PARSE_ERROR":
+                fmt.Printf("Script error: %s\n", info.Metadata["details"])
+            default:
+                fmt.Printf("Business error [%s]: %s\n", info.Reason, st.Message())
+            }
+            return
+        }
+    }
+
+    // Fallback: handle by status code only
     switch st.Code() {
-    case codes.NotFound:
-        return fmt.Errorf("resource not found: %s", st.Message())
-    case codes.FailedPrecondition:
-        return fmt.Errorf("precondition failed: %s", st.Message())
     case codes.Unavailable:
-        // Retry after delay
-        time.Sleep(time.Second)
-        return retry(ctx, req)
+        // No leader — retry (handled automatically by gRPC retry policy)
+        return fmt.Errorf("no leader available: %s", st.Message())
     default:
         return fmt.Errorf("gRPC error %s: %s", st.Code(), st.Message())
     }
 }
 ```
+
+### Architecture
+
+The error flow is:
+
+```
+Processor (returns typed error)
+  → Machine.applyProposal (wraps in BusinessError)
+    → Future / Admission / Controller
+      → gRPC interceptor (converts BusinessError → Status + ErrorInfo)
+        → Client (extracts ErrorInfo, reconstructs typed error)
+```
+
+**Server side** (`internal/application/grpc_errors.go`):
+- `businessErrorToGRPCStatus()` uses `errors.As` to safely match error types through the chain
+- Attaches `errdetails.ErrorInfo` with reason, domain, and metadata
+
+**Client side** (`cmd/ledgerctl/errors.go`):
+- `businessErrorFromGRPC()` extracts `ErrorInfo` from gRPC status details
+- Reconstructs the original typed error from reason + metadata
 
 ## Store Metrics
 

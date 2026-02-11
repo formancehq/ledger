@@ -390,7 +390,10 @@ func checkDoubleEntryInvariant(
 	}
 
 	if inputSum.Cmp(outputSum) != 0 {
-		return fmt.Errorf("double-entry invariant violated: sum of inputs (%s) != sum of outputs (%s)", inputSum, outputSum)
+		return &ErrDoubleEntryInvariantViolated{
+			InputSum:  inputSum,
+			OutputSum: outputSum,
+		}
 	}
 
 	return nil

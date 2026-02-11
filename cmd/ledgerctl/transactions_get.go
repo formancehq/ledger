@@ -84,7 +84,7 @@ func runTransactionsGet(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		spinner.Fail("Failed to get transaction")
-		return fmt.Errorf("failed to get transaction: %w", err)
+		return formatGRPCError("failed to get transaction", err)
 	}
 
 	_ = spinner.Stop()
