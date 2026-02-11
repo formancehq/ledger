@@ -18,3 +18,5 @@
 * Add clock check on health service?
 * Delete per pod service in helm chart
 * Mirror mode
+* Numscript admission emulation
+* Learners/bootstrap cluster
