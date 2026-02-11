@@ -201,30 +201,47 @@ Snapshots are created automatically when:
 
 ### Snapshot Contents
 
-The snapshot contains the complete FSM state:
-- Map of all ledgers with their states
-- Each ledger state includes:
-  - Ledger metadata (name, creation date, etc.)
-  - Next log ID
-  - Next transaction ID
-  - Last applied log ID
+The snapshot (`MemorySnapshot`) contains the complete in-memory FSM state:
+- Next ledger ID, global sequence, last log hash, checkpoint ID
+- Dual-generation attribute cache (gen0 + gen1) with all:
+  - Input/output volumes per account/asset
+  - Account and ledger metadata
+  - Ledger info entries
+  - Ledger boundaries (next log ID, next transaction ID per ledger)
+  - Transaction references
+- HLC timestamp of last applied entry
+- Next audit sequence ID
 
 ### Snapshot Format
 
-Snapshots are serialized using Protocol Buffers:
+Snapshots are serialized using Protocol Buffers. The FSM snapshot captures the complete in-memory state:
 
 ```protobuf
-message State {
-  map<string, LedgerState> ledgers = 1;
+message MemorySnapshot {
+  uint32 next_ledger_id = 1;
+  uint64 next_sequence_id = 2;
+  bytes last_log_hash = 3;
+  GenerationSnapshot gen0 = 4;           // Current generation
+  GenerationSnapshot gen1 = 5;           // Previous generation (may be nil)
+  uint64 checkpoint_id = 6;
+  uint64 current_generation = 7;
+  uint64 last_applied_timestamp = 8;     // HLC timestamp (microseconds since epoch)
+  uint64 next_audit_sequence_id = 9;     // Next audit log sequence ID
 }
 
-message LedgerState {
-  LedgerInfo ledger_info = 1;
-  uint64 next_log_id = 2;
-  uint64 next_transaction_id = 3;
-  uint64 last_applied_log_id = 4;
+message GenerationSnapshot {
+  uint64 base_index = 1;
+  repeated VolumeAttributeEntry input = 2;
+  repeated VolumeAttributeEntry output = 3;
+  repeated MetadataAttributeEntry metadata = 4;
+  repeated MetadataAttributeEntry ledger_metadata = 5;
+  repeated LedgerAttributeEntry ledgers = 6;
+  repeated BoundaryAttributeEntry boundaries = 7;
+  repeated TransactionReferenceAttributeEntry references = 8;
 }
 ```
+
+The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references) serialized per generation, allowing fast in-memory restoration without reading from Pebble.
 
 ### Restoration from Snapshot
 
@@ -244,7 +261,7 @@ When a node is synchronizing from a snapshot (e.g., after joining the cluster or
 - **Spool purpose**: Buffers commands that arrive during synchronization, preventing them from being lost
 - **After synchronization**: Commands from the spool are replayed sequentially to catch up
 
-**File**: `internal/raft/spool.go`
+**File**: `internal/storage/spool/spool.go`
 
 **Spool Operations**:
 
@@ -268,7 +285,7 @@ func (s *spool) Reset() error
 
 ### Synchronization Manager
 
-The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/raft/node.go` and `internal/raft/fsm.go`).
+The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/service/node/node.go` and `internal/service/state/machine.go`).
 
 **Responsibilities**:
 - Manages the "syncing" state flag (`statusNormal` / `statusSyncing`)
@@ -297,19 +314,25 @@ The Node manages the synchronization process between the Raft log and the FSM di
 
 ### Concept
 
-The Store is responsible for persistent storage of transactions (logs) and derived runtime state (balances, account metadata, idempotency). **All ledgers share the same Store instance**, with data keyed by ledger name.
+The Store is responsible for persistent storage of transaction logs and derived attributes (volumes, metadata, idempotency keys, etc.). **All ledgers share the same Store instance**, with attribute data keyed by numeric ledger ID via U128 hash keys.
 
 For detailed information on available storage backends and their configuration, see [Storage Drivers](./storage-drivers.md).
 
 ### What the Store Persists
 
-- **Transaction logs** - Immutable record of all ledger operations
-- **Balances** - Current balance for each account/asset combination
-- **Account metadata** - Key-value metadata associated with accounts
-- **Idempotency entries** - Track processed requests to prevent duplicates
-- **Transaction ID mappings** - Map transaction IDs to log IDs
-- **Reverted transaction IDs** - Track which transactions have been reverted
-- **Last applied Raft index** - For recovery after restart
+- **Transaction logs** (`0x01` prefix) - Immutable record of all ledger operations (global sequence)
+- **Attributes** (`0x09` prefix) - Generation-based attribute data:
+  - Input/output volumes per account/asset
+  - Account and ledger metadata
+  - Ledger info entries
+  - Ledger boundaries (next IDs per ledger)
+  - Idempotency keys (system-wide)
+  - Transaction references
+  - Reversion status
+- **Transaction updates** (`0x08` prefix) - Track modifications per transaction (metadata, reverts)
+- **Audit entries** (`0x0A` prefix) - Audit trail of proposals (success/failure)
+- **Last applied Raft index** (`0x00` prefix) - For recovery after restart
+- **Last applied HLC timestamp** (`0x04` prefix) - Hybrid logical clock state
 
 ### Attribute Loading Coordination
 

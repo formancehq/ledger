@@ -13,39 +13,39 @@ Ledger creation is a distributed operation that goes through the single Raft gro
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP as HTTP Handler
-    participant RaftNode as Raft Node
+    participant API as gRPC/HTTP Server
+    participant Ctrl as Routed Controller
+    participant Admission
     participant FSM as FSM
-    
-    Client->>HTTP: POST /my-ledger
-    HTTP->>RaftNode: CreateLedger(name, metadata)
-    
+
+    Client->>API: Apply(CreateLedger)
+    API->>Ctrl: Apply()
+
     alt Node is leader
-        RaftNode->>FSM: Propose CreateLedgerCommand
+        Ctrl->>Admission: Admit()
+        Admission->>FSM: Propose via Raft
         FSM->>FSM: Validate Name is Unique
         FSM->>FSM: Create LedgerState
-        FSM-->>RaftNode: LedgerInfo
+        FSM-->>Admission: LedgerInfo
     else Node is Follower
-        RaftNode->>RaftNode: Find leader
-        RaftNode->>FSM: Forward via gRPC (to leader)
-        Note over FSM: Same as leader path
-        FSM-->>RaftNode: LedgerInfo
+        Ctrl->>Ctrl: Forward via gRPC (to leader)
+        Note over Ctrl: Same as leader path
     end
-    
-    RaftNode-->>HTTP: LedgerInfo
-    HTTP-->>Client: 201 Created
+
+    Ctrl-->>API: ApplyResponse
+    API-->>Client: Response
 ```
 
 ### Detailed Steps
 
-1. **HTTP Request Reception**
-   - The HTTP handler receives `POST /{ledgerName}`
-   - Validates the body (metadata)
-   - Calls `raftNode.CreateLedger()`
+1. **Request Reception**
+   - The gRPC/HTTP server receives the Apply request
+   - Validates the request
+   - The routed controller checks if the node is the leader
 
 2. **Leader Verification**
-   - The Raft node checks if it is the leader
-   - If not leader, identifies the leader and forwards the request
+   - The routed controller checks if it is the leader
+   - If not leader, identifies the leader and forwards the request via gRPC
 
 3. **Command Proposal**
    - The leader creates a `CreateLedgerCommand`
@@ -72,36 +72,30 @@ Transaction creation goes through the single Raft group.
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP as HTTP Handler
-    participant RaftNode as Raft Node
-    participant Controller as Controller
-    participant Store as Store
+    participant API as gRPC/HTTP Server
+    participant Ctrl as Routed Controller
+    participant Admission
     participant FSM as FSM
-    
-    Client->>HTTP: POST /my-ledger/transactions
-    HTTP->>RaftNode: CreateTransaction()
-    RaftNode->>Controller: CreateTransaction()
-    
+    participant Store as Pebble Store
+
+    Client->>API: Apply(CreateTransaction)
+    API->>Ctrl: Apply()
+
     alt Node is leader
-        Controller->>Store: Check Balances
-        Store-->>Controller: Balances OK
-        Controller->>Controller: Validate Transaction
-        Controller->>RaftNode: CreateLog()
-        RaftNode->>FSM: Propose CreateLogCommand (via Raft)
-        FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>Store: AppendLogs() - Persist log and update balances
+        Ctrl->>Admission: Admit()
+        Note over Admission: Preload volumes from cache/store
+        Admission->>FSM: Propose via Raft
+        FSM->>FSM: Process transaction + Generate IDs
+        FSM->>Store: Commit batch (log + attributes)
         Note over FSM,Store: Logs persisted during apply
-        FSM-->>RaftNode: Log
-        RaftNode-->>Controller: Log
+        FSM-->>Admission: Log
     else Node is Follower
-        Controller->>Controller: Find leader
-        Controller->>RaftNode: Forward via gRPC (to leader)
-        Note over FSM,Store: Same as leader path
-        RaftNode-->>Controller: Log
+        Ctrl->>Ctrl: Forward via gRPC (to leader)
+        Note over Ctrl: Same as leader path
     end
-    
-    Controller-->>HTTP: CreatedTransaction
-    HTTP-->>Client: 201 Created
+
+    Ctrl-->>API: ApplyResponse
+    API-->>Client: Response
 ```
 
 ### Detailed Steps

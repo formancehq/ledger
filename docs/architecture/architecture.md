@@ -11,9 +11,9 @@ graph TB
     subgraph "Client Applications"
         HTTPClient[HTTP Client]
         GRPCClient[gRPC Client]
-        CLIClient[CLI Client]
+        CLIClient[CLI Client<br/>gRPC]
     end
-    
+
     subgraph "Node 1"
         HTTPServer1[HTTP Server<br/>Port 9000]
         GRPCServer1[gRPC Service<br/>Port 8888]
@@ -43,7 +43,7 @@ graph TB
     
     HTTPClient --> HTTPServer1
     GRPCClient --> GRPCServer1
-    CLIClient --> HTTPServer1
+    CLIClient --> GRPCServer1
     
     HTTPServer1 --> RaftNode1
     HTTPServer2 --> RaftNode2
@@ -141,16 +141,18 @@ The FSM (Finite State Machine) handles all commands:
 
 The FSM maintains a unified state containing all ledgers:
 
-```go
-type State struct {
-    Ledgers map[string]*LedgerState  // All ledgers indexed by name
+```protobuf
+message State {
+  map<uint32, LedgerState> ledgers = 1;   // All ledgers indexed by numeric ID
+  uint32 next_ledger_id = 2;              // Next available ledger ID
+  uint64 next_sequence = 3;               // Next global log sequence number
+  uint64 checkpoint_id = 4;               // Last checkpoint ID
 }
 
-type LedgerState struct {
-    LedgerInfo        *LedgerInfo  // Ledger metadata
-    NextLogId         uint64       // Next log sequence number
-    NextTransactionId uint64       // Next transaction ID
-    LastAppliedLogId  uint64       // Last applied log for sync
+message LedgerState {
+  LedgerInfo ledger_info = 1;
+  uint64 next_log_id = 2;                 // Next log sequence number
+  uint64 next_transaction_id = 3;         // Next transaction ID
 }
 ```
 
@@ -194,27 +196,26 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP as HTTP Handler
-    participant RaftNode as Raft Node
+    participant API as gRPC/HTTP Server
+    participant Ctrl as Routed Controller
+    participant Admission
     participant FSM as FSM
-    participant Storage as Store
-    
-    Client->>HTTP: POST /{ledgerName}
-    HTTP->>RaftNode: CreateLedger()
-    
+
+    Client->>API: Apply(CreateLedger)
+    API->>Ctrl: Apply()
+
     alt Node is leader
-        RaftNode->>FSM: Propose CreateLedgerCommand (via Raft)
+        Ctrl->>Admission: Admit()
+        Admission->>FSM: Propose via Raft
         FSM->>FSM: Validate & Create LedgerState
-        FSM-->>RaftNode: LedgerInfo
+        FSM-->>Admission: LedgerInfo
     else Node is follower
-        RaftNode->>RaftNode: Find leader
-        RaftNode->>FSM: Forward via gRPC (to leader)
-        Note over FSM,Storage: Same as leader path
-        FSM-->>RaftNode: LedgerInfo
+        Ctrl->>Ctrl: Forward via gRPC (to leader)
+        Note over Ctrl: Same as leader path
     end
-    
-    RaftNode-->>HTTP: LedgerInfo
-    HTTP-->>Client: 201 Created
+
+    Ctrl-->>API: ApplyResponse
+    API-->>Client: Response
 ```
 
 ### Transaction Creation
@@ -222,34 +223,29 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client
-    participant HTTP as HTTP Handler
-    participant RaftNode as Raft Node
-    participant Controller as Controller
+    participant API as gRPC/HTTP Server
+    participant Ctrl as Routed Controller
+    participant Admission
     participant FSM as FSM
-    participant Store as Store
-    
-    Client->>HTTP: POST /{ledgerName}/transactions
-    HTTP->>RaftNode: CreateTransaction()
-    RaftNode->>Controller: CreateTransaction()
-    
+    participant Store as Pebble Store
+
+    Client->>API: Apply(CreateTransaction)
+    API->>Ctrl: Apply()
+
     alt Node is leader
-        Controller->>Store: Check Balances
-        Controller->>Controller: Validate Transaction
-        Controller->>RaftNode: CreateLog()
-        RaftNode->>FSM: Propose CreateLogCommand (via Raft)
-        FSM->>FSM: Generate Log ID & Transaction ID
-        FSM->>Store: AppendLogs() - Persist log and update balances
-        FSM-->>RaftNode: Log
-        RaftNode-->>Controller: Log
+        Ctrl->>Admission: Admit()
+        Note over Admission: Preload volumes from cache/store
+        Admission->>FSM: Propose via Raft
+        FSM->>FSM: Process + Generate IDs
+        FSM->>Store: Commit batch
+        FSM-->>Admission: Log
     else Node is follower
-        Controller->>Controller: Find leader
-        Controller->>RaftNode: Forward via gRPC (to leader)
-        Note over RaftNode,Store: Same as leader path
-        RaftNode-->>Controller: Log
+        Ctrl->>Ctrl: Forward via gRPC (to leader)
+        Note over Ctrl: Same as leader path
     end
-    
-    Controller-->>HTTP: CreatedTransaction
-    HTTP-->>Client: 201 Created
+
+    Ctrl-->>API: ApplyResponse
+    API-->>Client: Response
 ```
 
 ## Leader Management
@@ -304,10 +300,11 @@ Although all ledgers share the same Raft group and storage:
 
 ### Storage Organization
 
-All ledgers share a single Store with data prefixed by ledger name:
-- `logs` table: Contains `(ledger, id)` as primary key
-- `balances` table: Contains `(ledger, account, asset)` as key
-- `account_metadata` table: Contains `(ledger, account_address, key)` as key
+All ledgers share a single Pebble key-value store with byte-prefixed keys:
+- **Logs**: prefix `0x01` + global sequence number
+- **Attributes**: prefix `0x09` + attribute type byte + U128 hash key (volumes, metadata, ledgers, boundaries, etc.)
+- **Audit entries**: prefix `0x0A` + audit sequence number
+- **Transaction updates**: prefix `0x08` + ledger ID + transaction ID + log sequence
 
 ## Scalability
 

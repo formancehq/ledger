@@ -200,36 +200,6 @@ GET /
 }
 ```
 
-#### Get Ledger Raft State
-
-```http
-GET /{ledgerName}/raft/state
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "state": "Leader",
-    "leader": 1,
-    "localNode": 1,
-    "nodes": [
-      {
-        "id": 1,
-        "address": "127.0.0.1:8888",
-        "suffrage": "Voter"
-      }
-    ],
-    "raftStatus": {
-      "term": 1,
-      "applied": 100,
-      "commit": 100,
-      "lastIndex": 100
-    }
-  }
-}
-```
-
 #### Delete a Ledger
 
 ```http
@@ -237,30 +207,6 @@ DELETE /{ledgerName}
 ```
 
 **Response**: `204 No Content`
-
-#### Sanity Check
-
-Verifies the integrity of local storage for a specific ledger. This endpoint does **not** forward to the leader, allowing node-specific diagnostics.
-
-```http
-GET /{ledgerName}/sanity-check
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "status": "ok"
-  }
-}
-```
-
-**Status values**:
-- `ok`: Storage is consistent and valid
-- `error`: Storage has inconsistencies or errors
-- `not_implemented`: Logic is not yet implemented
-
-See [Storage Sanity Check](./sanity-check.md) for detailed documentation.
 
 ### Transactions
 
@@ -396,59 +342,16 @@ DELETE /{ledgerName}/accounts/{address}/metadata/{key}
 
 ### Cluster
 
-#### Cluster State
+Cluster operations are available via the `ClusterService` gRPC API (port 8888) and the `ledgerctl cluster` CLI commands.
 
-```http
-GET /cluster/state
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "state": "Leader",
-    "leader": 1,
-    "localNode": 1,
-    "nodes": [
-      {
-        "id": 1,
-        "address": "127.0.0.1:8888",
-        "suffrage": "Voter"
-      },
-      ...
-    ],
-    "raftStatus": {
-      "term": 1,
-      "applied": 100,
-      "commit": 100,
-      "lastIndex": 100,
-      "progress": {
-        "1": {
-          "match": 100,
-          "next": 101,
-          "state": "Replicate",
-          "pendingSnapshot": 0,
-          "recentActive": true,
-          "isPaused": false
-        }
-      }
-    },
-    "innerState": {
-      "nextLedgerId": 3,
-      "ledgers": {
-        "ledger1": {
-          "id": 1,
-          "driver": "pebble"
-        },
-        "ledger2": {
-          "id": 2,
-          "driver": "pebble"
-        }
-      }
-    }
-  }
-}
-```
+**Available RPCs**:
+- `GetClusterState`: Current Raft cluster state (leader, voters, learners)
+- `GetDiskUsage`: Local node disk usage
+- `GetNodeTime`: Node's physical clock time
+- `TransferLeadership`: Transfer Raft leadership to another node
+- `Backup`: Point-in-time backup as tar archive
+- `AddLearner`: Add a non-voting node to the cluster
+- `PromoteLearner`: Promote a learner to full voter
 
 ### Health
 
@@ -486,57 +389,27 @@ For detailed documentation, examples, and client code, see [gRPC API](./grpc-api
 
 ## Service Interfaces
 
-### MasterCluster
+### Controller
 
-Main interface to access the cluster:
+The main interface for read and write operations:
 
 ```go
-type MasterCluster interface {
-    Cluster
-    SystemWriter
-    SystemReader
+// internal/ctrl/controller.go
+type Controller interface {
+    Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
+    GetAccount(ctx context.Context, ledger string, address string) (*commonpb.Account, error)
+    GetTransaction(ctx context.Context, ledger string, txID uint64) (*commonpb.Transaction, error)
+    GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
+    GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error)
+    ListTransactions(ctx context.Context, ledger string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error)
 }
 ```
 
-**Main methods**:
-- `CreateLedger()`: Create a ledger
-- `DeleteLedger()`: Delete a ledger
-- `GetLedger()`: Get a ledger
-- `GetClusterState()`: Get cluster state
+### Routed Controller
 
-### LedgerCluster
-
-Interface to access a ledger-specific cluster:
-
-```go
-type LedgerCluster interface {
-    Cluster
-    LedgerReader
-    LedgerWriter
-}
-```
-
-**Main methods**:
-- `GetLedger()`: Get a ledger
-- `GetLedgers()`: List ledgers
-- `CreateTransaction()`: Create a transaction
-
-### Ledger
-
-Interface for ledger operations:
-
-```go
-type Ledger interface {
-    CreateTransaction(...) (*Log, *CreatedTransaction, error)
-    RevertTransaction(...) (*Log, *RevertedTransaction, error)
-    SaveTransactionMetadata(...) (*Log, error)
-    SaveAccountMetadata(...) (*Log, error)
-    DeleteTransactionMetadata(...) (*Log, error)
-    DeleteAccountMetadata(...) (*Log, error)
-    Import(...) error
-    Export(...) error
-}
-```
+The `RoutedController` wraps the `Controller` to handle leader forwarding:
+- **Write operations** (`Apply`): Forwarded to the leader via gRPC if the node is a follower
+- **Read operations** (`GetAccount`, `GetTransaction`, etc.): Served locally from the Pebble store
 
 ## Request Forwarding
 
@@ -551,21 +424,18 @@ When a node receives a write request but is not the leader:
 
 ### Implementation
 
+The `RoutedController` checks if the node is the leader. If not, it forwards the request to the leader's service port via gRPC:
+
 ```go
-func (adapter *systemNodeAdapter) getMainCluster() (interface {
-    service.Cluster
-    service.SystemWriter
-}, error) {
-    if adapter.IsLeader() {
-        return adapter.Node, nil
+// Simplified from internal/application/controller_routed.go
+func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+    if r.isLeader() {
+        return r.localController.Apply(ctx, requests...)
     }
-    if adapter.GetLeader() == 0 {
-        return nil, ledger.ErrNoLeader
-    }
-    
-    // Forward to leader via gRPC
-    grpcConn := adapter.connectionPool.GetConnection(adapter.GetLeader())
-    return service.NewGrpcSystemClient(...), nil
+    // Forward to leader via ServiceConnectionPool
+    leaderClient := r.getLeaderClient()
+    resp, err := leaderClient.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+    return resp.Logs, err
 }
 ```
 

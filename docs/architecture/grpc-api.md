@@ -50,12 +50,17 @@ service BucketService {
   rpc GetLedger(GetLedgerRequest) returns (LedgerInfo);
   rpc GetAccount(GetAccountRequest) returns (Account);
   rpc GetTransaction(GetTransactionRequest) returns (Transaction);
-  
+  rpc ListTransactions(ListTransactionsRequest) returns (stream Transaction);
+
   // Write operations (unified Apply method)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
-  
+
   // Diagnostics
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
+  rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
+
+  // Audit
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream AuditEntry);
 }
 ```
 
@@ -565,6 +570,58 @@ Processor (returns typed error)
 **Client side** (`cmd/ledgerctl/errors.go`):
 - `businessErrorFromGRPC()` extracts `ErrorInfo` from gRPC status details
 - Reconstructs the original typed error from reason + metadata
+
+## Store Check
+
+Verify store integrity (hash chain and derived data consistency):
+
+```go
+stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+if err != nil {
+    return err
+}
+
+for {
+    event, err := stream.Recv()
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        return err
+    }
+    if e := event.GetError(); e != nil {
+        fmt.Printf("Error: %s - %s\n", e.ErrorType, e.Message)
+    }
+    if p := event.GetProgress(); p != nil {
+        fmt.Printf("Progress: %d/%d\n", p.LogsChecked, p.TotalLogs)
+    }
+}
+```
+
+## Audit Entries
+
+List audit trail entries (success and failure):
+
+```go
+stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+    Ledger:       "my-ledger",      // Optional: filter by ledger
+    FailuresOnly: true,              // Optional: only failures
+})
+if err != nil {
+    return err
+}
+
+for {
+    entry, err := stream.Recv()
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        return err
+    }
+    fmt.Printf("Audit #%d: proposal=%d\n", entry.Sequence, entry.ProposalId)
+}
+```
 
 ## Store Metrics
 

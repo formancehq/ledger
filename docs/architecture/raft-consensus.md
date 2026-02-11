@@ -41,22 +41,24 @@ The single Raft group handles all commands through a unified FSM:
 - `DeleteLedgerCommand`: Delete an existing ledger
 - `CreateLogCommand`: Insert a log (transaction, metadata changes, reversions) into any ledger
 
-**FSM**: `internal/raft/fsm.go`
+**FSM**: `internal/service/state/machine.go`
 
 ### State Management
 
 The FSM maintains a unified state for all ledgers:
 
-```go
-type State struct {
-    Ledgers map[string]*LedgerState  // All ledgers by name
+```protobuf
+message State {
+  map<uint32, LedgerState> ledgers = 1;  // All ledgers by numeric ID
+  uint32 next_ledger_id = 2;
+  uint64 next_sequence = 3;              // Global log sequence
+  uint64 checkpoint_id = 4;
 }
 
-type LedgerState struct {
-    LedgerInfo        *LedgerInfo
-    NextLogId         uint64
-    NextTransactionId uint64
-    LastAppliedLogId  uint64
+message LedgerState {
+  LedgerInfo ledger_info = 1;
+  uint64 next_log_id = 2;
+  uint64 next_transaction_id = 3;
 }
 ```
 
@@ -77,29 +79,31 @@ The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation us
 
 #### Node Wrapper
 
-`internal/raft/node.go` provides a wrapper around `raft.RawNode` that:
+`internal/service/node/node.go` provides a wrapper around `raft.RawNode` that:
 
 - Manages node lifecycle
 - Processes incoming Raft messages
-- Applies committed commands to the FSM
-- Manages snapshots
+- Applies committed commands to the FSM (Machine)
+- Manages snapshots and synchronization
 
 ```go
 type Node struct {
-    rawNode      *raft.RawNode
-    logger       logging.Logger
-    fsm          *FSM
-    wal          WAL
-    transport    Transport
-    spool        Spool
-    config       NodeConfig
-    store        store.Store
+    rawNode                 *raft.RawNode
+    logger                  logging.Logger
+    fsm                     *state.Machine
+    wal                     wal.WAL
+    transport               Transport
+    config                  NodeConfig
+    spool                   spool.Spool
+    store                   *data.Store
+    snapshotFetcherProvider state.SnapshotFetcherProvider
+    // ... and other fields
 }
 ```
 
 #### Storage
 
-`internal/raft/storage_wal.go` implements the `raft.Storage` interface required by etcd/raft:
+`internal/storage/wal/wal.go` implements the WAL storage required by etcd/raft:
 
 - **HardState**: Cluster state (term, vote, commit index)
 - **Entries**: Raft log entries
@@ -107,7 +111,7 @@ type Node struct {
 
 #### Transport
 
-`internal/raft/transport.go` manages communication between nodes:
+`internal/service/node/transport.go` manages communication between nodes:
 
 - Send Raft messages
 - Receive Raft messages
@@ -115,18 +119,18 @@ type Node struct {
 
 ```mermaid
 graph TB
-    subgraph "gRPC Server"
-        GRPC[gRPC Server<br/>Port 8888]
+    subgraph "Raft gRPC Server"
+        GRPC[Raft gRPC Server<br/>Port 7777]
     end
-    
+
     subgraph "Transport Layer"
         Transport[gRPC Transport]
     end
-    
+
     subgraph "Raft Group"
         RaftNode[Single Raft Node<br/>All Ledgers]
     end
-    
+
     GRPC --> Transport
     Transport --> RaftNode
 ```
@@ -321,7 +325,7 @@ The leader tracks each follower's state:
 
 #### Code Reference
 
-In `node.go`, the follower receives and applies the snapshot through a two-phase process:
+In `internal/service/node/node.go`, the follower receives and applies the snapshot through a two-phase process:
 
 ```go
 // Phase 1: Install snapshot to FSM (in-memory state)

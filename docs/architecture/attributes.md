@@ -23,6 +23,9 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Reversions** | ledger/txID | `bool` | Per-ledger | Last-write-wins |
 | **Idempotency Keys** | key string | `IdempotencyKeyValue` | System-wide | Immutable once set |
+| **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
+| **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
+| **Boundaries** | ledger ID | `LedgerBoundaries` | Per-ledger | Last-write-wins |
 
 ## Volumes (Input/Output)
 
@@ -133,6 +136,51 @@ Value: { logSequence: 456, hash: <blake3 hash of request content> }
 
 See [Idempotency](./idempotency.md) for detailed documentation.
 
+## Transaction References
+
+Map unique references to transaction IDs within a ledger.
+
+| Property | Description |
+|----------|-------------|
+| **Key** | `TransactionReferenceKey` = ledger ID + reference string |
+| **Value** | `uint64` (transaction ID) |
+| **Computation** | Immutable (first value wins) |
+| **Scope** | Per-ledger |
+
+**Usage:**
+- Enforce unique transaction references within a ledger
+- Look up transactions by reference
+
+## Ledgers
+
+Track ledger existence and info in the attribute cache.
+
+| Property | Description |
+|----------|-------------|
+| **Key** | `LedgerKey` = ledger name string |
+| **Value** | `LedgerInfo` protobuf |
+| **Computation** | Last diff wins |
+| **Scope** | System-wide |
+
+**Usage:**
+- Fast ledger existence checks during admission
+- Cache ledger info without store reads
+
+## Boundaries
+
+Track per-ledger boundaries (next log ID, next transaction ID).
+
+| Property | Description |
+|----------|-------------|
+| **Key** | `LedgerID` (uint32) |
+| **Value** | `LedgerBoundaries` (next log ID, next transaction ID) |
+| **Computation** | Last diff wins |
+| **Scope** | Per-ledger |
+
+**Usage:**
+- Assign monotonically increasing log IDs and transaction IDs within a ledger
+- Part of the deterministic FSM state
+
 ## Storage Format
 
 ### Key Structure
@@ -155,14 +203,19 @@ This layout groups all entries for the same canonical key together, enabling eff
 
 ### Attribute Prefixes
 
-| Attribute | Prefix |
-|-----------|--------|
-| Input Volumes | `0x01` |
-| Output Volumes | `0x02` |
-| Account Metadata | `0x03` |
-| Ledger Metadata | `0x04` |
-| Reversions | `0x05` |
-| Idempotency Keys | `0x06` |
+All attributes are stored under the `KeyPrefixAttributes` (`0x09`) top-level prefix. Each attribute type uses an ASCII letter sub-prefix:
+
+| Attribute | Prefix | ASCII |
+|-----------|--------|-------|
+| Input Volumes | `'I'` | `0x49` |
+| Output Volumes | `'O'` | `0x4F` |
+| Account Metadata | `'M'` | `0x4D` |
+| Ledger Metadata | `'L'` | `0x4C` |
+| Reversions | `'R'` | `0x52` |
+| Idempotency Keys | `'K'` | `0x4B` |
+| Transaction References | `'F'` | `0x46` |
+| Ledgers | `'G'` | `0x47` |
+| Boundaries | `'B'` | `0x42` |
 
 ### Value Computation
 

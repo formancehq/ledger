@@ -5,12 +5,13 @@ This document describes the storage driver for the Store in the Ledger v3 POC.
 ## Overview
 
 The Store is responsible for persisting:
-- **Transaction logs** - Immutable record of all ledger operations
-- **Balances** - Current balance for each account/asset combination
-- **Account metadata** - Key-value metadata associated with accounts
-- **Idempotency entries** - Track processed requests to prevent duplicates
-- **Transaction ID mappings** - Map transaction IDs to log IDs
-- **Reverted transaction IDs** - Track which transactions have been reverted
+- **System logs** - Immutable record of all system-wide operations (by global sequence)
+- **Ledger info** - Ledger metadata (by numeric ledger ID)
+- **Idempotency entries** - Track processed requests to prevent duplicates (direct prefix)
+- **Transaction updates** - Per-ledger transaction state (init, revert, metadata changes)
+- **Attributes** - Generation-cached key-value pairs for volumes, metadata, reversions, etc.
+- **Audit entries** - Optional audit trail for every proposal outcome
+- **Last applied index/timestamp** - Raft index and HLC timestamp for crash recovery
 
 The storage backend is **Pebble**, a high-performance LSM-tree based storage engine from CockroachDB.
 
@@ -56,36 +57,57 @@ MaxConcurrentCompactions:    2          // Parallel compactions (balance CPU/IO)
 
 ### Key Schema
 
-Pebble uses single-byte prefixes for efficient key organization. Keys are formatted as `{ledger}/{prefix}{data}`:
+Pebble uses single-byte prefixes for efficient key organization:
 
 | Prefix | Data Type | Key Format | Value |
 |--------|-----------|------------|-------|
-| `0x00` | Last Applied Index | `{prefix}` | `uint64` (8 bytes, big-endian) - Raft index |
-| `0x01` | Logs | `{ledger}/{prefix}{log_id}` | Protobuf-encoded `Log` message |
-| `0x02` | Balance diffs | `{ledger}/{prefix}{account}{asset}{timestamp}` | `big.Int` bytes - balance delta |
-| `0x03` | Account metadata | `{ledger}/{prefix}{account}{key}` | `string` - metadata value |
-| `0x04` | Idempotency entries | `{ledger}/{prefix}{idempotency_key}` | `uint64` (8 bytes) - log ID |
-| `0x05` | Transaction ID → Log ID | `{ledger}/{prefix}{transaction_id}` | `uint64` (8 bytes) - log ID |
-| `0x06` | Reverted transaction IDs | `{ledger}/{prefix}{transaction_id}` | `[]byte{1}` - presence marker |
+| `0x00` | Last Applied Index | `[0x00]` | `uint64` (8 bytes, big-endian) — Raft index |
+| `0x01` | System Logs | `[0x01][sequence]` | Protobuf-encoded `Log` message |
+| `0x02` | Idempotency | `[0x02][key_string]` | `uint64` (8 bytes) — log sequence |
+| `0x03` | Ledger Info | `[0x03][ledgerID]` | Protobuf-encoded `LedgerInfo` |
+| `0x04` | Last Applied Timestamp | `[0x04]` | `uint64` (8 bytes) — HLC microseconds |
+| `0x08` | Transaction Updates | `[ledgerPrefix][0x08][txID][byLog]` | Protobuf-encoded `TransactionUpdate` |
+| `0x09` | Attributes | `[0x09][attrPrefix][canonicalKey][raftIndex][entryType]` | Varies by attribute type |
+| `0x0A` | Audit Entries | `[0x0A][sequence]` | Protobuf-encoded `AuditEntry` |
 
 **Key encoding details**:
-- `{ledger}` - ledger name as string
-- `{log_id}`, `{transaction_id}` - 8 bytes, big-endian uint64
-- `{timestamp}` - 8 bytes, big-endian int64 (nanoseconds since Unix epoch)
-- `{account}`, `{asset}`, `{key}` - strings (concatenated without separator)
+- `[sequence]`, `[txID]`, `[byLog]`, `[raftIndex]` — 8 bytes, big-endian uint64
+- `[ledgerID]` — 4 bytes, big-endian uint32
+- `[ledgerPrefix]` — 4 bytes, big-endian uint32 (ledger numeric ID)
+- `[attrPrefix]` — 1 byte ASCII letter (see [Attributes](./attributes.md))
+- `[entryType]` — 1 byte: `0` = base, `1` = diff
+- `[canonicalKey]` — variable-length, domain-specific (e.g., `[ledgerID][account]\x00[asset]` for volumes)
+
+### Attribute Sub-Prefixes
+
+Under the `0x09` attribute prefix, each attribute type uses an ASCII letter sub-prefix:
+
+| Sub-prefix | Attribute | Canonical Key |
+|------------|-----------|---------------|
+| `'I'` (0x49) | Input Volumes | `[ledgerID][account]\x00[asset]` |
+| `'O'` (0x4F) | Output Volumes | `[ledgerID][account]\x00[asset]` |
+| `'M'` (0x4D) | Account Metadata | `[ledgerID][account]\x01[key]` |
+| `'L'` (0x4C) | Ledger Metadata | `[ledgerID][key]` |
+| `'R'` (0x52) | Reversions | `[ledgerID][txID]` |
+| `'K'` (0x4B) | Idempotency Keys | `[key_string]` |
+| `'F'` (0x46) | Transaction References | `[ledgerID][reference]` |
+| `'G'` (0x47) | Ledgers | `[ledger_name]` |
+| `'B'` (0x42) | Boundaries | `[ledgerID]` |
+
+See [System Attributes](./attributes.md) for the complete attribute storage and caching model.
 
 ### Balance Storage Model
 
-Pebble stores **balance diffs** (deltas):
+Pebble stores volumes using the **attribute base + cumulative diff** model:
 
-- Each transaction creates new diff entries with a unique timestamp
-- Balance is computed by summing all diffs for an account/asset pair
-- No read-before-write needed for updates
-- Excellent write throughput
+- Each volume attribute has a **base** entry and **cumulative diff** entries keyed by Raft index
+- Balance is computed as `base + latest_cumulative_diff`
+- Only the latest diff is needed (diffs are cumulative, not incremental)
+- Generation-rotation pruning and background compaction keep entry count bounded
 
 ```
-Key:   {ledger}/0x02{account}{asset}{timestamp_int64}
-Value: big.Int bytes representing the balance delta
+Key:   [0x09]['I'][ledgerID][account]\x00[asset][raftIndex][entryType]
+Value: big.Int bytes (base value or cumulative diff)
 ```
 
 ### Use Cases
@@ -180,25 +202,36 @@ curl -X POST http://localhost:9000/my-ledger \
 
 ## Implementation Details
 
-### Common Interface
+### Store and Batch
 
-The Store implements the `Batch` interface defined in `internal/store/types.go`. The interface provides:
+The `Store` (`internal/storage/data/store.go`) manages the Pebble database lifecycle, checkpoints, and read operations. It provides:
 
-- **Log operations**: `AppendLogs`, `GetAllLogs`, `GetLogBySequence`
-- **Runtime queries**: `GetBalance`, `GetAccountMetadata`
+- **Log operations**: `GetLogBySequence`, `ListTransactionIDs`
 - **Idempotency**: `GetSequenceForIdempotencyKey`
-- **Transaction tracking**: `GetSequenceForTransactionID`, `IsTransactionReverted`
-- **Lifecycle**: `Close`, `CreateSnapshot`, `GetLastAppliedIndex`
+- **Ledger queries**: `GetLedgerInfo`, `ListLedgers`
+- **Transaction queries**: `GetTransactionByID` (reconstructs from updates)
+- **Audit**: `ListAuditEntries`
+- **Snapshots**: `CreateSnapshot`, `CreateBackup`
+
+The `Batch` (`internal/storage/data/batch.go`) provides atomic write operations:
+
+- `SetAppliedIndex` / `SetLastAppliedTimestamp` — Raft progress tracking
+- `AppendLogs` — System logs with idempotency index
+- `SaveLedger` — Ledger info persistence
+- `StoreTransactionUpdate` — Transaction state changes
+- `AppendAuditEntries` — Audit trail entries
+- `Set` / `DeleteRange` — Low-level operations used by the attribute system
 
 ### Source Files
 
 | Component | Source File |
 |-----------|-------------|
-| Store | `internal/store/pebble_store.go` |
-| Batch | `internal/store/batch.go` |
-| Config | `internal/store/config.go` |
-| Metrics | `internal/store/metrics.go` |
-| Interfaces | `internal/store/types.go` |
+| Store | `internal/storage/data/store.go` |
+| Batch | `internal/storage/data/batch.go` |
+| Config | `internal/storage/data/config.go` |
+| Metrics | `internal/storage/data/metrics.go` |
+| Types (keys) | `internal/storage/data/types.go` |
+| Key builder | `internal/storage/data/key_builder.go` |
 
 ---
 

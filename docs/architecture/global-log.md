@@ -64,8 +64,8 @@ The `ApplyLedgerLog` message links the two levels:
 
 ```protobuf
 message ApplyLedgerLog {
-  uint32 ledger_id = 1;                   // Target ledger
-  LedgerLog log = 2;                      // Ledger-level log entry
+  string ledger_name = 1;                  // Target ledger name
+  LedgerLog log = 2;                       // Ledger-level log entry
 }
 ```
 
@@ -153,35 +153,45 @@ The global log architecture enables a powerful feature: **atomic bulk operations
 
 ### How It Works
 
-In v3, a single **Raft command** can contain multiple **actions**:
+In v3, a single **Raft proposal** can contain multiple **orders**:
 
-```go
-type Command struct {
-    ID      uint64
-    Date    *Timestamp
-    Actions []*Action    // Multiple actions in a single command
+```protobuf
+message Proposal {
+  uint64 id = 1;                    // Random proposal ID
+  repeated Order orders = 2;        // List of orders to execute atomically
+  Timestamp date = 3;               // Creation date in UTC
+  PreloadSet preload = 4;           // Preloaded attributes for deterministic execution
+}
+
+message Order {
+  Idempotency idempotency = 1;
+  oneof type {
+    LedgerApplyOrder apply = 2;         // Ledger operation (transaction, metadata)
+    CreateLedgerOrder create_ledger = 3;
+    DeleteLedgerOrder delete_ledger = 4;
+  }
 }
 ```
 
-Each action can target a different ledger:
+Each order can target a different ledger:
 
 ```go
-// A single command with actions on multiple ledgers
-command := &Command{
-    Actions: []*Action{
-        {Type: CreateLog, LedgerId: 1, ...},  // Action on ledger A
-        {Type: CreateLog, LedgerId: 2, ...},  // Action on ledger B
-        {Type: CreateLog, LedgerId: 1, ...},  // Another action on ledger A
+// A single proposal with orders on multiple ledgers
+proposal := &raftcmdpb.Proposal{
+    Orders: []*raftcmdpb.Order{
+        createLedgerOrder("ledger-a"),        // Order on ledger A
+        createTransactionOrder("ledger-b"),   // Order on ledger B
+        createTransactionOrder("ledger-a"),   // Another order on ledger A
     },
 }
 ```
 
 ### Atomic Execution
 
-Because all actions in a command are applied atomically in the FSM:
+Because all orders in a proposal are applied atomically in the FSM:
 
-1. **All-or-nothing**: Either all actions succeed, or none are applied
-2. **Single Raft entry**: The entire command is a single Raft log entry
+1. **All-or-nothing**: Either all orders succeed, or none are applied
+2. **Single Raft entry**: The entire proposal is a single Raft log entry
 3. **Single sequence range**: All resulting logs get consecutive global sequences
 4. **Consistent state**: The system state is always consistent
 
@@ -191,21 +201,21 @@ The HTTP bulk endpoint and gRPC service support atomic bulk operations:
 
 ```go
 // In handlers_bulk.go
-func (s *Server) runBulkAtomic(ctx context.Context, actions []*servicepb.Action) []bulkResult {
-    results := make([]bulkResult, len(actions))
+func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Request) []bulkResult {
+    results := make([]bulkResult, len(requests))
 
-    // All actions are sent to the backend in a single Apply() call
-    logs, err := s.backend.Apply(ctx, actions...)
+    // All requests are sent in a single Apply() call → single Raft proposal
+    resp, err := s.backend.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
     if err != nil {
-        // In atomic mode, if any action fails, all fail with the same error
+        // In atomic mode, if any order fails, all fail with the same error
         for i := range results {
             results[i] = bulkResult{err: err}
         }
         return results
     }
 
-    for i, log := range logs {
-        results[i] = bulkResult{log: log.GetApply().GetLog()}
+    for i, log := range resp.Logs {
+        results[i] = bulkResult{log: log}
     }
     return results
 }
@@ -263,18 +273,18 @@ The global log provides:
 
 ### FSM Processing
 
-The FSM processes all actions in a command atomically:
+The FSM processes all orders in a proposal atomically:
 
 ```go
-// In fsm.go
-func (fsm *FSM) applyEntry(ctx context.Context, batch *store.PebbleBatch, cmd *raftcmdpb.Command) (*ApplyResult, error) {
+// In internal/service/state/machine.go
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
     var logs []*commonpb.Log
 
-    // Process ALL actions atomically
-    for _, action := range cmd.Actions {
-        log, err := fsm.applyAction(ctx, batch, action, cmd.Date)
+    // Process ALL orders atomically
+    for _, order := range proposal.Orders {
+        log, err := fsm.applyOrder(ctx, batch, order, proposal.Date)
         if err != nil {
-            return nil, err  // Entire command fails if any action fails
+            return nil, err  // Entire proposal fails if any order fails
         }
         if log != nil {
             logs = append(logs, log)
@@ -282,8 +292,8 @@ func (fsm *FSM) applyEntry(ctx context.Context, batch *store.PebbleBatch, cmd *r
     }
 
     return &ApplyResult{
-        Logs:      logs,
-        CommandID: cmd.Id,
+        Logs:       logs,
+        ProposalID: proposal.Id,
     }, nil
 }
 ```
