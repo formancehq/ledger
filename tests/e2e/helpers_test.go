@@ -280,6 +280,18 @@ func revertTransactionAction(ledgerName string, transactionID uint64, force, atE
 	}
 }
 
+// withTimestamp sets the timestamp on a create transaction request
+func withTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
+	switch reqType := req.Type.(type) {
+	case *servicepb.Request_Apply:
+		switch d := reqType.Apply.Data.(type) {
+		case *servicepb.LedgerApplyRequest_CreateTransaction:
+			d.CreateTransaction.Timestamp = &commonpb.Timestamp{Data: uint64(t.UnixMicro())}
+		}
+	}
+	return req
+}
+
 // newPosting creates a new posting protobuf message
 func newPosting(source, destination string, amount *big.Int, asset string) *commonpb.Posting {
 	return &commonpb.Posting{

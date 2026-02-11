@@ -590,7 +590,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetDate().Return(now).Times(3) // Called multiple times
+	mockStore.EXPECT().GetDate().Return(now).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
 	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
@@ -724,7 +724,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetDate().Return(now).Times(3)
+	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetInput(worldKey).Return(worldInput, nil)
 	mockStore.EXPECT().GetOutput(worldKey).Return(worldOutput, nil)
@@ -1398,7 +1398,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetDate().Return(now).Times(3)
+	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
 	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
@@ -1480,7 +1480,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetDate().Return(now).Times(3)
+	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Source returns nil (no balance)
 	mockStore.EXPECT().GetInput(sourceKey).Return(nil, data.ErrNotFound)

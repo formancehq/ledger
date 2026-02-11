@@ -6,12 +6,18 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+// timestampToStdTime converts a commonpb.Timestamp to standard time.Time
+func timestampToStdTime(ts *commonpb.Timestamp) time.Time {
+	return time.UnixMicro(int64(ts.GetData()))
+}
 
 // listAllTransactions collects all transactions from the streaming RPC into a slice
 func listAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64) ([]*commonpb.Transaction, error) {
@@ -84,6 +90,47 @@ var _ = Describe("Transactions", func() {
 			Expect(createdTx).NotTo(BeNil())
 			Expect(createdTx.Transaction.Id).NotTo(BeZero())
 			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+		})
+
+		It("Should use the command date as timestamp when no timestamp is provided", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ts-default", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			applyLog := resp.Logs[0].Payload.GetApply()
+			createdTx := applyLog.Log.Data.GetCreatedTransaction()
+
+			// Timestamp should be set (not nil) and equal to the log date
+			Expect(createdTx.Transaction.Timestamp).NotTo(BeNil())
+			Expect(createdTx.Transaction.Timestamp.GetData()).To(Equal(applyLog.Log.Date.GetData()))
+		})
+
+		It("Should use the user-provided timestamp when specified", func() {
+			customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+			req := createTransactionAction(ledgerName, []*commonpb.Posting{
+				newPosting("world", "ts-custom", big.NewInt(100), "USD"),
+			}, nil, nil)
+			withTimestamp(req, customTime)
+
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{req},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			applyLog := resp.Logs[0].Payload.GetApply()
+			createdTx := applyLog.Log.Data.GetCreatedTransaction()
+
+			// Timestamp should match the custom value, not the log date
+			Expect(createdTx.Transaction.Timestamp).NotTo(BeNil())
+			Expect(timestampToStdTime(createdTx.Transaction.Timestamp)).To(BeTemporally("~", customTime, time.Second))
+			Expect(createdTx.Transaction.Timestamp.GetData()).NotTo(Equal(applyLog.Log.Date.GetData()))
 		})
 
 		It("Should create a transaction with metadata", func() {

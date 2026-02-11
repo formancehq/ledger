@@ -494,13 +494,19 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 		)
 	}
 
+	// Use the user-provided timestamp, or fall back to the command date
+	timestamp := order.Timestamp
+	if timestamp == nil {
+		timestamp = s.GetDate()
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{
 					Postings:   result.Postings,
 					Metadata:   finalMetadata,
-					Timestamp:  order.Timestamp,
+					Timestamp:  timestamp,
 					Reference:  order.Reference,
 					Id:         nextTransactionID,
 					InsertedAt: s.GetDate(),
