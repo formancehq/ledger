@@ -82,41 +82,101 @@ message Period {
   google.protobuf.Timestamp end = 3;
   PeriodStatus status = 4;
   uint64 close_sequence = 5;       // Global log sequence at close
-  bytes sealing_hash = 6;          // Hash chain anchor at close
+  bytes sealing_hash = 6;          // Hash chain anchor (set after snapshot completes)
   uint64 archive_sequence = 7;     // Sequence when archival completed
 }
 
 enum PeriodStatus {
   PERIOD_OPEN = 0;
-  PERIOD_CLOSED = 1;
-  PERIOD_ARCHIVED = 2;
+  PERIOD_CLOSING = 1;              // Boundary marked, snapshot in progress
+  PERIOD_CLOSED = 2;               // Snapshot complete, sealed
+  PERIOD_ARCHIVED = 3;
 }
 ```
 
 ### 5.2 Rules
 
 - At most **one open period** at any time
-- A period is closed by an explicit **ClosePeriod** command (becomes a Raft log entry)
-- Closing a period automatically opens the next one
+- Closing is a **two-step process** (see [Section 5.3](#53-two-step-close-process))
 - Transactions are assigned to a period based on their **insertion timestamp** (not the user-supplied timestamp)
-- Once closed, no new transactions can be assigned to that period
-- Closing computes a **balance snapshot** for all accounts at the close boundary
+- Once the boundary is marked (CLOSING), no new transactions can be assigned to that period
 
-### 5.3 Balance Snapshot at Close
+### 5.3 Two-Step Close Process
 
-When a period is closed, the system computes and persists:
+Closing a period cannot be done in a single synchronous Raft command because:
+- The **in-memory FSM cache only contains hot keys** (recently accessed accounts)
+- **Cold accounts** (not accessed within the last two generations) exist only in Pebble
+- Computing a complete balance snapshot requires a **full scan of Pebble** (all volume attributes)
+- A synchronous scan would block the Raft consensus loop, degrading latency
 
-- **Per-account, per-asset volumes** (input, output, balance) as of the close sequence
-- These become the **opening balances** for the next period
-- This is conceptually similar to the existing generation compaction, but at a higher (business) level
+The close process is therefore split into two steps:
+
+```
+Step 1: ClosePeriod         Step 2: SealPeriod
+(Raft command, instant)     (background scan, then Raft command)
+
+  ┌─────────┐                ┌──────────┐               ┌─────────┐
+  │  OPEN   │──ClosePeriod──►│ CLOSING  │──SealPeriod──►│ CLOSED  │
+  │         │                │          │               │         │
+  └─────────┘                └──────────┘               └─────────┘
+                              │                          │
+                              │ boundary marked          │ snapshot complete
+                              │ new period opened        │ sealing hash set
+                              │ new txs go to new period │ ready for archival
+```
+
+#### Step 1: ClosePeriod (Raft command — instant)
+
+- Marks the current period's `close_sequence` = current global sequence
+- Sets the period status to `CLOSING`
+- Sets the period `end` timestamp
+- Opens the next period (id+1, status=OPEN, start=end of previous)
+- **Does NOT compute the balance snapshot** — returns immediately
+
+This is a lightweight Raft command that executes in the FSM hot path without blocking.
+
+#### Step 2: SealPeriod (background + Raft command)
+
+Runs asynchronously on the leader after the ClosePeriod command is applied:
+
+1. **Scan Pebble** for all volume attributes (Input `'I'` + Output `'O'` prefixes under `0x09`)
+2. For each canonical key, call `ComputeValue()` at the `close_sequence` boundary to get the consolidated value (base + diffs)
+3. Compute the **balance snapshot hash** from all consolidated volumes
+4. Compute the **sealing hash**: `BLAKE3(period_id || close_sequence || last_log_hash || balance_snapshot_hash)`
+5. Propose a **SealPeriod** Raft command containing the sealing hash and balance snapshot
+6. Upon application, the period transitions from CLOSING to CLOSED
+
+This reuses the same pattern as the existing `Compactor` (`internal/service/state/compactor.go`) which already scans Pebble in the background and consolidates volume attributes.
+
+#### Failure handling
+
+If the leader crashes between Step 1 and Step 2:
+- The period remains in `CLOSING` state
+- The new leader detects the `CLOSING` period on startup and re-triggers Step 2
+- The scan is idempotent — re-scanning produces the same snapshot
+
+#### Constraints during CLOSING
+
+While a period is in `CLOSING` state:
+- New transactions are written to the **new** period (the one opened in Step 1)
+- The `CLOSING` period cannot be archived (must be `CLOSED` first)
+- A new close cannot be initiated until the current one is sealed
+
+### 5.4 Balance Snapshot
+
+The balance snapshot captures the **complete state** of all accounts at the close boundary:
+
+- **Per-account, per-asset volumes** (input, output) as of `close_sequence`
+- Computed by scanning all volume attributes in Pebble (not just the in-memory cache)
+- Uses `ComputeValue()` which consolidates base + diffs at the boundary index
 
 The balance snapshot enables the system to operate correctly after the detailed data is purged:
 - Balance queries work from the snapshot + current period's diffs
 - No need to replay historical transactions
 
-### 5.4 Sealing Hash
+### 5.5 Sealing Hash
 
-At close, a **sealing hash** is computed:
+Once the snapshot is complete, a **sealing hash** anchors the period:
 
 ```
 sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || balance_snapshot_hash)
@@ -325,28 +385,36 @@ Displays all periods with their status, boundaries, and storage location.
 
 ### 9.1 New FSM Commands
 
+Three new top-level Order types (bucket-level, not per-ledger):
+
 ```protobuf
-enum ActionType {
-  // ... existing types ...
-  ClosePeriod = X;
-  ArchivePeriod = Y;
+message Order {
+  oneof type {
+    // ... existing types ...
+    ClosePeriodOrder close_period = 5;     // Step 1: mark boundary
+    SealPeriodOrder seal_period = 6;       // Step 2: finalize with snapshot
+    ArchivePeriodOrder archive_period = 7; // Phase 2: archive + purge
+  }
 }
 
-message ClosePeriodCommand {
+message ClosePeriodOrder {}  // No fields — closes the current open period
+
+message SealPeriodOrder {
   uint64 period_id = 1;
-  google.protobuf.Timestamp close_at = 2;
+  bytes sealing_hash = 2;         // Computed from balance snapshot
+  bytes balance_snapshot = 3;     // Serialized snapshot (protobuf)
 }
 
-message ArchivePeriodCommand {
+message ArchivePeriodOrder {
   uint64 period_id = 1;
 }
 ```
 
 ### 9.2 Coordination
 
-- **Close**: synchronous Raft command. All nodes compute the same balance snapshot deterministically.
-- **Archive**: the leader performs the export to cold storage, then proposes an `ArchivePeriod` command. All nodes purge the data upon applying the command.
-- **Purge**: deterministic range delete on Pebble. All nodes delete the same key ranges.
+- **ClosePeriod** (Step 1): instant Raft command. Marks the boundary, opens new period. All nodes transition the period to `CLOSING`.
+- **SealPeriod** (Step 2): proposed by the leader after background Pebble scan. Contains the balance snapshot and sealing hash. All nodes transition the period to `CLOSED`. Followers don't need to re-scan — they trust the snapshot from the leader (verified by Raft consensus).
+- **Archive** (Phase 2): the leader exports to cold storage, then proposes `ArchivePeriod`. All nodes purge the data upon applying the command (deterministic range delete on Pebble).
 
 ### 9.3 Snapshot Impact
 
@@ -442,6 +510,7 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 | **Period granularity** | Configurable cron schedule, modifiable at runtime | Changing granularity only affects future periods, existing ones are immutable |
 | **Cold storage cleanup** | Not the system's responsibility | Delegated to external tooling (S3 lifecycle rules, infrastructure policies) |
 | **Per-ledger retention** | Via Raft sharding (separate buckets) | Avoids complexity of mixed retention within a single Raft group |
+| **Close process** | Two-step (ClosePeriod + SealPeriod) | In-memory cache only has hot keys; cold accounts are only in Pebble. A full scan is needed but cannot block the Raft consensus loop. Background scan reuses the Compactor pattern. |
 
 ## 13. Open Questions for Team
 
