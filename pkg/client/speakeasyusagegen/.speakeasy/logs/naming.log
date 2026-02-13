@@ -118,7 +118,7 @@ V2InsertSchemaRequest (ledger: string, version: string, Idempotency-Key: string 
       V2QueryParamsResource (enum: transactions)
      QueryTemplateLogParams (resource: enum, pageSize: integer, cursor: string ...)
       V2QueryParams3Resource (enum: logs)
-     QueryTemplateVolumeParams (resource: enum, useInsertionDate: boolean, groupLvl: integer ...)
+     QueryTemplateVolumeParams (resource: enum, insertionDate: boolean, groupBy: integer ...)
       V2QueryParams4Resource (enum: volumes)
      V2QueryTemplateVar (type: string, default: any)
 V2InsertSchemaResponse (HttpMeta: HTTPMetadata, Headers: map)

@@ -14,24 +14,24 @@ paths:
       operationId: v2GetInfo
       x-speakeasy-name-override: GetInfo
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ConfigInfoResponse'
+                $ref: "#/components/schemas/V2ConfigInfoResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
         5XX:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -43,7 +43,7 @@ paths:
       operationId: getMetrics
       x-speakeasy-name-override: GetMetrics
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
@@ -55,7 +55,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -99,7 +99,7 @@ paths:
             type: boolean
             default: false
           example: false
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -108,18 +108,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2LedgerListResponse'
+                $ref: "#/components/schemas/V2LedgerListResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -139,18 +139,18 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2GetLedgerResponse'
+                $ref: "#/components/schemas/V2GetLedgerResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -165,16 +165,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreateLedgerRequest'
+              $ref: "#/components/schemas/V2CreateLedgerRequest"
       responses:
-        '204':
+        "204":
           description: OK
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -211,22 +211,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2SchemaData'
+              $ref: "#/components/schemas/V2SchemaData"
       responses:
-        '204':
+        "204":
           description: Schema inserted successfully
           headers:
             Idempotency-Hit:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -237,18 +237,18 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
+        "200":
           description: Schema retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2SchemaResponse'
+                $ref: "#/components/schemas/V2SchemaResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -299,18 +299,18 @@ paths:
               - desc
             default: desc
       responses:
-        '200':
+        "200":
           description: Schemas retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2SchemasCursorResponse'
+                $ref: "#/components/schemas/V2SchemasCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -334,22 +334,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2UpdateLedgerMetadataRequest'
+              $ref: "#/components/schemas/V2UpdateLedgerMetadataRequest"
       responses:
-        '204':
+        "204":
           description: OK
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
         5XX:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -376,14 +376,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '204':
+        "204":
           description: OK
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -403,18 +403,18 @@ paths:
             type: string
             example: ledger001
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2LedgerInfoResponse'
+                $ref: "#/components/schemas/V2LedgerInfoResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -462,26 +462,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2Bulk'
+              $ref: "#/components/schemas/V2Bulk"
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2BulkResponse'
-        '400':
+                $ref: "#/components/schemas/V2BulkResponse"
+        "400":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2BulkResponse'
+                $ref: "#/components/schemas/V2BulkResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -514,7 +514,7 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '204':
+        "204":
           description: OK
           headers:
             Count:
@@ -527,7 +527,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -582,7 +582,7 @@ paths:
           schema:
             type: string
             format: date-time
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -591,18 +591,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2AccountsCursorResponse'
+                $ref: "#/components/schemas/V2AccountsCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -649,18 +649,18 @@ paths:
             type: string
             format: date-time
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2AccountResponse'
+                $ref: "#/components/schemas/V2AccountResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -718,24 +718,24 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2Metadata'
+              $ref: "#/components/schemas/V2Metadata"
         required: true
       responses:
-        '204':
+        "204":
           description: No Content
           headers:
             Idempotency-Hit:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content: {}
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -781,14 +781,14 @@ paths:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content: {}
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -811,18 +811,18 @@ paths:
             type: string
             example: ledger001
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2StatsResponse'
+                $ref: "#/components/schemas/V2StatsResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -855,7 +855,7 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '204':
+        "204":
           description: OK
           headers:
             Count:
@@ -868,7 +868,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -927,7 +927,7 @@ paths:
           in: query
           required: false
           deprecated: true
-          description: 'Deprecated: Use sort param'
+          description: "Deprecated: Use sort param"
           schema:
             type: string
             enum:
@@ -937,7 +937,7 @@ paths:
           required: false
           schema:
             type: boolean
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -946,18 +946,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2TransactionsCursorResponse'
+                $ref: "#/components/schemas/V2TransactionsCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1009,26 +1009,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2PostTransaction'
+              $ref: "#/components/schemas/V2PostTransaction"
       responses:
-        '200':
+        "200":
           description: OK
           headers:
             Idempotency-Hit:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2CreateTransactionResponse'
+                $ref: "#/components/schemas/V2CreateTransactionResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1069,18 +1069,18 @@ paths:
             type: string
             format: date-time
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2GetTransactionResponse'
+                $ref: "#/components/schemas/V2GetTransactionResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1133,23 +1133,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2Metadata'
+              $ref: "#/components/schemas/V2Metadata"
       responses:
-        '204':
+        "204":
           description: No Content
           headers:
             Idempotency-Hit:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content: {}
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1198,14 +1198,14 @@ paths:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content: {}
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1268,26 +1268,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2RevertTransactionRequest'
+              $ref: "#/components/schemas/V2RevertTransactionRequest"
       responses:
-        '201':
+        "201":
           description: OK
           headers:
             Idempotency-Hit:
               description: Indicates that the request was processed using an idempotency key that was already used
               schema:
                 type: string
-                example: 'true'
+                example: "true"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2RevertTransactionResponse'
+                $ref: "#/components/schemas/V2RevertTransactionResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1326,18 +1326,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2AggregateBalancesResponse'
+                $ref: "#/components/schemas/V2AggregateBalancesResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1407,7 +1407,7 @@ paths:
             format: int64
             minimum: 0
             maximum: 1000
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1416,18 +1416,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2VolumesWithBalanceCursorResponse'
+                $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1477,7 +1477,7 @@ paths:
           schema:
             type: string
             format: date-time
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1486,18 +1486,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2LogsCursorResponse'
+                $ref: "#/components/schemas/V2LogsCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1520,16 +1520,16 @@ paths:
         content:
           application/octet-stream:
             schema:
-              $ref: '#/components/schemas/V2ImportLogsRequest'
+              $ref: "#/components/schemas/V2ImportLogsRequest"
       responses:
-        '204':
+        "204":
           description: Import OK
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1549,7 +1549,7 @@ paths:
             type: string
             example: ledger001
       responses:
-        '200':
+        "200":
           description: Import OK
         default:
           description: Error
@@ -1632,7 +1632,7 @@ paths:
           in: query
           required: false
           deprecated: true
-          description: 'Deprecated: Use sort param'
+          description: "Deprecated: Use sort param"
           schema:
             type: string
             enum:
@@ -1642,7 +1642,7 @@ paths:
           required: false
           schema:
             type: boolean
-        - $ref: '#/components/parameters/sort'
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1653,28 +1653,28 @@ paths:
                 cursor:
                   type: string
                 params:
-                  $ref: '#/components/schemas/V2QueryParams'
+                  $ref: "#/components/schemas/V2QueryParams"
                 vars:
                   type: object
                   additionalProperties:
                     type: string
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/V2TransactionsCursorResponse'
-                  - $ref: '#/components/schemas/V2AccountsCursorResponse'
-                  - $ref: '#/components/schemas/V2LogsCursorResponse'
-                  - $ref: '#/components/schemas/V2VolumesWithBalanceCursorResponse'
+                  - $ref: "#/components/schemas/V2TransactionsCursorResponse"
+                  - $ref: "#/components/schemas/V2AccountsCursorResponse"
+                  - $ref: "#/components/schemas/V2LogsCursorResponse"
+                  - $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1686,14 +1686,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
-          $ref: '#/components/responses/V2ListExportersResponse'
+        "200":
+          $ref: "#/components/responses/V2ListExportersResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
     post:
       summary: Create exporter
       operationId: v2CreateExporter
@@ -1705,16 +1705,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreateExporterRequest'
+              $ref: "#/components/schemas/V2CreateExporterRequest"
       responses:
-        '201':
-          $ref: '#/components/responses/V2CreateExporterResponse'
+        "201":
+          $ref: "#/components/responses/V2CreateExporterResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/_/exporters/{exporterID}:
     parameters:
       - name: exporterID
@@ -1730,14 +1730,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
-          $ref: '#/components/responses/V2GetExporterStateResponse'
+        "200":
+          $ref: "#/components/responses/V2GetExporterStateResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
     put:
       summary: Update exporter
       operationId: v2UpdateExporter
@@ -1749,16 +1749,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2UpdateExporterRequest'
+              $ref: "#/components/schemas/V2UpdateExporterRequest"
       responses:
-        '204':
+        "204":
           description: Exporter updated
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1769,14 +1769,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '204':
+        "204":
           description: Exporter deleted
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/_/buckets/{bucket}:
     parameters:
       - name: bucket
@@ -1795,20 +1795,20 @@ paths:
         Delete a bucket by marking all ledgers in the bucket as deleted (soft delete).
         All ledgers in the bucket will have their deleted_at field set to the current timestamp.
       responses:
-        '204':
+        "204":
           description: Bucket deleted
-        '404':
+        "404":
           description: Bucket not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1830,20 +1830,20 @@ paths:
         Restore a deleted bucket by unmarking all ledgers in the bucket as deleted.
         All ledgers in the bucket will have their deleted_at field set to NULL.
       responses:
-        '204':
+        "204":
           description: Bucket restored
-        '404':
+        "404":
           description: Bucket not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -1863,14 +1863,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
-          $ref: '#/components/responses/V2ListPipelinesResponse'
+        "200":
+          $ref: "#/components/responses/V2ListPipelinesResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
     post:
       summary: Create pipeline
       operationId: v2CreatePipeline
@@ -1881,16 +1881,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreatePipelineRequest'
+              $ref: "#/components/schemas/V2CreatePipelineRequest"
       responses:
-        '201':
-          $ref: '#/components/responses/V2CreatePipelineResponse'
+        "201":
+          $ref: "#/components/responses/V2CreatePipelineResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/{ledger}/pipelines/{pipelineID}:
     parameters:
       - name: ledger
@@ -1913,14 +1913,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '200':
-          $ref: '#/components/responses/V2GetPipelineStateResponse'
+        "200":
+          $ref: "#/components/responses/V2GetPipelineStateResponse"
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
     delete:
       summary: Delete pipeline
       operationId: v2DeletePipeline
@@ -1928,14 +1928,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '204':
+        "204":
           description: Pipeline deleted
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/{ledger}/pipelines/{pipelineID}/reset:
     parameters:
       - name: ledger
@@ -1958,14 +1958,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '202':
+        "202":
           description: Pipeline reset
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/{ledger}/pipelines/{pipelineID}/start:
     parameters:
       - name: ledger
@@ -1988,14 +1988,14 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '202':
+        "202":
           description: Pipeline started
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/{ledger}/pipelines/{pipelineID}/stop:
     parameters:
       - name: ledger
@@ -2018,22 +2018,22 @@ paths:
       tags:
         - ledger.v2
       responses:
-        '202':
+        "202":
           description: Pipeline stopped
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+                $ref: "#/components/schemas/V2ErrorResponse"
 components:
   securitySchemes:
     Authorization:
       type: oauth2
       flows:
         clientCredentials:
-          tokenUrl: '/oauth/token'
-          refreshUrl: '/oauth/token'
+          tokenUrl: "/oauth/token"
+          refreshUrl: "/oauth/token"
           scopes: {}
 
   parameters:
@@ -2056,7 +2056,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Pipeline'
+                $ref: "#/components/schemas/V2Pipeline"
             required:
               - data
     V2ListPipelinesResponse:
@@ -2068,12 +2068,12 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
+                  - $ref: "#/components/schemas/V2PipelinesCursorResponse"
                   - properties:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/V2Pipeline'
+                          $ref: "#/components/schemas/V2Pipeline"
 
     V2GetPipelineStateResponse:
       description: Pipeline information
@@ -2083,7 +2083,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Pipeline'
+                $ref: "#/components/schemas/V2Pipeline"
             required:
               - data
 
@@ -2095,7 +2095,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Exporter'
+                $ref: "#/components/schemas/V2Exporter"
             required:
               - data
     V2ListExportersResponse:
@@ -2107,13 +2107,13 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
+                  - $ref: "#/components/schemas/V2ExportersCursorResponse"
                   - type: object
                     properties:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/V2Exporter'
+                          $ref: "#/components/schemas/V2Exporter"
 
     V2GetExporterStateResponse:
       description: Exporter information
@@ -2123,7 +2123,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Exporter'
+                $ref: "#/components/schemas/V2Exporter"
             required:
               - data
   schemas:
@@ -2157,7 +2157,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Exporter'
+                $ref: "#/components/schemas/V2Exporter"
     V2PipelinesCursorResponse:
       type: object
       required:
@@ -2188,7 +2188,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Pipeline'
+                $ref: "#/components/schemas/V2Pipeline"
     V2AccountsCursorResponse:
       type: object
       required:
@@ -2223,7 +2223,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Account'
+                $ref: "#/components/schemas/V2Account"
     V2TransactionsCursorResponse:
       type: object
       required:
@@ -2258,7 +2258,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Transaction'
+                $ref: "#/components/schemas/V2Transaction"
     V2LogsCursorResponse:
       type: object
       required:
@@ -2293,21 +2293,21 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Log'
+                $ref: "#/components/schemas/V2Log"
     V2AccountResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/V2Account'
+          $ref: "#/components/schemas/V2Account"
     V2AggregateBalancesResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/V2AssetsBalances'
+          $ref: "#/components/schemas/V2AssetsBalances"
     V2VolumesWithBalanceCursorResponse:
       type: object
       required:
@@ -2342,7 +2342,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2VolumesWithBalance'
+                $ref: "#/components/schemas/V2VolumesWithBalance"
     V2VolumesWithBalance:
       type: object
       properties:
@@ -2370,7 +2370,7 @@ components:
       additionalProperties:
         type: string
       example:
-        admin: 'true'
+        admin: "true"
     V2ConfigInfo:
       type: object
       properties:
@@ -2397,23 +2397,23 @@ components:
           additionalProperties:
             type: string
           example:
-            admin: 'true'
+            admin: "true"
         insertionDate:
           type: string
           format: date-time
-          example: '2023-01-01T00:00:00Z'
+          example: "2023-01-01T00:00:00Z"
         updatedAt:
           type: string
           format: date-time
-          example: '2023-01-01T00:00:00Z'
+          example: "2023-01-01T00:00:00Z"
         firstUsage:
           type: string
           format: date-time
-          example: '2023-01-01T00:00:00Z'
+          example: "2023-01-01T00:00:00Z"
         volumes:
-          $ref: '#/components/schemas/V2Volumes'
+          $ref: "#/components/schemas/V2Volumes"
         effectiveVolumes:
-          $ref: '#/components/schemas/V2Volumes'
+          $ref: "#/components/schemas/V2Volumes"
     V2AssetsBalances:
       type: object
       additionalProperties:
@@ -2459,12 +2459,12 @@ components:
         postings:
           type: array
           items:
-            $ref: '#/components/schemas/V2Posting'
+            $ref: "#/components/schemas/V2Posting"
         reference:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
         id:
           type: integer
           format: bigint
@@ -2475,13 +2475,13 @@ components:
           type: string
           format: date-time
         preCommitVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         preCommitEffectiveVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitEffectiveVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         template:
           type: string
       required:
@@ -2501,7 +2501,7 @@ components:
         postings:
           type: array
           items:
-            $ref: '#/components/schemas/V2Posting'
+            $ref: "#/components/schemas/V2Posting"
         script:
           type: object
           properties:
@@ -2519,16 +2519,16 @@ components:
               example:
                 user: users:042
         runtime:
-          $ref: '#/components/schemas/Runtime'
+          $ref: "#/components/schemas/Runtime"
         reference:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
         accountMetadata:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/V2Metadata'
+            $ref: "#/components/schemas/V2Metadata"
         force:
           type: boolean
     V2Stats:
@@ -2576,11 +2576,11 @@ components:
             - DELETE_METADATA: V2LogDataDeleteMetadata
             - INSERTED_SCHEMA: V2LogDataInsertedSchema
           oneOf:
-            - $ref: '#/components/schemas/V2LogDataNewTransaction'
-            - $ref: '#/components/schemas/V2LogDataSetMetadata'
-            - $ref: '#/components/schemas/V2LogDataRevertedTransaction'
-            - $ref: '#/components/schemas/V2LogDataDeleteMetadata'
-            - $ref: '#/components/schemas/V2LogDataInsertedSchema'
+            - $ref: "#/components/schemas/V2LogDataNewTransaction"
+            - $ref: "#/components/schemas/V2LogDataSetMetadata"
+            - $ref: "#/components/schemas/V2LogDataRevertedTransaction"
+            - $ref: "#/components/schemas/V2LogDataDeleteMetadata"
+            - $ref: "#/components/schemas/V2LogDataInsertedSchema"
         hash:
           type: string
           description: SHA256 hash of the log entry, chained from the previous log for integrity verification
@@ -2611,9 +2611,9 @@ components:
         postings:
           type: array
           items:
-            $ref: '#/components/schemas/V2Posting'
+            $ref: "#/components/schemas/V2Posting"
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
         timestamp:
           type: string
           format: date-time
@@ -2635,13 +2635,13 @@ components:
           type: string
           description: Transaction template used
         postCommitVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitEffectiveVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         preCommitVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
         preCommitEffectiveVolumes:
-          $ref: '#/components/schemas/V2AggregatedVolumes'
+          $ref: "#/components/schemas/V2AggregatedVolumes"
       required:
         - id
         - postings
@@ -2653,12 +2653,12 @@ components:
       description: Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
       properties:
         transaction:
-          $ref: '#/components/schemas/V2LogTransaction'
+          $ref: "#/components/schemas/V2LogTransaction"
         accountMetadata:
           type: object
           description: Metadata applied to accounts involved in the transaction
           additionalProperties:
-            $ref: '#/components/schemas/V2Metadata'
+            $ref: "#/components/schemas/V2Metadata"
       required:
         - transaction
         - accountMetadata
@@ -2666,17 +2666,17 @@ components:
         transaction:
           id: 1234
           postings:
-            - source: 'world'
-              destination: 'users:001'
+            - source: "world"
+              destination: "users:001"
               amount: 100
-              asset: 'USD/2'
+              asset: "USD/2"
           metadata: {}
-          timestamp: '2024-01-15T10:30:00Z'
-          insertedAt: '2024-01-15T10:30:00Z'
+          timestamp: "2024-01-15T10:30:00Z"
+          insertedAt: "2024-01-15T10:30:00Z"
           reverted: false
         accountMetadata:
-          'users:001':
-            created_by: 'system'
+          "users:001":
+            created_by: "system"
     V2LogDataSetMetadata:
       type: object
       description: Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
@@ -2695,26 +2695,26 @@ components:
               format: bigint
               description: Transaction ID (when targetType is TRANSACTION)
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
       required:
         - targetType
         - targetId
         - metadata
       example:
-        targetType: 'ACCOUNT'
-        targetId: 'users:001'
+        targetType: "ACCOUNT"
+        targetId: "users:001"
         metadata:
-          status: 'active'
-          tier: 'premium'
+          status: "active"
+          tier: "premium"
     V2LogDataRevertedTransaction:
       type: object
       description: Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
       properties:
         revertedTransaction:
-          $ref: '#/components/schemas/V2LogTransaction'
+          $ref: "#/components/schemas/V2LogTransaction"
           description: The original transaction that was reverted
         transaction:
-          $ref: '#/components/schemas/V2LogTransaction'
+          $ref: "#/components/schemas/V2LogTransaction"
           description: The new reverting transaction created to cancel the original
       required:
         - revertedTransaction
@@ -2723,23 +2723,23 @@ components:
         revertedTransaction:
           id: 1234
           postings:
-            - source: 'world'
-              destination: 'users:001'
+            - source: "world"
+              destination: "users:001"
               amount: 100
-              asset: 'USD/2'
+              asset: "USD/2"
           metadata: {}
-          timestamp: '2024-01-15T10:30:00Z'
+          timestamp: "2024-01-15T10:30:00Z"
           reverted: true
         transaction:
           id: 1235
           postings:
-            - source: 'users:001'
-              destination: 'world'
+            - source: "users:001"
+              destination: "world"
               amount: 100
-              asset: 'USD/2'
+              asset: "USD/2"
           metadata:
-            revert: '1234'
-          timestamp: '2024-01-15T11:00:00Z'
+            revert: "1234"
+          timestamp: "2024-01-15T11:00:00Z"
           reverted: false
     V2LogDataDeleteMetadata:
       type: object
@@ -2766,42 +2766,42 @@ components:
         - targetId
         - key
       example:
-        targetType: 'ACCOUNT'
-        targetId: 'users:001'
-        key: 'temporary_flag'
+        targetType: "ACCOUNT"
+        targetId: "users:001"
+        key: "temporary_flag"
     V2LogDataInsertedSchema:
       type: object
       description: Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
       properties:
         schema:
-          $ref: '#/components/schemas/V2Schema'
+          $ref: "#/components/schemas/V2Schema"
       required:
         - schema
     V2CreateTransactionResponse:
       properties:
         data:
-          $ref: '#/components/schemas/V2Transaction'
+          $ref: "#/components/schemas/V2Transaction"
       type: object
       required:
         - data
     V2RevertTransactionResponse:
-      $ref: '#/components/schemas/V2CreateTransactionResponse'
+      $ref: "#/components/schemas/V2CreateTransactionResponse"
     V2GetTransactionResponse:
       properties:
         data:
-          $ref: '#/components/schemas/V2Transaction'
+          $ref: "#/components/schemas/V2Transaction"
       type: object
       required:
         - data
     V2StatsResponse:
       properties:
         data:
-          $ref: '#/components/schemas/V2Stats'
+          $ref: "#/components/schemas/V2Stats"
       type: object
       required:
         - data
     V2ConfigInfoResponse:
-      $ref: '#/components/schemas/V2ConfigInfo'
+      $ref: "#/components/schemas/V2ConfigInfo"
     V2Volume:
       type: object
       properties:
@@ -2824,7 +2824,7 @@ components:
     V2Volumes:
       type: object
       additionalProperties:
-        $ref: '#/components/schemas/V2Volume'
+        $ref: "#/components/schemas/V2Volume"
       example:
         USD:
           input: 100
@@ -2837,7 +2837,7 @@ components:
     V2AggregatedVolumes:
       type: object
       additionalProperties:
-        $ref: '#/components/schemas/V2Volumes'
+        $ref: "#/components/schemas/V2Volumes"
       example:
         orders:1:
           USD:
@@ -2856,7 +2856,7 @@ components:
         - errorMessage
       properties:
         errorCode:
-          $ref: '#/components/schemas/V2ErrorsEnum'
+          $ref: "#/components/schemas/V2ErrorsEnum"
         errorMessage:
           type: string
           example: "[VALIDATION] invalid 'cursor' query param"
@@ -2892,7 +2892,7 @@ components:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/V2LedgerInfo'
+          $ref: "#/components/schemas/V2LedgerInfo"
     V2LedgerInfo:
       type: object
       properties:
@@ -2905,7 +2905,7 @@ components:
             migrations:
               type: array
               items:
-                $ref: '#/components/schemas/V2MigrationInfo'
+                $ref: "#/components/schemas/V2MigrationInfo"
     V2MigrationInfo:
       type: object
       properties:
@@ -2927,7 +2927,7 @@ components:
     V2Bulk:
       type: array
       items:
-        $ref: '#/components/schemas/V2BulkElement'
+        $ref: "#/components/schemas/V2BulkElement"
     V2BaseBulkElement:
       type: object
       required:
@@ -2940,25 +2940,25 @@ components:
     V2BulkElement:
       type: object
       oneOf:
-        - $ref: '#/components/schemas/V2BulkElementCreateTransaction'
-        - $ref: '#/components/schemas/V2BulkElementAddMetadata'
-        - $ref: '#/components/schemas/V2BulkElementRevertTransaction'
-        - $ref: '#/components/schemas/V2BulkElementDeleteMetadata'
+        - $ref: "#/components/schemas/V2BulkElementCreateTransaction"
+        - $ref: "#/components/schemas/V2BulkElementAddMetadata"
+        - $ref: "#/components/schemas/V2BulkElementRevertTransaction"
+        - $ref: "#/components/schemas/V2BulkElementDeleteMetadata"
       discriminator:
         propertyName: action
         mapping:
-          CREATE_TRANSACTION: '#/components/schemas/V2BulkElementCreateTransaction'
-          ADD_METADATA: '#/components/schemas/V2BulkElementAddMetadata'
-          REVERT_TRANSACTION: '#/components/schemas/V2BulkElementRevertTransaction'
-          DELETE_METADATA: '#/components/schemas/V2BulkElementDeleteMetadata'
+          CREATE_TRANSACTION: "#/components/schemas/V2BulkElementCreateTransaction"
+          ADD_METADATA: "#/components/schemas/V2BulkElementAddMetadata"
+          REVERT_TRANSACTION: "#/components/schemas/V2BulkElementRevertTransaction"
+          DELETE_METADATA: "#/components/schemas/V2BulkElementDeleteMetadata"
     V2BulkElementCreateTransaction:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElement'
+        - $ref: "#/components/schemas/V2BaseBulkElement"
         - type: object
           properties:
             data:
-              $ref: '#/components/schemas/V2PostTransaction'
+              $ref: "#/components/schemas/V2PostTransaction"
     V2TargetId:
       oneOf:
         - type: string
@@ -2972,16 +2972,16 @@ components:
     V2BulkElementAddMetadata:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElement'
+        - $ref: "#/components/schemas/V2BaseBulkElement"
         - type: object
           properties:
             data:
               type: object
               properties:
                 targetId:
-                  $ref: '#/components/schemas/V2TargetId'
+                  $ref: "#/components/schemas/V2TargetId"
                 targetType:
-                  $ref: '#/components/schemas/V2TargetType'
+                  $ref: "#/components/schemas/V2TargetType"
                 metadata:
                   type: object
                   additionalProperties:
@@ -2993,7 +2993,7 @@ components:
     V2BulkElementRevertTransaction:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElement'
+        - $ref: "#/components/schemas/V2BaseBulkElement"
         - type: object
           properties:
             data:
@@ -3007,22 +3007,22 @@ components:
                 atEffectiveDate:
                   type: boolean
                 metadata:
-                  $ref: '#/components/schemas/V2Metadata'
+                  $ref: "#/components/schemas/V2Metadata"
               required:
                 - id
     V2BulkElementDeleteMetadata:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElement'
+        - $ref: "#/components/schemas/V2BaseBulkElement"
         - type: object
           properties:
             data:
               type: object
               properties:
                 targetId:
-                  $ref: '#/components/schemas/V2TargetId'
+                  $ref: "#/components/schemas/V2TargetId"
                 targetType:
-                  $ref: '#/components/schemas/V2TargetType'
+                  $ref: "#/components/schemas/V2TargetType"
                 key:
                   type: string
               required:
@@ -3035,28 +3035,28 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/V2BulkElementResult'
+            $ref: "#/components/schemas/V2BulkElementResult"
         errorCode:
-          $ref: '#/components/schemas/V2ErrorsEnum'
+          $ref: "#/components/schemas/V2ErrorsEnum"
         errorMessage:
           type: string
           example: "[VALIDATION] invalid 'cursor' query param"
     V2BulkElementResult:
       type: object
       oneOf:
-        - $ref: '#/components/schemas/V2BulkElementResultCreateTransaction'
-        - $ref: '#/components/schemas/V2BulkElementResultAddMetadata'
-        - $ref: '#/components/schemas/V2BulkElementResultRevertTransaction'
-        - $ref: '#/components/schemas/V2BulkElementResultDeleteMetadata'
-        - $ref: '#/components/schemas/V2BulkElementResultError'
+        - $ref: "#/components/schemas/V2BulkElementResultCreateTransaction"
+        - $ref: "#/components/schemas/V2BulkElementResultAddMetadata"
+        - $ref: "#/components/schemas/V2BulkElementResultRevertTransaction"
+        - $ref: "#/components/schemas/V2BulkElementResultDeleteMetadata"
+        - $ref: "#/components/schemas/V2BulkElementResultError"
       discriminator:
         propertyName: responseType
         mapping:
-          CREATE_TRANSACTION: '#/components/schemas/V2BulkElementResultCreateTransaction'
-          ADD_METADATA: '#/components/schemas/V2BulkElementResultAddMetadata'
-          REVERT_TRANSACTION: '#/components/schemas/V2BulkElementResultRevertTransaction'
-          DELETE_METADATA: '#/components/schemas/V2BulkElementResultDeleteMetadata'
-          ERROR: '#/components/schemas/V2BulkElementResultError'
+          CREATE_TRANSACTION: "#/components/schemas/V2BulkElementResultCreateTransaction"
+          ADD_METADATA: "#/components/schemas/V2BulkElementResultAddMetadata"
+          REVERT_TRANSACTION: "#/components/schemas/V2BulkElementResultRevertTransaction"
+          DELETE_METADATA: "#/components/schemas/V2BulkElementResultDeleteMetadata"
+          ERROR: "#/components/schemas/V2BulkElementResultError"
     V2BaseBulkElementResult:
       type: object
       properties:
@@ -3069,31 +3069,31 @@ components:
         - logID
     V2BulkElementResultCreateTransaction:
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
         - type: object
           properties:
             data:
-              $ref: '#/components/schemas/V2Transaction'
+              $ref: "#/components/schemas/V2Transaction"
           required:
             - data
     V2BulkElementResultAddMetadata:
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
     V2BulkElementResultRevertTransaction:
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
         - type: object
           properties:
             data:
-              $ref: '#/components/schemas/V2Transaction'
+              $ref: "#/components/schemas/V2Transaction"
           required:
             - data
     V2BulkElementResultDeleteMetadata:
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
     V2BulkElementResultError:
       allOf:
-        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
         - type: object
           properties:
             errorCode:
@@ -3114,33 +3114,33 @@ components:
           type: string
     V2ChartSegment:
       type: object
-      description: 'Segment within a chart of accounts'
+      description: "Segment within a chart of accounts"
       properties:
         .self:
           type: object
         .pattern:
           type: string
         .rules:
-          $ref: '#/components/schemas/V2ChartAccountRules'
+          $ref: "#/components/schemas/V2ChartAccountRules"
         .metadata:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/V2ChartAccountMetadata'
+            $ref: "#/components/schemas/V2ChartAccountMetadata"
       additionalProperties:
-        $ref: '#/components/schemas/V2ChartSegment'
+        $ref: "#/components/schemas/V2ChartSegment"
       example:
         users:
           $userID:
-            .pattern: '^[0-9]{16}$'
+            .pattern: "^[0-9]{16}$"
     V2ChartOfAccounts:
       type: object
-      description: 'Chart of account'
+      description: "Chart of account"
       additionalProperties:
-        $ref: '#/components/schemas/V2ChartSegment'
+        $ref: "#/components/schemas/V2ChartSegment"
       example:
         users:
           $userID:
-            .pattern: '^[0-9]{16}$'
+            .pattern: "^[0-9]{16}$"
     Runtime:
       type: string
       description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
@@ -3155,14 +3155,14 @@ components:
         script:
           type: string
         runtime:
-          $ref: '#/components/schemas/Runtime'
+          $ref: "#/components/schemas/Runtime"
       required:
         - script
     V2TransactionTemplates:
       type: object
       description: Transaction templates
       additionalProperties:
-        $ref: '#/components/schemas/V2TransactionTemplate'
+        $ref: "#/components/schemas/V2TransactionTemplate"
     V2QueryTemplateVar:
       type: object
       properties:
@@ -3205,7 +3205,7 @@ components:
           type: string
           format: date-time
         sort:
-          $ref: '#/components/parameters/sort'
+          $ref: "#/components/parameters/sort"
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
           properties:
@@ -3231,9 +3231,9 @@ components:
               type: string
               enum:
                 - volumes
-            useInsertionDate:
+            insertionDate:
               type: boolean
-            groupLvl:
+            groupBy:
               type: integer
     V2QueryTemplate:
       type: object
@@ -3241,13 +3241,13 @@ components:
         description:
           type: string
         resource:
-          $ref: '#/components/schemas/V2QueryResource'
+          $ref: "#/components/schemas/V2QueryResource"
         params:
-          $ref: '#/components/schemas/V2QueryParams'
+          $ref: "#/components/schemas/V2QueryParams"
         vars:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/V2QueryTemplateVar'
+            $ref: "#/components/schemas/V2QueryTemplateVar"
         body:
           type: object
           additionalProperties: true
@@ -3255,17 +3255,17 @@ components:
       type: object
       description: Query templates
       additionalProperties:
-        $ref: '#/components/schemas/V2QueryTemplate'
+        $ref: "#/components/schemas/V2QueryTemplate"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas
       properties:
         chart:
-          $ref: '#/components/schemas/V2ChartOfAccounts'
+          $ref: "#/components/schemas/V2ChartOfAccounts"
         transactions:
-          $ref: '#/components/schemas/V2TransactionTemplates'
+          $ref: "#/components/schemas/V2TransactionTemplates"
         queries:
-          $ref: '#/components/schemas/V2QueryTemplates'
+          $ref: "#/components/schemas/V2QueryTemplates"
       required:
         - chart
         - transactions
@@ -3282,24 +3282,24 @@ components:
             version:
               type: string
               description: Schema version
-              example: 'v1.0.0'
+              example: "v1.0.0"
             createdAt:
               type: string
               format: date-time
               description: Schema creation timestamp
-              example: '2023-01-01T00:00:00Z'
-        - $ref: '#/components/schemas/V2SchemaData'
+              example: "2023-01-01T00:00:00Z"
+        - $ref: "#/components/schemas/V2SchemaData"
     V2SchemaResponse:
       properties:
         data:
-          $ref: '#/components/schemas/V2Schema'
+          $ref: "#/components/schemas/V2Schema"
       type: object
       required:
         - data
     V2SchemasCursorResponse:
       properties:
         cursor:
-          $ref: '#/components/schemas/V2SchemasCursor'
+          $ref: "#/components/schemas/V2SchemasCursor"
       type: object
       required:
         - cursor
@@ -3308,7 +3308,7 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/V2Schema'
+            $ref: "#/components/schemas/V2Schema"
         hasMore:
           type: boolean
         previous:
@@ -3330,7 +3330,7 @@ components:
         bucket:
           type: string
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
         features:
           type: object
           additionalProperties:
@@ -3350,7 +3350,7 @@ components:
           format: date-time
           nullable: true
         metadata:
-          $ref: '#/components/schemas/V2Metadata'
+          $ref: "#/components/schemas/V2Metadata"
         features:
           type: object
           additionalProperties:
@@ -3391,16 +3391,16 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2Ledger'
+                $ref: "#/components/schemas/V2Ledger"
     V2UpdateLedgerMetadataRequest:
-      $ref: '#/components/schemas/V2Metadata'
+      $ref: "#/components/schemas/V2Metadata"
     V2GetLedgerResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/V2Ledger'
+          $ref: "#/components/schemas/V2Ledger"
     V2ImportLogsRequest:
       type: object
       required:
@@ -3424,9 +3424,9 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2UpdateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2PipelineConfiguration:
       properties:
         ledger:
@@ -3450,7 +3450,7 @@ components:
     V2Exporter:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2ExporterConfiguration'
+        - $ref: "#/components/schemas/V2ExporterConfiguration"
         - type: object
           properties:
             id:
@@ -3463,7 +3463,7 @@ components:
             - createdAt
     V2Pipeline:
       allOf:
-        - $ref: '#/components/schemas/V2PipelineConfiguration'
+        - $ref: "#/components/schemas/V2PipelineConfiguration"
         - type: object
           properties:
             id:

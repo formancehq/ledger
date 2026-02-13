@@ -47,12 +47,12 @@ func TestQueryTemplateValidation(t *testing.T) {
 			source: `{
 				"description": "complex params",
 				"resource": "volumes",
-				"params": {"pageSize": 42, "groupLvl": 2}
+				"params": {"pageSize": 42, "groupBy": 2}
 			}`,
 			expectedTemplate: QueryTemplate{
 				Description: "complex params",
 				Resource:    queries.ResourceKindVolume,
-				Params:      json.RawMessage(`{"pageSize": 42, "groupLvl": 2}`),
+				Params:      json.RawMessage(`{"pageSize": 42, "groupBy": 2}`),
 				Vars:        nil,
 				Body:        nil,
 			},
@@ -106,6 +106,15 @@ func TestQueryTemplateValidation(t *testing.T) {
 				}
 			}`,
 			expectedError: "cannot unmarshal",
+		},
+		{
+			name: "params",
+			source: `{
+				"description": "complex params",
+				"resource": "accounts",
+				"params": {"nope": 2}
+			}`,
+			expectedError: "invalid params: unknown field: `nope`",
 		},
 		{
 			name: "invalid resource-specific params",

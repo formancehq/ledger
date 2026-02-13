@@ -1546,7 +1546,7 @@ func (p Postings) Validate() (int, error)
 
 
 <a name="QueryTemplate"></a>
-## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L98-L104>)
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L99-L105>)
 
 
 
@@ -1561,7 +1561,7 @@ type QueryTemplate struct {
 ```
 
 <a name="QueryTemplate.Validate"></a>
-### func \(QueryTemplate\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L107>)
+### func \(QueryTemplate\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L108>)
 
 ```go
 func (q QueryTemplate) Validate() error
@@ -1570,7 +1570,7 @@ func (q QueryTemplate) Validate() error
 Validate a query template
 
 <a name="QueryTemplateParams"></a>
-## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L29-L37>)
+## type [QueryTemplateParams](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L30-L38>)
 
 
 
@@ -1587,7 +1587,7 @@ type QueryTemplateParams[Opts any] struct {
 ```
 
 <a name="QueryTemplateParams[Opts].Overwrite"></a>
-### func \(QueryTemplateParams\[Opts\]\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L82>)
+### func \(QueryTemplateParams\[Opts\]\) [Overwrite](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L83>)
 
 ```go
 func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryTemplateParams[Opts], error)
@@ -1596,7 +1596,7 @@ func (q QueryTemplateParams[Opts]) Overwrite(others ...json.RawMessage) (*QueryT
 
 
 <a name="QueryTemplateParams[Opts].UnmarshalJSON"></a>
-### func \(\*QueryTemplateParams\[Opts\]\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L39>)
+### func \(\*QueryTemplateParams\[Opts\]\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L40>)
 
 ```go
 func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error
@@ -1605,7 +1605,7 @@ func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error
 
 
 <a name="QueryTemplates"></a>
-## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L18>)
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L19>)
 
 
 
@@ -1614,7 +1614,7 @@ type QueryTemplates map[string]QueryTemplate
 ```
 
 <a name="QueryTemplates.Validate"></a>
-### func \(QueryTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L20>)
+### func \(QueryTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/query_template.go#L21>)
 
 ```go
 func (t QueryTemplates) Validate() error

@@ -34,9 +34,9 @@ func (e *V2QueryParams4Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateVolumeParams struct {
-	Resource         *V2QueryParams4Resource `json:"resource,omitempty"`
-	UseInsertionDate *bool                   `json:"useInsertionDate,omitempty"`
-	GroupLvl         *int64                  `json:"groupLvl,omitempty"`
+	Resource      *V2QueryParams4Resource `json:"resource,omitempty"`
+	InsertionDate *bool                   `json:"insertionDate,omitempty"`
+	GroupBy       *int64                  `json:"groupBy,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -72,18 +72,18 @@ func (o *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
 	return o.Resource
 }
 
-func (o *QueryTemplateVolumeParams) GetUseInsertionDate() *bool {
+func (o *QueryTemplateVolumeParams) GetInsertionDate() *bool {
 	if o == nil {
 		return nil
 	}
-	return o.UseInsertionDate
+	return o.InsertionDate
 }
 
-func (o *QueryTemplateVolumeParams) GetGroupLvl() *int64 {
+func (o *QueryTemplateVolumeParams) GetGroupBy() *int64 {
 	if o == nil {
 		return nil
 	}
-	return o.GroupLvl
+	return o.GroupBy
 }
 
 func (o *QueryTemplateVolumeParams) GetPageSize() *int64 {

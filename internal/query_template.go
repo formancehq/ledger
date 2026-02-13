@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -113,7 +114,7 @@ func (q QueryTemplate) Validate() error {
 	// check if the params matches the resource
 	if len(q.Params) > 0 {
 		var params QueryTemplateParams[any]
-		err := validateParam(q.Params, &params)
+		err := unmarshalWithNumber(q.Params, &params)
 		if err != nil {
 			return fmt.Errorf("invalid params: %w", err)
 		}
@@ -125,8 +126,14 @@ func (q QueryTemplate) Validate() error {
 		}
 		switch q.Resource {
 		case queries.ResourceKindVolume:
+			err = checkForExtraFields(q.Params, []string{"groupBy", "insertionDate"})
+			if err != nil {
+				return fmt.Errorf("invalid params: %w", err)
+			}
 			var opts GetVolumesOptions
-			err = validateParam(q.Params, &opts)
+			err = unmarshalWithNumber(q.Params, &opts)
+		default:
+			err = checkForExtraFields(q.Params, []string{})
 		}
 		if err != nil {
 			return fmt.Errorf("invalid params: %w", err)
@@ -147,12 +154,17 @@ func (q QueryTemplate) Validate() error {
 	return nil
 }
 
-func validateParam[Opts any](params json.RawMessage, pointer *Opts) error {
-	if params == nil {
-		return nil
-	}
-	if err := unmarshalWithNumber(params, pointer); err != nil {
+func checkForExtraFields(params json.RawMessage, resourceSpecificFields []string) error {
+	allowedFields := slices.Concat([]string{"endTime", "startTime", "expand", "sort", "pageSize"}, resourceSpecificFields)
+	var raw map[string]any
+	err := json.Unmarshal(params, &raw)
+	if err != nil {
 		return err
+	}
+	for k := range raw {
+		if !slices.Contains(allowedFields, k) {
+			return fmt.Errorf("unknown field: `%s`", k)
+		}
 	}
 	return nil
 }

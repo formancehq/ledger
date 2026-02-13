@@ -2643,8 +2643,8 @@ Run a query template on a ledger
 |»»» resource|body|string|false|none|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|false|none|
-|»»» useInsertionDate|body|boolean|false|none|
-|»»» groupLvl|body|integer|false|none|
+|»»» insertionDate|body|boolean|false|none|
+|»»» groupBy|body|integer|false|none|
 |» vars|body|object|false|none|
 |»» **additionalProperties**|body|string|false|none|
 
@@ -6905,8 +6905,8 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» resource|string|false|none|none|
-|» useInsertionDate|boolean|false|none|none|
-|» groupLvl|integer|false|none|none|
+|» insertionDate|boolean|false|none|none|
+|» groupBy|integer|false|none|none|
 
 #### Enumerated Values
 
