@@ -13,8 +13,17 @@
 * Backup restoration
 * Signed request
 * Mirror mode
-* Extract HTTP layer into a compat service
+* Extract HTTP layer into a compat service?
 * Date precision nano?
 * Checker add transactions
 * Logs export CLI (filtrage par date/ledger)
 * Sign logs hash with private key
+* Holds/pending transfers
+* Events system
+* ACL system
+* Built in tls
+* LICENCE of dependencies
+* Add nightly build
+* Mode not atomic
+* Convert K6 tests to GRPC
+

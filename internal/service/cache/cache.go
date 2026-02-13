@@ -206,7 +206,7 @@ func (c *Cache) Reset() {
 	c.References.reset()
 	c.Ledgers.reset()
 	c.Boundaries.reset()
-	c.BaseIndex = newDualGen[uint64](1, 0)
+	c.BaseIndex = newDualGen[uint64](0, 0)
 	c.CurrentGeneration = 0
 }
 
@@ -223,7 +223,10 @@ func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseInde
 
 	if g := gen(index, c.GenerationThreshold); g != c.CurrentGeneration {
 		oldGen1BaseIndex = c.BaseIndex.Gen1
-		c.rotateLocked(index, g)
+		// Use canonical boundary (end of previous generation) instead of raw index.
+		// This must match BoundaryIndex(nextIndex, K) used by admission when building preloads.
+		boundary := genEndIndex(g-1, c.GenerationThreshold)
+		c.rotateLocked(boundary, g)
 		return true, oldGen1BaseIndex
 	}
 
@@ -319,7 +322,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	}
 
 	ret := &Cache{
-		BaseIndex:           newDualGen[uint64](1, 0),
+		BaseIndex:           newDualGen[uint64](0, 0),
 		GenerationThreshold: generationThreshold,
 		CurrentGeneration:   0,
 	}

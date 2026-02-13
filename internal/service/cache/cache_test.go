@@ -311,7 +311,7 @@ func TestCache_NewCache(t *testing.T) {
 	assert.NotNil(t, cache.AccountMetadata)
 	assert.Equal(t, uint64(100), cache.GenerationThreshold)
 	assert.Equal(t, uint64(0), cache.CurrentGeneration)
-	assert.Equal(t, uint64(1), cache.BaseIndex.Gen0)
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen0)
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
 }
 
@@ -354,8 +354,8 @@ func TestCache_CheckRotationNeeded_NewGeneration(t *testing.T) {
 	_, ok := cache.Input.Get(key)
 	assert.True(t, ok)
 
-	// BaseIndex should be updated
-	assert.Equal(t, uint64(11), cache.BaseIndex.Gen0)
+	// BaseIndex should be the canonical boundary genEndIndex(0, 10) = 10
+	assert.Equal(t, uint64(10), cache.BaseIndex.Gen0)
 }
 
 func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
