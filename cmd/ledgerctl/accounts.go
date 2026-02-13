@@ -13,6 +13,7 @@ func newAccountsCommand() *cobra.Command {
 		Long:    "Commands for managing and viewing accounts in a ledger",
 	}
 
+	cmd.AddCommand(newAccountsListCommand())
 	cmd.AddCommand(newAccountsGetCommand())
 	cmd.AddCommand(newAccountsSetMetadataCommand())
 	cmd.AddCommand(newAccountsDeleteMetadataCommand())

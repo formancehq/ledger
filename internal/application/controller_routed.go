@@ -94,6 +94,11 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return b.localController.GetAccount(ctx, ledgerName, address)
 }
 
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
+	// Read from local store - data is replicated via Raft
+	return b.localController.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ServiceConnectionPool) *RoutedController {

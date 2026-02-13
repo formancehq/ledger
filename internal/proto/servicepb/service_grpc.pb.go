@@ -26,6 +26,7 @@ const (
 	BucketService_GetAccount_FullMethodName        = "/ledger.BucketService/GetAccount"
 	BucketService_GetTransaction_FullMethodName    = "/ledger.BucketService/GetTransaction"
 	BucketService_ListTransactions_FullMethodName  = "/ledger.BucketService/ListTransactions"
+	BucketService_ListAccounts_FullMethodName      = "/ledger.BucketService/ListAccounts"
 	BucketService_Apply_FullMethodName             = "/ledger.BucketService/Apply"
 	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
 	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
@@ -48,6 +49,8 @@ type BucketServiceClient interface {
 	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)
+	// ListAccounts streams all accounts for a ledger (alphabetical order)
+	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error)
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
@@ -134,6 +137,25 @@ func (c *bucketServiceClient) ListTransactions(ctx context.Context, in *ListTran
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListTransactionsClient = grpc.ServerStreamingClient[commonpb.Transaction]
 
+func (c *bucketServiceClient) ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[2], BucketService_ListAccounts_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListAccountsRequest, commonpb.Account]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListAccountsClient = grpc.ServerStreamingClient[commonpb.Account]
+
 func (c *bucketServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ApplyResponse)
@@ -156,7 +178,7 @@ func (c *bucketServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreM
 
 func (c *bucketServiceClient) CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[2], BucketService_CheckStore_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[3], BucketService_CheckStore_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +197,7 @@ type BucketService_CheckStoreClient = grpc.ServerStreamingClient[CheckStoreEvent
 
 func (c *bucketServiceClient) ListAuditEntries(ctx context.Context, in *ListAuditEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[3], BucketService_ListAuditEntries_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[4], BucketService_ListAuditEntries_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +230,8 @@ type BucketServiceServer interface {
 	GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error
+	// ListAccounts streams all accounts for a ledger (alphabetical order)
+	ListAccounts(*ListAccountsRequest, grpc.ServerStreamingServer[commonpb.Account]) error
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
@@ -240,6 +264,9 @@ func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTran
 }
 func (UnimplementedBucketServiceServer) ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error {
 	return status.Errorf(codes.Unimplemented, "method ListTransactions not implemented")
+}
+func (UnimplementedBucketServiceServer) ListAccounts(*ListAccountsRequest, grpc.ServerStreamingServer[commonpb.Account]) error {
+	return status.Errorf(codes.Unimplemented, "method ListAccounts not implemented")
 }
 func (UnimplementedBucketServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
@@ -350,6 +377,17 @@ func _BucketService_ListTransactions_Handler(srv interface{}, stream grpc.Server
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListTransactionsServer = grpc.ServerStreamingServer[commonpb.Transaction]
 
+func _BucketService_ListAccounts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListAccountsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListAccounts(m, &grpc.GenericServerStream[ListAccountsRequest, commonpb.Account]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListAccountsServer = grpc.ServerStreamingServer[commonpb.Account]
+
 func _BucketService_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplyRequest)
 	if err := dec(in); err != nil {
@@ -445,6 +483,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListTransactions",
 			Handler:       _BucketService_ListTransactions_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListAccounts",
+			Handler:       _BucketService_ListAccounts_Handler,
 			ServerStreams: true,
 		},
 		{

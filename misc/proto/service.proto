@@ -23,6 +23,8 @@ service BucketService {
   rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
   // ListTransactions streams all transactions for a ledger (newest first)
   rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction);
+  // ListAccounts streams all accounts for a ledger (alphabetical order)
+  rpc ListAccounts(ListAccountsRequest) returns (stream common.Account);
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   // GetStoreMetrics returns metrics from the local store (Pebble only)
@@ -54,6 +56,16 @@ message ListTransactionsRequest {
   // after_tx_id is the transaction ID to start after (for pagination, exclusive)
   // Use 0 or omit to start from the latest transaction
   uint64 after_tx_id = 3;
+}
+
+message ListAccountsRequest {
+  string ledger = 1;
+  // page_size is the maximum number of accounts to return (0 = no limit)
+  uint32 page_size = 2;
+  // after_address is the account address to start after (for pagination, exclusive)
+  string after_address = 3;
+  // prefix filters accounts by address prefix (e.g. "users:")
+  string prefix = 4;
 }
 
 message CreateLedgerRequest {

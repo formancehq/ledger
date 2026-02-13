@@ -157,6 +157,49 @@ Manage accounts in a ledger.
 
 **Aliases:** `account`, `acc`, `a`
 
+#### accounts list
+
+List accounts in a ledger with pagination.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl accounts list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--page-size` | `10` | Number of accounts per page |
+| `--prefix` | | Filter accounts by address prefix (e.g. `users:`) |
+| `--all` | `false` | Fetch all accounts at once (no pagination) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Accounts are listed in alphabetical order
+- If `--ledger` is not provided and only one ledger exists, it will be used automatically
+- If multiple ledgers exist, you will be prompted to select one
+- Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
+
+**Example:**
+
+```bash
+# List accounts with explicit ledger
+ledgerctl accounts list --ledger my-ledger
+
+# Filter by prefix
+ledgerctl accounts list --ledger my-ledger --prefix users:
+
+# Fetch all accounts at once
+ledgerctl accounts list --ledger my-ledger --all
+
+# Output as JSON
+ledgerctl accounts list --ledger my-ledger --json
+```
+
 #### accounts get
 
 Get detailed information about an account including its volumes.

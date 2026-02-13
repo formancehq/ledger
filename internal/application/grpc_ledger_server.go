@@ -136,6 +136,39 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 	return impl.ctrl.GetAccount(ctx, req.Ledger, req.Address)
 }
 
+func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
+	if req.Ledger == "" {
+		return fmt.Errorf("ledger name is required")
+	}
+
+	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, prefix=%q)",
+		req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
+
+	ctx := stream.Context()
+	cursor, err := impl.ctrl.ListAccounts(ctx, req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
+	if err != nil {
+		return fmt.Errorf("listing accounts: %w", err)
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		account, err := cursor.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading account: %w", err)
+		}
+		if err := stream.Send(account); err != nil {
+			return fmt.Errorf("sending account: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
 	// Get metrics from the Pebble store directly
 	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)

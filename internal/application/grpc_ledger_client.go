@@ -60,6 +60,22 @@ func (g *LedgerGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
 }
 
+func (g *LedgerGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
+	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+		Ledger:       ledgerName,
+		PageSize:     pageSize,
+		AfterAddress: afterAddress,
+		Prefix:       prefix,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return data.NewGRPCStreamCursor(stream, func(res *commonpb.Account) (*commonpb.Account, error) {
+		return res, nil
+	}), nil
+}
+
 func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
 	stream, err := g.client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 	if err != nil {

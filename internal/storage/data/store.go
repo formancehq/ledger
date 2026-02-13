@@ -51,6 +51,7 @@ var (
 	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 	KeyPrefixAttributes        byte = 0x09
 	keyPrefixAudit             byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
+	KeyPrefixAccountIndex      byte = 0x0B // [KeyPrefixAccountIndex][ledgerID][account] -> empty (existence marker)
 
 	AttributePrefixInput          = byte('I')
 	AttributePrefixOutput         = byte('O')
@@ -343,6 +344,120 @@ func (c *transactionIDCursor) Next() (uint64, error) {
 }
 
 func (c *transactionIDCursor) Close() error {
+	return c.iter.Close()
+}
+
+// ListAccountAddresses returns a cursor over unique account addresses for a ledger (alphabetical order).
+// It scans the account index (KeyPrefixAccountIndex) written during transaction processing.
+// If afterAddress is non-empty, it starts after that address (exclusive).
+// If prefix is non-empty, only accounts whose address starts with prefix are returned.
+// pageSize limits the number of results (0 = no limit).
+func (s *Store) ListAccountAddresses(ledgerID uint32, pageSize uint32, afterAddress string, prefix string) (Cursor[string], error) {
+	kb := NewKeyBuilder()
+
+	// Key format: [KeyPrefixAccountIndex][ledgerID (4 bytes)][account]
+	// Base prefix for this ledger
+	kb.PutByte(KeyPrefixAccountIndex).
+		PutLedgerPrefix(ledgerID)
+	basePrefixLen := 1 + 4 // KeyPrefixAccountIndex + ledgerID
+
+	// Lower bound
+	if afterAddress != "" {
+		// Start after the given address: append address + one byte past it
+		kb.PutString(afterAddress).PutByte(0x00)
+	} else if prefix != "" {
+		kb.PutString(prefix)
+	}
+	lowerBound := kb.Build()
+
+	// Upper bound
+	kb2 := NewKeyBuilder()
+	kb2.PutByte(KeyPrefixAccountIndex).PutLedgerPrefix(ledgerID)
+	if prefix != "" {
+		incremented := incrementBytes([]byte(prefix))
+		if incremented != nil {
+			kb2.PutBytes(incremented)
+		} else {
+			kb2.PutByte(0xFF)
+		}
+	} else {
+		kb2.PutByte(0xFF)
+	}
+	upperBound := kb2.Build()
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for account list: %w", err)
+	}
+
+	return newAccountAddressCursor(iter, pageSize, basePrefixLen), nil
+}
+
+// incrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).
+// Returns nil if all bytes are 0xFF (overflow).
+func incrementBytes(b []byte) []byte {
+	result := make([]byte, len(b))
+	copy(result, b)
+	for i := len(result) - 1; i >= 0; i-- {
+		result[i]++
+		if result[i] != 0 {
+			return result
+		}
+	}
+	return nil // overflow
+}
+
+// accountAddressCursor iterates over account addresses from the account index.
+// Each key is unique (one key per account), so no deduplication is needed.
+type accountAddressCursor struct {
+	iter           *pebble.Iterator
+	started        bool
+	pageSize       uint32
+	count          uint32
+	basePrefixLen  int // length of [KeyPrefixAccountIndex][ledgerID]
+}
+
+func newAccountAddressCursor(iter *pebble.Iterator, pageSize uint32, basePrefixLen int) *accountAddressCursor {
+	return &accountAddressCursor{
+		iter:          iter,
+		pageSize:      pageSize,
+		basePrefixLen: basePrefixLen,
+	}
+}
+
+func (c *accountAddressCursor) Next() (string, error) {
+	if c.pageSize > 0 && c.count >= c.pageSize {
+		return "", io.EOF
+	}
+
+	var valid bool
+	if !c.started {
+		c.started = true
+		valid = c.iter.First()
+	} else {
+		valid = c.iter.Next()
+	}
+
+	if !valid {
+		if err := c.iter.Error(); err != nil {
+			return "", err
+		}
+		return "", io.EOF
+	}
+
+	// Key format: [KeyPrefixAccountIndex(1)][ledgerID(4)][account]
+	// Account is everything after the base prefix
+	key := c.iter.Key()
+	account := string(key[c.basePrefixLen:])
+
+	c.count++
+	return account, nil
+}
+
+func (c *accountAddressCursor) Close() error {
 	return c.iter.Close()
 }
 

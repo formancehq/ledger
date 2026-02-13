@@ -232,6 +232,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/accounts:
+    get:
+      summary: List accounts
+      description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination
+      operationId: listAccounts
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          description: Maximum number of accounts to return (0 = no limit)
+          schema:
+            type: integer
+            format: int32
+        - name: after
+          in: query
+          description: Account address to start after (for cursor pagination, exclusive)
+          schema:
+            type: string
+        - name: prefix
+          in: query
+          description: Filter accounts by address prefix (e.g. "users:")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Account'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/accounts/{address}:
     get:
       summary: Get an account

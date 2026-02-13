@@ -191,6 +191,30 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 	}, nil
 }
 
+// ListAccounts returns a cursor over accounts for a ledger (alphabetical order).
+func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
+	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+
+	// Get account address cursor from store
+	addrCursor, err := ctrl.store.ListAccountAddresses(ledgerInfo.Id, pageSize, afterAddress, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("listing account addresses: %w", err)
+	}
+
+	// Return a cursor that enriches addresses with metadata and volumes
+	return &accountCursor{
+		ctrl:       ctrl,
+		ledgerID:   ledgerInfo.Id,
+		addrCursor: addrCursor,
+	}, nil
+}
+
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
 	if err != nil {
@@ -282,4 +306,39 @@ func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
 
 func (c *transactionCursor) Close() error {
 	return c.idCursor.Close()
+}
+
+// accountCursor wraps an address cursor to return full accounts with metadata and volumes.
+type accountCursor struct {
+	ctrl       *DefaultController
+	ledgerID   uint32
+	addrCursor data.Cursor[string]
+}
+
+func (c *accountCursor) Next() (*commonpb.Account, error) {
+	address, err := c.addrCursor.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get account metadata
+	metadataMap, err := GetAccountMetadata(c.ctrl.store, c.ctrl.attrs, c.ledgerID, []string{address})
+	if err != nil {
+		return nil, fmt.Errorf("getting account metadata for %s: %w", address, err)
+	}
+
+	account := &commonpb.Account{
+		Address:  address,
+		Metadata: &commonpb.MetadataSet{},
+	}
+
+	if md, exists := metadataMap[address]; exists {
+		account.Metadata = commonpb.MetadataSetFromMap(md)
+	}
+
+	return account, nil
+}
+
+func (c *accountCursor) Close() error {
+	return c.addrCursor.Close()
 }

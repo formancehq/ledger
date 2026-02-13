@@ -133,6 +133,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 
 **Account commands:**
 - **`accounts.go`** : Parent command for account operations
+- **`accounts_list.go`** : `accounts list` command to list accounts in a ledger via gRPC streaming
 - **`accounts_get.go`** : `accounts get` command to retrieve an account with its volumes via gRPC
 
 **Transaction commands:**
@@ -252,6 +253,7 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 - **`handlers_list_all_ledgers.go`** : `handleListAllLedgers` handler for GET /
 - **`handlers_create_transaction.go`** : `handleCreateTransaction` handler for POST /{ledgerName}/transactions
 - **`handlers_get_transaction.go`** : `handleGetTransaction` handler for GET /{ledgerName}/transactions/{id}
+- **`handlers_list_accounts.go`** : `handleListAccounts` handler for GET /{ledgerName}/accounts
 - **`handlers_get_account.go`** : `handleGetAccount` handler for GET /{ledgerName}/accounts/{address}
 - **`handlers_save_account_metadata.go`** : `handleSaveAccountMetadata` handler for POST /{ledgerName}/accounts/{address}/metadata
 - **`handlers_delete_account_metadata.go`** : `handleDeleteAccountMetadata` handler for DELETE /{ledgerName}/accounts/{address}/metadata/{key}
