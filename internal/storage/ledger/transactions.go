@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"slices"
 	"strings"
 
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/ledger/pkg/features"
+
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -166,8 +168,9 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		},
 		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.String("id", fmt.Sprint(tx.ID)),
-				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
+				attribute.String("transaction.id", fmt.Sprint(tx.ID)),
+				attribute.String("transaction.timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
+				attribute.String("transaction.reference", tx.Reference),
 			)
 		},
 	))
