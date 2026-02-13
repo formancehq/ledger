@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,7 +49,7 @@ func TestHTTPDriver(t *testing.T) {
 	}
 
 	// Send all logs to the driver
-	itemsErrors, err := driver.Accept(context.TODO(), logs...)
+	itemsErrors, err := driver.Accept(t.Context(), logs...)
 	require.NoError(t, err)
 	require.Len(t, itemsErrors, numberOfLogs)
 	for index := range logs {

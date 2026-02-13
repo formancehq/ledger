@@ -24,7 +24,7 @@ import (
 func TestClickhouseDriver(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	// Start a new clickhouse server
 	dockerPool := docker.NewPool(t, logging.Testing())

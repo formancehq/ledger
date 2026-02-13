@@ -1,7 +1,6 @@
 package noop
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 func TestNoOpDriver(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	// Create our driver
 	driver, err := NewDriver(struct{}{}, logging.Testing())

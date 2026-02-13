@@ -79,7 +79,7 @@ type BulkElementResult struct {
 
 type AddMetadataRequest struct {
 	TargetType string            `json:"targetType"`
-	TargetID   json.RawMessage   `json:"targetId"`
+	TargetID   json.RawMessage   `json:"targetId"` //nolint:tagliatelle
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
@@ -92,7 +92,7 @@ type RevertTransactionRequest struct {
 
 type DeleteMetadataRequest struct {
 	TargetType string          `json:"targetType"`
-	TargetID   json.RawMessage `json:"targetId"`
+	TargetID   json.RawMessage `json:"targetId"` //nolint:tagliatelle
 	Key        string          `json:"key"`
 }
 

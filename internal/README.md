@@ -673,7 +673,7 @@ func (p CreatedTransaction) ValidateWithSchema(schema Schema) error
 ```go
 type DeletedMetadata struct {
     TargetType string `json:"targetType"`
-    TargetID   any    `json:"targetId"`
+    TargetID   any    `json:"targetId"` //nolint:tagliatelle
     Key        string `json:"key"`
 }
 ```
@@ -1587,7 +1587,7 @@ const (
 ```go
 type SavedMetadata struct {
     TargetType string            `json:"targetType"`
-    TargetID   any               `json:"targetId"`
+    TargetID   any               `json:"targetId"` //nolint:tagliatelle
     Metadata   metadata.Metadata `json:"metadata"`
 }
 ```

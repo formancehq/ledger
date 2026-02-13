@@ -154,6 +154,7 @@ func TestTransactionsCount(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			if tc.expectStatusCode == 0 {
 				tc.expectStatusCode = http.StatusNoContent
