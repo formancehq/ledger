@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 // NewRouter creates a chi.Router configured with the v2 HTTP API routes for the ledger service.
@@ -127,6 +128,8 @@ func NewRouter(
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
 				router.Get("/volumes", readVolumes(routerOptions.paginationConfig))
+
+				router.Post("/queries/{id}/run", runQuery(routerOptions.paginationConfig))
 			})
 		})
 	})
@@ -138,7 +141,7 @@ type routerOptions struct {
 	tracer               trace.Tracer
 	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]bulking.HandlerFactory
-	paginationConfig     common.PaginationConfig
+	paginationConfig     storagecommon.PaginationConfig
 	exporters            bool
 }
 
@@ -162,7 +165,7 @@ func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 	}
 }
 
-func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption {
+func WithPaginationConfig(paginationConfig storagecommon.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
 	}
@@ -186,7 +189,7 @@ var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
 	WithDefaultBulkHandlerFactories(100),
-	WithPaginationConfig(common.PaginationConfig{
+	WithPaginationConfig(storagecommon.PaginationConfig{
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 		MaxPageSize:     bunpaginate.MaxPageSize,
 	}),

@@ -8,8 +8,10 @@ replace github.com/formancehq/ledger => ../..
 
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
+replace github.com/formancehq/go-libs/v3 v3.5.0 => ../../../go-libs
+
 require (
-	github.com/formancehq/go-libs/v3 v3.5.0
+	github.com/formancehq/go-libs/v3 v3.6.1-0.20260203163702-856bac344d07
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.1
@@ -42,6 +44,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
+	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect

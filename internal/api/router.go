@@ -24,6 +24,7 @@ import (
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 // todo: refine textual errors
@@ -118,7 +119,7 @@ type routerOptions struct {
 	meterProvider    metric.MeterProvider
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
-	paginationConfig common.PaginationConfig
+	paginationConfig storagecommon.PaginationConfig
 	exporters        bool
 }
 
@@ -142,7 +143,7 @@ func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
 	}
 }
 
-func WithPaginationConfiguration(paginationConfig common.PaginationConfig) RouterOption {
+func WithPaginationConfiguration(paginationConfig storagecommon.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
 	}
@@ -164,7 +165,7 @@ var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
-	WithPaginationConfiguration(common.PaginationConfig{
+	WithPaginationConfiguration(storagecommon.PaginationConfig{
 		MaxPageSize:     bunpaginate.MaxPageSize,
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 	}),

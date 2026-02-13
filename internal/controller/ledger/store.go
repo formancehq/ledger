@@ -62,8 +62,8 @@ type Store interface {
 	Accounts() common.PaginatedResource[ledger.Account, any]
 	Logs() common.PaginatedResource[ledger.Log, any]
 	Transactions() common.PaginatedResource[ledger.Transaction, any]
-	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions]
+	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {

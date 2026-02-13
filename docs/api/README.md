@@ -137,7 +137,7 @@ Accept: application/json
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |includeDeleted|query|boolean|false|If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -151,7 +151,7 @@ No other parameters can be set when this parameter is set.
 
 **includeDeleted**: If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -354,6 +354,54 @@ Idempotency-Key: string
       "script": "string",
       "runtime": "experimental-interpreter"
     }
+  },
+  "queries": {
+    "property1": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    },
+    "property2": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    }
   }
 }
 ```
@@ -446,6 +494,54 @@ Accept: application/json
         "script": "string",
         "runtime": "experimental-interpreter"
       }
+    },
+    "queries": {
+      "property1": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
+      },
+      "property2": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
+      }
     }
   }
 }
@@ -524,6 +620,54 @@ Accept: application/json
             "description": "string",
             "script": "string",
             "runtime": "experimental-interpreter"
+          }
+        },
+        "queries": {
+          "property1": {
+            "description": "string",
+            "resource": "transactions",
+            "params": {
+              "pageSize": 100,
+              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+              "expand": "string",
+              "pit": "2019-08-24T14:15:22Z",
+              "sort": {},
+              "resource": "accounts"
+            },
+            "vars": {
+              "property1": {
+                "type": "string",
+                "default": null
+              },
+              "property2": {
+                "type": "string",
+                "default": null
+              }
+            },
+            "body": {}
+          },
+          "property2": {
+            "description": "string",
+            "resource": "transactions",
+            "params": {
+              "pageSize": 100,
+              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+              "expand": "string",
+              "pit": "2019-08-24T14:15:22Z",
+              "sort": {},
+              "resource": "accounts"
+            },
+            "vars": {
+              "property1": {
+                "type": "string",
+                "default": null
+              },
+              "property2": {
+                "type": "string",
+                "default": null
+              }
+            },
+            "body": {}
           }
         }
       }
@@ -983,7 +1127,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -995,7 +1139,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -1004,6 +1148,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -1422,7 +1567,7 @@ List transactions from a ledger, sorted by id in descending order.
 |pit|query|string(date-time)|false|none|
 |order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1434,7 +1579,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
@@ -1449,6 +1594,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2180,7 +2326,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2192,7 +2338,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2201,6 +2347,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2263,7 +2410,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2275,7 +2422,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending). 
+**sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2284,6 +2431,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
+  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -2425,6 +2573,254 @@ Accept: application/octet-stream
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
+</aside>
+
+## Run a query template
+
+<a id="opIdv2RunQuery"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/queries/{id}/run`
+
+Run a query template on a ledger
+
+> Body parameter
+
+```json
+{
+  "cursor": "string",
+  "params": {
+    "pageSize": 100,
+    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+    "expand": "string",
+    "pit": "2019-08-24T14:15:22Z",
+    "sort": {},
+    "resource": "accounts"
+  },
+  "vars": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+```
+
+<h3 id="run-a-query-template-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|schemaVersion|query|string|true|Schema version to use for validation|
+|id|path|string|true|Query template ID.|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|expand|query|string|false|none|
+|pit|query|string(date-time)|false|none|
+|order|query|string|false|Deprecated: Use sort param|
+|reverse|query|boolean|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|body|body|object|true|none|
+|» cursor|body|string|false|none|
+|» params|body|[V2QueryParams](#schemav2queryparams)|false|none|
+|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
+|»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»» expand|body|string|false|none|
+|»» pit|body|string(date-time)|false|none|
+|»» sort|body|object|false|Sort results using a field name and order (ascending or descending).|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»» *anonymous*|body|object|false|none|
+|»»» resource|body|string|false|none|
+|»»» insertionDate|body|boolean|false|none|
+|»»» groupBy|body|integer|false|none|
+|» vars|body|object|false|none|
+|»» **additionalProperties**|body|string|false|none|
+
+#### Detailed descriptions
+
+**pageSize**: The maximum number of results to return per page.
+
+**cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
+Set to the value of next for the next page of results.
+Set to the value of previous for the previous page of results.
+No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending).
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+
+**»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
+Set to the value of next for the next page of results.
+Set to the value of previous for the previous page of results.
+No other parameters can be set when this parameter is set.
+
+**»» sort**: Sort results using a field name and order (ascending or descending).
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|order|effective|
+|»»» resource|accounts|
+|»»» resource|transactions|
+|»»» resource|logs|
+|»»» resource|volumes|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "resource": "transactions",
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "data": [
+      {
+        "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "postings": [
+          {
+            "amount": 100,
+            "asset": "COIN",
+            "destination": "users:002",
+            "source": "users:001"
+          }
+        ],
+        "reference": "ref:001",
+        "metadata": {
+          "admin": "true"
+        },
+        "id": 0,
+        "reverted": true,
+        "revertedAt": "2019-08-24T14:15:22Z",
+        "preCommitVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "postCommitVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "preCommitEffectiveVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "postCommitEffectiveVolumes": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        },
+        "template": "string"
+      }
+    ]
+  }
+}
+```
+
+<h3 id="run-a-query-template-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="run-a-query-template-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|transactions|
+|resource|accounts|
+|resource|logs|
+|type|NEW_TRANSACTION|
+|type|SET_METADATA|
+|type|REVERTED_TRANSACTION|
+|type|DELETE_METADATA|
+|type|INSERTED_SCHEMA|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+|targetType|ACCOUNT|
+|targetType|TRANSACTION|
+|runtime|experimental-interpreter|
+|runtime|machine|
+|resource|transactions|
+|resource|accounts|
+|resource|logs|
+|resource|volumes|
+|resource|accounts|
+|resource|transactions|
+|resource|logs|
+|resource|volumes|
+|resource|volumes|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
 </aside>
 
 ## List exporters
@@ -3411,6 +3807,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3460,12 +3857,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Account](#schemav2account)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|accounts|
 
 <h2 id="tocS_V2TransactionsCursorResponse">V2TransactionsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -3476,6 +3880,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3577,12 +3982,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Transaction](#schemav2transaction)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|transactions|
 
 <h2 id="tocS_V2LogsCursorResponse">V2LogsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -3593,6 +4005,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3638,12 +4051,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Log](#schemav2log)]|true|none|[Represents an immutable log entry in the ledger. Each log captures an atomic operation<br>with its full payload, enabling audit trails and event sourcing patterns.<br>The data field structure depends on the log type.<br>]|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|logs|
 
 <h2 id="tocS_V2AccountResponse">V2AccountResponse</h2>
 <!-- backwards compatibility -->
@@ -3729,6 +4149,7 @@ This operation does not require authentication
 
 ```json
 {
+  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
@@ -3752,12 +4173,19 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2VolumesWithBalance](#schemav2volumeswithbalance)]|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|volumes|
 
 <h2 id="tocS_V2VolumesWithBalance">V2VolumesWithBalance</h2>
 <!-- backwards compatibility -->
@@ -4575,6 +5003,54 @@ continued
         "description": "string",
         "script": "string",
         "runtime": "experimental-interpreter"
+      }
+    },
+    "queries": {
+      "property1": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
+      },
+      "property2": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
       }
     }
   }
@@ -6324,6 +6800,235 @@ Transaction templates
 |---|---|---|---|---|
 |**additionalProperties**|[V2TransactionTemplate](#schemav2transactiontemplate)|false|none|none|
 
+<h2 id="tocS_V2QueryTemplateVar">V2QueryTemplateVar</h2>
+<!-- backwards compatibility -->
+<a id="schemav2querytemplatevar"></a>
+<a id="schema_V2QueryTemplateVar"></a>
+<a id="tocSv2querytemplatevar"></a>
+<a id="tocsv2querytemplatevar"></a>
+
+```json
+{
+  "type": "string",
+  "default": null
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|default|any|false|none|none|
+
+<h2 id="tocS_V2QueryResource">V2QueryResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2queryresource"></a>
+<a id="schema_V2QueryResource"></a>
+<a id="tocSv2queryresource"></a>
+<a id="tocsv2queryresource"></a>
+
+```json
+"transactions"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|transactions|
+|*anonymous*|accounts|
+|*anonymous*|logs|
+|*anonymous*|volumes|
+
+<h2 id="tocS_V2QueryParams">V2QueryParams</h2>
+<!-- backwards compatibility -->
+<a id="schemav2queryparams"></a>
+<a id="schema_V2QueryParams"></a>
+<a id="tocSv2queryparams"></a>
+<a id="tocsv2queryparams"></a>
+
+```json
+{
+  "pageSize": 100,
+  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+  "expand": "string",
+  "pit": "2019-08-24T14:15:22Z",
+  "sort": {},
+  "resource": "accounts"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|expand|string|false|none|none|
+|pit|string(date-time)|false|none|none|
+|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|string|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|string|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|string|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» resource|string|false|none|none|
+|» insertionDate|boolean|false|none|none|
+|» groupBy|integer|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|resource|accounts|
+|resource|transactions|
+|resource|logs|
+|resource|volumes|
+
+<h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2querytemplate"></a>
+<a id="schema_V2QueryTemplate"></a>
+<a id="tocSv2querytemplate"></a>
+<a id="tocsv2querytemplate"></a>
+
+```json
+{
+  "description": "string",
+  "resource": "transactions",
+  "params": {
+    "pageSize": 100,
+    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+    "expand": "string",
+    "pit": "2019-08-24T14:15:22Z",
+    "sort": {},
+    "resource": "accounts"
+  },
+  "vars": {
+    "property1": {
+      "type": "string",
+      "default": null
+    },
+    "property2": {
+      "type": "string",
+      "default": null
+    }
+  },
+  "body": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|description|string|false|none|none|
+|resource|[V2QueryResource](#schemav2queryresource)|false|none|none|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|none|
+|vars|object|false|none|none|
+|» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
+|body|object|false|none|none|
+
+<h2 id="tocS_V2QueryTemplates">V2QueryTemplates</h2>
+<!-- backwards compatibility -->
+<a id="schemav2querytemplates"></a>
+<a id="schema_V2QueryTemplates"></a>
+<a id="tocSv2querytemplates"></a>
+<a id="tocsv2querytemplates"></a>
+
+```json
+{
+  "property1": {
+    "description": "string",
+    "resource": "transactions",
+    "params": {
+      "pageSize": 100,
+      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+      "expand": "string",
+      "pit": "2019-08-24T14:15:22Z",
+      "sort": {},
+      "resource": "accounts"
+    },
+    "vars": {
+      "property1": {
+        "type": "string",
+        "default": null
+      },
+      "property2": {
+        "type": "string",
+        "default": null
+      }
+    },
+    "body": {}
+  },
+  "property2": {
+    "description": "string",
+    "resource": "transactions",
+    "params": {
+      "pageSize": 100,
+      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+      "expand": "string",
+      "pit": "2019-08-24T14:15:22Z",
+      "sort": {},
+      "resource": "accounts"
+    },
+    "vars": {
+      "property1": {
+        "type": "string",
+        "default": null
+      },
+      "property2": {
+        "type": "string",
+        "default": null
+      }
+    },
+    "body": {}
+  }
+}
+
+```
+
+Query templates
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2QueryTemplate](#schemav2querytemplate)|false|none|none|
+
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->
 <a id="schemav2schemadata"></a>
@@ -6351,6 +7056,54 @@ Transaction templates
       "script": "string",
       "runtime": "experimental-interpreter"
     }
+  },
+  "queries": {
+    "property1": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    },
+    "property2": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    }
   }
 }
 
@@ -6364,6 +7117,7 @@ Schema data structure for ledger schemas
 |---|---|---|---|---|
 |chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
 |transactions|[V2TransactionTemplates](#schemav2transactiontemplates)|true|none|Transaction templates|
+|queries|[V2QueryTemplates](#schemav2querytemplates)|false|none|Query templates|
 
 <h2 id="tocS_V2Schema">V2Schema</h2>
 <!-- backwards compatibility -->
@@ -6393,6 +7147,54 @@ Schema data structure for ledger schemas
       "description": "string",
       "script": "string",
       "runtime": "experimental-interpreter"
+    }
+  },
+  "queries": {
+    "property1": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    },
+    "property2": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": {},
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
     }
   }
 }
@@ -6447,6 +7249,54 @@ and
         "script": "string",
         "runtime": "experimental-interpreter"
       }
+    },
+    "queries": {
+      "property1": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
+      },
+      "property2": {
+        "description": "string",
+        "resource": "transactions",
+        "params": {
+          "pageSize": 100,
+          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+          "expand": "string",
+          "pit": "2019-08-24T14:15:22Z",
+          "sort": {},
+          "resource": "accounts"
+        },
+        "vars": {
+          "property1": {
+            "type": "string",
+            "default": null
+          },
+          "property2": {
+            "type": "string",
+            "default": null
+          }
+        },
+        "body": {}
+      }
     }
   }
 }
@@ -6490,6 +7340,54 @@ and
             "description": "string",
             "script": "string",
             "runtime": "experimental-interpreter"
+          }
+        },
+        "queries": {
+          "property1": {
+            "description": "string",
+            "resource": "transactions",
+            "params": {
+              "pageSize": 100,
+              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+              "expand": "string",
+              "pit": "2019-08-24T14:15:22Z",
+              "sort": {},
+              "resource": "accounts"
+            },
+            "vars": {
+              "property1": {
+                "type": "string",
+                "default": null
+              },
+              "property2": {
+                "type": "string",
+                "default": null
+              }
+            },
+            "body": {}
+          },
+          "property2": {
+            "description": "string",
+            "resource": "transactions",
+            "params": {
+              "pageSize": 100,
+              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+              "expand": "string",
+              "pit": "2019-08-24T14:15:22Z",
+              "sort": {},
+              "resource": "accounts"
+            },
+            "vars": {
+              "property1": {
+                "type": "string",
+                "default": null
+              },
+              "property2": {
+                "type": "string",
+                "default": null
+              }
+            },
+            "body": {}
           }
         }
       }
@@ -6539,6 +7437,54 @@ and
           "description": "string",
           "script": "string",
           "runtime": "experimental-interpreter"
+        }
+      },
+      "queries": {
+        "property1": {
+          "description": "string",
+          "resource": "transactions",
+          "params": {
+            "pageSize": 100,
+            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+            "expand": "string",
+            "pit": "2019-08-24T14:15:22Z",
+            "sort": {},
+            "resource": "accounts"
+          },
+          "vars": {
+            "property1": {
+              "type": "string",
+              "default": null
+            },
+            "property2": {
+              "type": "string",
+              "default": null
+            }
+          },
+          "body": {}
+        },
+        "property2": {
+          "description": "string",
+          "resource": "transactions",
+          "params": {
+            "pageSize": 100,
+            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+            "expand": "string",
+            "pit": "2019-08-24T14:15:22Z",
+            "sort": {},
+            "resource": "accounts"
+          },
+          "vars": {
+            "property1": {
+              "type": "string",
+              "default": null
+            },
+            "property2": {
+              "type": "string",
+              "default": null
+            }
+          },
+          "body": {}
         }
       }
     }

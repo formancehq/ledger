@@ -8,9 +8,10 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
-func listSchemas(paginationConfig common.PaginationConfig) http.HandlerFunc {
+func listSchemas(paginationConfig storagecommon.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 
