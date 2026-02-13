@@ -102,6 +102,14 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
+	// Track dirty volume keys for memory-only compaction.
+	for _, update := range inputUpdates {
+		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
+	}
+	for _, update := range outputUpdates {
+		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
+	}
+
 	// Defensive check: double-entry invariant.
 	// The sum of all input deltas must equal the sum of all output deltas,
 	// because every posting moves the same amount from source (output) to destination (input).

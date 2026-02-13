@@ -59,6 +59,10 @@ type Machine struct {
 	// Background compactor (optional)
 	compactor *Compactor
 
+	// dirtyVolumeKeys tracks canonical key bytes written during each generation.
+	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
+	dirtyVolumeKeys [3]map[string]struct{}
+
 	// Metrics
 	logsAppendedCounter metric.Int64Counter
 	lastPersistedIndex  atomic.Uint64
@@ -140,6 +144,11 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		nextLedgerID:        1,
 		nextSequenceID:      1,
 		nextAuditSequenceID: 0,
+		dirtyVolumeKeys: [3]map[string]struct{}{
+			make(map[string]struct{}),
+			make(map[string]struct{}),
+			make(map[string]struct{}),
+		},
 	}
 
 	return fsm, nil
@@ -181,11 +190,20 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex); rotated {
-			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex); err != nil {
+			// Rotate dirty key tracking: consume slot[2], shift down, allocate new slot[0]
+			keysToCompact := fsm.dirtyVolumeKeys[2]
+			fsm.dirtyVolumeKeys[2] = fsm.dirtyVolumeKeys[1]
+			fsm.dirtyVolumeKeys[1] = fsm.dirtyVolumeKeys[0]
+			fsm.dirtyVolumeKeys[0] = make(map[string]struct{})
+
+			// Inline compaction using tracked keys (no Pebble scan)
+			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact); err != nil {
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
 			}
+
+			// Background compactor with same tracked keys
 			if fsm.compactor != nil {
-				fsm.compactor.Signal()
+				fsm.compactor.Signal(oldGen1BaseIndex, keysToCompact)
 			}
 		}
 		fsm.lastAppliedIndex++
@@ -230,27 +248,19 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 // while preserving the latest cumulative diff and any base that might exist.
 // We do NOT create a new base because existing diffs are cumulative from the original base,
 // and introducing a new base would make subsequent diffs inconsistent.
-func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64) error {
-	compact := func(attr *attributes.Attribute[*commonpb.BigInt]) error {
-		entries, err := attr.List(fsm.dataStore)
-		if err != nil {
-			return fmt.Errorf("listing attribute keys: %w", err)
+//
+// dirtyKeys contains the canonical keys that were written during the generation being
+// compacted. This eliminates the need for a full Pebble prefix scan (List()).
+func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]struct{}) error {
+	for keyStr := range dirtyKeys {
+		canonicalKey := []byte(keyStr)
+		if err := fsm.Attrs.Input.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
+			return fmt.Errorf("compacting input volume: %w", err)
 		}
-		for _, entry := range entries {
-			if err := attr.DeleteOldest(batch, compactionIndex, entry.CanonicalKey); err != nil {
-				return fmt.Errorf("deleting oldest: %w", err)
-			}
+		if err := fsm.Attrs.Output.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
+			return fmt.Errorf("compacting output volume: %w", err)
 		}
-		return nil
 	}
-
-	if err := compact(fsm.Attrs.Input); err != nil {
-		return fmt.Errorf("compacting input volumes: %w", err)
-	}
-	if err := compact(fsm.Attrs.Output); err != nil {
-		return fmt.Errorf("compacting output volumes: %w", err)
-	}
-
 	return nil
 }
 
@@ -819,6 +829,14 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	// Update currentGeneration to match the snapshot
 	fsm.Cache.CurrentGeneration = memSnapshot.CurrentGeneration
+
+	// Reset dirty key tracking. The first 2 rotations after restore will do
+	// less cleanup, but the system self-corrects as new keys are tracked.
+	fsm.dirtyVolumeKeys = [3]map[string]struct{}{
+		make(map[string]struct{}),
+		make(map[string]struct{}),
+		make(map[string]struct{}),
+	}
 
 	return nil
 }

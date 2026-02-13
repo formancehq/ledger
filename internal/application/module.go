@@ -94,14 +94,13 @@ func Module() fx.Option {
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
-			func(cfg Config, dataStore *data.Store, c *cache.Cache, logger logging.Logger, meterProvider metric.MeterProvider) (*state.Compactor, error) {
+			func(cfg Config, dataStore *data.Store, logger logging.Logger, meterProvider metric.MeterProvider) (*state.Compactor, error) {
 				if !cfg.CompactorConfig.Enabled {
 					return nil, nil
 				}
 				return state.NewCompactor(
 					logger,
 					dataStore,
-					c,
 					meterProvider.Meter("compactor"),
 					cfg.CompactorConfig,
 				)

@@ -3,13 +3,9 @@ package state
 import (
 	"context"
 	"fmt"
-	"math"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -28,23 +24,23 @@ func DefaultCompactorConfig() CompactorConfig {
 	}
 }
 
+// compactionRequest carries the data needed for a single background compaction run.
+type compactionRequest struct {
+	compactionIndex uint64
+	dirtyKeys       map[string]struct{}
+}
+
 // Compactor runs background compaction on volume diffs to reduce storage.
 //
-// Phase 1 - Intermediate Diff Removal:
-// For each volume key, keep only the latest base + latest diff, delete everything else.
-// This is always safe because intermediate cumulative diffs are redundant.
-//
-// Phase 2 - Cold Key Consolidation:
-// For keys NOT in cache that have a base entry, consolidate base+diff into a single base.
-// Cold keys won't receive new cumulative diffs, so consolidation is safe.
+// It receives tracked dirty keys from the Machine at each generation rotation
+// and performs only Pebble DeleteRange writes (no reads). This eliminates the
+// expensive List() and ScanEntries() calls that previously blocked the system.
 type Compactor struct {
 	logger    logging.Logger
+	attrs     *attributes.Attributes
 	dataStore *data.Store
-	cache     *cache.Cache
-	attrs     *attributes.Attributes // Own instance for thread-safe writes
-	hasher    *attributes.KeyHasher  // For canonical→U128 lookups
 	batchSize int
-	compactCh chan struct{}
+	compactCh chan compactionRequest
 	stopCh    chan struct{}
 	doneCh    chan struct{}
 
@@ -57,7 +53,6 @@ type Compactor struct {
 func NewCompactor(
 	logger logging.Logger,
 	dataStore *data.Store,
-	cache *cache.Cache,
 	meter metric.Meter,
 	cfg CompactorConfig,
 ) (*Compactor, error) {
@@ -87,11 +82,9 @@ func NewCompactor(
 	return &Compactor{
 		logger:               logger.WithFields(map[string]any{"cmp": "compactor"}),
 		dataStore:            dataStore,
-		cache:                cache,
-		attrs:                attributes.New(), // Own instance for thread-safe writes
-		hasher:               attributes.NewKeyHasher(attributes.DefaultKeys),
+		attrs:                attributes.New(),
 		batchSize:            batchSize,
-		compactCh:            make(chan struct{}, 1),
+		compactCh:            make(chan compactionRequest, 1),
 		stopCh:               make(chan struct{}),
 		doneCh:               make(chan struct{}),
 		compactedKeysCounter: compactedKeys,
@@ -110,12 +103,18 @@ func (c *Compactor) Stop() {
 	<-c.doneCh
 }
 
-// Signal triggers a background compaction (non-blocking).
-func (c *Compactor) Signal() {
+// Signal sends a compaction request with dirty keys (non-blocking).
+// If a request is already pending, the new one is dropped (the inline
+// compaction in ApplyEntries already handled this generation).
+func (c *Compactor) Signal(compactionIndex uint64, dirtyKeys map[string]struct{}) {
+	req := compactionRequest{
+		compactionIndex: compactionIndex,
+		dirtyKeys:       dirtyKeys,
+	}
 	select {
-	case c.compactCh <- struct{}{}:
+	case c.compactCh <- req:
 	default:
-		// Already signaled, skip
+		// Already has a pending request, skip
 	}
 }
 
@@ -126,177 +125,53 @@ func (c *Compactor) run() {
 		select {
 		case <-c.stopCh:
 			return
-		case <-c.compactCh:
-			if err := c.compact(); err != nil {
+		case req := <-c.compactCh:
+			if err := c.compact(req); err != nil {
 				c.logger.Errorf("Background compaction failed: %v", err)
 			}
 		}
 	}
 }
 
-func (c *Compactor) compact() error {
-	c.logger.Debugf("Starting background compaction")
-
-	var totalCompacted int64
-
-	n, err := c.compactAttribute(c.attrs.Input, c.cache.Input)
-	if err != nil {
-		return fmt.Errorf("compacting input volumes: %w", err)
-	}
-	totalCompacted += n
-
-	n, err = c.compactAttribute(c.attrs.Output, c.cache.Output)
-	if err != nil {
-		return fmt.Errorf("compacting output volumes: %w", err)
-	}
-	totalCompacted += n
-
+func (c *Compactor) compact(req compactionRequest) error {
 	c.logger.WithFields(map[string]any{
-		"compactedKeys": totalCompacted,
-	}).Debugf("Background compaction complete")
+		"compactionIndex": req.compactionIndex,
+		"dirtyKeys":       len(req.dirtyKeys),
+	}).Debugf("Starting background compaction")
 
-	return nil
-}
+	batch := c.dataStore.NewBatch()
+	defer func() { _ = batch.Cancel() }()
 
-// compactAttribute runs Phase 1 and Phase 2 for a single attribute type.
-func (c *Compactor) compactAttribute(
-	attr *attributes.Attribute[*commonpb.BigInt],
-	cacheAttr *cache.AttributeCache[*raftcmdpb.VolumeHolder],
-) (int64, error) {
-	entries, err := attr.List(c.dataStore)
-	if err != nil {
-		return 0, fmt.Errorf("listing attribute keys: %w", err)
-	}
-
-	var (
-		compactedKeys int64
-		batchCount    int
-		batch         = c.dataStore.NewBatch()
-	)
-	defer func() {
-		_ = batch.Cancel()
-	}()
-
-	for _, entry := range entries {
-		scan, err := attr.ScanEntries(c.dataStore, entry.CanonicalKey)
-		if err != nil {
-			return compactedKeys, fmt.Errorf("scanning entries: %w", err)
+	var batchCount int
+	for keyStr := range req.dirtyKeys {
+		canonicalKey := []byte(keyStr)
+		if err := c.attrs.Input.DeleteOldest(batch, req.compactionIndex, canonicalKey); err != nil {
+			return fmt.Errorf("compacting input volume: %w", err)
 		}
-
-		compacted, err := c.compactKey(batch, attr, cacheAttr, entry.CanonicalKey, scan)
-		if err != nil {
-			return compactedKeys, fmt.Errorf("compacting key: %w", err)
+		if err := c.attrs.Output.DeleteOldest(batch, req.compactionIndex, canonicalKey); err != nil {
+			return fmt.Errorf("compacting output volume: %w", err)
 		}
-		if compacted {
-			compactedKeys++
-			batchCount++
-		}
-
-		// Commit batch periodically
+		batchCount++
 		if batchCount >= c.batchSize {
 			if err := batch.Commit(); err != nil {
-				return compactedKeys, fmt.Errorf("committing batch: %w", err)
+				return fmt.Errorf("committing batch: %w", err)
 			}
-			c.compactedKeysCounter.Add(context.Background(), compactedKeys)
+			c.compactedKeysCounter.Add(context.Background(), int64(batchCount))
 			batch = c.dataStore.NewBatch()
 			batchCount = 0
 		}
 	}
 
-	// Commit remaining
 	if batchCount > 0 {
 		if err := batch.Commit(); err != nil {
-			return compactedKeys, fmt.Errorf("committing final batch: %w", err)
+			return fmt.Errorf("committing final batch: %w", err)
 		}
-		c.compactedKeysCounter.Add(context.Background(), compactedKeys)
+		c.compactedKeysCounter.Add(context.Background(), int64(batchCount))
 	}
 
-	return compactedKeys, nil
-}
+	c.logger.WithFields(map[string]any{
+		"compactedKeys": len(req.dirtyKeys),
+	}).Debugf("Background compaction complete")
 
-// compactKey applies Phase 1 and Phase 2 to a single key.
-// Returns true if the key was compacted.
-func (c *Compactor) compactKey(
-	batch *data.Batch,
-	attr *attributes.Attribute[*commonpb.BigInt],
-	cacheAttr *cache.AttributeCache[*raftcmdpb.VolumeHolder],
-	canonicalKey []byte,
-	scan *attributes.ScanResult[*commonpb.BigInt],
-) (bool, error) {
-	// Phase 1: Intermediate Diff Removal
-	// Skip if 2 or fewer entries (already minimal)
-	if scan.TotalEntries <= 2 {
-		// Phase 2 opportunity: if exactly 2 entries (base + diff), check cold key consolidation
-		if scan.TotalEntries == 2 && scan.HasBase && scan.HasDiff {
-			return c.consolidateColdKey(batch, attr, cacheAttr, canonicalKey, scan)
-		}
-		return false, nil
-	}
-
-	// Phase 1: Delete everything before the latest diff, then re-write the base
-	if scan.HasDiff {
-		// Delete entries before the latest diff index (removes old base + intermediate diffs)
-		if err := attr.DeleteOldest(batch, scan.LatestDiffIndex, canonicalKey); err != nil {
-			return false, fmt.Errorf("deleting oldest entries: %w", err)
-		}
-
-		// Re-write the base at its original index (it was deleted by DeleteOldest)
-		if scan.HasBase && scan.LatestBaseIndex < scan.LatestDiffIndex {
-			if err := attr.SetBase(batch, scan.LatestBaseIndex, canonicalKey, scan.LatestBase); err != nil {
-				return false, fmt.Errorf("re-writing base: %w", err)
-			}
-		}
-
-		// Now try Phase 2 on the reduced key
-		if scan.HasBase {
-			return c.consolidateColdKey(batch, attr, cacheAttr, canonicalKey, scan)
-		}
-
-		return true, nil
-	}
-
-	// Only base entries, no diffs - nothing to compact
-	return false, nil
-}
-
-// consolidateColdKey checks if a key is cold (not in cache) and consolidates base+diff
-// into a single base entry (Phase 2).
-func (c *Compactor) consolidateColdKey(
-	batch *data.Batch,
-	attr *attributes.Attribute[*commonpb.BigInt],
-	cacheAttr *cache.AttributeCache[*raftcmdpb.VolumeHolder],
-	canonicalKey []byte,
-	scan *attributes.ScanResult[*commonpb.BigInt],
-) (bool, error) {
-	if !scan.HasBase || !scan.HasDiff {
-		return false, nil
-	}
-
-	// Check if key is in cache (hot key) - skip if so
-	u128, _ := c.hasher.MakeKey(canonicalKey)
-	if _, ok := cacheAttr.Get(u128); ok {
-		return false, nil // Hot key, don't consolidate
-	}
-
-	// Compute the consolidated value
-	consolidated, err := attr.ComputeValue(c.dataStore, math.MaxUint64, canonicalKey)
-	if err != nil {
-		return false, fmt.Errorf("computing consolidated value: %w", err)
-	}
-
-	// Delete all entries for this key
-	latestIndex := scan.LatestDiffIndex
-	if scan.LatestBaseIndex > latestIndex {
-		latestIndex = scan.LatestBaseIndex
-	}
-	if err := attr.Delete(batch, canonicalKey); err != nil {
-		return false, fmt.Errorf("deleting all entries: %w", err)
-	}
-
-	// Write a single consolidated base at the latest index
-	if err := attr.SetBase(batch, latestIndex, canonicalKey, consolidated); err != nil {
-		return false, fmt.Errorf("writing consolidated base: %w", err)
-	}
-
-	return true, nil
+	return nil
 }

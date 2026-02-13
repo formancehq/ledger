@@ -540,8 +540,12 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// First compaction at index 4: prunes diffs strictly before 4
 	// Removes diffs at indexes 2 and 3; diffs at 4 and 5 remain.
 	// ---------------------------------------------------------------
+	dirtyKeys := map[string]struct{}{
+		string(aliceInputKey): {},
+		string(worldOutputKey): {},
+	}
 	batch := dataStore.NewBatch()
-	err = machine.compactVolumeDiffs(batch, 4)
+	err = machine.compactVolumeDiffs(batch, 4, dirtyKeys)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -589,7 +593,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Removes diffs at indexes 4 and 5; diffs at 6 and 7 remain.
 	// ---------------------------------------------------------------
 	batch = dataStore.NewBatch()
-	err = machine.compactVolumeDiffs(batch, 6)
+	err = machine.compactVolumeDiffs(batch, 6, dirtyKeys)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -639,11 +643,11 @@ func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerIn
 //
 // With K=10 and entries 1-42:
 //   - Rotation 1 (entry 12): compactVolumeDiffs(0) — no-op
-//   - Rotation 2 (entry 22): compactVolumeDiffs(1) — no-op (entries start at 2)
-//   - Rotation 3 (entry 32): compactVolumeDiffs(11) — prunes diffs at indexes 2-10
-//   - Rotation 4 (entry 42): compactVolumeDiffs(21) — prunes diffs at indexes 11-20
+//   - Rotation 2 (entry 22): compactVolumeDiffs(0) — no-op
+//   - Rotation 3 (entry 32): compactVolumeDiffs(10) — prunes diffs at indexes 2-9
+//   - Rotation 4 (entry 42): compactVolumeDiffs(20) — prunes diffs at indexes 10-19
 //
-// After all processing: 41 diffs initially, 19 pruned = 22 remaining.
+// After all processing: 41 diffs initially, 18 pruned = 23 remaining.
 // Ledger info is injected via preloads after cache eviction (mimics admission layer).
 func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	t.Parallel()
@@ -702,10 +706,10 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 		"users:alice input should be 4100 (41 * 100)")
 
 	// Verify that compaction pruned old entries.
-	// 41 diffs initially, 19 pruned (9 at rotation 3 + 10 at rotation 4) = 22 remaining.
+	// 41 diffs initially, 18 pruned (8 at rotation 3 + 10 at rotation 4) = 23 remaining.
 	entries := listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
-	require.Equal(t, 22, len(entries),
-		"compaction should have pruned old diffs, leaving 22 entries (diffs at indexes 21-42)")
+	require.Equal(t, 23, len(entries),
+		"compaction should have pruned old diffs, leaving 23 entries (diffs at indexes 20-42)")
 
 	// All remaining entries should be diffs (prune-only compaction creates no bases)
 	for _, e := range entries {
@@ -713,8 +717,8 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	}
 
 	// Verify the range of remaining entries
-	require.Equal(t, uint64(21), entries[0].RaftIndex,
-		"first remaining diff should be at index 21")
+	require.Equal(t, uint64(20), entries[0].RaftIndex,
+		"first remaining diff should be at index 20")
 	require.Equal(t, uint64(42), entries[len(entries)-1].RaftIndex,
 		"last remaining diff should be at index 42")
 }
