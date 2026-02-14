@@ -37,10 +37,11 @@ func (a *Attribute[V]) SetBase(batch *data.Batch, index uint64, canonicalKey []b
 		PutByte(0).
 		Build()
 
-	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer, base)
+	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer[:0], base)
 	if err != nil {
 		return fmt.Errorf("marshaling base value: %w", err)
 	}
+	a.protoBuffer = valueBytes
 
 	return batch.Set(key, valueBytes, pebble.NoSync)
 }
@@ -57,10 +58,11 @@ func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, canonicalKey []b
 		PutByte(1).
 		Build()
 
-	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer, diff)
+	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer[:0], diff)
 	if err != nil {
 		return fmt.Errorf("marshaling diff value: %w", err)
 	}
+	a.protoBuffer = valueBytes
 
 	return batch.Set(key, valueBytes, pebble.NoSync)
 }
