@@ -64,7 +64,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
-	// Process Input updates
+	// Process Input updates and track dirty volume keys inline
 	inputUpdates, _, err := b.Input.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge input: %w", err)
@@ -81,9 +81,10 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("failed adding input diff: %w", err)
 			}
 		}
+		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
 	}
 
-	// Process Output updates
+	// Process Output updates and track dirty volume keys inline
 	outputUpdates, _, err := b.Output.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge output: %w", err)
@@ -100,13 +101,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("failed adding output diff: %w", err)
 			}
 		}
-	}
-
-	// Track dirty volume keys for memory-only compaction.
-	for _, update := range inputUpdates {
-		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
-	}
-	for _, update := range outputUpdates {
 		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
 	}
 
