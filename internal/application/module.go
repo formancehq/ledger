@@ -94,17 +94,6 @@ func Module() fx.Option {
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
-			func(cfg Config, dataStore *data.Store, logger logging.Logger, meterProvider metric.MeterProvider) (*state.Compactor, error) {
-				if !cfg.CompactorConfig.Enabled {
-					return nil, nil
-				}
-				return state.NewCompactor(
-					logger,
-					dataStore,
-					meterProvider.Meter("compactor"),
-					cfg.CompactorConfig,
-				)
-			},
 			func(
 				params struct {
 					fx.In
@@ -119,7 +108,6 @@ func Module() fx.Option {
 					SnapshotFetcherProvider state.SnapshotFetcherProvider
 					Cache                   *cache.Cache
 					Attrs                   *attributes.Attributes
-					Compactor               *state.Compactor `optional:"true"`
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -140,7 +128,6 @@ func Module() fx.Option {
 					params.SnapshotFetcherProvider,
 					params.Cache,
 					params.Attrs,
-					params.Compactor,
 					params.Config.AuditEnabled,
 				)
 				if err != nil {
@@ -512,28 +499,6 @@ func Module() fx.Option {
 					},
 				})
 				return nil
-			},
-			func(
-				params struct {
-				fx.In
-				LC        fx.Lifecycle
-				Compactor *state.Compactor `optional:"true"`
-			},
-			) {
-				if params.Compactor == nil {
-					return
-				}
-				compactor := params.Compactor
-				params.LC.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						compactor.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						compactor.Stop()
-						return nil
-					},
-				})
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(fx.Hook{

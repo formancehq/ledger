@@ -56,9 +56,6 @@ type Machine struct {
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
-	// Background compactor (optional)
-	compactor *Compactor
-
 	// dirtyVolumeKeys tracks canonical key bytes written during each generation.
 	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
 	dirtyVolumeKeys [3]map[string]struct{}
@@ -68,7 +65,7 @@ type Machine struct {
 	lastPersistedIndex  atomic.Uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, compactor *Compactor, auditEnabled bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, auditEnabled bool) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -99,7 +96,6 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		lastAppliedIndex:            lastAppliedIndex,
 		lastAppliedTimestamp:        lastAppliedTimestamp,
 		generationRotationThreshold: generationRotationThreshold,
-		compactor:                   compactor,
 		logsAppendedCounter:         logsAppendedCounter,
 		processor:                   processor,
 		auditEnabled:                auditEnabled,
@@ -196,14 +192,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			fsm.dirtyVolumeKeys[1] = fsm.dirtyVolumeKeys[0]
 			fsm.dirtyVolumeKeys[0] = make(map[string]struct{})
 
-			// Inline compaction using tracked keys (no Pebble scan)
+			// Compaction using tracked keys in the same batch (no Pebble scan)
 			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact); err != nil {
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
-			}
-
-			// Background compactor with same tracked keys
-			if fsm.compactor != nil {
-				fsm.compactor.Signal(oldGen1BaseIndex, keysToCompact)
 			}
 		}
 		fsm.lastAppliedIndex++

@@ -103,7 +103,7 @@ Pebble stores volumes using the **attribute base + cumulative diff** model:
 - Each volume attribute has a **base** entry and **cumulative diff** entries keyed by Raft index
 - Balance is computed as `base + latest_cumulative_diff`
 - Only the latest diff is needed (diffs are cumulative, not incremental)
-- Generation-rotation pruning and background compaction keep entry count bounded
+- Generation-rotation pruning and inline compaction keep entry count bounded
 
 ```
 Key:   [0x09]['I'][ledgerID][account]\x00[asset][raftIndex][entryType]

@@ -508,25 +508,17 @@ This is a **prune-only** strategy — old superseded diffs are deleted, but no n
 
 **Effect:** Entry count per volume key is bounded to approximately `2*K` (entries from the current and previous generation). For K=10000, this means at most ~20000 diff entries per account/asset combination.
 
-### 12.3.1 Background Volume Diff Compactor
+### 12.3.1 Inline Volume Diff Compaction
 
-The generation-rotation pruning above limits entries to ~2*K per key, but a background compactor further reduces this to 1-2 entries per key.
+Compaction is performed **inline** in the same Pebble batch as the generation rotation, inside `ApplyEntries`. When `CheckRotationNeeded` detects a generation change, the FSM calls `compactVolumeDiffs(batch, oldGen1BaseIndex, dirtyKeys)` using the same batch that will be committed atomically with all entry applications.
 
-**Implementation:** `state.Compactor` runs in a background goroutine, triggered via a non-blocking signal after each generation rotation. It operates in two phases:
+**Implementation:** The FSM tracks dirty volume keys per generation in a 3-slot rotating buffer (`dirtyVolumeKeys[0..2]`). At rotation, slot[2] (the oldest generation's keys) is consumed and passed to `compactVolumeDiffs`, which calls `DeleteOldest(batch, compactionIndex, canonicalKey)` for each Input/Output key. This issues `DeleteRange` operations that remove all entries strictly before the compaction index.
 
-**Phase 1 — Intermediate Diff Removal (all keys, always safe):**
-For each volume key, scan all entries using `Attribute.ScanEntries()`, keep only the latest base + latest diff, and delete everything else. This removes intermediate cumulative diffs that are redundant (only the latest matters for `ComputeValue`).
+**Safety:** Using the same batch as `ApplyEntries` ensures atomicity — compaction and entry application are committed together. There are no concurrent batch operations, eliminating any risk of race conditions on Pebble writes.
 
-**Phase 2 — Cold Key Consolidation (evicted keys only):**
-For keys NOT present in the cache (checked via `KeyHasher.MakeKey()` → `AttributeCache.Get()`), and that have a base entry, consolidate base+diff into a single base entry using `ComputeValue()`. Cold keys won't receive new cumulative diffs, so consolidation is safe. Keys without a base (like `@world`, diff-only) are excluded because the next use may add a cumulative diff relative to the old implicit base.
+**Effect:** Entry count per volume key is bounded. Hot accounts compact naturally through `SetBase` during `Buffered.Merge`. The inline compaction removes superseded intermediate diffs without requiring a background goroutine.
 
-**Safety:** Phase 1 is always safe (intermediate diffs are redundant). Phase 2 is safe because cold keys are not in the FSM's working set and any future use will go through admission → preload → `SetBase`, superseding the consolidated base. The compactor uses its own `attributes.Attributes` instance and `data.Batch` for thread-safe writes independent of the FSM.
-
-**Effect:** After background compaction, most volume keys have 1 entry (cold, consolidated) or 2 entries (hot, base + latest diff), significantly reducing storage compared to the ~2*K bound from generation-rotation pruning alone.
-
-**Configuration:** `--compaction-enabled` (default: true), `--compaction-batch-size` (default: 100 keys per Pebble batch).
-
-See [System Attributes](./attributes.md#volume-compaction) for a detailed description of all three compaction mechanisms.
+See [System Attributes](./attributes.md#volume-compaction) for a detailed description of all compaction mechanisms.
 
 ### 12.4 Practical Pebble key layout (suggestion)
 
@@ -566,7 +558,7 @@ flowchart TD
   P --> R[Raft Replication / Commit]
   R -->|CommittedEntries| F[FSM Apply - all nodes<br/>Sequential + deterministic<br/>RAM-only checks]
   F -->|Flush - batch, no sync<br/>Write diffs always<br/>Write base opportunistically| S[Pebble Storage<br/>Indexed bases + diffs]
-  S --> BG[Background compaction<br/>Merge base+diffs<br/>Delete obsolete diffs]
+  S --> BG[Inline compaction at rotation<br/>Delete obsolete diffs<br/>Same batch as ApplyEntries]
 ```
 
 ### 14.2 Generations and canonical boundary
@@ -598,6 +590,6 @@ flowchart LR
 - Apply is RAM-only and enforces checks on every node deterministically.
 - Preload may include an “older” balance at `B(i)`; overlays since `B(i)` ensure correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
-- Pebble stores indexed bases and diffs; background compaction keeps reads bounded.
+- Pebble stores indexed bases and diffs; inline compaction at rotation keeps reads bounded.
 - `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.

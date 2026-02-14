@@ -112,10 +112,6 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("health-clock-skew-threshold", 500*time.Millisecond, "Maximum allowed clock skew between nodes (0 to disable)")
 	runCmd.Flags().String("cluster-id", "", "Cluster ID for inter-node communication validation")
 
-	// Compactor configuration flags
-	runCmd.Flags().Bool("compaction-enabled", true, "Enable background volume diff compaction")
-	runCmd.Flags().Int("compaction-batch-size", 100, "Number of keys per Pebble batch during compaction")
-
 	// Audit configuration flags
 	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
 
@@ -320,10 +316,6 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.HealthConfig.ClockSkewThreshold = getDuration("health-clock-skew-threshold", 500*time.Millisecond)
 
 	cfg.ClusterID = getString("cluster-id", "")
-
-	// Compactor configuration
-	cfg.CompactorConfig.Enabled = getBool("compaction-enabled", true)
-	cfg.CompactorConfig.BatchSize = getInt("compaction-batch-size", 100)
 
 	// Audit configuration
 	cfg.AuditEnabled = getBool("audit-enabled", true)

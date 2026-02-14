@@ -146,7 +146,7 @@ Runs asynchronously on the leader after the ClosePeriod command is applied:
 5. Propose a **SealPeriod** Raft command containing the sealing hash and balance snapshot
 6. Upon application, the period transitions from CLOSING to CLOSED
 
-This reuses the same pattern as the existing `Compactor` (`internal/service/state/compactor.go`) which already scans Pebble in the background and consolidates volume attributes.
+This reuses a similar pattern to the inline compaction in `ApplyEntries` which already prunes old volume diffs during generation rotation.
 
 #### Failure handling
 
@@ -510,7 +510,7 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 | **Period granularity** | Configurable cron schedule, modifiable at runtime | Changing granularity only affects future periods, existing ones are immutable |
 | **Cold storage cleanup** | Not the system's responsibility | Delegated to external tooling (S3 lifecycle rules, infrastructure policies) |
 | **Per-ledger retention** | Via Raft sharding (separate buckets) | Avoids complexity of mixed retention within a single Raft group |
-| **Close process** | Two-step (ClosePeriod + SealPeriod) | In-memory cache only has hot keys; cold accounts are only in Pebble. A full scan is needed but cannot block the Raft consensus loop. Background scan reuses the Compactor pattern. |
+| **Close process** | Two-step (ClosePeriod + SealPeriod) | In-memory cache only has hot keys; cold accounts are only in Pebble. A full scan is needed but cannot block the Raft consensus loop. |
 
 ## 13. Open Questions for Team
 

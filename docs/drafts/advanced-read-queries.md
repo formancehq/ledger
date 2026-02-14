@@ -250,7 +250,7 @@ In practice, **three compaction mechanisms destroy historical data**:
 
 2. **Known-path base consolidation** (hot accounts): during `Buffered.Merge`, when a volume is preloaded from cache, `SetBase` writes a new base at the **current** raft index. The base advances forward, erasing the previous base.
 
-3. **Background compactor Phase 2** (cold keys): `Delete` all entries + `SetBase(latestIndex, consolidated)`. A single entry remains at the latest index.
+3. **Inline compaction** (at rotation): `DeleteOldest` removes all diffs with raft index < compaction threshold for tracked dirty keys.
 
 **Consequence**: if you call `ComputeValue(store, pastIndex, key)`, the upperBound is `pastIndex + 1`. But:
 - The base may have been consolidated at a raft index **after** `pastIndex` → not found (outside range)

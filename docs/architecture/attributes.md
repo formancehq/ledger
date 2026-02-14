@@ -261,19 +261,15 @@ This is a **prune-only** strategy: it removes old diffs but does NOT create a ne
 
 **Effect:** Keeps the number of entries per key bounded to approximately `2*K` (two generations' worth).
 
-### 3. Background Volume Diff Compactor (post-rotation)
+### 3. Inline Volume Diff Compaction (at rotation)
 
-After generation rotation, the FSM signals a background `Compactor` goroutine that further reduces entries per key from ~2*K to 1-2 entries.
+Compaction is performed inline in the same Pebble batch as the generation rotation. When `CheckRotationNeeded` triggers, the FSM calls `compactVolumeDiffs(batch, oldGen1BaseIndex, dirtyKeys)` using the same batch as `ApplyEntries`.
 
-**Phase 1 — Intermediate Diff Removal:** For each volume key, `ScanEntries()` finds the latest base and latest diff. All intermediate entries are deleted, then the base is re-written at its original index. This preserves only the latest base + latest diff (2 entries).
+The FSM tracks dirty volume keys per generation in a 3-slot rotating buffer. At rotation, the oldest generation's keys are consumed and `DeleteOldest` is called for each Input/Output key, issuing `DeleteRange` operations that remove entries strictly before the compaction index.
 
-**Phase 2 — Cold Key Consolidation:** For keys NOT in cache (checked via `KeyHasher.MakeKey()` → `AttributeCache.Get()`), and that have a base entry, `ComputeValue()` computes the consolidated value, all entries are deleted, and a single base is written. Keys without a base (diff-only, like `@world`) are excluded.
+**Safety:** Using the same batch as `ApplyEntries` ensures atomicity — compaction and entry application are committed together. No concurrent batch operations, no race conditions.
 
-**Safety:** The compactor uses its own `attributes.Attributes` instance and `data.Batch` for thread-safe writes. Cold keys won't receive new cumulative diffs, and any future use goes through admission → preload → `SetBase`.
-
-**Effect:** Most volume keys end up with 1 entry (cold, consolidated) or 2 entries (hot, base + latest diff).
-
-**Configuration:** `--compaction-enabled` (default: true), `--compaction-batch-size` (default: 100).
+**Effect:** Hot accounts compact naturally through `SetBase` during `Buffered.Merge`. Inline compaction removes superseded intermediate diffs without a separate goroutine.
 
 ### 4. DeleteOldest for Non-Volume Attributes (per Merge)
 
@@ -292,16 +288,12 @@ Entry applied at index i
               │ Yes (rotation)
               ▼
   ┌─────────────────────────────────┐
-  │ compactVolumeDiffs(oldGen1Base) │
+  │ compactVolumeDiffs(batch,       │
+  │   oldGen1Base, dirtyKeys)       │
   │   For each Input/Output key:   │
   │     DeleteOldest(oldGen1Base)   │
   │   (prune diffs < oldGen1Base)  │
-  └───────────┬─────────────────────┘
-              │
-              ▼
-  ┌─────────────────────────────────┐
-  │ Signal background Compactor     │
-  │   (non-blocking channel send)   │
+  │   (same batch as ApplyEntries) │
   └───────────┬─────────────────────┘
               │
               ▼
@@ -309,13 +301,12 @@ Entry applied at index i
   │ Process entry → Buffered.Merge  │
   │   Known != nil → SetBase (hot)  │
   │   Known == nil → AddDiff (cold) │
-  └─────────────────────────────────┘
-
-Background (async):
+  └───────────┬─────────────────────┘
+              │
+              ▼
   ┌─────────────────────────────────┐
-  │ Compactor.compact()             │
-  │   Phase 1: Remove intermediate  │
-  │   Phase 2: Consolidate cold     │
+  │ batch.Commit()                  │
+  │   Atomic: entries + compaction  │
   └─────────────────────────────────┘
 ```
 
