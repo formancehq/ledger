@@ -36,6 +36,7 @@ func (b *BigInt) Neg() *BigInt {
 
 // marshalBigIntBytes encodes a big.Int to bytes with sign preservation.
 // Format: first byte is sign (0 = positive/zero, 1 = negative), followed by absolute value bytes.
+// Note: big.Int.Bytes() already returns the absolute value, so no Abs() call is needed.
 func marshalBigIntBytes(x *big.Int) []byte {
 	if x == nil {
 		return []byte{0} // convention: nil => 0
@@ -44,7 +45,7 @@ func marshalBigIntBytes(x *big.Int) []byte {
 	if x.Sign() < 0 {
 		sign = 1
 	}
-	mag := new(big.Int).Abs(x).Bytes()
+	mag := x.Bytes() // Bytes() returns absolute value as big-endian
 	out := make([]byte, 1+len(mag))
 	out[0] = sign
 	copy(out[1:], mag)

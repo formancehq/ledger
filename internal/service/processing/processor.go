@@ -612,6 +612,9 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		Asset: posting.Asset,
 	}
 
+	// Decode posting amount once and reuse
+	amount := posting.Amount.Value()
+
 	// Get current volumes for source
 	sourceInput, err := s.GetInput(sourceKey)
 	if err != nil && !errors.Is(err, data.ErrNotFound) {
@@ -637,11 +640,11 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 			outputValue = big.NewInt(0)
 		}
 		balance := new(big.Int).Sub(sourceInput.Known.Value(), outputValue)
-		if balance.Cmp(posting.Amount.Value()) < 0 {
+		if balance.Cmp(amount) < 0 {
 			return &ErrInsufficientFunds{
 				Account: posting.Source,
 				Asset:   posting.Asset,
-				Amount:  posting.Amount.Value(),
+				Amount:  amount,
 				Balance: balance,
 			}
 		}
@@ -651,21 +654,7 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	if sourceOutput == nil {
 		sourceOutput = &raftcmdpb.VolumeHolder{}
 	}
-	// If we know the absolute value, update Known (buffer.Merge will use SetBase).
-	// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
-	if sourceOutput.Known != nil {
-		sourceOutput.Known = commonpb.NewBigInt(
-			new(big.Int).Add(sourceOutput.Known.Value(), posting.Amount.Value()),
-		)
-	} else {
-		if sourceOutput.DiffSinceBaseIndex == nil {
-			sourceOutput.DiffSinceBaseIndex = posting.Amount
-		} else {
-			sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(
-				new(big.Int).Add(sourceOutput.DiffSinceBaseIndex.Value(), posting.Amount.Value()),
-			)
-		}
-	}
+	addToVolumeHolder(&sourceOutput.Known, &sourceOutput.DiffSinceBaseIndex, amount, posting.Amount)
 	s.PutOutput(sourceKey, sourceOutput)
 
 	// Destination receives credit - increase Input
@@ -684,24 +673,29 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	if destInput == nil {
 		destInput = &raftcmdpb.VolumeHolder{}
 	}
-	// If we know the absolute value, update Known (buffer.Merge will use SetBase).
-	// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
-	if destInput.Known != nil {
-		destInput.Known = commonpb.NewBigInt(
-			new(big.Int).Add(destInput.Known.Value(), posting.Amount.Value()),
-		)
-	} else {
-		if destInput.DiffSinceBaseIndex == nil {
-			destInput.DiffSinceBaseIndex = posting.Amount
-		} else {
-			destInput.DiffSinceBaseIndex = commonpb.NewBigInt(
-				new(big.Int).Add(destInput.DiffSinceBaseIndex.Value(), posting.Amount.Value()),
-			)
-		}
-	}
+	addToVolumeHolder(&destInput.Known, &destInput.DiffSinceBaseIndex, amount, posting.Amount)
 	s.PutInput(destKey, destInput)
 
 	return nil
+}
+
+// addToVolumeHolder adds amount to the volume holder, updating Known or DiffSinceBaseIndex.
+// If Known is set, it updates Known (SetBase path). Otherwise, it updates DiffSinceBaseIndex (AddDiff path).
+// rawAmount is the original proto BigInt used when DiffSinceBaseIndex is nil to avoid re-encoding.
+func addToVolumeHolder(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt) {
+	if *known != nil {
+		var tmp big.Int
+		tmp.Add((*known).Value(), amount)
+		*known = commonpb.NewBigInt(&tmp)
+	} else {
+		if *diff == nil {
+			*diff = rawAmount
+		} else {
+			var tmp big.Int
+			tmp.Add((*diff).Value(), amount)
+			*diff = commonpb.NewBigInt(&tmp)
+		}
+	}
 }
 
 // produceResult holds the result of producing postings from an order.
