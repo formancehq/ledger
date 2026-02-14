@@ -367,30 +367,35 @@ func (b *Buffered) SetLastLogHash(hash []byte) {
 	b.LastLogHash = hash
 }
 
-// volumeDelta computes the net delta for a single volume update by comparing New vs Old.
-func volumeDelta(update attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder]) *big.Int {
+// addVolumeDelta adds the net delta for a single volume update to accumulator.
+// Uses the provided tmp big.Int for intermediate computations to avoid heap allocations.
+func addVolumeDelta(acc *big.Int, tmp *big.Int, update attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder]) {
 	vh := update.New
 	if vh.Known != nil {
-		result := vh.Known.Value()
+		newVal := vh.Known.Value()
 		if update.Old.IsDefined() {
 			old := update.Old.Value()
 			if old != nil && old.Known != nil {
-				return new(big.Int).Sub(result, old.Known.Value())
+				tmp.Sub(newVal, old.Known.Value())
+				acc.Add(acc, tmp)
+				return
 			}
 		}
-		return new(big.Int).Set(result)
+		acc.Add(acc, newVal)
+		return
 	}
 	if vh.DiffSinceBaseIndex != nil {
-		result := vh.DiffSinceBaseIndex.Value()
+		newVal := vh.DiffSinceBaseIndex.Value()
 		if update.Old.IsDefined() {
 			old := update.Old.Value()
 			if old != nil && old.DiffSinceBaseIndex != nil {
-				return new(big.Int).Sub(result, old.DiffSinceBaseIndex.Value())
+				tmp.Sub(newVal, old.DiffSinceBaseIndex.Value())
+				acc.Add(acc, tmp)
+				return
 			}
 		}
-		return new(big.Int).Set(result)
+		acc.Add(acc, newVal)
 	}
-	return big.NewInt(0)
 }
 
 // checkDoubleEntryInvariant verifies that the sum of input deltas equals the sum of output deltas.
@@ -400,20 +405,23 @@ func checkDoubleEntryInvariant(
 	inputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
 	outputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
 ) error {
-	inputSum := big.NewInt(0)
+	var (
+		inputSum  big.Int
+		outputSum big.Int
+		tmp       big.Int
+	)
+
 	for _, update := range inputUpdates {
-		inputSum.Add(inputSum, volumeDelta(update))
+		addVolumeDelta(&inputSum, &tmp, update)
 	}
-
-	outputSum := big.NewInt(0)
 	for _, update := range outputUpdates {
-		outputSum.Add(outputSum, volumeDelta(update))
+		addVolumeDelta(&outputSum, &tmp, update)
 	}
 
-	if inputSum.Cmp(outputSum) != 0 {
+	if inputSum.Cmp(&outputSum) != 0 {
 		return &ErrDoubleEntryInvariantViolated{
-			InputSum:  inputSum,
-			OutputSum: outputSum,
+			InputSum:  &inputSum,
+			OutputSum: &outputSum,
 		}
 	}
 
