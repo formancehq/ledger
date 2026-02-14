@@ -99,8 +99,12 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(proposal.Orders))
 
 	for i, order := range proposal.Orders {
-		// Check idempotency before processing
-		if order.Idempotency != nil && order.Idempotency.Key != "" {
+		// Compute idempotency hash once if needed (reused for check + store)
+		hasIdempotency := order.Idempotency != nil && order.Idempotency.Key != ""
+		var orderHash []byte
+		if hasIdempotency {
+			orderHash = computeOrderHash(order)
+
 			ikKey := data.IdempotencyKey{Key: order.Idempotency.Key}
 			storedValue, err := s.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, data.ErrNotFound) {
@@ -109,9 +113,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 
 			// Check if idempotency key exists
 			if storedValue != nil {
-				// Idempotency key exists - compute hash from order and compare
-				hash := computeOrderHash(order)
-				if !bytes.Equal(hash, storedValue.Hash) {
+				if !bytes.Equal(orderHash, storedValue.Hash) {
 					return nil, &ErrIdempotencyKeyConflict{Key: order.Idempotency.Key}
 				}
 
@@ -146,16 +148,15 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 			},
 		}
 
-		// Store idempotency key if present
-		if order.Idempotency != nil && order.Idempotency.Key != "" {
-			hash := computeOrderHash(order)
+		// Store idempotency key if present (reuse orderHash computed above)
+		if hasIdempotency {
 			s.PutIdempotencyKey(
 				data.IdempotencyKey{
 					Key: order.Idempotency.Key,
 				},
 				&commonpb.IdempotencyKeyValue{
 					LogSequence: nextSequenceID,
-					Hash:        hash,
+					Hash:        orderHash,
 				},
 			)
 		}
