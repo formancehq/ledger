@@ -231,7 +231,8 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
-		overwrite, idWithTag, err := s.KeyStore.Put(k.Bytes(), v)
+		canonical := k.Bytes()
+		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -239,7 +240,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 			Key:          k,
 			ID:           idWithTag.ID,
 			Tag:          idWithTag.Tag,
-			CanonicalKey: k.Bytes(),
+			CanonicalKey: canonical,
 			Old:          overwrite,
 			New:          v,
 		})
@@ -247,13 +248,14 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 
 	deletions := make([]Deletion[K], 0, len(s.deletions))
 	for k := range s.deletions {
-		_, err := s.KeyStore.Delete(k.Bytes())
+		canonical := k.Bytes()
+		_, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
 			return nil, nil, err
 		}
 		deletions = append(deletions, Deletion[K]{
 			Key:          k,
-			CanonicalKey: k.Bytes(),
+			CanonicalKey: canonical,
 		})
 	}
 
