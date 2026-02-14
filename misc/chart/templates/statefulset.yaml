@@ -122,7 +122,7 @@ spec:
           value: {{ .Values.config.debug | quote }}
         {{- if hasKey .Values.config "audit" }}
         - name: AUDIT_ENABLED
-          value: {{ .Values.config.audit.enabled | default true | toString | quote }}
+          value: {{ .Values.config.audit.enabled | toString | default "true" | quote }}
         {{- end }}
         # Health check configuration
         {{- if .Values.config.health }}

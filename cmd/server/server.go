@@ -241,7 +241,8 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Helper function to get bool value from flag
 	getBool := func(flagName string, defaultValue bool) bool {
-		if val, _ := cmd.Flags().GetBool(flagName); val {
+		if cmd.Flags().Changed(flagName) {
+			val, _ := cmd.Flags().GetBool(flagName)
 			return val
 		}
 		return defaultValue
