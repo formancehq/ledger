@@ -188,7 +188,7 @@ func Module() fx.Option {
 			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
 				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, logger,
 					cfg.RaftConfig.AdvertiseAddr,
-					fmt.Sprintf("0.0.0.0:%d", cfg.GRPCPort),
+					cfg.ServiceAdvertiseAddr(),
 				)
 			},
 			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
@@ -478,7 +478,7 @@ func Module() fx.Option {
 						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 							NodeId:         cfg.RaftConfig.NodeID,
 							RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-							ServiceAddress: fmt.Sprintf("0.0.0.0:%d", cfg.GRPCPort),
+							ServiceAddress: cfg.ServiceAdvertiseAddr(),
 						})
 						if err != nil {
 							return fmt.Errorf("failed to register as learner via peer %d: %w", peer.ID, err)
