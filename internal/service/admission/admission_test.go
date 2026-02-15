@@ -93,11 +93,10 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 	preloadDuration, _ := meter.Int64Histogram("test_preload_duration")
 	preloadCounter, _ := meter.Int64Counter("test_preload_counter")
 
-	return &Admission{
+	a := &Admission{
 		cache:                     testCache,
 		store:                     store,
 		logger:                    logger,
-		nextIndex:                 1,
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDuration,
 		proposeQueueLoadHistogram: proposeQueueLoad,
@@ -105,6 +104,8 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 		preloadDurationHistogram:  preloadDuration,
 		preloadCounter:            preloadCounter,
 	}
+	a.nextIndex.Store(1)
+	return a
 }
 
 func TestGetTransactionPostings(t *testing.T) {

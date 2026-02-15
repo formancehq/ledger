@@ -683,7 +683,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		Gen0:                 serializeCacheGeneration(fsm.Cache, 0),
 		Gen1:                 serializeCacheGeneration(fsm.Cache, 1),
 		CheckpointId:         checkpointID,
-		CurrentGeneration:    fsm.Cache.CurrentGeneration,
+		CurrentGeneration:    fsm.Cache.CurrentGeneration(),
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
 		NextAuditSequenceId: fsm.nextAuditSequenceID,
 	}
@@ -850,7 +850,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen1, 1)
 
 	// Update currentGeneration to match the snapshot
-	fsm.Cache.CurrentGeneration = memSnapshot.CurrentGeneration
+	fsm.Cache.SetCurrentGeneration(memSnapshot.CurrentGeneration)
 
 	// Reset dirty key tracking. The first 2 rotations after restore will do
 	// less cleanup, but the system self-corrects as new keys are tracked.

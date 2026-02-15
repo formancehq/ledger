@@ -40,7 +40,7 @@ type Admission struct {
 	healthChecker health.Checker
 
 	admissionLock sync.Mutex
-	nextIndex     uint64
+	nextIndex     atomic.Uint64
 
 	// Attribute loaders to avoid duplicate store loads
 	loaders *Loaders
@@ -163,14 +163,13 @@ func NewAdmission(
 		panic(err)
 	}
 
-	return &Admission{
+	a := &Admission{
 		cache:                     cache,
 		store:                     store,
 		logger:                    logger,
 		proposer:                  proposer,
 		attrs:                     attrs,
 		healthChecker:             healthChecker,
-		nextIndex:                 proposer.InitialIndex(),
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDurationHistogram,
 		commandSizeHistogram:      commandSizeHistogram,
@@ -182,6 +181,8 @@ func NewAdmission(
 		preloadKeysNeededCounter:  preloadKeysNeededCounter,
 		preloadCacheHitsCounter:   preloadCacheHitsCounter,
 	}
+	a.nextIndex.Store(proposer.InitialIndex())
+	return a
 }
 
 // Admit implements the ctrl.Admission interface.
@@ -209,10 +210,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	neededBoundaries := a.extractNeededBoundaries(orders)
 	// References are extracted after ledger IDs are resolved (Phase 2.5)
 
-	// Step 2: Read nextIndex under lock (don't increment yet)
-	a.admissionLock.Lock()
-	nextIndex := a.nextIndex
-	a.admissionLock.Unlock()
+	// Step 2: Read nextIndex atomically (optimistic snapshot for preload boundary).
+	nextIndex := a.nextIndex.Load()
 
 	// Step 3: Compute canonical boundary B(nextIndex)
 	threshold := a.cache.GenerationThreshold
@@ -232,7 +231,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		canonicalKey := ledgerKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
-		if !cache.IsGuaranteed(a.cache.Ledgers, nextIndex, canonicalKey) {
+		if !a.cache.Ledgers.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
 				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
@@ -296,7 +295,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		canonicalKey := boundaryKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
-		if !cache.IsGuaranteed(a.cache.Boundaries, nextIndex, canonicalKey) {
+		if !a.cache.Boundaries.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
 				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
@@ -358,7 +357,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		canonicalKey := volumeKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
-		if !cache.IsGuaranteed(a.cache.Volumes, nextIndex, canonicalKey) {
+		if !a.cache.Volumes.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.Volumes.LoadOrWait(id, boundary, func() (*raftcmdpb.VolumePair, error) {
 				return a.attrs.Volume.ComputeValue(a.store, boundary, canonicalKey)
@@ -421,7 +420,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 
 		// Check Reversions cache
-		if !cache.IsGuaranteed(a.cache.Reversions, nextIndex, canonicalKey) {
+		if !a.cache.Reversions.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.Reversions.LoadOrWait(id, boundary, func() (bool, error) {
 				revertedValue, err := a.attrs.Reverted.ComputeValue(a.store, boundary, canonicalKey)
@@ -477,7 +476,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
 		// Check IdempotencyKeys cache
-		if !cache.IsGuaranteed(a.cache.IdempotencyKeys, nextIndex, canonicalKey) {
+		if !a.cache.IdempotencyKeys.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.IdempotencyKeys.LoadOrWait(id, boundary, func() (*commonpb.IdempotencyKeyValue, error) {
 				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, canonicalKey)
@@ -535,7 +534,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		canonicalKey := refKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
 
-		if !cache.IsGuaranteed(a.cache.References, nextIndex, canonicalKey) {
+		if !a.cache.References.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.References.LoadOrWait(id, boundary, func() (*commonpb.TransactionReferenceValue, error) {
 				return a.attrs.References.ComputeValue(a.store, boundary, canonicalKey)
@@ -613,7 +612,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		a.proposeQueueFullCounter.Add(context.Background(), 1)
 		return nil, err
 	}
-	a.nextIndex++
+	a.nextIndex.Add(1)
 	a.admissionLock.Unlock()
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 

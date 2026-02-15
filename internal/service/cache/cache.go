@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -101,15 +102,12 @@ func (a *AttributeCache[T]) reset() {
 // - If `at` is in the next generation: one rotation, data must be in Gen0 to survive
 // - If `at` is 2+ generations ahead: data will be lost (too many rotations)
 func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
-	a.Cache.mu.Lock()
-	actualGeneration := a.Cache.CurrentGeneration
-	threshold := a.Cache.GenerationThreshold
-	a.Cache.mu.Unlock()
-
+	threshold := a.Cache.GenerationThreshold // immutable after init
 	if threshold == 0 {
 		return false
 	}
 
+	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := gen(at, threshold)
 
 	// Check how far ahead the target generation is from current
@@ -154,7 +152,10 @@ type Cache struct {
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
-	CurrentGeneration   uint64
+
+	// currentGeneration is accessed atomically from IsGuaranteedInCache (hot path)
+	// and written under mu by rotateLocked/Reset.
+	currentGeneration atomic.Uint64
 
 	// Metrics (nil if not initialized)
 	rotations       metric.Int64Counter
@@ -175,7 +176,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.Ledgers.Rotate()
 	c.Boundaries.Rotate()
 	c.BaseIndex.Rotate(index)
-	c.CurrentGeneration = newGeneration
+	c.currentGeneration.Store(newGeneration)
 
 	c.recordRotation()
 	c.recordGeneration(int64(newGeneration))
@@ -196,7 +197,7 @@ func (c *Cache) Reset() {
 	c.Ledgers.reset()
 	c.Boundaries.reset()
 	c.BaseIndex = newDualGen[uint64](0, 0)
-	c.CurrentGeneration = 0
+	c.currentGeneration.Store(0)
 }
 
 // CheckRotationNeeded checks if a generation rotation is needed for the given index
@@ -210,7 +211,7 @@ func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseInde
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if g := gen(index, c.GenerationThreshold); g != c.CurrentGeneration {
+	if g := gen(index, c.GenerationThreshold); g != c.currentGeneration.Load() {
 		oldGen1BaseIndex = c.BaseIndex.Gen1
 		// Use canonical boundary (end of previous generation) instead of raw index.
 		// This must match BoundaryIndex(nextIndex, K) used by admission when building preloads.
@@ -298,6 +299,16 @@ func (c *Cache) recordGeneration(gen int64) {
 	c.generationGauge.Record(context.Background(), gen)
 }
 
+// CurrentGeneration returns the current generation number.
+func (c *Cache) CurrentGeneration() uint64 {
+	return c.currentGeneration.Load()
+}
+
+// SetCurrentGeneration sets the current generation number (used during snapshot restore).
+func (c *Cache) SetCurrentGeneration(g uint64) {
+	c.currentGeneration.Store(g)
+}
+
 // New creates a new Cache with the given generation threshold and meter.
 // If meter is nil, a noop meter is used.
 func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
@@ -311,7 +322,6 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret := &Cache{
 		BaseIndex:           newDualGen[uint64](0, 0),
 		GenerationThreshold: generationThreshold,
-		CurrentGeneration:   0,
 	}
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")

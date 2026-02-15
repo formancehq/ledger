@@ -244,7 +244,7 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 	ac := cache.Volumes
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
@@ -263,7 +263,7 @@ func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 	ac := cache.Volumes
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	keyInGen0 := attributes.NewU128(1, 1)
 	keyInGen1 := attributes.NewU128(2, 2)
@@ -290,7 +290,7 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 	ac := cache.Volumes
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
@@ -309,7 +309,7 @@ func TestCache_NewCache(t *testing.T) {
 	assert.NotNil(t, cache.Volumes)
 	assert.NotNil(t, cache.AccountMetadata)
 	assert.Equal(t, uint64(100), cache.GenerationThreshold)
-	assert.Equal(t, uint64(0), cache.CurrentGeneration)
+	assert.Equal(t, uint64(0), cache.CurrentGeneration())
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen0)
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
 }
@@ -319,7 +319,7 @@ func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	// Add some data
 	key := attributes.NewU128(1, 1)
@@ -327,7 +327,7 @@ func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
 
 	// Check at index 5 (still generation 0)
 	cache.CheckRotationNeeded(5)
-	assert.Equal(t, uint64(0), cache.CurrentGeneration)
+	assert.Equal(t, uint64(0), cache.CurrentGeneration())
 
 	// Data should still be in Gen0
 	_, ok := cache.Volumes.Get(key)
@@ -339,7 +339,7 @@ func TestCache_CheckRotationNeeded_NewGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	// Add some data
 	key := attributes.NewU128(1, 1)
@@ -347,7 +347,7 @@ func TestCache_CheckRotationNeeded_NewGeneration(t *testing.T) {
 
 	// Check at index 11 (generation 1)
 	cache.CheckRotationNeeded(11)
-	assert.Equal(t, uint64(1), cache.CurrentGeneration)
+	assert.Equal(t, uint64(1), cache.CurrentGeneration())
 
 	// Data should now be in Gen1 (still accessible)
 	_, ok := cache.Volumes.Get(key)
@@ -362,14 +362,14 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	cache.CurrentGeneration = 0
+	cache.SetCurrentGeneration(0)
 
 	keyGen0 := attributes.NewU128(1, 1)
 	cache.Volumes.Put(keyGen0, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
 	// Move to generation 1
 	cache.CheckRotationNeeded(11)
-	assert.Equal(t, uint64(1), cache.CurrentGeneration)
+	assert.Equal(t, uint64(1), cache.CurrentGeneration())
 
 	keyGen1 := attributes.NewU128(2, 2)
 	cache.Volumes.Put(keyGen1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2})
@@ -382,7 +382,7 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 
 	// Move to generation 2
 	cache.CheckRotationNeeded(21)
-	assert.Equal(t, uint64(2), cache.CurrentGeneration)
+	assert.Equal(t, uint64(2), cache.CurrentGeneration())
 
 	// keyGen0 should be gone, keyGen1 should still be there
 	_, ok = cache.Volumes.Get(keyGen0)
