@@ -615,7 +615,7 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 			// todo: decorallate compaction as it increase the spooling time and this is not needed
 			if entries[len(entries)-1].Index > node.compactionMargin {
 				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
-				if err != nil {
+				if err != nil && !errors.Is(err, raft.ErrCompacted) {
 					return 0, err
 				}
 			}
