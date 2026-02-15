@@ -53,6 +53,8 @@ type Admission struct {
 	proposeQueueFullCounter   metric.Float64Counter
 	preloadDurationHistogram  metric.Int64Histogram
 	preloadCounter            metric.Int64Counter
+	preloadKeysNeededCounter  metric.Int64Counter
+	preloadCacheHitsCounter   metric.Int64Counter
 }
 
 // NewAdmission creates a new Admission handler.
@@ -130,6 +132,24 @@ func NewAdmission(
 		panic(err)
 	}
 
+	preloadKeysNeededCounter, err := meter.Int64Counter(
+		"admission.preload.keys_needed",
+		metric.WithDescription("Total number of keys that needed resolving during preload"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	preloadCacheHitsCounter, err := meter.Int64Counter(
+		"admission.preload.cache_hits",
+		metric.WithDescription("Total number of keys found guaranteed in cache (no store read needed)"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Admission{
 		cache:                     cache,
 		store:                     store,
@@ -145,6 +165,8 @@ func NewAdmission(
 		proposeQueueFullCounter:   proposeQueueFullCounter,
 		preloadDurationHistogram:  preloadDurationHistogram,
 		preloadCounter:            preloadCounter,
+		preloadKeysNeededCounter:  preloadKeysNeededCounter,
+		preloadCacheHitsCounter:   preloadCacheHitsCounter,
 	}
 }
 
@@ -190,6 +212,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Phase 1: Preload ledgers first to resolve name→ID mapping
 	ledgerIDs := make(map[string]uint32) // ledgerName → ledgerID
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededLedgers)),
+		metric.WithAttributes(attribute.String("type", "ledgers")))
 	for ledgerKey := range neededLedgers {
 		canonicalKey := ledgerKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
@@ -240,9 +264,72 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			// We cannot use ComputeValue (which reads from PebbleDB at boundary) because
 			// for recently created ledgers, the boundary may be before the creation index,
 			// causing ComputeValue to return nil even though the ledger exists in cache.
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "ledgers")))
 			entry, ok := a.cache.Ledgers.Get(id)
 			if ok && entry.Data != nil {
 				ledgerIDs[ledgerKey.Name] = entry.Data.Id
+			}
+		}
+	}
+
+	// Phase 1.5: Preload boundaries (for Apply orders) to resolve ledger IDs.
+	// Boundaries are always in Gen0 (written on every transaction), so the ledger ID
+	// is always available without needing a separate ledger info preload in the hot path.
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededBoundaries)),
+		metric.WithAttributes(attribute.String("type", "boundaries")))
+	for boundaryKey := range neededBoundaries {
+		canonicalKey := boundaryKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+
+		if !cache.IsGuaranteed(a.cache.Boundaries, nextIndex, canonicalKey) {
+			preloadStart := time.Now()
+			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
+				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing boundary value at boundary %d for %s: %w", boundary, boundaryKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.Boundaries = append(loadedKeys.Boundaries, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "boundaries")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "boundaries")))
+			}
+
+			if result.Value != nil {
+				ledgerIDs[boundaryKey.Name] = result.Value.LedgerId
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"name":      boundaryKey.Name,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading boundary from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_Boundary{
+						Boundary: &raftcmdpb.PreloadBoundary{
+							Id:         attrID,
+							Boundaries: result.Value,
+						},
+					},
+				})
+			}
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "boundaries")))
+			// Boundary is in cache — extract ledger ID from it
+			entry, ok := a.cache.Boundaries.Get(id)
+			if ok && entry.Data != nil {
+				ledgerIDs[boundaryKey.Name] = entry.Data.LedgerId
 			}
 		}
 	}
@@ -251,6 +338,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	neededVolumes := a.extractNeededVolumes(orders, ledgerIDs)
 	neededTransactions := a.extractNeededTransactions(orders, ledgerIDs)
 
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededVolumes)),
+		metric.WithAttributes(attribute.String("type", "input")))
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededVolumes)),
+		metric.WithAttributes(attribute.String("type", "output")))
 	for volumeKey := range neededVolumes {
 		canonicalKey := volumeKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
@@ -293,6 +384,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					},
 				},
 			})
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "input")))
 		}
 
 		// Check Output cache separately
@@ -329,10 +423,15 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					},
 				},
 			})
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "output")))
 		}
 	}
 
 	// Build preload for reverted status not guaranteed in cache
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededTransactions)),
+		metric.WithAttributes(attribute.String("type", "reversions")))
 	for txKey := range neededTransactions {
 		canonicalKey := txKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
@@ -383,11 +482,16 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					},
 				},
 			})
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "reversions")))
 		}
 	}
 
 	// Build preload for idempotency keys not guaranteed in cache
 	// Only preload if the key is actually found (has a value), to reduce command size
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededIdempotencyKeys)),
+		metric.WithAttributes(attribute.String("type", "idempotency_keys")))
 	for ikKey := range neededIdempotencyKeys {
 		canonicalKey := ikKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
@@ -436,12 +540,17 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					},
 				})
 			}
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "idempotency_keys")))
 		}
 	}
 
 	// Build preload for transaction references not guaranteed in cache
 	// Only preload if the reference exists (has a value), to reduce command size
 	neededReferences := a.extractNeededReferences(orders, ledgerIDs)
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededReferences)),
+		metric.WithAttributes(attribute.String("type", "references")))
 	for refKey := range neededReferences {
 		canonicalKey := refKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
@@ -488,54 +597,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					},
 				})
 			}
-		}
-	}
-
-	// Build preload for boundaries not guaranteed in cache
-	for boundaryKey := range neededBoundaries {
-		canonicalKey := boundaryKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
-
-		if !cache.IsGuaranteed(a.cache.Boundaries, nextIndex, canonicalKey) {
-			preloadStart := time.Now()
-			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
-				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing boundary value at boundary %d for %s: %w", boundary, boundaryKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Boundaries = append(loadedKeys.Boundaries, id)
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "boundaries")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "boundaries")))
-			}
-
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"name":      boundaryKey.Name,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading boundary from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Boundary{
-						Boundary: &raftcmdpb.PreloadBoundary{
-							Id:         attrID,
-							Boundaries: result.Value,
-						},
-					},
-				})
-			}
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "references")))
 		}
 	}
 
@@ -707,8 +771,8 @@ func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerI
 	return neededTransactions
 }
 
-// extractNeededLedgers extracts all ledger keys that need to be checked.
-// This is needed for create/delete ledger operations and for any apply operation that targets a ledger.
+// extractNeededLedgers extracts ledger keys that need to be checked for CreateLedger/DeleteLedger orders.
+// Apply orders get their ledger IDs from boundaries instead (which are always in Gen0).
 func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.LedgerKey]struct{} {
 	needed := make(map[data.LedgerKey]struct{})
 	for _, order := range orders {
@@ -717,8 +781,6 @@ func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.Led
 			needed[data.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
 		case *raftcmdpb.Order_DeleteLedger:
 			needed[data.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
-		case *raftcmdpb.Order_Apply:
-			needed[data.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 		}
 	}
 	return needed

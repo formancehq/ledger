@@ -136,6 +136,7 @@ message RevertedTransactionMemento {
 message LedgerBoundaries {
   uint64 next_transaction_id = 1;
   uint64 next_log_id = 2;
+  uint32 ledger_id = 3;
 }
 
 message VolumeHolder {

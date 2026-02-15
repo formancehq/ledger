@@ -244,6 +244,7 @@ func TestProcessCreateLedger(t *testing.T) {
 		func(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
 			require.Equal(t, uint64(1), boundaries.NextTransactionId)
 			require.Equal(t, uint64(1), boundaries.NextLogId)
+			require.Equal(t, uint32(1), boundaries.LedgerId)
 		},
 	)
 
@@ -404,9 +405,8 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -463,9 +463,8 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
 	mockStore.EXPECT().GetDate().Return(now)
@@ -518,9 +517,8 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -570,7 +568,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	sourceKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "bank"},
@@ -588,7 +586,6 @@ func TestProcessCreateTransaction(t *testing.T) {
 	// Destination starts with 0
 	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -653,7 +650,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	processor, err := NewRequestProcessor(nil)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	sourceKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
@@ -664,7 +661,6 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	sourceInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(100))}
 	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(50))}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
 	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
@@ -706,7 +702,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	worldKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
@@ -722,7 +718,6 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	worldOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(1000000))}
 	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -769,7 +764,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("nonexistent").Return(nil, false)
+	mockStore.EXPECT().GetBoundaries("nonexistent").Return(nil, false)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -806,10 +801,9 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	// Use flexible mocking for volume operations
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -870,9 +864,8 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -940,9 +933,8 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1010,9 +1002,8 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1071,9 +1062,8 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	processor, err := NewRequestProcessor(nil)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 
 	request := &servicepb.Request{
@@ -1113,11 +1103,10 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	// Note: When Script.Plain is empty, the processor falls back to stdPostingProducer
 	// which creates an empty transaction. This test verifies that behavior.
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1163,9 +1152,8 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1232,9 +1220,8 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1296,9 +1283,8 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1380,7 +1366,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	sourceKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
@@ -1396,7 +1382,6 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(50))}
 	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1464,7 +1449,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	sourceKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:new"},
@@ -1478,7 +1463,6 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	// Source has no input at all (nil) - would fail balance check normally
 	// With force=true, this should succeed
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1540,10 +1524,9 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
 	// Account has 0 balance, but with force=true, Numscript should see unlimited balance
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true)
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

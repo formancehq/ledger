@@ -229,6 +229,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	s.PutBoundaries(order.Name, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
+		LedgerId:          ledgerID,
 	})
 
 	// Store initial metadata using LedgerMetadata attributes
@@ -269,17 +270,12 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 }
 
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Store) (*commonpb.LogPayload, error) {
-	ledgerInfo, ok := s.GetLedger(apply.Ledger)
-	if !ok {
-		return nil, &ErrLedgerNotFound{Name: apply.Ledger}
-	}
-
 	boundaries, ok := s.GetBoundaries(apply.Ledger)
 	if !ok {
 		return nil, &ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
-	ledgerID := ledgerInfo.Id
+	ledgerID := boundaries.LedgerId
 
 	var (
 		logPayload *commonpb.LedgerLogPayload

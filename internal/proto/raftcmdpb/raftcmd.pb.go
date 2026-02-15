@@ -1141,6 +1141,7 @@ type LedgerBoundaries struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	NextTransactionId uint64                 `protobuf:"varint,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
 	NextLogId         uint64                 `protobuf:"varint,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
+	LedgerId          uint32                 `protobuf:"varint,3,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1185,6 +1186,13 @@ func (x *LedgerBoundaries) GetNextTransactionId() uint64 {
 func (x *LedgerBoundaries) GetNextLogId() uint64 {
 	if x != nil {
 		return x.NextLogId
+	}
+	return 0
+}
+
+func (x *LedgerBoundaries) GetLedgerId() uint32 {
+	if x != nil {
+		return x.LedgerId
 	}
 	return 0
 }
@@ -2450,10 +2458,11 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\x1aRevertedTransactionMemento\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12F\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x17.raft.TransactionResumeR\x11revertTransaction\"b\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x17.raft.TransactionResumeR\x11revertTransaction\"\x7f\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x04R\x11nextTransactionId\x12\x1e\n" +
-	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\"w\n" +
+	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12\x1b\n" +
+	"\tledger_id\x18\x03 \x01(\rR\bledgerId\"w\n" +
 	"\fVolumeHolder\x12$\n" +
 	"\x05known\x18\x01 \x01(\v2\x0e.common.BigIntR\x05known\x12A\n" +
 	"\x15diff_since_base_index\x18\x02 \x01(\v2\x0e.common.BigIntR\x12diffSinceBaseIndex\"g\n" +
