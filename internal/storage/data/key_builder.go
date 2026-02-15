@@ -20,14 +20,18 @@ func (kb *KeyBuilder) Reset() {
 }
 
 func (kb *KeyBuilder) PutUInt64(v uint64) *KeyBuilder {
-	if err := binary.Write(kb.buf, binary.BigEndian, v); err != nil {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], v)
+	if _, err := kb.buf.Write(buf[:]); err != nil {
 		kb.err = err
 	}
 	return kb
 }
 
-func (kb *KeyBuilder) PutUInt32(value uint32) *KeyBuilder {
-	if err := binary.Write(kb.buf, binary.BigEndian, value); err != nil {
+func (kb *KeyBuilder) PutUInt32(v uint32) *KeyBuilder {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], v)
+	if _, err := kb.buf.Write(buf[:]); err != nil {
 		kb.err = err
 	}
 	return kb

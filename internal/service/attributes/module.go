@@ -10,7 +10,7 @@ import (
 )
 
 // Attributes holds all attribute types used in the ledger.
-// Each instance has its own KeyBuilder for thread-safe concurrent access.
+// Each instance has its own pre-allocated key buffer for thread-safe concurrent access.
 type Attributes struct {
 	Input           *Attribute[*commonpb.BigInt]
 	Output          *Attribute[*commonpb.BigInt]
@@ -53,7 +53,7 @@ func NewInputAttribute() *Attribute[*commonpb.BigInt] {
 			}
 			return commonpb.NewBigInt(result)
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -72,7 +72,7 @@ func NewOutputAttribute() *Attribute[*commonpb.BigInt] {
 			}
 			return commonpb.NewBigInt(result)
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -87,7 +87,7 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -102,7 +102,7 @@ func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -120,7 +120,7 @@ func NewRevertedAttribute() *Attribute[*commonpb.RevertedValue] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -135,7 +135,7 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -150,7 +150,7 @@ func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -165,7 +165,7 @@ func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
@@ -180,7 +180,7 @@ func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 			}
 			return lastDiff
 		},
-		kb: data.NewKeyBuilder(),
+		keyBuf: make([]byte, 128),
 	}
 }
 
