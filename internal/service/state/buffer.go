@@ -96,21 +96,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return err
 	}
 
-	// Index all accounts involved in volume updates.
-	type accountKey struct {
-		ledgerID uint32
-		account  string
-	}
-	seenAccounts := make(map[accountKey]struct{})
-	for _, update := range volumeUpdates {
-		seenAccounts[accountKey{update.Key.LedgerID, update.Key.Account}] = struct{}{}
-	}
-	for ak := range seenAccounts {
-		if err := batch.IndexAccount(ak.ledgerID, ak.account); err != nil {
-			return fmt.Errorf("indexing account %s: %w", ak.account, err)
-		}
-	}
-
 	accountMetadataUpdates, accountMetadataDeletions, err := b.AccountMetadata.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)

@@ -106,8 +106,8 @@ Pebble stores volumes using the **attribute base + cumulative diff** model:
 - Generation-rotation pruning and inline compaction keep entry count bounded
 
 ```
-Key:   [0x09]['I'][ledgerID][account]\x00[asset][raftIndex][entryType]
-Value: big.Int bytes (base value or cumulative diff)
+Key:   [0x09][ledgerID][account]\x00[asset]['V'][raftIndex][entryType]
+Value: VolumePair protobuf (base value or cumulative diff)
 ```
 
 ### Use Cases

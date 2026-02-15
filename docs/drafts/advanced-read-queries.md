@@ -29,7 +29,7 @@ The original `github.com/formancehq/ledger` supports ListAccounts, aggregate bal
 
 ## 2. Goals
 
-> **Note**: **ListAccounts** has been implemented (see `ListAccountAddresses` in `store.go`, `ListAccounts` across all layers). It uses forward Pebble iteration over Input attribute keys with prefix filtering and cursor pagination.
+> **Note**: **ListAccounts** has been implemented (see `ListAccountAddresses` in `attributes.go`, `ListAccounts` across all layers). It derives the account list from Volume attribute keys — no separate account index is needed. It uses forward Pebble iteration with SeekGE-based deduplication, prefix filtering, and cursor pagination.
 
 1. **AggregateBalances**: sum volumes across accounts with optional filters
 2. **ListLogs**: list ledger logs (per-ledger)

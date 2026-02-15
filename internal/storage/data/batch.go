@@ -181,42 +181,6 @@ func (b *Batch) Set(key, value []byte, options *pebble.WriteOptions) error {
 	return b.batch.Set(key, value, options)
 }
 
-// IndexAccount writes an account existence marker.
-// Key: [KeyPrefixAccountIndex][ledgerID (4 bytes)][account] -> empty
-// This is idempotent — repeated writes for the same account are harmless.
-func (b *Batch) IndexAccount(ledgerID uint32, account string) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	b.KeyBuilder.
-		PutByte(KeyPrefixAccountIndex).
-		PutUInt32(ledgerID).
-		PutString(account)
-
-	if err := b.batch.Set(b.KeyBuilder.Build(), nil, pebble.NoSync); err != nil {
-		return fmt.Errorf("indexing account: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteAccountIndex removes all account index entries for a ledger.
-func (b *Batch) DeleteAccountIndex(ledgerID uint32) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	kb := NewKeyBuilder()
-	kb.PutByte(KeyPrefixAccountIndex).PutUInt32(ledgerID)
-	lowerBound := kb.Snapshot()
-
-	kb.PutByte(0xFF)
-	upperBound := kb.Build()
-
-	return b.batch.DeleteRange(lowerBound, upperBound, pebble.NoSync)
-}
-
 // AppendAuditEntries appends audit entries to the batch.
 func (b *Batch) AppendAuditEntries(entries ...*auditpb.AuditEntry) error {
 	if b.committed {

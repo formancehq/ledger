@@ -201,8 +201,8 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		return nil, err
 	}
 
-	// Get account address cursor from store
-	addrCursor, err := ctrl.store.ListAccountAddresses(ledgerInfo.Id, pageSize, afterAddress, prefix)
+	// Get account address cursor from Volume attribute keys
+	addrCursor, err := ctrl.attrs.Volume.ListAccountAddresses(ctrl.store, ledgerInfo.Id, pageSize, afterAddress, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("listing account addresses: %w", err)
 	}
