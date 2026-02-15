@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -154,7 +156,12 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("creating logger: %w", err)
 	}
 
-	logger.Infof("GOMAXPROCS=%d NumCPU=%d", runtime.GOMAXPROCS(0), runtime.NumCPU())
+	memlimit := debug.SetMemoryLimit(-1)
+	if memlimit == math.MaxInt64 {
+		logger.Infof("GOMAXPROCS=%d NumCPU=%d GOMEMLIMIT=off", runtime.GOMAXPROCS(0), runtime.NumCPU())
+	} else {
+		logger.Infof("GOMAXPROCS=%d NumCPU=%d GOMEMLIMIT=%dMiB", runtime.GOMAXPROCS(0), runtime.NumCPU(), memlimit/(1024*1024))
+	}
 
 	// Configure Pyroscope profiling
 	pyroscopeCfg := pyroscopeConfigFromFlags(cmd)
