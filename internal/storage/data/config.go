@@ -77,8 +77,8 @@ func DefaultConfig() Config {
 	return Config{
 		MemTableSize:                256 << 20, // 256MB
 		MemTableStopWritesThreshold: 6,
-		L0CompactionThreshold:       64,
-		L0StopWritesThreshold:       256,
+		L0CompactionThreshold:       16,
+		L0StopWritesThreshold:       64,
 		LBaseMaxBytes:               2 << 30,    // 2GB
 		CacheSize:                   1024 << 20, // 1GB
 		TargetFileSize:              256 << 20,  // 256MB
