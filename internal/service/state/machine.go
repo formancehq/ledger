@@ -59,6 +59,11 @@ type Machine struct {
 	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
 	dirtyVolumeKeys [3]map[string]struct{}
 
+	// dirtyBoundaryKeys tracks boundary canonical keys that have been updated
+	// since the last generation rotation. Boundaries are flushed to Pebble only
+	// at rotation time instead of on every log entry.
+	dirtyBoundaryKeys map[string]*raftcmdpb.LedgerBoundaries
+
 	// Metrics
 	logsAppendedCounter metric.Int64Counter
 	lastPersistedIndex  atomic.Uint64
@@ -140,6 +145,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			make(map[string]struct{}),
 			make(map[string]struct{}),
 		},
+		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
 	}
 
 	return fsm, nil
@@ -190,6 +196,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			// Compaction using tracked keys in the same batch (no Pebble scan)
 			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact); err != nil {
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
+			}
+
+			// Flush dirty boundaries to Pebble at the rotation boundary index
+			if err := fsm.flushBoundaries(batch, fsm.Cache.BaseIndex.Gen0); err != nil {
+				return nil, fmt.Errorf("flushing boundaries at rotation: %w", err)
 			}
 		}
 		fsm.lastAppliedIndex++
@@ -244,6 +255,22 @@ func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64
 			return fmt.Errorf("compacting volume: %w", err)
 		}
 	}
+	return nil
+}
+
+// flushBoundaries writes all dirty boundary keys to Pebble and clears the tracking map.
+// Called at generation rotation to batch boundary writes instead of writing on every log entry.
+func (fsm *Machine) flushBoundaries(batch *data.Batch, index uint64) error {
+	for keyStr, value := range fsm.dirtyBoundaryKeys {
+		canonicalKey := []byte(keyStr)
+		if err := fsm.Attrs.Boundary.SetBase(batch, index, canonicalKey, value); err != nil {
+			return fmt.Errorf("setting boundary base: %w", err)
+		}
+		if err := fsm.Attrs.Boundary.DeleteOldest(batch, index, canonicalKey); err != nil {
+			return fmt.Errorf("compacting old boundary: %w", err)
+		}
+	}
+	clear(fsm.dirtyBoundaryKeys)
 	return nil
 }
 
@@ -806,6 +833,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		make(map[string]struct{}),
 		make(map[string]struct{}),
 	}
+	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
 
 	return nil
 }

@@ -49,19 +49,13 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
-	// Process Boundary updates
-	// TODO: We don't need to store boundaries at each log, we can just store the latest one when rotating generation
+	// Process Boundary updates — track dirty keys for deferred Pebble write at generation rotation
 	boundaryUpdates, _, err := b.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
 	for _, update := range boundaryUpdates {
-		if err := b.attrs.Boundary.SetBase(batch, index, update.CanonicalKey, update.New); err != nil {
-			return fmt.Errorf("failed setting boundary base: %w", err)
-		}
-		if err := b.attrs.Boundary.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return fmt.Errorf("compacting old boundary base: %w", err)
-		}
+		b.fsm.dirtyBoundaryKeys[string(update.CanonicalKey)] = update.New
 	}
 
 	// Process Volume updates and track dirty volume keys inline

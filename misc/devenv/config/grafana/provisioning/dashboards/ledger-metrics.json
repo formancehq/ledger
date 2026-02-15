@@ -6701,7 +6701,7 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Number of entries in the attribute cache by type.\n\n- input: Input volumes (credits)\n- output: Output volumes (debits)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys",
+          "description": "Number of entries in the attribute cache by type.\n\n- volumes: Account volumes (input/output)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys\n- references: Transaction references\n- ledgers: Ledger info\n- boundaries: Ledger boundaries",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -6785,23 +6785,11 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"input\"}",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"volumes\"}",
               "interval": "1s",
-              "legendFormat": "Input (Node {{service.node_id}})",
+              "legendFormat": "Volumes (Node {{service.node_id}})",
               "range": true,
               "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"output\"}",
-              "interval": "1s",
-              "legendFormat": "Output (Node {{service.node_id}})",
-              "range": true,
-              "refId": "B"
             },
             {
               "datasource": {
@@ -6813,7 +6801,7 @@
               "interval": "1s",
               "legendFormat": "Account Metadata (Node {{service.node_id}})",
               "range": true,
-              "refId": "C"
+              "refId": "B"
             },
             {
               "datasource": {
@@ -6824,6 +6812,18 @@
               "expr": "cache.size{service.node_id=~\"$node\", type=\"idempotency_keys\"}",
               "interval": "1s",
               "legendFormat": "Idempotency Keys (Node {{service.node_id}})",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "cache.size{service.node_id=~\"$node\", type=\"boundaries\"}",
+              "interval": "1s",
+              "legendFormat": "Boundaries (Node {{service.node_id}})",
               "range": true,
               "refId": "D"
             }
@@ -7056,7 +7056,7 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.\n\nBreakdown by attribute type:\n- input: Account input volumes (credits)\n- output: Account output volumes (debits)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings",
+          "description": "Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -7179,7 +7179,7 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.\n\nBreakdown by attribute type:\n- input: Account input volumes (credits)\n- output: Account output volumes (debits)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings",
+          "description": "Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references",
           "fieldConfig": {
             "defaults": {
               "color": {
