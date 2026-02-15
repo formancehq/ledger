@@ -194,7 +194,7 @@ func Module() fx.Option {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
 			func(
-				cfg *Config,
+				cfg Config,
 				node *node.Node,
 				cache *cache.Cache,
 				store *data.Store,
