@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"sync"
 	"sync/atomic"
 
@@ -16,76 +17,75 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
+// AttributeCache is a lock-free dual-generation cache for attribute values.
+// It uses atomic.Pointer for Gen0/Gen1 backed by kv.SyncMap, so
+// reads (Get, IsGuaranteedInCache) are completely lock-free.
+// Writes (Put, Del) are also lock-free thanks to sync.Map.
+// Only Rotate needs synchronization, which is done by the FSM goroutine
+// under Cache.mu — no contention with admission goroutines.
 type AttributeCache[T any] struct {
-	DualGen[kv.KV[attributes.U128, attributes.Entry[T]]]
-	mu        sync.RWMutex
+	gen0      atomic.Pointer[kv.SyncMap[attributes.U128, attributes.Entry[T]]]
+	gen1      atomic.Pointer[kv.SyncMap[attributes.U128, attributes.Entry[T]]]
 	Cache     *Cache
 	cacheType string
 }
 
+func (a *AttributeCache[T]) Gen0() *kv.SyncMap[attributes.U128, attributes.Entry[T]] {
+	return a.gen0.Load()
+}
+
+func (a *AttributeCache[T]) Gen1() *kv.SyncMap[attributes.U128, attributes.Entry[T]] {
+	return a.gen1.Load()
+}
+
 func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	v, ok := a.Gen0.Get(k)
-	if ok {
+	if v, ok := a.gen0.Load().Get(k); ok {
 		return v, true
 	}
-
-	v, ok = a.Gen1.Get(k)
-	if ok {
-		return v, true
-	}
-
-	return v, false
+	return a.gen1.Load().Get(k)
 }
 
 func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	a.Gen0.Put(k, v)
+	a.gen0.Load().Put(k, v)
 }
 
 func (a *AttributeCache[T]) Del(k attributes.U128) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	a.Gen0.Del(k)
+	a.gen0.Load().Del(k)
 }
 
 func (a *AttributeCache[T]) Size() uint64 {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	return a.Gen0.Size() + a.Gen1.Size()
+	return a.gen0.Load().Size() + a.gen1.Load().Size()
 }
 
-// rotateLocked performs the rotation without acquiring the lock.
-// Caller must hold a.mu.
-func (a *AttributeCache[T]) rotateLocked() {
-	a.DualGen.Rotate(kv.NewMap[attributes.U128, attributes.Entry[T]]())
+func (a *AttributeCache[T]) Iter() iter.Seq2[attributes.U128, attributes.Entry[T]] {
+	return func(yield func(attributes.U128, attributes.Entry[T]) bool) {
+		for k, v := range a.gen0.Load().Iter() {
+			if !yield(k, v) {
+				return
+			}
+		}
+		for k, v := range a.gen1.Load().Iter() {
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
 }
 
-// Rotate performs a generation rotation: Gen1 is discarded, Gen0 becomes Gen1,
-// and a new empty Gen0 is created.
+// Rotate performs a generation rotation: Gen1 is replaced by Gen0,
+// and Gen0 is replaced by a new empty SyncMap.
+// Called only from the FSM goroutine under Cache.mu.
 func (a *AttributeCache[T]) Rotate() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	a.rotateLocked()
+	old := a.gen0.Load()
+	a.gen1.Store(old)
+	a.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
 }
 
 // reset clears all data in both generations.
-// Caller must ensure thread safety.
+// Called only from Cache.Reset under Cache.mu.
 func (a *AttributeCache[T]) reset() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	a.DualGen = newDualGen[kv.KV[attributes.U128, attributes.Entry[T]]](
-		kv.NewMap[attributes.U128, attributes.Entry[T]](),
-		kv.NewMap[attributes.U128, attributes.Entry[T]](),
-	)
+	a.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	a.gen1.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
 }
 
 // IsGuaranteedInCache checks if a key will still be in the cache when we reach
@@ -101,6 +101,8 @@ func (a *AttributeCache[T]) reset() {
 // - If `at` is in the current generation: no rotation, data will be there
 // - If `at` is in the next generation: one rotation, data must be in Gen0 to survive
 // - If `at` is 2+ generations ahead: data will be lost (too many rotations)
+//
+// This method is completely lock-free thanks to atomic.Pointer + sync.Map.
 func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
 	threshold := a.Cache.GenerationThreshold // immutable after init
 	if threshold == 0 {
@@ -119,9 +121,7 @@ func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bo
 	case 1:
 		// Next generation - one rotation will occur
 		// Data must be in Gen0 now to survive (Gen0 becomes Gen1 after rotation)
-		a.mu.RLock()
-		_, ok := a.Gen0.Get(k)
-		a.mu.RUnlock()
+		_, ok := a.gen0.Load().Get(k)
 		return ok
 	default:
 		// 2+ generations ahead - too many rotations, data will be lost
@@ -130,14 +130,13 @@ func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bo
 }
 
 func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T] {
-	return &AttributeCache[T]{
-		DualGen: newDualGen[kv.KV[attributes.U128, attributes.Entry[T]]](
-			kv.NewMap[attributes.U128, attributes.Entry[T]](),
-			kv.NewMap[attributes.U128, attributes.Entry[T]](),
-		),
+	ac := &AttributeCache[T]{
 		Cache:     cache,
 		cacheType: cacheType,
 	}
+	ac.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	ac.gen1.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	return ac
 }
 
 type Cache struct {

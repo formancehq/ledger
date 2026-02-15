@@ -3,7 +3,6 @@ package admission
 import (
 	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,8 +39,7 @@ type Admission struct {
 	attrs         *attributes.Attributes
 	healthChecker health.Checker
 
-	admissionLock sync.Mutex
-	nextIndex     atomic.Uint64
+	nextIndex atomic.Uint64
 
 	// Attribute loaders to avoid duplicate store loads
 	loaders *Loaders
@@ -214,7 +212,6 @@ func NewAdmission(
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values
-// TODO: Add a second phase of db lookup as the index can advance quickly and cause a cache miss
 func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	if !a.healthChecker.IsHealthy() {
 		return nil, health.ErrUnhealthy
@@ -620,12 +617,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	proposal := node.NewProposal(cmd.Id, cmdData)
 
-	// Reacquire lock before proposing to ensure correct ordering
 	proposeStart := time.Now()
-	a.admissionLock.Lock()
 	fsmFuture, err := a.proposer.Propose(proposal)
 	if err != nil {
-		a.admissionLock.Unlock()
 		// Clean up loaded keys on error
 		loadedKeys.MarkApplied(a.loaders)
 		a.logger.WithFields(map[string]any{
@@ -635,7 +629,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 	a.nextIndex.Add(1)
-	a.admissionLock.Unlock()
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	if _, err := proposal.Wait(); err != nil {

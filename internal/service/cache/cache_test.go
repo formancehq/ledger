@@ -272,9 +272,7 @@ func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
 	ac.Put(keyInGen0, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Simulate keyInGen1 being in Gen1 only
-	ac.mu.Lock()
-	ac.Gen1.Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumePair]{})
-	ac.mu.Unlock()
+	ac.Gen1().Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Index 15 is in generation 1 (next generation)
 	// keyInGen0 is in Gen0, will survive one rotation -> true

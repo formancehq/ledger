@@ -504,18 +504,18 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				OutputKnown: preloadType.Volume.Output,
 			}
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				aggregated := putInCacheVolumePair(fsm.Cache.Volumes.Gen1, preloadType.Volume.Id, pair)
-				putInCacheVolumePair(fsm.Cache.Volumes.Gen0, preloadType.Volume.Id, aggregated)
+				aggregated := putInCacheVolumePair(fsm.Cache.Volumes.Gen1(), preloadType.Volume.Id, pair)
+				putInCacheVolumePair(fsm.Cache.Volumes.Gen0(), preloadType.Volume.Id, aggregated)
 			} else {
-				putInCacheVolumePair(fsm.Cache.Volumes.Gen0, preloadType.Volume.Id, pair)
+				putInCacheVolumePair(fsm.Cache.Volumes.Gen0(), preloadType.Volume.Id, pair)
 			}
 
 		case *raftcmdpb.Preload_Reverted:
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheBool(fsm.Cache.Reversions.Gen1, preloadType.Reverted.Id, preloadType.Reverted.Reverted)
-				putInCacheBool(fsm.Cache.Reversions.Gen0, preloadType.Reverted.Id, value)
+				value := putInCacheBool(fsm.Cache.Reversions.Gen1(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
+				putInCacheBool(fsm.Cache.Reversions.Gen0(), preloadType.Reverted.Id, value)
 			} else {
-				putInCacheBool(fsm.Cache.Reversions.Gen0, preloadType.Reverted.Id, preloadType.Reverted.Reverted)
+				putInCacheBool(fsm.Cache.Reversions.Gen0(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
 			}
 
 		case *raftcmdpb.Preload_IdempotencyKey:
@@ -524,26 +524,26 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				Hash:        preloadType.IdempotencyKey.Hash,
 			}
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen1, preloadType.IdempotencyKey.Id, idempotencyValue)
-				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0, preloadType.IdempotencyKey.Id, value)
+				value := putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.Id, idempotencyValue)
+				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, value)
 			} else {
-				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0, preloadType.IdempotencyKey.Id, idempotencyValue)
+				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, idempotencyValue)
 			}
 
 		case *raftcmdpb.Preload_Ledger:
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheLedger(fsm.Cache.Ledgers.Gen1, preloadType.Ledger.Id, preloadType.Ledger.Info)
-				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, value)
+				value := putInCacheLedger(fsm.Cache.Ledgers.Gen1(), preloadType.Ledger.Id, preloadType.Ledger.Info)
+				putInCacheLedger(fsm.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, value)
 			} else {
-				putInCacheLedger(fsm.Cache.Ledgers.Gen0, preloadType.Ledger.Id, preloadType.Ledger.Info)
+				putInCacheLedger(fsm.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, preloadType.Ledger.Info)
 			}
 
 		case *raftcmdpb.Preload_Boundary:
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheBoundary(fsm.Cache.Boundaries.Gen1, preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
-				putInCacheBoundary(fsm.Cache.Boundaries.Gen0, preloadType.Boundary.Id, value)
+				value := putInCacheBoundary(fsm.Cache.Boundaries.Gen1(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
+				putInCacheBoundary(fsm.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, value)
 			} else {
-				putInCacheBoundary(fsm.Cache.Boundaries.Gen0, preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
+				putInCacheBoundary(fsm.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
 			}
 
 		case *raftcmdpb.Preload_TransactionReference:
@@ -551,10 +551,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				TransactionId: preloadType.TransactionReference.TransactionId,
 			}
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheReferenceValue(fsm.Cache.References.Gen1, preloadType.TransactionReference.Id, referenceValue)
-				putInCacheReferenceValue(fsm.Cache.References.Gen0, preloadType.TransactionReference.Id, value)
+				value := putInCacheReferenceValue(fsm.Cache.References.Gen1(), preloadType.TransactionReference.Id, referenceValue)
+				putInCacheReferenceValue(fsm.Cache.References.Gen0(), preloadType.TransactionReference.Id, value)
 			} else {
-				putInCacheReferenceValue(fsm.Cache.References.Gen0, preloadType.TransactionReference.Id, referenceValue)
+				putInCacheReferenceValue(fsm.Cache.References.Gen0(), preloadType.TransactionReference.Id, referenceValue)
 			}
 		}
 	}
@@ -685,7 +685,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		CheckpointId:         checkpointID,
 		CurrentGeneration:    fsm.Cache.CurrentGeneration(),
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
-		NextAuditSequenceId: fsm.nextAuditSequenceID,
+		NextAuditSequenceId:  fsm.nextAuditSequenceID,
 	}
 
 	return proto.Marshal(snapshot)
@@ -709,20 +709,20 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 
 	if genIndex == 0 {
 		baseIndex = cache.BaseIndex.Gen0
-		volumeStore = cache.Volumes.Gen0
-		metadataStore = cache.AccountMetadata.Gen0
-		ledgerMetadataStore = cache.LedgerMetadata.Gen0
-		ledgerStore = cache.Ledgers.Gen0
-		boundaryStore = cache.Boundaries.Gen0
-		referenceStore = cache.References.Gen0
+		volumeStore = cache.Volumes.Gen0()
+		metadataStore = cache.AccountMetadata.Gen0()
+		ledgerMetadataStore = cache.LedgerMetadata.Gen0()
+		ledgerStore = cache.Ledgers.Gen0()
+		boundaryStore = cache.Boundaries.Gen0()
+		referenceStore = cache.References.Gen0()
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
-		volumeStore = cache.Volumes.Gen1
-		metadataStore = cache.AccountMetadata.Gen1
-		ledgerMetadataStore = cache.LedgerMetadata.Gen1
-		ledgerStore = cache.Ledgers.Gen1
-		boundaryStore = cache.Boundaries.Gen1
-		referenceStore = cache.References.Gen1
+		volumeStore = cache.Volumes.Gen1()
+		metadataStore = cache.AccountMetadata.Gen1()
+		ledgerMetadataStore = cache.LedgerMetadata.Gen1()
+		ledgerStore = cache.Ledgers.Gen1()
+		boundaryStore = cache.Boundaries.Gen1()
+		referenceStore = cache.References.Gen1()
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
@@ -736,92 +736,80 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 	}
 
 	// Serialize Volumes KeyStore
-	if volumeMap, ok := volumeStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]); ok {
-		for u128, entry := range volumeMap.Iter() {
-			ksEntry := &raftcmdpb.VolumeAttributeSnapshotEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-			}
-			if entry.Data != nil {
-				ksEntry.InputKnown = entry.Data.InputKnown
-				ksEntry.InputDiff = entry.Data.InputDiff
-				ksEntry.OutputKnown = entry.Data.OutputKnown
-				ksEntry.OutputDiff = entry.Data.OutputDiff
-			}
-			snapshot.Volumes = append(snapshot.Volumes, ksEntry)
+	for u128, entry := range volumeStore.Iter() {
+		ksEntry := &raftcmdpb.VolumeAttributeSnapshotEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
 		}
+		if entry.Data != nil {
+			ksEntry.InputKnown = entry.Data.InputKnown
+			ksEntry.InputDiff = entry.Data.InputDiff
+			ksEntry.OutputKnown = entry.Data.OutputKnown
+			ksEntry.OutputDiff = entry.Data.OutputDiff
+		}
+		snapshot.Volumes = append(snapshot.Volumes, ksEntry)
 	}
 
 	// Serialize Metadata KeyStore
-	if metadataMap, ok := metadataStore.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]); ok {
-		for u128, entry := range metadataMap.Iter() {
-			ksEntry := &raftcmdpb.MetadataAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-				Value: entry.Data,
-			}
-			snapshot.Metadata = append(snapshot.Metadata, ksEntry)
+	for u128, entry := range metadataStore.Iter() {
+		ksEntry := &raftcmdpb.MetadataAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Value: entry.Data,
 		}
+		snapshot.Metadata = append(snapshot.Metadata, ksEntry)
 	}
 
 	// Serialize LedgerMetadata KeyStore
-	if ledgerMetadataMap, ok := ledgerMetadataStore.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]); ok {
-		for u128, entry := range ledgerMetadataMap.Iter() {
-			ksEntry := &raftcmdpb.MetadataAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-				Value: entry.Data,
-			}
-			snapshot.LedgerMetadata = append(snapshot.LedgerMetadata, ksEntry)
+	for u128, entry := range ledgerMetadataStore.Iter() {
+		ksEntry := &raftcmdpb.MetadataAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Value: entry.Data,
 		}
+		snapshot.LedgerMetadata = append(snapshot.LedgerMetadata, ksEntry)
 	}
 
 	// Serialize Ledgers KeyStore
-	if ledgerMap, ok := ledgerStore.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]); ok {
-		for u128, entry := range ledgerMap.Iter() {
-			ksEntry := &raftcmdpb.LedgerAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-				Info: entry.Data,
-			}
-			snapshot.Ledgers = append(snapshot.Ledgers, ksEntry)
+	for u128, entry := range ledgerStore.Iter() {
+		ksEntry := &raftcmdpb.LedgerAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Info: entry.Data,
 		}
+		snapshot.Ledgers = append(snapshot.Ledgers, ksEntry)
 	}
 
 	// Serialize Boundaries KeyStore
-	if boundaryMap, ok := boundaryStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]); ok {
-		for u128, entry := range boundaryMap.Iter() {
-			ksEntry := &raftcmdpb.BoundaryAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-				Boundaries: entry.Data,
-			}
-			snapshot.Boundaries = append(snapshot.Boundaries, ksEntry)
+	for u128, entry := range boundaryStore.Iter() {
+		ksEntry := &raftcmdpb.BoundaryAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Boundaries: entry.Data,
 		}
+		snapshot.Boundaries = append(snapshot.Boundaries, ksEntry)
 	}
 
 	// Serialize References KeyStore
-	if referenceMap, ok := referenceStore.(kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]); ok {
-		for u128, entry := range referenceMap.Iter() {
-			ksEntry := &raftcmdpb.TransactionReferenceAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-				Value: entry.Data,
-			}
-			snapshot.References = append(snapshot.References, ksEntry)
+	for u128, entry := range referenceStore.Iter() {
+		ksEntry := &raftcmdpb.TransactionReferenceAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Value: entry.Data,
 		}
+		snapshot.References = append(snapshot.References, ksEntry)
 	}
 
 	return snapshot
@@ -871,30 +859,30 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 
 	var (
-		volumeStore         kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore       kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerMetadataStore kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore         kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore       kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore      kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		volumeStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore       kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
 	)
 
 	if genIndex == 0 {
 		cache.BaseIndex.Gen0 = snapshot.BaseIndex
-		volumeStore = cache.Volumes.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]])
-		metadataStore = cache.AccountMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
-		ledgerMetadataStore = cache.LedgerMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
-		ledgerStore = cache.Ledgers.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
-		boundaryStore = cache.Boundaries.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]])
-		referenceStore = cache.References.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]])
+		volumeStore = cache.Volumes.Gen0()
+		metadataStore = cache.AccountMetadata.Gen0()
+		ledgerMetadataStore = cache.LedgerMetadata.Gen0()
+		ledgerStore = cache.Ledgers.Gen0()
+		boundaryStore = cache.Boundaries.Gen0()
+		referenceStore = cache.References.Gen0()
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.BaseIndex
-		volumeStore = cache.Volumes.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]])
-		metadataStore = cache.AccountMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
-		ledgerMetadataStore = cache.LedgerMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
-		ledgerStore = cache.Ledgers.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
-		boundaryStore = cache.Boundaries.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]])
-		referenceStore = cache.References.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]])
+		volumeStore = cache.Volumes.Gen1()
+		metadataStore = cache.AccountMetadata.Gen1()
+		ledgerMetadataStore = cache.LedgerMetadata.Gen1()
+		ledgerStore = cache.Ledgers.Gen1()
+		boundaryStore = cache.Boundaries.Gen1()
+		referenceStore = cache.References.Gen1()
 	}
 
 	// Deserialize Volumes KeyStore
