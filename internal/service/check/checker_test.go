@@ -49,8 +49,7 @@ type testEngine struct {
 	lastLogHash    []byte
 	ledgers        map[string]*commonpb.LedgerInfo
 	boundaries     map[string]*raftcmdpb.LedgerBoundaries
-	inputs         map[string]*raftcmdpb.VolumeHolder
-	outputs        map[string]*raftcmdpb.VolumeHolder
+	volumes        map[string]*raftcmdpb.VolumePair
 	metadata       map[string]*commonpb.MetadataValue
 	reverted       map[string]bool
 	idempotency    map[string]*commonpb.IdempotencyKeyValue
@@ -82,8 +81,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		nextSequenceID: 1,
 		ledgers:        make(map[string]*commonpb.LedgerInfo),
 		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
-		inputs:         make(map[string]*raftcmdpb.VolumeHolder),
-		outputs:        make(map[string]*raftcmdpb.VolumeHolder),
+		volumes:        make(map[string]*raftcmdpb.VolumePair),
 		metadata:       make(map[string]*commonpb.MetadataValue),
 		reverted:       make(map[string]bool),
 		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
@@ -105,15 +103,13 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	}
 
 	// Track which volume keys were modified in this batch
-	modifiedInputs := make(map[string]struct{})
-	modifiedOutputs := make(map[string]struct{})
+	modifiedVolumes := make(map[string]struct{})
 	modifiedMetadata := make(map[string]struct{})
 
 	store := &inMemoryStore{
 		engine:           e,
 		date:             proposal.Date,
-		modifiedInputs:   modifiedInputs,
-		modifiedOutputs:  modifiedOutputs,
+		modifiedVolumes:  modifiedVolumes,
 		modifiedMetadata: modifiedMetadata,
 	}
 	resp, err := e.processor.ProcessProposal(proposal, store)
@@ -135,27 +131,21 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	err = batch.AppendLogs(logs...)
 	require.NoError(e.t, err)
 
-	// Write only modified volume attributes (inputs and outputs)
-	for key := range modifiedInputs {
-		vh := e.inputs[key]
+	// Write only modified volume attributes.
+	// Normalize for Pebble storage: the Known/Diff distinction is an in-memory
+	// optimization only. In Pebble, values are always stored in InputKnown/OutputKnown.
+	for key := range modifiedVolumes {
+		vp := e.volumes[key]
 		canonicalKey := []byte(key)
-		if vh.Known != nil {
-			err := e.attrs.Input.SetBase(batch, e.raftIndex, canonicalKey, vh.Known)
-			require.NoError(e.t, err)
-		} else if vh.DiffSinceBaseIndex != nil {
-			err := e.attrs.Input.AddDiff(batch, e.raftIndex, canonicalKey, vh.DiffSinceBaseIndex)
-			require.NoError(e.t, err)
+		storePair := &raftcmdpb.VolumePair{
+			InputKnown:  coalesceVolumeSide(vp.InputKnown, vp.InputDiff),
+			OutputKnown: coalesceVolumeSide(vp.OutputKnown, vp.OutputDiff),
 		}
-	}
-
-	for key := range modifiedOutputs {
-		vh := e.outputs[key]
-		canonicalKey := []byte(key)
-		if vh.Known != nil {
-			err := e.attrs.Output.SetBase(batch, e.raftIndex, canonicalKey, vh.Known)
+		if vp.InputKnown != nil || vp.OutputKnown != nil {
+			err := e.attrs.Volume.SetBase(batch, e.raftIndex, canonicalKey, storePair)
 			require.NoError(e.t, err)
-		} else if vh.DiffSinceBaseIndex != nil {
-			err := e.attrs.Output.AddDiff(batch, e.raftIndex, canonicalKey, vh.DiffSinceBaseIndex)
+		} else if vp.InputDiff != nil || vp.OutputDiff != nil {
+			err := e.attrs.Volume.AddDiff(batch, e.raftIndex, canonicalKey, storePair)
 			require.NoError(e.t, err)
 		}
 	}
@@ -188,46 +178,60 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	err = batch.Commit()
 	require.NoError(e.t, err)
 
-	// After commit, consolidate DiffSinceBaseIndex into Known for all modified volumes.
+	// After commit, consolidate diffs into known values for all modified volumes.
 	// This mimics the cache preloading behavior in the real system.
-	for key := range modifiedInputs {
-		e.consolidateVolumeHolder(e.inputs, key)
-	}
-	for key := range modifiedOutputs {
-		e.consolidateVolumeHolder(e.outputs, key)
+	for key := range modifiedVolumes {
+		e.consolidateVolumePair(key)
 	}
 
 	e.raftIndex++
 	return logs
 }
 
-// consolidateVolumeHolder converts a VolumeHolder from DiffSinceBaseIndex form to Known form.
-// In the real system, the cache does this when preloading from the store.
-func (e *testEngine) consolidateVolumeHolder(volumes map[string]*raftcmdpb.VolumeHolder, key string) {
-	vh, ok := volumes[key]
-	if !ok || vh == nil {
+// coalesceVolumeSide returns Known if set, otherwise Diff.
+// Used to normalize a VolumePair for Pebble storage.
+func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
+	if known != nil {
+		return known
+	}
+	return diff
+}
+
+// consolidateVolumePair converts a VolumePair to fully-known form.
+// In the real system, the admission layer preloads both input and output together,
+// so both sides are always Known. This mirrors that behavior for testing.
+func (e *testEngine) consolidateVolumePair(key string) {
+	vp, ok := e.volumes[key]
+	if !ok || vp == nil {
 		return
 	}
 
-	if vh.Known != nil {
-		// Already consolidated
-		return
+	// Ensure input side is Known
+	if vp.InputKnown == nil {
+		if vp.InputDiff != nil {
+			vp.InputKnown = vp.InputDiff
+		} else {
+			vp.InputKnown = commonpb.NewBigInt(big.NewInt(0))
+		}
 	}
+	vp.InputDiff = nil
 
-	if vh.DiffSinceBaseIndex != nil {
-		// Read the actual value from the attribute store to get the fully computed value
-		// This includes the base + any prior diffs + the new diff
-		vh.Known = vh.DiffSinceBaseIndex
-		vh.DiffSinceBaseIndex = nil
+	// Ensure output side is Known
+	if vp.OutputKnown == nil {
+		if vp.OutputDiff != nil {
+			vp.OutputKnown = vp.OutputDiff
+		} else {
+			vp.OutputKnown = commonpb.NewBigInt(big.NewInt(0))
+		}
 	}
+	vp.OutputDiff = nil
 }
 
 // inMemoryStore implements processing.Store using the testEngine's in-memory state.
 type inMemoryStore struct {
 	engine           *testEngine
 	date             *commonpb.Timestamp
-	modifiedInputs   map[string]struct{}
-	modifiedOutputs  map[string]struct{}
+	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
 }
 
@@ -249,32 +253,18 @@ func (s *inMemoryStore) PutBoundaries(ledger string, boundaries *raftcmdpb.Ledge
 	s.engine.boundaries[ledger] = boundaries
 }
 
-func (s *inMemoryStore) GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	vh, ok := s.engine.inputs[string(key.Bytes())]
+func (s *inMemoryStore) GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error) {
+	vp, ok := s.engine.volumes[string(key.Bytes())]
 	if !ok {
 		return nil, data.ErrNotFound
 	}
-	return proto.CloneOf(vh), nil
+	return proto.CloneOf(vp), nil
 }
 
-func (s *inMemoryStore) PutInput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+func (s *inMemoryStore) PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 	k := string(key.Bytes())
-	s.engine.inputs[k] = value
-	s.modifiedInputs[k] = struct{}{}
-}
-
-func (s *inMemoryStore) GetOutput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	vh, ok := s.engine.outputs[string(key.Bytes())]
-	if !ok {
-		return nil, data.ErrNotFound
-	}
-	return proto.CloneOf(vh), nil
-}
-
-func (s *inMemoryStore) PutOutput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-	k := string(key.Bytes())
-	s.engine.outputs[k] = value
-	s.modifiedOutputs[k] = struct{}{}
+	s.engine.volumes[k] = value
+	s.modifiedVolumes[k] = struct{}{}
 }
 
 func (s *inMemoryStore) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {

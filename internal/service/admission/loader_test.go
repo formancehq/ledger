@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -298,8 +299,7 @@ func TestNewLoaders(t *testing.T) {
 
 	loaders := NewLoaders()
 
-	assert.NotNil(t, loaders.Input)
-	assert.NotNil(t, loaders.Output)
+	assert.NotNil(t, loaders.Volumes)
 	assert.NotNil(t, loaders.Reversions)
 	assert.NotNil(t, loaders.IdempotencyKeys)
 }
@@ -315,13 +315,13 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	key3 := attributes.NewU128(3, 3)
 	key4 := attributes.NewU128(4, 4)
 
-	_, err := loaders.Input.LoadOrWait(key1, 100, func() (*commonpb.BigInt, error) {
-		return commonpb.NewBigInt(big.NewInt(42)), nil
+	_, err := loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(42))}, nil
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.Output.LoadOrWait(key2, 100, func() (*commonpb.BigInt, error) {
-		return commonpb.NewBigInt(big.NewInt(43)), nil
+	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(43))}, nil
 	})
 	require.NoError(t, err)
 
@@ -337,8 +337,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 
 	// Create tracker with the loaded keys
 	tracker := &LoadedKeysTracker{
-		Input:           []attributes.U128{key1},
-		Output:          []attributes.U128{key2},
+		Volumes:         []attributes.U128{key1, key2},
 		Reversions:      []attributes.U128{key3},
 		IdempotencyKeys: []attributes.U128{key4},
 	}
@@ -347,21 +346,21 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	tracker.MarkApplied(loaders)
 
 	// Verify all keys were removed - next load should actually load
-	inputLoadCount := 0
-	_, err = loaders.Input.LoadOrWait(key1, 100, func() (*commonpb.BigInt, error) {
-		inputLoadCount++
-		return commonpb.NewBigInt(big.NewInt(100)), nil
+	volumeLoadCount := 0
+	_, err = loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
+		volumeLoadCount++
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(100))}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, inputLoadCount, "Input should reload after MarkApplied")
+	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after MarkApplied")
 
-	outputLoadCount := 0
-	_, err = loaders.Output.LoadOrWait(key2, 100, func() (*commonpb.BigInt, error) {
-		outputLoadCount++
-		return commonpb.NewBigInt(big.NewInt(100)), nil
+	volumeLoadCount2 := 0
+	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
+		volumeLoadCount2++
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(100))}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, outputLoadCount, "Output should reload after MarkApplied")
+	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after MarkApplied")
 
 	reversionsLoadCount := 0
 	_, err = loaders.Reversions.LoadOrWait(key3, 100, func() (bool, error) {
@@ -386,8 +385,7 @@ func TestNewLoadedKeysTracker(t *testing.T) {
 	tracker := NewLoadedKeysTracker()
 
 	assert.NotNil(t, tracker)
-	assert.Empty(t, tracker.Input)
-	assert.Empty(t, tracker.Output)
+	assert.Empty(t, tracker.Volumes)
 	assert.Empty(t, tracker.Reversions)
 	assert.Empty(t, tracker.IdempotencyKeys)
 }

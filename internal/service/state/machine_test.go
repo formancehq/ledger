@@ -123,17 +123,32 @@ func newPosting(source, destination, asset string, amount int64) *commonpb.Posti
 	}
 }
 
-// effectiveVolume extracts the effective value from a VolumeHolder.
-// Known takes precedence (includes preloaded base + diffs), otherwise DiffSinceBaseIndex.
-func effectiveVolume(vh *raftcmdpb.VolumeHolder) int64 {
-	if vh == nil {
+// effectiveVolumeInput extracts the effective input value from a VolumePair.
+// InputKnown takes precedence (includes preloaded base + diffs), otherwise InputDiff.
+func effectiveVolumeInput(vp *raftcmdpb.VolumePair) int64 {
+	if vp == nil {
 		return 0
 	}
-	if vh.Known != nil {
-		return vh.Known.Value().Int64()
+	if vp.InputKnown != nil {
+		return vp.InputKnown.Value().Int64()
 	}
-	if vh.DiffSinceBaseIndex != nil {
-		return vh.DiffSinceBaseIndex.Value().Int64()
+	if vp.InputDiff != nil {
+		return vp.InputDiff.Value().Int64()
+	}
+	return 0
+}
+
+// effectiveVolumeOutput extracts the effective output value from a VolumePair.
+// OutputKnown takes precedence (includes preloaded base + diffs), otherwise OutputDiff.
+func effectiveVolumeOutput(vp *raftcmdpb.VolumePair) int64 {
+	if vp == nil {
+		return 0
+	}
+	if vp.OutputKnown != nil {
+		return vp.OutputKnown.Value().Int64()
+	}
+	if vp.OutputDiff != nil {
+		return vp.OutputDiff.Value().Int64()
 	}
 	return 0
 }
@@ -289,17 +304,12 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset: asset,
 		}
 
-		inputHolder, _, err := machine.Input.Get(key.Bytes())
+		pair, _, err := machine.Volumes.Get(key.Bytes())
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
-			t.Fatalf("unexpected error reading cache input for %s: %v", account, err)
+			t.Fatalf("unexpected error reading cache volumes for %s: %v", account, err)
 		}
-		input = effectiveVolume(inputHolder)
-
-		outputHolder, _, err := machine.Output.Get(key.Bytes())
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
-			t.Fatalf("unexpected error reading cache output for %s: %v", account, err)
-		}
-		output = effectiveVolume(outputHolder)
+		input = effectiveVolumeInput(pair)
+		output = effectiveVolumeOutput(pair)
 
 		return input, output
 	}
@@ -338,20 +348,17 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			}
 			canonicalKey := key.Bytes()
 
-			inputVal, err := attrs.Input.ComputeValue(dataStore, lastIndex, canonicalKey)
-			require.NoError(t, err, "store input read error for %s/%s", exp.account, exp.asset)
+			pair, err := attrs.Volume.ComputeValue(dataStore, lastIndex, canonicalKey)
+			require.NoError(t, err, "store volume read error for %s/%s", exp.account, exp.asset)
 
-			var gotInput int64
-			if inputVal != nil {
-				gotInput = inputVal.Value().Int64()
-			}
-
-			outputVal, err := attrs.Output.ComputeValue(dataStore, lastIndex, canonicalKey)
-			require.NoError(t, err, "store output read error for %s/%s", exp.account, exp.asset)
-
-			var gotOutput int64
-			if outputVal != nil {
-				gotOutput = outputVal.Value().Int64()
+			var gotInput, gotOutput int64
+			if pair != nil {
+				if pair.InputKnown != nil {
+					gotInput = pair.InputKnown.Value().Int64()
+				}
+				if pair.OutputKnown != nil {
+					gotOutput = pair.OutputKnown.Value().Int64()
+				}
 			}
 
 			balance := gotInput - gotOutput
@@ -384,10 +391,11 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		inputVal, err := attrs.Input.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
-		require.NotNil(t, inputVal)
-		require.Equal(t, int64(300), inputVal.Value().Int64(),
+		require.NotNil(t, pair)
+		require.NotNil(t, pair.InputKnown)
+		require.Equal(t, int64(300), pair.InputKnown.Value().Int64(),
 			"merchant:bob store input should be 300 (batch 3 only)")
 	})
 
@@ -405,10 +413,11 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		outputVal, err := attrs.Output.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
-		require.NotNil(t, outputVal)
-		require.Equal(t, int64(330), outputVal.Value().Int64(),
+		require.NotNil(t, pair)
+		require.NotNil(t, pair.OutputKnown)
+		require.Equal(t, int64(330), pair.OutputKnown.Value().Int64(),
 			"customer:dave store output should be 330 (batch 3 only)")
 	})
 
@@ -426,10 +435,11 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		inputVal, err := attrs.Input.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
-		require.NotNil(t, inputVal)
-		require.Equal(t, int64(50), inputVal.Value().Int64(),
+		require.NotNil(t, pair)
+		require.NotNil(t, pair.InputKnown)
+		require.Equal(t, int64(50), pair.InputKnown.Value().Int64(),
 			"platform:revenue store input should be 50 (20+30)")
 	})
 }
@@ -445,12 +455,14 @@ type attributeEntryInfo struct {
 func listRawAttributeEntries(t *testing.T, store *data.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
 	t.Helper()
 
+	// New key layout: [0x09][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
+	// Build lower bound: [0x09][CanonicalKey][AttrType]
 	kb := data.NewKeyBuilder()
 	kb.PutByte(data.KeyPrefixAttributes).
-		PutByte(attrPrefix).
-		PutBytes(canonicalKey)
+		PutBytes(canonicalKey).
+		PutByte(attrPrefix)
 	lowerBound := kb.Snapshot()
-	kb.PutByte(0xFF)
+	kb.PutByte(0xFF) // upper bound
 	upperBound := kb.Build()
 
 	iter, err := store.NewIter(&pebble.IterOptions{
@@ -503,45 +515,51 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 
 	// Write cumulative diffs at indexes 2,3,4,5: 100, 200, 300, 400
 	// Each value represents the total delta since the implicit base (0).
+	// For alice: input diffs (VolumePair with InputKnown set)
 	for i, amount := range []int64{100, 200, 300, 400} {
 		batch := dataStore.NewBatch()
-		err := attrs.Input.AddDiff(batch, uint64(i+2), aliceInputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		err := attrs.Volume.AddDiff(batch, uint64(i+2), aliceInputKey, &raftcmdpb.VolumePair{
+			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 	}
 
+	// For world: output diffs (VolumePair with OutputKnown set)
 	for i, amount := range []int64{100, 200, 300, 400} {
 		batch := dataStore.NewBatch()
-		err := attrs.Output.AddDiff(batch, uint64(i+2), worldOutputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		err := attrs.Volume.AddDiff(batch, uint64(i+2), worldOutputKey, &raftcmdpb.VolumePair{
+			OutputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 	}
 
 	// Verify initial state: 4 diff entries for each key
-	inputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	inputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 4, "should have 4 diff entries initially")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "all initial entries should be diffs")
 	}
 
-	outputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixOutput, worldOutputKey)
+	outputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, worldOutputKey)
 	require.Len(t, outputEntries, 4, "should have 4 output diff entries initially")
 
 	// Verify computed values before compaction: latest cumul diff = 400
-	inputVal, err := attrs.Input.ComputeValue(dataStore, 5, aliceInputKey)
+	alicePair, err := attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), inputVal.Value().Int64())
+	require.Equal(t, int64(400), alicePair.InputKnown.Value().Int64())
 
-	outputVal, err := attrs.Output.ComputeValue(dataStore, 5, worldOutputKey)
+	worldPair, err := attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), outputVal.Value().Int64())
+	require.Equal(t, int64(400), worldPair.OutputKnown.Value().Int64())
 
 	// ---------------------------------------------------------------
 	// First compaction at index 4: prunes diffs strictly before 4
 	// Removes diffs at indexes 2 and 3; diffs at 4 and 5 remain.
 	// ---------------------------------------------------------------
 	dirtyKeys := map[string]struct{}{
-		string(aliceInputKey): {},
+		string(aliceInputKey):  {},
 		string(worldOutputKey): {},
 	}
 	batch := dataStore.NewBatch()
@@ -549,7 +567,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after compaction")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
@@ -557,18 +575,18 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.Equal(t, uint64(4), inputEntries[0].RaftIndex)
 	require.Equal(t, uint64(5), inputEntries[1].RaftIndex)
 
-	outputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixOutput, worldOutputKey)
+	outputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, worldOutputKey)
 	require.Len(t, outputEntries, 2, "should have 2 output diffs remaining after compaction")
 
 	// Computed values unchanged: latest cumul diff = 400
-	inputVal, err = attrs.Input.ComputeValue(dataStore, 5, aliceInputKey)
+	alicePair, err = attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), inputVal.Value().Int64(),
+	require.Equal(t, int64(400), alicePair.InputKnown.Value().Int64(),
 		"alice input should still be 400 after compaction")
 
-	outputVal, err = attrs.Output.ComputeValue(dataStore, 5, worldOutputKey)
+	worldPair, err = attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), outputVal.Value().Int64(),
+	require.Equal(t, int64(400), worldPair.OutputKnown.Value().Int64(),
 		"world output should still be 400 after compaction")
 
 	// ---------------------------------------------------------------
@@ -577,15 +595,17 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// ---------------------------------------------------------------
 	for i, amount := range []int64{500, 600} {
 		batch := dataStore.NewBatch()
-		err := attrs.Input.AddDiff(batch, uint64(i+6), aliceInputKey, commonpb.NewBigInt(big.NewInt(amount)))
+		err := attrs.Volume.AddDiff(batch, uint64(i+6), aliceInputKey, &raftcmdpb.VolumePair{
+			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 	}
 
-	// Latest cumul diff at index 7 = 600 → computed value = 0 + 600 = 600
-	inputVal, err = attrs.Input.ComputeValue(dataStore, 7, aliceInputKey)
+	// Latest cumul diff at index 7 = 600 -> computed value = 0 + 600 = 600
+	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), inputVal.Value().Int64(),
+	require.Equal(t, int64(600), alicePair.InputKnown.Value().Int64(),
 		"alice input should be 600 (latest cumulative diff from implicit base 0)")
 
 	// ---------------------------------------------------------------
@@ -597,7 +617,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after second compaction")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
@@ -606,9 +626,9 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.Equal(t, uint64(7), inputEntries[1].RaftIndex)
 
 	// Computed value unchanged: latest cumul diff at index 7 = 600
-	inputVal, err = attrs.Input.ComputeValue(dataStore, 7, aliceInputKey)
+	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), inputVal.Value().Int64(),
+	require.Equal(t, int64(600), alicePair.InputKnown.Value().Int64(),
 		"alice input should remain 600 after second compaction")
 }
 
@@ -642,10 +662,10 @@ func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerIn
 // automatically during generation rotation in the full ApplyEntries pipeline.
 //
 // With K=10 and entries 1-42:
-//   - Rotation 1 (entry 12): compactVolumeDiffs(0) — no-op
-//   - Rotation 2 (entry 22): compactVolumeDiffs(0) — no-op
-//   - Rotation 3 (entry 32): compactVolumeDiffs(10) — prunes diffs at indexes 2-9
-//   - Rotation 4 (entry 42): compactVolumeDiffs(20) — prunes diffs at indexes 10-19
+//   - Rotation 1 (entry 12): compactVolumeDiffs(0) -- no-op
+//   - Rotation 2 (entry 22): compactVolumeDiffs(0) -- no-op
+//   - Rotation 3 (entry 32): compactVolumeDiffs(10) -- prunes diffs at indexes 2-9
+//   - Rotation 4 (entry 42): compactVolumeDiffs(20) -- prunes diffs at indexes 10-19
 //
 // After all processing: 41 diffs initially, 18 pruned = 23 remaining.
 // Ledger info is injected via preloads after cache eviction (mimics admission layer).
@@ -672,7 +692,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	ledgerInfo, _, err := machine.Ledgers.Get(data.LedgerKey{Name: ledgerName}.Bytes())
 	require.NoError(t, err)
 
-	aliceInputKey := data.VolumeKey{
+	aliceVolumeKey := data.VolumeKey{
 		AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
@@ -699,15 +719,16 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	}
 
 	// Verify the final computed value: 41 transactions * 100 = 4100
-	inputVal, err := attrs.Input.ComputeValue(dataStore, 42, aliceInputKey)
+	pair, err := attrs.Volume.ComputeValue(dataStore, 42, aliceVolumeKey)
 	require.NoError(t, err)
-	require.NotNil(t, inputVal)
-	require.Equal(t, int64(4100), inputVal.Value().Int64(),
+	require.NotNil(t, pair)
+	require.NotNil(t, pair.InputKnown)
+	require.Equal(t, int64(4100), pair.InputKnown.Value().Int64(),
 		"users:alice input should be 4100 (41 * 100)")
 
 	// Verify that compaction pruned old entries.
 	// 41 diffs initially, 18 pruned (8 at rotation 3 + 10 at rotation 4) = 23 remaining.
-	entries := listRawAttributeEntries(t, dataStore, data.AttributePrefixInput, aliceInputKey)
+	entries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceVolumeKey)
 	require.Equal(t, 23, len(entries),
 		"compaction should have pruned old diffs, leaving 23 entries (diffs at indexes 20-42)")
 

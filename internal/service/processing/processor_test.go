@@ -580,28 +580,32 @@ func TestProcessCreateTransaction(t *testing.T) {
 	}
 
 	// Source has 1000 input, 0 output -> balance = 1000
-	sourceInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(1000))}
-	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
+	sourceVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(1000)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+	}
 
 	// Destination starts with 0
-	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
+	destVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
-	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
-	mockStore.EXPECT().PutOutput(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
+	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100
-			require.Equal(t, int64(100), value.Known.Value().Int64())
+			require.Equal(t, int64(100), value.OutputKnown.Value().Int64())
 		},
 	)
-	mockStore.EXPECT().GetInput(destKey).Return(destInput, nil)
-	mockStore.EXPECT().PutInput(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
+	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.Known.Value().Int64())
+			require.Equal(t, int64(100), value.InputKnown.Value().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -658,12 +662,13 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	}
 
 	// Source has only 50 balance (100 input - 50 output)
-	sourceInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(100))}
-	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(50))}
+	sourceVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(100)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
-	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -714,18 +719,22 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	}
 
 	// World has negative balance (but "world" bypasses balance check)
-	worldInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
-	worldOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(1000000))}
-	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
+	worldVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(1000000)),
+	}
+	destVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(worldKey).Return(worldInput, nil)
-	mockStore.EXPECT().GetOutput(worldKey).Return(worldOutput, nil)
-	mockStore.EXPECT().PutOutput(worldKey, gomock.Any())
-	mockStore.EXPECT().GetInput(destKey).Return(destInput, nil)
-	mockStore.EXPECT().PutInput(destKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(worldKey).Return(worldVolume, nil)
+	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
+	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -790,6 +799,16 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	require.Contains(t, err.Error(), "ledger does not exist")
 }
 
+// setupNumscriptVolumeMocks sets up the common volume mock expectations for Numscript tests.
+// All Numscript tests use flexible (AnyTimes) volume mocking with zero balances.
+func setupNumscriptVolumeMocks(mockStore *MockStore) {
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+	}, nil).AnyTimes()
+	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
+}
+
 func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	t.Parallel()
 
@@ -807,10 +826,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -869,10 +885,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -938,10 +951,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -1008,10 +1018,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -1157,10 +1164,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -1225,10 +1229,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -1288,10 +1289,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
@@ -1378,27 +1376,31 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	}
 
 	// Source has only 50 balance (100 input - 50 output) - not enough for 100
-	sourceInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(100))}
-	sourceOutput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(50))}
-	destInput := &raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}
+	sourceVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(100)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+	}
+	destVolume := &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
+		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetInput(sourceKey).Return(sourceInput, nil)
-	mockStore.EXPECT().GetOutput(sourceKey).Return(sourceOutput, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 	// With force=true, balance check is skipped and output is updated
-	mockStore.EXPECT().PutOutput(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100 (50 + 100 = 150)
-			require.Equal(t, int64(150), value.Known.Value().Int64())
+			require.Equal(t, int64(150), value.OutputKnown.Value().Int64())
 		},
 	)
-	mockStore.EXPECT().GetInput(destKey).Return(destInput, nil)
-	mockStore.EXPECT().PutInput(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
+	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
+	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.Known.Value().Int64())
+			require.Equal(t, int64(100), value.InputKnown.Value().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1460,28 +1462,27 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Source has no input at all (nil) - would fail balance check normally
+	// Source has no volume at all (nil) - would fail balance check normally
 	// With force=true, this should succeed
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	// Source returns nil (no balance)
-	mockStore.EXPECT().GetInput(sourceKey).Return(nil, data.ErrNotFound)
-	mockStore.EXPECT().GetOutput(sourceKey).Return(nil, data.ErrNotFound)
-	mockStore.EXPECT().PutOutput(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-			// Output should use DiffSinceBaseIndex since we don't know the absolute value
-			require.Nil(t, value.Known)
-			require.Equal(t, int64(100), value.DiffSinceBaseIndex.Value().Int64())
+	// Source returns ErrNotFound (no volume)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+			// Output should use OutputDiff since we don't know the absolute value
+			require.Nil(t, value.OutputKnown)
+			require.Equal(t, int64(100), value.OutputDiff.Value().Int64())
 		},
 	)
-	mockStore.EXPECT().GetInput(destKey).Return(nil, data.ErrNotFound)
-	mockStore.EXPECT().PutInput(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-			// Input should use DiffSinceBaseIndex since we don't know the absolute value
-			require.Nil(t, value.Known)
-			require.Equal(t, int64(100), value.DiffSinceBaseIndex.Value().Int64())
+	mockStore.EXPECT().GetVolume(destKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
+		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+			// Input should use InputDiff since we don't know the absolute value
+			require.Nil(t, value.InputKnown)
+			require.Equal(t, int64(100), value.InputDiff.Value().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1530,12 +1531,9 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	// Note: GetInput/GetOutput might be called for volume updates but not for balance queries
+	// Note: GetVolume might be called for volume updates but not for balance queries
 	// when force=true (store adapter returns unlimited balance)
-	mockStore.EXPECT().GetInput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().GetOutput(gomock.Any()).Return(&raftcmdpb.VolumeHolder{Known: commonpb.NewBigInt(big.NewInt(0))}, nil).AnyTimes()
-	mockStore.EXPECT().PutOutput(gomock.Any(), gomock.Any()).AnyTimes()
-	mockStore.EXPECT().PutInput(gomock.Any(), gomock.Any()).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 

@@ -125,21 +125,6 @@ func (mr *MockStoreMockRecorder) GetIdempotencyKey(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIdempotencyKey", reflect.TypeOf((*MockStore)(nil).GetIdempotencyKey), key)
 }
 
-// GetInput mocks base method.
-func (m *MockStore) GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetInput", key)
-	ret0, _ := ret[0].(*raftcmdpb.VolumeHolder)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetInput indicates an expected call of GetInput.
-func (mr *MockStoreMockRecorder) GetInput(key any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInput", reflect.TypeOf((*MockStore)(nil).GetInput), key)
-}
-
 // GetLastLogHash mocks base method.
 func (m *MockStore) GetLastLogHash() []byte {
 	m.ctrl.T.Helper()
@@ -197,21 +182,6 @@ func (mr *MockStoreMockRecorder) GetNextSequenceID() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextSequenceID", reflect.TypeOf((*MockStore)(nil).GetNextSequenceID))
 }
 
-// GetOutput mocks base method.
-func (m *MockStore) GetOutput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetOutput", key)
-	ret0, _ := ret[0].(*raftcmdpb.VolumeHolder)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetOutput indicates an expected call of GetOutput.
-func (mr *MockStoreMockRecorder) GetOutput(key any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOutput", reflect.TypeOf((*MockStore)(nil).GetOutput), key)
-}
-
 // GetReverted mocks base method.
 func (m *MockStore) GetReverted(key data.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()
@@ -240,6 +210,21 @@ func (m *MockStore) GetTransactionReference(key data.TransactionReferenceKey) (*
 func (mr *MockStoreMockRecorder) GetTransactionReference(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionReference", reflect.TypeOf((*MockStore)(nil).GetTransactionReference), key)
+}
+
+// GetVolume mocks base method.
+func (m *MockStore) GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolume", key)
+	ret0, _ := ret[0].(*raftcmdpb.VolumePair)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolume indicates an expected call of GetVolume.
+func (mr *MockStoreMockRecorder) GetVolume(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockStore)(nil).GetVolume), key)
 }
 
 // IncrementNextLedgerID mocks base method.
@@ -306,18 +291,6 @@ func (mr *MockStoreMockRecorder) PutIdempotencyKey(key, value any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutIdempotencyKey", reflect.TypeOf((*MockStore)(nil).PutIdempotencyKey), key, value)
 }
 
-// PutInput mocks base method.
-func (m *MockStore) PutInput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutInput", key, value)
-}
-
-// PutInput indicates an expected call of PutInput.
-func (mr *MockStoreMockRecorder) PutInput(key, value any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutInput", reflect.TypeOf((*MockStore)(nil).PutInput), key, value)
-}
-
 // PutLedger mocks base method.
 func (m *MockStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 	m.ctrl.T.Helper()
@@ -342,18 +315,6 @@ func (mr *MockStoreMockRecorder) PutLedgerMetadata(key, value any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedgerMetadata", reflect.TypeOf((*MockStore)(nil).PutLedgerMetadata), key, value)
 }
 
-// PutOutput mocks base method.
-func (m *MockStore) PutOutput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutOutput", key, value)
-}
-
-// PutOutput indicates an expected call of PutOutput.
-func (mr *MockStoreMockRecorder) PutOutput(key, value any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutOutput", reflect.TypeOf((*MockStore)(nil).PutOutput), key, value)
-}
-
 // PutReverted mocks base method.
 func (m *MockStore) PutReverted(key data.TransactionKey, reverted bool) {
 	m.ctrl.T.Helper()
@@ -376,6 +337,18 @@ func (m *MockStore) PutTransactionReference(key data.TransactionReferenceKey, va
 func (mr *MockStoreMockRecorder) PutTransactionReference(key, value any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionReference", reflect.TypeOf((*MockStore)(nil).PutTransactionReference), key, value)
+}
+
+// PutVolume mocks base method.
+func (m *MockStore) PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutVolume", key, value)
+}
+
+// PutVolume indicates an expected call of PutVolume.
+func (mr *MockStoreMockRecorder) PutVolume(key, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutVolume", reflect.TypeOf((*MockStore)(nil).PutVolume), key, value)
 }
 
 // SetLastLogHash mocks base method.

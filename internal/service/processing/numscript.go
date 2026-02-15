@@ -74,65 +74,37 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		sourceKey := data.VolumeKey{
 			AccountKey: data.AccountKey{
 				LedgerID: ledgerID,
-				Account:    posting.Source,
+				Account:  posting.Source,
 			},
 			Asset: posting.Asset,
 		}
-		sourceOutput, err := s.GetOutput(sourceKey)
+		sourceVol, err := s.GetVolume(sourceKey)
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
 			return nil, err
 		}
-		if sourceOutput == nil {
-			sourceOutput = &raftcmdpb.VolumeHolder{}
+		if sourceVol == nil {
+			sourceVol = &raftcmdpb.VolumePair{}
 		}
-		// If we know the absolute value, update Known (buffer.Merge will use SetBase).
-		// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
-		if sourceOutput.Known != nil {
-			sourceOutput.Known = commonpb.NewBigInt(
-				new(big.Int).Add(sourceOutput.Known.Value(), posting.Amount),
-			)
-		} else {
-			if sourceOutput.DiffSinceBaseIndex == nil {
-				sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(posting.Amount)
-			} else {
-				sourceOutput.DiffSinceBaseIndex = commonpb.NewBigInt(
-					new(big.Int).Add(sourceOutput.DiffSinceBaseIndex.Value(), posting.Amount),
-				)
-			}
-		}
-		s.PutOutput(sourceKey, sourceOutput)
+		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, posting.Amount, postings[i].Amount)
+		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
 		destKey := data.VolumeKey{
 			AccountKey: data.AccountKey{
 				LedgerID: ledgerID,
-				Account:    posting.Destination,
+				Account:  posting.Destination,
 			},
 			Asset: posting.Asset,
 		}
-		destInput, err := s.GetInput(destKey)
+		destVol, err := s.GetVolume(destKey)
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
 			return nil, err
 		}
-		if destInput == nil {
-			destInput = &raftcmdpb.VolumeHolder{}
+		if destVol == nil {
+			destVol = &raftcmdpb.VolumePair{}
 		}
-		// If we know the absolute value, update Known (buffer.Merge will use SetBase).
-		// If we don't know the absolute value, update DiffSinceBaseIndex (buffer.Merge will use AddDiff).
-		if destInput.Known != nil {
-			destInput.Known = commonpb.NewBigInt(
-				new(big.Int).Add(destInput.Known.Value(), posting.Amount),
-			)
-		} else {
-			if destInput.DiffSinceBaseIndex == nil {
-				destInput.DiffSinceBaseIndex = commonpb.NewBigInt(posting.Amount)
-			} else {
-				destInput.DiffSinceBaseIndex = commonpb.NewBigInt(
-					new(big.Int).Add(destInput.DiffSinceBaseIndex.Value(), posting.Amount),
-				)
-			}
-		}
-		s.PutInput(destKey, destInput)
+		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, posting.Amount, postings[i].Amount)
+		s.PutVolume(destKey, destVol)
 	}
 
 	// Apply account metadata from script execution and collect for return
@@ -199,41 +171,33 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 			volumeKey := data.VolumeKey{
 				AccountKey: data.AccountKey{
 					LedgerID: s.ledgerID,
-					Account:    account,
+					Account:  account,
 				},
 				Asset: asset,
 			}
 
-			input, err := s.store.GetInput(volumeKey)
-			if err != nil && !errors.Is(err, data.ErrNotFound) {
-				return nil, err
-			}
-
-			output, err := s.store.GetOutput(volumeKey)
+			vol, err := s.store.GetVolume(volumeKey)
 			if err != nil && !errors.Is(err, data.ErrNotFound) {
 				return nil, err
 			}
 
 			// Volumes must be preloaded by the admission layer.
-			// If not found, return an error - the client must ensure accounts are known.
-			// Note: In the future, static analysis of Numscript will allow extracting
-			// impacted accounts at admission time for automatic preloading.
-			if input == nil || (input.Known == nil && input.DiffSinceBaseIndex == nil) {
+			if vol == nil || (vol.InputKnown == nil && vol.InputDiff == nil) {
 				return nil, &ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output
 			var inputValue, outputValue *big.Int
-			if input.Known != nil {
-				inputValue = input.Known.Value()
+			if vol.InputKnown != nil {
+				inputValue = vol.InputKnown.Value()
 			} else {
-				inputValue = input.DiffSinceBaseIndex.Value()
+				inputValue = vol.InputDiff.Value()
 			}
 
-			if output != nil && output.Known != nil {
-				outputValue = output.Known.Value()
-			} else if output != nil && output.DiffSinceBaseIndex != nil {
-				outputValue = output.DiffSinceBaseIndex.Value()
+			if vol.OutputKnown != nil {
+				outputValue = vol.OutputKnown.Value()
+			} else if vol.OutputDiff != nil {
+				outputValue = vol.OutputDiff.Value()
 			} else {
 				outputValue = big.NewInt(0)
 			}

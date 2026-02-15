@@ -31,8 +31,7 @@ type Machine struct {
 	Attrs *attributes.Attributes
 
 	Cache           *cache.Cache
-	Input           *attributes.KeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
-	Output          *attributes.KeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
+	Volumes         *attributes.KeyStore[data.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata *attributes.KeyStore[data.MetadataKey, *commonpb.MetadataValue]
 	LedgerMetadata  *attributes.KeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
 	Reversions      *attributes.KeyStore[data.TransactionKey, bool]
@@ -101,13 +100,9 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		auditEnabled:                auditEnabled,
 		Attrs:                       attrs,
 		Cache:                       cache,
-		Input: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder](
+		Volumes: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumePair](
 			attributes.DefaultKeys,
-			cache.Input,
-		),
-		Output: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder](
-			attributes.DefaultKeys,
-			cache.Output,
+			cache.Volumes,
 		),
 		AccountMetadata: attributes.NewKeyStore[data.MetadataKey, *commonpb.MetadataValue](
 			attributes.DefaultKeys,
@@ -245,11 +240,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]struct{}) error {
 	for keyStr := range dirtyKeys {
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Attrs.Input.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
-			return fmt.Errorf("compacting input volume: %w", err)
-		}
-		if err := fsm.Attrs.Output.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
-			return fmt.Errorf("compacting output volume: %w", err)
+		if err := fsm.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
+			return fmt.Errorf("compacting volume: %w", err)
 		}
 	}
 	return nil
@@ -277,12 +269,12 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 	}
 
-	// Helper function to put a preloaded amount into a cache generation
-	putInCacheAmount := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]],
+	// Helper function to put a preloaded volume pair into a cache generation
+	putInCacheVolumePair := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]],
 		attrID *raftcmdpb.AttributeID,
-		amount *commonpb.BigInt,
-	) *commonpb.BigInt {
+		pair *raftcmdpb.VolumePair,
+	) *raftcmdpb.VolumePair {
 		id := attributes.U128FromBytes(attrID.Id)
 
 		fsm.logger.WithFields(map[string]any{
@@ -291,23 +283,33 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		value, ok := kv.Get(id)
 		if ok {
-			if value.Data.Known == nil {
-				value.Data.Known = amount
-				if value.Data.DiffSinceBaseIndex != nil {
-					value.Data.Known = commonpb.NewBigInt(
-						new(big.Int).Add(value.Data.Known.Value(), value.Data.DiffSinceBaseIndex.Value()),
+			// If InputKnown is not yet set, merge preloaded input with any existing diff
+			if value.Data.InputKnown == nil && pair.InputKnown != nil {
+				value.Data.InputKnown = pair.InputKnown
+				if value.Data.InputDiff != nil {
+					value.Data.InputKnown = commonpb.NewBigInt(
+						new(big.Int).Add(value.Data.InputKnown.Value(), value.Data.InputDiff.Value()),
 					)
 				}
 			}
-			return value.Data.Known
+			// If OutputKnown is not yet set, merge preloaded output with any existing diff
+			if value.Data.OutputKnown == nil && pair.OutputKnown != nil {
+				value.Data.OutputKnown = pair.OutputKnown
+				if value.Data.OutputDiff != nil {
+					value.Data.OutputKnown = commonpb.NewBigInt(
+						new(big.Int).Add(value.Data.OutputKnown.Value(), value.Data.OutputDiff.Value()),
+					)
+				}
+			}
+			return value.Data
 		}
 
-		kv.Put(id, attributes.Entry[*raftcmdpb.VolumeHolder]{
+		kv.Put(id, attributes.Entry[*raftcmdpb.VolumePair]{
 			Tag:  attrID.Tag,
-			Data: &raftcmdpb.VolumeHolder{Known: amount},
+			Data: pair,
 		})
 
-		return amount
+		return pair
 	}
 
 	// Helper function to put a preloaded boolean into a cache generation
@@ -443,20 +445,16 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// todo: handle metadata preload
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.Type.(type) {
-		case *raftcmdpb.Preload_Input:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				aggregated := putInCacheAmount(fsm.Cache.Input.Gen1, preloadType.Input.Id, preloadType.Input.Value)
-				putInCacheAmount(fsm.Cache.Input.Gen0, preloadType.Input.Id, aggregated)
-			} else {
-				putInCacheAmount(fsm.Cache.Input.Gen0, preloadType.Input.Id, preloadType.Input.Value)
+		case *raftcmdpb.Preload_Volume:
+			pair := &raftcmdpb.VolumePair{
+				InputKnown:  preloadType.Volume.Input,
+				OutputKnown: preloadType.Volume.Output,
 			}
-
-		case *raftcmdpb.Preload_Output:
 			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				aggregated := putInCacheAmount(fsm.Cache.Output.Gen1, preloadType.Output.Id, preloadType.Output.Value)
-				putInCacheAmount(fsm.Cache.Output.Gen0, preloadType.Output.Id, aggregated)
+				aggregated := putInCacheVolumePair(fsm.Cache.Volumes.Gen1, preloadType.Volume.Id, pair)
+				putInCacheVolumePair(fsm.Cache.Volumes.Gen0, preloadType.Volume.Id, aggregated)
 			} else {
-				putInCacheAmount(fsm.Cache.Output.Gen0, preloadType.Output.Id, preloadType.Output.Value)
+				putInCacheVolumePair(fsm.Cache.Volumes.Gen0, preloadType.Volume.Id, pair)
 			}
 
 		case *raftcmdpb.Preload_Reverted:
@@ -648,8 +646,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 
 	var (
 		baseIndex           uint64
-		inputStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
-		outputStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
+		volumeStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
 		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
@@ -659,8 +656,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 
 	if genIndex == 0 {
 		baseIndex = cache.BaseIndex.Gen0
-		inputStore = cache.Input.Gen0
-		outputStore = cache.Output.Gen0
+		volumeStore = cache.Volumes.Gen0
 		metadataStore = cache.AccountMetadata.Gen0
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0
 		ledgerStore = cache.Ledgers.Gen0
@@ -668,8 +664,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		referenceStore = cache.References.Gen0
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
-		inputStore = cache.Input.Gen1
-		outputStore = cache.Output.Gen1
+		volumeStore = cache.Volumes.Gen1
 		metadataStore = cache.AccountMetadata.Gen1
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1
 		ledgerStore = cache.Ledgers.Gen1
@@ -679,8 +674,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
 		BaseIndex:      baseIndex,
-		Input:          make([]*raftcmdpb.VolumeAttributeEntry, 0, inputStore.Size()),
-		Output:         make([]*raftcmdpb.VolumeAttributeEntry, 0, outputStore.Size()),
+		Volumes:        make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
 		Metadata:       make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
 		LedgerMetadata: make([]*raftcmdpb.MetadataAttributeEntry, 0, ledgerMetadataStore.Size()),
 		Ledgers:        make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
@@ -688,38 +682,22 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		References:     make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
 	}
 
-	// Serialize Input KeyStore
-	// todo: clean the casts
-	if inputMap, ok := inputStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]); ok {
-		for u128, entry := range inputMap.Iter() {
-			ksEntry := &raftcmdpb.VolumeAttributeEntry{
+	// Serialize Volumes KeyStore
+	if volumeMap, ok := volumeStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]); ok {
+		for u128, entry := range volumeMap.Iter() {
+			ksEntry := &raftcmdpb.VolumeAttributeSnapshotEntry{
 				Id: &raftcmdpb.AttributeID{
 					Id:  u128[:],
 					Tag: entry.Tag,
 				},
 			}
 			if entry.Data != nil {
-				ksEntry.Known = entry.Data.Known
-				ksEntry.DiffSinceBaseIndex = entry.Data.DiffSinceBaseIndex
+				ksEntry.InputKnown = entry.Data.InputKnown
+				ksEntry.InputDiff = entry.Data.InputDiff
+				ksEntry.OutputKnown = entry.Data.OutputKnown
+				ksEntry.OutputDiff = entry.Data.OutputDiff
 			}
-			snapshot.Input = append(snapshot.Input, ksEntry)
-		}
-	}
-
-	// Serialize Output KeyStore
-	if outputMap, ok := outputStore.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]); ok {
-		for u128, entry := range outputMap.Iter() {
-			ksEntry := &raftcmdpb.VolumeAttributeEntry{
-				Id: &raftcmdpb.AttributeID{
-					Id:  u128[:],
-					Tag: entry.Tag,
-				},
-			}
-			if entry.Data != nil {
-				ksEntry.Known = entry.Data.Known
-				ksEntry.DiffSinceBaseIndex = entry.Data.DiffSinceBaseIndex
-			}
-			snapshot.Output = append(snapshot.Output, ksEntry)
+			snapshot.Volumes = append(snapshot.Volumes, ksEntry)
 		}
 	}
 
@@ -839,8 +817,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 
 	var (
-		inputStore          kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
-		outputStore         kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]]
+		volumeStore         kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
 		metadataStore       kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerMetadataStore kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
@@ -850,8 +827,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 
 	if genIndex == 0 {
 		cache.BaseIndex.Gen0 = snapshot.BaseIndex
-		inputStore = cache.Input.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
-		outputStore = cache.Output.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
+		volumeStore = cache.Volumes.Gen0.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]])
 		metadataStore = cache.AccountMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerStore = cache.Ledgers.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
@@ -859,8 +835,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore = cache.References.Gen0.(kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]])
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.BaseIndex
-		inputStore = cache.Input.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
-		outputStore = cache.Output.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumeHolder]])
+		volumeStore = cache.Volumes.Gen1.(kv.Map[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]])
 		metadataStore = cache.AccountMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerMetadataStore = cache.LedgerMetadata.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.MetadataValue]])
 		ledgerStore = cache.Ledgers.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]])
@@ -868,29 +843,18 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore = cache.References.Gen1.(kv.Map[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]])
 	}
 
-	// Deserialize Input KeyStore
-	for _, ksEntry := range snapshot.Input {
+	// Deserialize Volumes KeyStore
+	for _, ksEntry := range snapshot.Volumes {
 		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
-		holder := &raftcmdpb.VolumeHolder{
-			Known:              ksEntry.Known,
-			DiffSinceBaseIndex: ksEntry.DiffSinceBaseIndex,
+		pair := &raftcmdpb.VolumePair{
+			InputKnown:  ksEntry.InputKnown,
+			InputDiff:   ksEntry.InputDiff,
+			OutputKnown: ksEntry.OutputKnown,
+			OutputDiff:  ksEntry.OutputDiff,
 		}
-		inputStore.Put(u128, attributes.Entry[*raftcmdpb.VolumeHolder]{
+		volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 			Tag:  ksEntry.Id.Tag,
-			Data: holder,
-		})
-	}
-
-	// Deserialize Output KeyStore
-	for _, ksEntry := range snapshot.Output {
-		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
-		holder := &raftcmdpb.VolumeHolder{
-			Known:              ksEntry.Known,
-			DiffSinceBaseIndex: ksEntry.DiffSinceBaseIndex,
-		}
-		outputStore.Put(u128, attributes.Entry[*raftcmdpb.VolumeHolder]{
-			Tag:  ksEntry.Id.Tag,
-			Data: holder,
+			Data: pair,
 		})
 	}
 

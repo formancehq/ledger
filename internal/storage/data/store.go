@@ -53,8 +53,7 @@ var (
 	keyPrefixAudit             byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
 	KeyPrefixAccountIndex      byte = 0x0B // [KeyPrefixAccountIndex][ledgerID][account] -> empty (existence marker)
 
-	AttributePrefixInput          = byte('I')
-	AttributePrefixOutput         = byte('O')
+	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
 	AttributePrefixLedgerMetadata = byte('L')
 	AttributePrefixReverted       = byte('R')

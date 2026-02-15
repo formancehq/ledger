@@ -66,74 +66,47 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerI
 	return result, nil
 }
 
-// assetEntry holds a VolumeKey and its canonical key bytes for volume computation.
-type assetEntry struct {
-	key          data.VolumeKey
-	canonicalKey []byte
-}
-
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
-// It uses the attributes system to list all keys and compute cumulative values.
+// It uses the attributes system to list all volume keys and compute cumulative values.
 func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
 	const maxIndex uint64 = 1 << 62
 
-	// Collect all assets from both Input and Output mapping tables
-	// Store both the asset name and the canonical key for later computation
-	assetEntries := make(map[string]assetEntry)
-
-	// List all Input entries
-	inputEntries, err := attrs.Input.List(s)
+	// List all Volume entries
+	volumeEntries, err := attrs.Volume.List(s)
 	if err != nil {
-		return nil, fmt.Errorf("listing input entries: %w", err)
-	}
-	for _, entry := range inputEntries {
-		var key data.VolumeKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			return nil, fmt.Errorf("parsing input key: %w", err)
-		}
-		if key.LedgerID == ledgerID && key.Account == account {
-			assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}
-		}
+		return nil, fmt.Errorf("listing volume entries: %w", err)
 	}
 
-	// List all Output entries
-	outputEntries, err := attrs.Output.List(s)
-	if err != nil {
-		return nil, fmt.Errorf("listing output entries: %w", err)
-	}
-	for _, entry := range outputEntries {
+	// Filter entries by ledger and account, then compute values
+	for _, entry := range volumeEntries {
 		var key data.VolumeKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			return nil, fmt.Errorf("parsing output key: %w", err)
+			return nil, fmt.Errorf("parsing volume key: %w", err)
 		}
-		if key.LedgerID == ledgerID && key.Account == account {
-			// Only add if not already present from input entries
-			if _, exists := assetEntries[key.Asset]; !exists {
-				assetEntries[key.Asset] = assetEntry{key: key, canonicalKey: entry.CanonicalKey}
+		if key.LedgerID != ledgerID || key.Account != account {
+			continue
+		}
+
+		// Compute the merged VolumePair for this asset
+		pair, err := attrs.Volume.ComputeValue(s, maxIndex, entry.CanonicalKey)
+		if err != nil {
+			return nil, fmt.Errorf("computing volume for %s: %w", key.Asset, err)
+		}
+
+		input := big.NewInt(0)
+		output := big.NewInt(0)
+		if pair != nil {
+			if pair.InputKnown != nil {
+				input = pair.InputKnown.Value()
+			}
+			if pair.OutputKnown != nil {
+				output = pair.OutputKnown.Value()
 			}
 		}
-	}
-
-	// For each asset, compute Input and Output values
-	for asset, entry := range assetEntries {
-		// Use the canonical key directly for better data locality
-		inputValue, err := attrs.Input.ComputeValue(s, maxIndex, entry.canonicalKey)
-		if err != nil {
-			return nil, fmt.Errorf("computing input for %s: %w", asset, err)
-		}
-
-		// Use the same canonical key for Output (same key, different attribute prefix)
-		outputValue, err := attrs.Output.ComputeValue(s, maxIndex, entry.canonicalKey)
-		if err != nil {
-			return nil, fmt.Errorf("computing output for %s: %w", asset, err)
-		}
-
-		input := inputValue.Value()
-		output := outputValue.Value()
 		balance := new(big.Int).Sub(input, output)
 
-		result[asset] = &commonpb.VolumesWithBalance{
+		result[key.Asset] = &commonpb.VolumesWithBalance{
 			Input:   input.String(),
 			Output:  output.String(),
 			Balance: balance.String(),

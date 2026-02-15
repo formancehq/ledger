@@ -145,7 +145,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Pass 2: Compare expected volumes against actual stored values
 	const maxIndex uint64 = 1 << 62
 
-	for key, expectedInput := range expectedInputs {
+	// Collect all volume keys from both expected maps
+	allVolumeKeys := make(map[string]struct{}, len(expectedInputs)+len(expectedOutputs))
+	for key := range expectedInputs {
+		allVolumeKeys[key] = struct{}{}
+	}
+	for key := range expectedOutputs {
+		allVolumeKeys[key] = struct{}{}
+	}
+
+	for key := range allVolumeKeys {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -155,51 +164,40 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualInput, err := c.attrs.Input.ComputeValue(c.store, maxIndex, []byte(key))
+		pair, err := c.attrs.Volume.ComputeValue(c.store, maxIndex, []byte(key))
 		if err != nil {
-			return fmt.Errorf("computing input for %s: %w", key, err)
+			return fmt.Errorf("computing volume for %s: %w", key, err)
 		}
 
 		actualInputVal := big.NewInt(0)
-		if actualInput != nil {
-			actualInputVal = actualInput.Value()
-		}
-
-		if expectedInput.Cmp(actualInputVal) != 0 {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
-					vk.Account, vk.Asset, expectedInput.String(), actualInputVal.String()),
-				0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
-			errorCount++
-		}
-	}
-
-	for key, expectedOutput := range expectedOutputs {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		var vk data.VolumeKey
-		if err := vk.Unmarshal([]byte(key)); err != nil {
-			continue
-		}
-
-		actualOutput, err := c.attrs.Output.ComputeValue(c.store, maxIndex, []byte(key))
-		if err != nil {
-			return fmt.Errorf("computing output for %s: %w", key, err)
-		}
-
 		actualOutputVal := big.NewInt(0)
-		if actualOutput != nil {
-			actualOutputVal = actualOutput.Value()
+		if pair != nil {
+			if pair.InputKnown != nil {
+				actualInputVal = pair.InputKnown.Value()
+			}
+			if pair.OutputKnown != nil {
+				actualOutputVal = pair.OutputKnown.Value()
+			}
 		}
 
-		if expectedOutput.Cmp(actualOutputVal) != 0 {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("output mismatch for %s/%s: expected %s, got %s",
-					vk.Account, vk.Asset, expectedOutput.String(), actualOutputVal.String()),
-				0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
-			errorCount++
+		if expectedInput, ok := expectedInputs[key]; ok {
+			if expectedInput.Cmp(actualInputVal) != 0 {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+					fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
+						vk.Account, vk.Asset, expectedInput.String(), actualInputVal.String()),
+					0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
+				errorCount++
+			}
+		}
+
+		if expectedOutput, ok := expectedOutputs[key]; ok {
+			if expectedOutput.Cmp(actualOutputVal) != 0 {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+					fmt.Sprintf("output mismatch for %s/%s: expected %s, got %s",
+						vk.Account, vk.Asset, expectedOutput.String(), actualOutputVal.String()),
+					0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
+				errorCount++
+			}
 		}
 	}
 

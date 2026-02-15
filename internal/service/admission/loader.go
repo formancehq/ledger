@@ -122,8 +122,7 @@ func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
 // Loaders groups all attribute loaders by type.
 // Similar to Cache, it provides type-safe access to loaders for each attribute type.
 type Loaders struct {
-	Input           *AttributeLoader[*commonpb.BigInt]
-	Output          *AttributeLoader[*commonpb.BigInt]
+	Volumes         *AttributeLoader[*raftcmdpb.VolumePair]
 	Reversions      *AttributeLoader[bool]
 	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
 	References      *AttributeLoader[*commonpb.TransactionReferenceValue]
@@ -134,8 +133,7 @@ type Loaders struct {
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
 func NewLoaders() *Loaders {
 	return &Loaders{
-		Input:           NewAttributeLoader[*commonpb.BigInt](),
-		Output:          NewAttributeLoader[*commonpb.BigInt](),
+		Volumes:         NewAttributeLoader[*raftcmdpb.VolumePair](),
 		Reversions:      NewAttributeLoader[bool](),
 		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
 		References:      NewAttributeLoader[*commonpb.TransactionReferenceValue](),
@@ -147,8 +145,7 @@ func NewLoaders() *Loaders {
 // LoadedKeysTracker tracks which keys were loaded for each attribute type.
 // Used to clean up loaded entries after a command is applied.
 type LoadedKeysTracker struct {
-	Input           []attributes.U128
-	Output          []attributes.U128
+	Volumes         []attributes.U128
 	Reversions      []attributes.U128
 	IdempotencyKeys []attributes.U128
 	References      []attributes.U128
@@ -163,11 +160,8 @@ func NewLoadedKeysTracker() *LoadedKeysTracker {
 
 // MarkApplied cleans up all tracked keys from their respective loaders.
 func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
-	for _, key := range t.Input {
-		loaders.Input.MarkApplied(key)
-	}
-	for _, key := range t.Output {
-		loaders.Output.MarkApplied(key)
+	for _, key := range t.Volumes {
+		loaders.Volumes.MarkApplied(key)
 	}
 	for _, key := range t.Reversions {
 		loaders.Reversions.MarkApplied(key)

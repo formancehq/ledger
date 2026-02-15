@@ -142,12 +142,12 @@ func TestAttributeCache_PutGet(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 
 	key := attributes.NewU128(1, 2)
-	entry := attributes.Entry[*raftcmdpb.VolumeHolder]{
+	entry := attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag:  123,
-		Data: &raftcmdpb.VolumeHolder{},
+		Data: &raftcmdpb.VolumePair{},
 	}
 
 	// Get on empty cache
@@ -166,12 +166,12 @@ func TestAttributeCache_Del(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 
 	key := attributes.NewU128(1, 2)
-	entry := attributes.Entry[*raftcmdpb.VolumeHolder]{
+	entry := attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag:  123,
-		Data: &raftcmdpb.VolumeHolder{},
+		Data: &raftcmdpb.VolumePair{},
 	}
 
 	ac.Put(key, entry)
@@ -188,14 +188,14 @@ func TestAttributeCache_Size(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 
 	assert.Equal(t, uint64(0), ac.Size())
 
-	ac.Put(attributes.NewU128(1, 1), attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Put(attributes.NewU128(1, 1), attributes.Entry[*raftcmdpb.VolumePair]{})
 	assert.Equal(t, uint64(1), ac.Size())
 
-	ac.Put(attributes.NewU128(2, 2), attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Put(attributes.NewU128(2, 2), attributes.Entry[*raftcmdpb.VolumePair]{})
 	assert.Equal(t, uint64(2), ac.Size())
 }
 
@@ -204,13 +204,13 @@ func TestAttributeCache_Rotate(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 
 	key1 := attributes.NewU128(1, 1)
 	key2 := attributes.NewU128(2, 2)
 
 	// Add to Gen0
-	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 1})
+	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
 	// Rotate: Gen0 -> Gen1, new empty Gen0
 	ac.Rotate()
@@ -220,7 +220,7 @@ func TestAttributeCache_Rotate(t *testing.T) {
 	assert.True(t, ok, "key1 should be in Gen1 after rotation")
 
 	// Add key2 to new Gen0
-	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 2})
+	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2})
 
 	// Both keys should be accessible
 	_, ok = ac.Get(key1)
@@ -243,11 +243,11 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 	cache.CurrentGeneration = 0
 
 	key := attributes.NewU128(1, 1)
-	ac.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Index 5 is in generation 0 (same as current), data will be there
 	assert.True(t, ac.IsGuaranteedInCache(5, key))
@@ -262,18 +262,18 @@ func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 	cache.CurrentGeneration = 0
 
 	keyInGen0 := attributes.NewU128(1, 1)
 	keyInGen1 := attributes.NewU128(2, 2)
 
 	// Put keyInGen0 in Gen0
-	ac.Put(keyInGen0, attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Put(keyInGen0, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Simulate keyInGen1 being in Gen1 only
 	ac.mu.Lock()
-	ac.Gen1.Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Gen1.Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumePair]{})
 	ac.mu.Unlock()
 
 	// Index 15 is in generation 1 (next generation)
@@ -289,11 +289,11 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
-	ac := cache.Input
+	ac := cache.Volumes
 	cache.CurrentGeneration = 0
 
 	key := attributes.NewU128(1, 1)
-	ac.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{})
+	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Index 25 is in generation 2 (two generations ahead)
 	// Data will be lost after two rotations -> false
@@ -306,8 +306,7 @@ func TestCache_NewCache(t *testing.T) {
 	cache, err := New(100, nil)
 	require.NoError(t, err)
 
-	assert.NotNil(t, cache.Input)
-	assert.NotNil(t, cache.Output)
+	assert.NotNil(t, cache.Volumes)
 	assert.NotNil(t, cache.AccountMetadata)
 	assert.Equal(t, uint64(100), cache.GenerationThreshold)
 	assert.Equal(t, uint64(0), cache.CurrentGeneration)
@@ -324,14 +323,14 @@ func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
 
 	// Add some data
 	key := attributes.NewU128(1, 1)
-	cache.Input.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 1})
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
 	// Check at index 5 (still generation 0)
 	cache.CheckRotationNeeded(5)
 	assert.Equal(t, uint64(0), cache.CurrentGeneration)
 
 	// Data should still be in Gen0
-	_, ok := cache.Input.Get(key)
+	_, ok := cache.Volumes.Get(key)
 	assert.True(t, ok)
 }
 
@@ -344,14 +343,14 @@ func TestCache_CheckRotationNeeded_NewGeneration(t *testing.T) {
 
 	// Add some data
 	key := attributes.NewU128(1, 1)
-	cache.Input.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 1})
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
 	// Check at index 11 (generation 1)
 	cache.CheckRotationNeeded(11)
 	assert.Equal(t, uint64(1), cache.CurrentGeneration)
 
 	// Data should now be in Gen1 (still accessible)
-	_, ok := cache.Input.Get(key)
+	_, ok := cache.Volumes.Get(key)
 	assert.True(t, ok)
 
 	// BaseIndex should be the canonical boundary genEndIndex(0, 10) = 10
@@ -366,19 +365,19 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 	cache.CurrentGeneration = 0
 
 	keyGen0 := attributes.NewU128(1, 1)
-	cache.Input.Put(keyGen0, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 1})
+	cache.Volumes.Put(keyGen0, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
 	// Move to generation 1
 	cache.CheckRotationNeeded(11)
 	assert.Equal(t, uint64(1), cache.CurrentGeneration)
 
 	keyGen1 := attributes.NewU128(2, 2)
-	cache.Input.Put(keyGen1, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 2})
+	cache.Volumes.Put(keyGen1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2})
 
 	// Both keys accessible
-	_, ok := cache.Input.Get(keyGen0)
+	_, ok := cache.Volumes.Get(keyGen0)
 	assert.True(t, ok)
-	_, ok = cache.Input.Get(keyGen1)
+	_, ok = cache.Volumes.Get(keyGen1)
 	assert.True(t, ok)
 
 	// Move to generation 2
@@ -386,9 +385,9 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 	assert.Equal(t, uint64(2), cache.CurrentGeneration)
 
 	// keyGen0 should be gone, keyGen1 should still be there
-	_, ok = cache.Input.Get(keyGen0)
+	_, ok = cache.Volumes.Get(keyGen0)
 	assert.False(t, ok, "keyGen0 should be gone after second rotation")
-	_, ok = cache.Input.Get(keyGen1)
+	_, ok = cache.Volumes.Get(keyGen1)
 	assert.True(t, ok, "keyGen1 should still be accessible")
 }
 
@@ -400,17 +399,14 @@ func TestCache_AllAttributeCachesRotate(t *testing.T) {
 
 	// Add data to all caches
 	key := attributes.NewU128(1, 1)
-	cache.Input.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 1})
-	cache.Output.Put(key, attributes.Entry[*raftcmdpb.VolumeHolder]{Tag: 2})
-	cache.AccountMetadata.Put(key, attributes.Entry[*commonpb.MetadataValue]{Tag: 3})
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
+	cache.AccountMetadata.Put(key, attributes.Entry[*commonpb.MetadataValue]{Tag: 2})
 
 	// Trigger rotation
 	cache.CheckRotationNeeded(11)
 
 	// All data should still be accessible (in Gen1)
-	_, ok := cache.Input.Get(key)
-	assert.True(t, ok)
-	_, ok = cache.Output.Get(key)
+	_, ok := cache.Volumes.Get(key)
 	assert.True(t, ok)
 	_, ok = cache.AccountMetadata.Get(key)
 	assert.True(t, ok)
@@ -419,9 +415,7 @@ func TestCache_AllAttributeCachesRotate(t *testing.T) {
 	cache.CheckRotationNeeded(21)
 
 	// All data should be gone
-	_, ok = cache.Input.Get(key)
-	assert.False(t, ok)
-	_, ok = cache.Output.Get(key)
+	_, ok = cache.Volumes.Get(key)
 	assert.False(t, ok)
 	_, ok = cache.AccountMetadata.Get(key)
 	assert.False(t, ok)

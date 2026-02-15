@@ -139,9 +139,11 @@ message LedgerBoundaries {
   uint32 ledger_id = 3;
 }
 
-message VolumeHolder {
-  common.BigInt known = 1;
-  common.BigInt diff_since_base_index = 2;
+message VolumePair {
+  common.BigInt input_known = 1;
+  common.BigInt input_diff = 2;
+  common.BigInt output_known = 3;
+  common.BigInt output_diff = 4;
 }
 
 message PreloadSet {
@@ -151,24 +153,19 @@ message PreloadSet {
 
 message Preload {
   oneof type {
-     PreloadInput input = 1;
-     PreloadOutput output = 2;
-     PreloadReverted reverted = 3;
-     PreloadIdempotencyKey idempotency_key = 4;
-     PreloadLedger ledger = 5;
-     PreloadBoundary boundary = 6;
-     PreloadTransactionReference transaction_reference = 7;
+     PreloadVolume volume = 1;
+     PreloadReverted reverted = 2;
+     PreloadIdempotencyKey idempotency_key = 3;
+     PreloadLedger ledger = 4;
+     PreloadBoundary boundary = 5;
+     PreloadTransactionReference transaction_reference = 6;
   }
 }
 
-message PreloadInput {
+message PreloadVolume {
   AttributeID id = 1;
-  common.BigInt value = 2;
-}
-
-message PreloadOutput {
-  AttributeID id = 1;
-  common.BigInt value = 2;
+  common.BigInt input = 2;
+  common.BigInt output = 3;
 }
 
 message PreloadReverted {
@@ -215,21 +212,21 @@ message MemorySnapshot {
 
 message GenerationSnapshot {
   uint64 base_index = 1;
-  repeated VolumeAttributeEntry input = 2;
-  repeated VolumeAttributeEntry output = 3;
-  repeated MetadataAttributeEntry metadata = 4;  // Account metadata
-  repeated MetadataAttributeEntry ledger_metadata = 5;  // Ledger metadata
-  repeated LedgerAttributeEntry ledgers = 6;
-  repeated BoundaryAttributeEntry boundaries = 7;
-  repeated TransactionReferenceAttributeEntry references = 8;
+  repeated VolumeAttributeSnapshotEntry volumes = 2;
+  repeated MetadataAttributeEntry metadata = 3;  // Account metadata
+  repeated MetadataAttributeEntry ledger_metadata = 4;  // Ledger metadata
+  repeated LedgerAttributeEntry ledgers = 5;
+  repeated BoundaryAttributeEntry boundaries = 6;
+  repeated TransactionReferenceAttributeEntry references = 7;
 }
 
-// KeyStoreEntry stores a single entry from KeyStore[*VolumeHolder]
-// Uses U128 hash + Tag64 for direct reconstruction without recomputing hashes
-message VolumeAttributeEntry {
+// VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.
+message VolumeAttributeSnapshotEntry {
   AttributeID id = 1;
-  common.BigInt known = 2;
-  common.BigInt diff_since_base_index = 3;
+  common.BigInt input_known = 2;
+  common.BigInt input_diff = 3;
+  common.BigInt output_known = 4;
+  common.BigInt output_diff = 5;
 }
 
 // MetadataKeyStoreEntry stores a single entry from KeyStore[*MetadataValue]

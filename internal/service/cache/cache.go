@@ -144,8 +144,7 @@ func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T]
 
 type Cache struct {
 	mu                  sync.Mutex
-	Input               *AttributeCache[*raftcmdpb.VolumeHolder]
-	Output              *AttributeCache[*raftcmdpb.VolumeHolder]
+	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
 	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
 	Reversions          *AttributeCache[bool]
@@ -167,8 +166,7 @@ type Cache struct {
 // rotateLocked performs the actual rotation of all cache generations.
 // Must be called with c.mu held.
 func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
-	c.Input.Rotate()
-	c.Output.Rotate()
+	c.Volumes.Rotate()
 	c.AccountMetadata.Rotate()
 	c.LedgerMetadata.Rotate()
 	c.Reversions.Rotate()
@@ -189,8 +187,7 @@ func (c *Cache) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.Input.reset()
-	c.Output.reset()
+	c.Volumes.reset()
 	c.AccountMetadata.reset()
 	c.LedgerMetadata.reset()
 	c.Reversions.reset()
@@ -255,10 +252,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	// Register callback to observe cache sizes
 	registration, err := m.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			o.ObserveInt64(sizeGauge, int64(c.Input.Size()),
-				metric.WithAttributes(attribute.String("type", "input")))
-			o.ObserveInt64(sizeGauge, int64(c.Output.Size()),
-				metric.WithAttributes(attribute.String("type", "output")))
+			o.ObserveInt64(sizeGauge, int64(c.Volumes.Size()),
+				metric.WithAttributes(attribute.String("type", "volumes")))
 			o.ObserveInt64(sizeGauge, int64(c.AccountMetadata.Size()),
 				metric.WithAttributes(attribute.String("type", "account_metadata")))
 			o.ObserveInt64(sizeGauge, int64(c.LedgerMetadata.Size()),
@@ -318,8 +313,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 		GenerationThreshold: generationThreshold,
 		CurrentGeneration:   0,
 	}
-	ret.Input = newAttributeCache[*raftcmdpb.VolumeHolder](ret, "input")
-	ret.Output = newAttributeCache[*raftcmdpb.VolumeHolder](ret, "output")
+	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
 	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
 	ret.Reversions = newAttributeCache[bool](ret, "reversions")

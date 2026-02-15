@@ -30,11 +30,9 @@ type Store interface {
 	GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool)
 	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
-	// Volume operations (Input/Output)
-	GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error)
-	PutInput(key data.VolumeKey, value *raftcmdpb.VolumeHolder)
-	GetOutput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error)
-	PutOutput(key data.VolumeKey, value *raftcmdpb.VolumeHolder)
+	// Volume operations (merged Input+Output)
+	GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error)
+	PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
 	GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error)
@@ -612,31 +610,27 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	// Decode posting amount once and reuse
 	amount := posting.Amount.Value()
 
-	// Get current volumes for source
-	sourceInput, err := s.GetInput(sourceKey)
+	// Get current volume pair for source
+	sourceVol, err := s.GetVolume(sourceKey)
 	if err != nil && !errors.Is(err, data.ErrNotFound) {
 		return err
 	}
-	sourceOutput, err := s.GetOutput(sourceKey)
-	if err != nil && !errors.Is(err, data.ErrNotFound) {
-		return err
+	if sourceVol == nil {
+		sourceVol = &raftcmdpb.VolumePair{}
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.Source != "world" {
-		if sourceInput == nil || sourceInput.Known == nil {
+		if sourceVol.InputKnown == nil {
 			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
-		if sourceOutput == nil {
-			sourceOutput = &raftcmdpb.VolumeHolder{}
-		}
 		var outputValue *big.Int
-		if sourceOutput.Known != nil {
-			outputValue = sourceOutput.Known.Value()
+		if sourceVol.OutputKnown != nil {
+			outputValue = sourceVol.OutputKnown.Value()
 		} else {
 			outputValue = big.NewInt(0)
 		}
-		balance := new(big.Int).Sub(sourceInput.Known.Value(), outputValue)
+		balance := new(big.Int).Sub(sourceVol.InputKnown.Value(), outputValue)
 		if balance.Cmp(amount) < 0 {
 			return &ErrInsufficientFunds{
 				Account: posting.Source,
@@ -648,11 +642,8 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	}
 
 	// Increase Output for source (money going out)
-	if sourceOutput == nil {
-		sourceOutput = &raftcmdpb.VolumeHolder{}
-	}
-	addToVolumeHolder(&sourceOutput.Known, &sourceOutput.DiffSinceBaseIndex, amount, posting.Amount)
-	s.PutOutput(sourceKey, sourceOutput)
+	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, amount, posting.Amount)
+	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
 	destKey := data.VolumeKey{
@@ -663,23 +654,23 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		Asset: posting.Asset,
 	}
 
-	destInput, err := s.GetInput(destKey)
+	destVol, err := s.GetVolume(destKey)
 	if err != nil && !errors.Is(err, data.ErrNotFound) {
 		return err
 	}
-	if destInput == nil {
-		destInput = &raftcmdpb.VolumeHolder{}
+	if destVol == nil {
+		destVol = &raftcmdpb.VolumePair{}
 	}
-	addToVolumeHolder(&destInput.Known, &destInput.DiffSinceBaseIndex, amount, posting.Amount)
-	s.PutInput(destKey, destInput)
+	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, amount, posting.Amount)
+	s.PutVolume(destKey, destVol)
 
 	return nil
 }
 
-// addToVolumeHolder adds amount to the volume holder, updating Known or DiffSinceBaseIndex.
-// If Known is set, it updates Known (SetBase path). Otherwise, it updates DiffSinceBaseIndex (AddDiff path).
-// rawAmount is the original proto BigInt used when DiffSinceBaseIndex is nil to avoid re-encoding.
-func addToVolumeHolder(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt) {
+// addToVolumeSide adds amount to one side (input or output) of a VolumePair.
+// If Known is set, it updates Known (SetBase path). Otherwise, it updates Diff (AddDiff path).
+// rawAmount is the original proto BigInt used when Diff is nil to avoid re-encoding.
+func addToVolumeSide(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt) {
 	if *known != nil {
 		var tmp big.Int
 		tmp.Add((*known).Value(), amount)

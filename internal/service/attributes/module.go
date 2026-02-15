@@ -12,8 +12,7 @@ import (
 // Attributes holds all attribute types used in the ledger.
 // Each instance has its own pre-allocated key buffer for thread-safe concurrent access.
 type Attributes struct {
-	Input           *Attribute[*commonpb.BigInt]
-	Output          *Attribute[*commonpb.BigInt]
+	Volume          *Attribute[*raftcmdpb.VolumePair]
 	Metadata        *Attribute[*commonpb.MetadataValue]
 	LedgerMetadata  *Attribute[*commonpb.MetadataValue]
 	Reverted        *Attribute[*commonpb.RevertedValue]
@@ -26,8 +25,7 @@ type Attributes struct {
 // New creates a new Attributes instance with all attribute types initialized.
 func New() *Attributes {
 	return &Attributes{
-		Input:           NewInputAttribute(),
-		Output:          NewOutputAttribute(),
+		Volume:          NewVolumeAttribute(),
 		Metadata:        NewMetadataAttribute(),
 		LedgerMetadata:  NewLedgerMetadataAttribute(),
 		Reverted:        NewRevertedAttribute(),
@@ -38,39 +36,35 @@ func New() *Attributes {
 	}
 }
 
-// NewInputAttribute creates a new Input attribute for account fund inputs (credits).
-func NewInputAttribute() *Attribute[*commonpb.BigInt] {
-	return &Attribute[*commonpb.BigInt]{
-		prefix:   data.AttributePrefixInput,
-		newValue: func() *commonpb.BigInt { return &commonpb.BigInt{} },
-		computeFn: func(base *commonpb.BigInt, lastDiff *commonpb.BigInt) *commonpb.BigInt {
-			result := big.NewInt(0)
-			if base != nil {
-				result = base.Value()
-			}
-			if lastDiff != nil {
-				result = new(big.Int).Add(result, lastDiff.Value())
-			}
-			return commonpb.NewBigInt(result)
-		},
-		keyBuf: make([]byte, 128),
-	}
-}
+// NewVolumeAttribute creates a new Volume attribute storing merged Input+Output pairs.
+func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
+	return &Attribute[*raftcmdpb.VolumePair]{
+		prefix:   data.AttributePrefixVolume,
+		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
+		computeFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
+			inputResult := big.NewInt(0)
+			outputResult := big.NewInt(0)
 
-// NewOutputAttribute creates a new Output attribute for account fund outputs (debits).
-func NewOutputAttribute() *Attribute[*commonpb.BigInt] {
-	return &Attribute[*commonpb.BigInt]{
-		prefix:   data.AttributePrefixOutput,
-		newValue: func() *commonpb.BigInt { return &commonpb.BigInt{} },
-		computeFn: func(base *commonpb.BigInt, lastDiff *commonpb.BigInt) *commonpb.BigInt {
-			result := big.NewInt(0)
 			if base != nil {
-				result = base.Value()
+				if base.InputKnown != nil {
+					inputResult = base.InputKnown.Value()
+				}
+				if base.OutputKnown != nil {
+					outputResult = base.OutputKnown.Value()
+				}
 			}
 			if lastDiff != nil {
-				result = new(big.Int).Add(result, lastDiff.Value())
+				if lastDiff.InputKnown != nil {
+					inputResult = new(big.Int).Add(inputResult, lastDiff.InputKnown.Value())
+				}
+				if lastDiff.OutputKnown != nil {
+					outputResult = new(big.Int).Add(outputResult, lastDiff.OutputKnown.Value())
+				}
 			}
-			return commonpb.NewBigInt(result)
+			return &raftcmdpb.VolumePair{
+				InputKnown:  commonpb.NewBigInt(inputResult),
+				OutputKnown: commonpb.NewBigInt(outputResult),
+			}
 		},
 		keyBuf: make([]byte, 128),
 	}

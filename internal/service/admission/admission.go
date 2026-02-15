@@ -353,93 +353,59 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	neededTransactions := a.extractNeededTransactions(orders, ledgerIDs)
 
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededVolumes)),
-		metric.WithAttributes(attribute.String("type", "input")))
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededVolumes)),
-		metric.WithAttributes(attribute.String("type", "output")))
+		metric.WithAttributes(attribute.String("type", "volumes")))
 	for volumeKey := range neededVolumes {
 		canonicalKey := volumeKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
-		attrID := &raftcmdpb.AttributeID{
-			Id:  id[:],
-			Tag: tag,
-		}
 
-		// Check Input cache separately
-		if !cache.IsGuaranteed(a.cache.Input, nextIndex, canonicalKey) {
+		if !cache.IsGuaranteed(a.cache.Volumes, nextIndex, canonicalKey) {
 			preloadStart := time.Now()
-			result, err := a.loaders.Input.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
-				return a.attrs.Input.ComputeValue(a.store, boundary, canonicalKey)
+			result, err := a.loaders.Volumes.LoadOrWait(id, boundary, func() (*raftcmdpb.VolumePair, error) {
+				return a.attrs.Volume.ComputeValue(a.store, boundary, canonicalKey)
 			})
 			if err != nil {
-				return nil, fmt.Errorf("computing input value at boundary %d for %v: %w", boundary, volumeKey, err)
+				return nil, fmt.Errorf("computing volume value at boundary %d for %v: %w", boundary, volumeKey, err)
 			}
 
 			if result.FromLoad {
-				loadedKeys.Input = append(loadedKeys.Input, id)
+				loadedKeys.Volumes = append(loadedKeys.Volumes, id)
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "input")))
+					metric.WithAttributes(attribute.String("type", "volumes")))
 				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "input")))
+					metric.WithAttributes(attribute.String("type", "volumes")))
+			}
+
+			attrID := &raftcmdpb.AttributeID{
+				Id:  id[:],
+				Tag: tag,
+			}
+
+			// Extract input/output for the preload message
+			var preloadInput, preloadOutput *commonpb.BigInt
+			if result.Value != nil {
+				preloadInput = result.Value.InputKnown
+				preloadOutput = result.Value.OutputKnown
 			}
 
 			a.logger.WithFields(map[string]any{
 				"id":        id.Hex(),
 				"boundary":  boundary,
 				"nextIndex": nextIndex,
-				"value":     result.Value.Value().String(),
 				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading input from store")
+			}).Debug("Preloading volume from store")
 
 			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Input{
-					Input: &raftcmdpb.PreloadInput{
-						Id:    attrID,
-						Value: result.Value,
+				Type: &raftcmdpb.Preload_Volume{
+					Volume: &raftcmdpb.PreloadVolume{
+						Id:     attrID,
+						Input:  preloadInput,
+						Output: preloadOutput,
 					},
 				},
 			})
 		} else {
 			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "input")))
-		}
-
-		// Check Output cache separately
-		if !cache.IsGuaranteed(a.cache.Output, nextIndex, canonicalKey) {
-			preloadStart := time.Now()
-			result, err := a.loaders.Output.LoadOrWait(id, boundary, func() (*commonpb.BigInt, error) {
-				return a.attrs.Output.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing output value at boundary %d for %v: %w", boundary, volumeKey, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Output = append(loadedKeys.Output, id)
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "output")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "output")))
-			}
-
-			a.logger.WithFields(map[string]any{
-				"id":        id.Hex(),
-				"boundary":  boundary,
-				"nextIndex": nextIndex,
-				"value":     result.Value.Value().String(),
-				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading output from store")
-
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Output{
-					Output: &raftcmdpb.PreloadOutput{
-						Id:    attrID,
-						Value: result.Value,
-					},
-				},
-			})
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "output")))
+				metric.WithAttributes(attribute.String("type", "volumes")))
 		}
 	}
 

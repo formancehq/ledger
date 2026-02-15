@@ -21,8 +21,7 @@ type Buffered struct {
 	LastLogHash         []byte
 	Ledgers             *attributes.DerivedKeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries          *attributes.DerivedKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	Input               *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
-	Output              *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumeHolder]
+	Volumes             *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata     *attributes.DerivedKeyStore[data.MetadataKey, *commonpb.MetadataValue]
 	LedgerMetadata      *attributes.DerivedKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
 	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
@@ -65,64 +64,45 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
-	// Process Input updates and track dirty volume keys inline
-	inputUpdates, _, err := b.Input.Merge()
+	// Process Volume updates and track dirty volume keys inline
+	volumeUpdates, _, err := b.Volumes.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge input: %w", err)
+		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
-	for _, update := range inputUpdates {
-		// If we know the absolute value (Known is set), use SetBase.
-		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
-		if update.New.Known != nil {
-			if err := b.attrs.Input.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
-				return fmt.Errorf("could not set input base: %w", err)
-			}
-		} else {
-			if err := b.attrs.Input.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {
-				return fmt.Errorf("failed adding input diff: %w", err)
-			}
+	for _, update := range volumeUpdates {
+		// Normalize for Pebble storage: the Known/Diff distinction is an in-memory
+		// optimization only. In Pebble, values are always stored in InputKnown/OutputKnown.
+		storePair := &raftcmdpb.VolumePair{
+			InputKnown:  coalesceVolumeSide(update.New.InputKnown, update.New.InputDiff),
+			OutputKnown: coalesceVolumeSide(update.New.OutputKnown, update.New.OutputDiff),
 		}
-		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
-	}
 
-	// Process Output updates and track dirty volume keys inline
-	outputUpdates, _, err := b.Output.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge output: %w", err)
-	}
-	for _, update := range outputUpdates {
-		// If we know the absolute value (Known is set), use SetBase.
-		// Otherwise, we only have a diff (DiffSinceBaseIndex), use AddDiff.
-		if update.New.Known != nil {
-			if err := b.attrs.Output.SetBase(batch, index, update.CanonicalKey, update.New.Known); err != nil {
-				return fmt.Errorf("could not set output base: %w", err)
+		// If the original VolumePair had Known values, write as SetBase (absolute).
+		// Otherwise, write as AddDiff (cumulative delta).
+		if update.New.InputKnown != nil || update.New.OutputKnown != nil {
+			if err := b.attrs.Volume.SetBase(batch, index, update.CanonicalKey, storePair); err != nil {
+				return fmt.Errorf("could not set volume base: %w", err)
 			}
 		} else {
-			if err := b.attrs.Output.AddDiff(batch, index, update.CanonicalKey, update.New.DiffSinceBaseIndex); err != nil {
-				return fmt.Errorf("failed adding output diff: %w", err)
+			if err := b.attrs.Volume.AddDiff(batch, index, update.CanonicalKey, storePair); err != nil {
+				return fmt.Errorf("failed adding volume diff: %w", err)
 			}
 		}
 		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
 	}
 
 	// Defensive check: double-entry invariant.
-	// The sum of all input deltas must equal the sum of all output deltas,
-	// because every posting moves the same amount from source (output) to destination (input).
-	if err := checkDoubleEntryInvariant(inputUpdates, outputUpdates); err != nil {
+	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
 		return err
 	}
 
 	// Index all accounts involved in volume updates.
-	// Collect unique (ledgerID, account) pairs from both Input and Output updates.
 	type accountKey struct {
 		ledgerID uint32
 		account  string
 	}
 	seenAccounts := make(map[accountKey]struct{})
-	for _, update := range inputUpdates {
-		seenAccounts[accountKey{update.Key.LedgerID, update.Key.Account}] = struct{}{}
-	}
-	for _, update := range outputUpdates {
+	for _, update := range volumeUpdates {
 		seenAccounts[accountKey{update.Key.LedgerID, update.Key.Account}] = struct{}{}
 	}
 	for ak := range seenAccounts {
@@ -208,7 +188,6 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 
 	for key, updates := range b.TransactionsUpdates {
 		for _, update := range updates {
-			// todo: use transaction id as key for better locality
 			err := batch.StoreTransactionUpdate(key, update)
 			if err != nil {
 				return fmt.Errorf("failed storing transaction update for ledger %d: %w", key.LedgerID, err)
@@ -239,8 +218,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
 		LastLogHash:         fsm.lastLogHash,
-		Input:               attributes.NewDerivedKeyStore(fsm.Input, proto.CloneOf),
-		Output:              attributes.NewDerivedKeyStore(fsm.Output, proto.CloneOf),
+		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, proto.CloneOf),
 		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, proto.CloneOf),
 		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, proto.CloneOf),
 		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
@@ -276,20 +254,12 @@ func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoun
 	b.Boundaries.Put(data.LedgerKey{Name: ledger}, boundaries)
 }
 
-func (b *Buffered) GetInput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	return b.Input.Get(key)
+func (b *Buffered) GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error) {
+	return b.Volumes.Get(key)
 }
 
-func (b *Buffered) PutInput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-	b.Input.Put(key, value)
-}
-
-func (b *Buffered) GetOutput(key data.VolumeKey) (*raftcmdpb.VolumeHolder, error) {
-	return b.Output.Get(key)
-}
-
-func (b *Buffered) PutOutput(key data.VolumeKey, value *raftcmdpb.VolumeHolder) {
-	b.Output.Put(key, value)
+func (b *Buffered) PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+	b.Volumes.Put(key, value)
 }
 
 func (b *Buffered) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {
@@ -368,32 +338,35 @@ func (b *Buffered) SetLastLogHash(hash []byte) {
 	b.LastLogHash = hash
 }
 
-// addVolumeDelta adds the net delta for a single volume update to accumulator.
+// coalesceVolumeSide returns Known if set, otherwise Diff.
+// Used to normalize a VolumePair for Pebble storage where
+// the Known/Diff distinction is irrelevant.
+func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
+	if known != nil {
+		return known
+	}
+	return diff
+}
+
+// addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
 // Uses the provided tmp big.Int for intermediate computations to avoid heap allocations.
-func addVolumeDelta(acc *big.Int, tmp *big.Int, update attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder]) {
-	vh := update.New
-	if vh.Known != nil {
-		newVal := vh.Known.Value()
-		if update.Old.IsDefined() {
-			old := update.Old.Value()
-			if old != nil && old.Known != nil {
-				tmp.Sub(newVal, old.Known.Value())
-				acc.Add(acc, tmp)
-				return
-			}
+func addVolumeSideDelta(acc *big.Int, tmp *big.Int, newKnown, newDiff *commonpb.BigInt, oldKnown, oldDiff *commonpb.BigInt) {
+	if newKnown != nil {
+		newVal := newKnown.Value()
+		if oldKnown != nil {
+			tmp.Sub(newVal, oldKnown.Value())
+			acc.Add(acc, tmp)
+			return
 		}
 		acc.Add(acc, newVal)
 		return
 	}
-	if vh.DiffSinceBaseIndex != nil {
-		newVal := vh.DiffSinceBaseIndex.Value()
-		if update.Old.IsDefined() {
-			old := update.Old.Value()
-			if old != nil && old.DiffSinceBaseIndex != nil {
-				tmp.Sub(newVal, old.DiffSinceBaseIndex.Value())
-				acc.Add(acc, tmp)
-				return
-			}
+	if newDiff != nil {
+		newVal := newDiff.Value()
+		if oldDiff != nil {
+			tmp.Sub(newVal, oldDiff.Value())
+			acc.Add(acc, tmp)
+			return
 		}
 		acc.Add(acc, newVal)
 	}
@@ -403,8 +376,7 @@ func addVolumeDelta(acc *big.Int, tmp *big.Int, update attributes.Update[data.Vo
 // This is a fundamental accounting invariant: every posting moves the same amount from a source
 // account (output) to a destination account (input), so the totals must always balance.
 func checkDoubleEntryInvariant(
-	inputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
-	outputUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumeHolder],
+	volumeUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	var (
 		inputSum  big.Int
@@ -412,11 +384,19 @@ func checkDoubleEntryInvariant(
 		tmp       big.Int
 	)
 
-	for _, update := range inputUpdates {
-		addVolumeDelta(&inputSum, &tmp, update)
-	}
-	for _, update := range outputUpdates {
-		addVolumeDelta(&outputSum, &tmp, update)
+	for _, update := range volumeUpdates {
+		var oldInputKnown, oldInputDiff, oldOutputKnown, oldOutputDiff *commonpb.BigInt
+		if update.Old.IsDefined() {
+			old := update.Old.Value()
+			if old != nil {
+				oldInputKnown = old.InputKnown
+				oldInputDiff = old.InputDiff
+				oldOutputKnown = old.OutputKnown
+				oldOutputDiff = old.OutputDiff
+			}
+		}
+		addVolumeSideDelta(&inputSum, &tmp, update.New.InputKnown, update.New.InputDiff, oldInputKnown, oldInputDiff)
+		addVolumeSideDelta(&outputSum, &tmp, update.New.OutputKnown, update.New.OutputDiff, oldOutputKnown, oldOutputDiff)
 	}
 
 	if inputSum.Cmp(&outputSum) != 0 {

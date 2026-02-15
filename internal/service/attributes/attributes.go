@@ -13,6 +13,11 @@ import (
 // It supports computing the final value by applying diffs to a base value.
 // Value is the protobuf message type for the attribute value.
 //
+// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)][RaftIndex (8B)][EntryType (1B)]
+// The suffix is always 10 bytes: [AttrType 1B][RaftIndex 8B][EntryType 1B].
+// This layout co-locates all attributes for the same canonical key in Pebble,
+// improving write locality and compaction.
+//
 // Thread-safety:
 // - Each Attribute instance has its own pre-allocated key buffer.
 // - Use dependency injection (New) to get separate instances per Raft node.
@@ -32,23 +37,28 @@ func (a *Attribute[V]) ensureKeyBuf(n int) {
 	}
 }
 
-// putPrefix writes [KeyPrefixAttributes][a.prefix][canonicalKey] into buf.
+// putPrefix writes [KeyPrefixAttributes][canonicalKey][a.prefix] into buf.
 // buf must have at least 2+len(canonicalKey) bytes.
 func (a *Attribute[V]) putPrefix(buf []byte, canonicalKey []byte) {
 	buf[0] = data.KeyPrefixAttributes
-	buf[1] = a.prefix
-	copy(buf[2:], canonicalKey)
+	copy(buf[1:], canonicalKey)
+	buf[1+len(canonicalKey)] = a.prefix
+}
+
+// prefixLen returns the number of bytes for [KeyPrefixAttributes][canonicalKey][attrType].
+func prefixLen(canonicalKey []byte) int {
+	return 2 + len(canonicalKey) // 1 for KeyPrefixAttributes + N for canonicalKey + 1 for attrType
 }
 
 // writeEntry writes a base (entryType=0) or diff (entryType=1) entry to the batch.
-// Key format: [KeyPrefixAttributes][prefix][canonicalKey][index BE 8 bytes][entryType].
+// Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes][entryType].
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
 func (a *Attribute[V]) writeEntry(batch *data.Batch, index uint64, canonicalKey []byte, entryType byte, value V) error {
-	prefixLen := 2 + len(canonicalKey)
-	keyLen := prefixLen + 9
+	pLen := prefixLen(canonicalKey)
+	keyLen := pLen + 9
 	a.ensureKeyBuf(keyLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[prefixLen:], index)
+	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
 	a.keyBuf[keyLen-1] = entryType
 
 	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer[:0], value)
@@ -74,6 +84,8 @@ func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, canonicalKey []b
 	return a.writeEntry(batch, index, canonicalKey, 1, diff)
 }
 
+const suffixLen = 10 // attrType(1) + raftIndex(8) + entryType(1)
+
 // ComputeValue computes the final value for the given canonical key at the specified raft index.
 // It finds the most recent base with index <= maxIndex and applies all diffs with index <= maxIndex.
 // The canonical key is used directly as the Pebble key for better data locality.
@@ -81,26 +93,26 @@ func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, canonicalKey []b
 func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
-	// Single allocation for both lower and upper bounds (sub-slices of the same buffer).
-	prefixLen := 2 + len(canonicalKey)
+	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
+	pLen := prefixLen(canonicalKey)
 	var upperExtra int
 	if index == ^uint64(0) {
 		upperExtra = 1 // 0xFF sentinel
 	} else {
 		upperExtra = 8 // index+1 as big-endian uint64
 	}
-	buf := make([]byte, prefixLen+upperExtra)
+	buf := make([]byte, pLen+upperExtra)
 	a.putPrefix(buf, canonicalKey)
 
 	if index == ^uint64(0) {
-		buf[prefixLen] = 0xFF
+		buf[pLen] = 0xFF
 	} else {
-		binary.BigEndian.PutUint64(buf[prefixLen:], index+1)
+		binary.BigEndian.PutUint64(buf[pLen:], index+1)
 	}
 
 	iter, err := s.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:prefixLen],
-		UpperBound: buf[:prefixLen+upperExtra],
+		LowerBound: buf[:pLen],
+		UpperBound: buf[:pLen+upperExtra],
 	})
 	if err != nil {
 		return zeroValue, fmt.Errorf("creating iterator: %w", err)
@@ -150,15 +162,15 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 // This performs a physical deletion, removing all historical data for this key.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
 func (a *Attribute[V]) Delete(batch *data.Batch, canonicalKey []byte) error {
-	prefixLen := 2 + len(canonicalKey)
-	upperLen := prefixLen + 9 // +8 for ^uint64(0) + 1 for 0xFF
+	pLen := prefixLen(canonicalKey)
+	upperLen := pLen + 9 // +8 for ^uint64(0) + 1 for 0xFF
 	a.ensureKeyBuf(upperLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[prefixLen:], ^uint64(0))
-	a.keyBuf[prefixLen+8] = 0xFF
+	binary.BigEndian.PutUint64(a.keyBuf[pLen:], ^uint64(0))
+	a.keyBuf[pLen+8] = 0xFF
 
 	// Sub-slices of the same buffer are safe — Pebble copies both in DeleteRange.
-	return batch.DeleteRange(a.keyBuf[:prefixLen], a.keyBuf[:upperLen], pebble.NoSync)
+	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
 }
 
 // DeleteOldest deletes all entries (bases and diffs) with raft index strictly less than the given index.
@@ -166,14 +178,14 @@ func (a *Attribute[V]) Delete(batch *data.Batch, canonicalKey []byte) error {
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
 func (a *Attribute[V]) DeleteOldest(batch *data.Batch, index uint64, canonicalKey []byte) error {
-	prefixLen := 2 + len(canonicalKey)
-	upperLen := prefixLen + 8
+	pLen := prefixLen(canonicalKey)
+	upperLen := pLen + 8
 	a.ensureKeyBuf(upperLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[prefixLen:], index)
+	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
 
 	// Sub-slices of the same buffer are safe — Pebble copies both in DeleteRange.
-	return batch.DeleteRange(a.keyBuf[:prefixLen], a.keyBuf[:upperLen], pebble.NoSync)
+	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
 }
 
 // ScanResult holds the results of scanning all entries for a canonical key.
@@ -190,14 +202,14 @@ type ScanResult[V proto.Message] struct {
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *Attribute[V]) ScanEntries(s *data.Store, canonicalKey []byte) (*ScanResult[V], error) {
 	// Single allocation for both bounds.
-	prefixLen := 2 + len(canonicalKey)
-	buf := make([]byte, prefixLen+1)
+	pLen := prefixLen(canonicalKey)
+	buf := make([]byte, pLen+1)
 	a.putPrefix(buf, canonicalKey)
-	buf[prefixLen] = 0xFF
+	buf[pLen] = 0xFF
 
 	iter, err := s.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:prefixLen],
-		UpperBound: buf[:prefixLen+1],
+		LowerBound: buf[:pLen],
+		UpperBound: buf[:pLen+1],
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator: %w", err)
@@ -247,33 +259,30 @@ type ListEntry struct {
 }
 
 // List returns all unique canonical keys for this attribute type.
-// It iterates over the actual attribute data and extracts unique canonical keys.
+// It iterates over all attributes (prefix 0x09) and filters by attrType.
+// Key layout: [0x09][canonicalKey][attrType][raftIndex(8)][entryType(1)]
 // Note: Allocates its own buffer for concurrent safety.
 func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
-	// Single allocation for both bounds.
-	buf := make([]byte, 3)
+	// Scan the entire attribute range [0x09, 0x0A)
+	buf := make([]byte, 2)
 	buf[0] = data.KeyPrefixAttributes
-	buf[1] = a.prefix
-	buf[2] = 0xFF
+	buf[1] = data.KeyPrefixAttributes + 1 // 0x0A upper bound
 
 	iter, err := s.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:2],
-		UpperBound: buf[:3],
+		LowerBound: buf[:1],
+		UpperBound: buf[1:2],
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for attributes: %w", err)
 	}
 	defer func() { _ = iter.Close() }()
 
-	// Use a map to track unique canonical keys (since each key may have multiple entries at different indexes)
+	// Use a map to track unique canonical keys
 	seen := make(map[string]struct{})
 	var entries []ListEntry
 
-	// Key structure: [KeyPrefixAttributes][prefix][canonical_key_bytes][index (8 bytes)][type (1 byte)]
-	// We need to extract the canonical key by removing prefix (2 bytes) and suffix (9 bytes)
-	prefixLen := 2 // KeyPrefixAttributes + prefix
-	suffixLen := 9 // index (8 bytes) + type (1 byte)
-	minKeyLen := prefixLen + suffixLen
+	// Minimum key length: 1 (prefix) + 1 (canonicalKey min) + suffixLen (10)
+	minKeyLen := 1 + suffixLen
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		iterKey := iter.Key()
@@ -281,9 +290,14 @@ func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
 			continue // Skip invalid keys
 		}
 
-		// Extract canonical key bytes (between prefix and suffix)
-		canonicalKeyLen := len(iterKey) - prefixLen - suffixLen
-		canonicalKey := string(iterKey[prefixLen : prefixLen+canonicalKeyLen])
+		// attrType is at key[len(key)-10]
+		attrType := iterKey[len(iterKey)-suffixLen]
+		if attrType != a.prefix {
+			continue // Filter by attr type
+		}
+
+		// canonicalKey is between prefix (1 byte) and suffix (10 bytes)
+		canonicalKey := string(iterKey[1 : len(iterKey)-suffixLen])
 
 		// Skip if we've already seen this canonical key
 		if _, ok := seen[canonicalKey]; ok {
@@ -292,8 +306,8 @@ func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
 		seen[canonicalKey] = struct{}{}
 
 		// Make a copy for the entry
-		canonicalBytes := make([]byte, canonicalKeyLen)
-		copy(canonicalBytes, iterKey[prefixLen:prefixLen+canonicalKeyLen])
+		canonicalBytes := make([]byte, len(canonicalKey))
+		copy(canonicalBytes, canonicalKey)
 
 		entries = append(entries, ListEntry{
 			CanonicalKey: canonicalBytes,
