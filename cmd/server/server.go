@@ -117,6 +117,9 @@ func NewRunCommand() *cobra.Command {
 	// Audit configuration flags
 	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
 
+	// Admission metrics (disabled by default to avoid contention under high concurrency)
+	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
+
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
@@ -326,6 +329,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Audit configuration
 	cfg.AuditEnabled = getBool("audit-enabled", true)
+
+	// Admission metrics
+	cfg.AdmissionMetrics = getBool("admission-metrics", false)
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")

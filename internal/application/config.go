@@ -25,8 +25,9 @@ type Config struct {
 	DataDir         string
 	PebbleConfig    data.Config
 	HealthConfig    HealthConfig
-	ClusterID       string
-	AuditEnabled    bool
+	ClusterID              string
+	AuditEnabled           bool
+	AdmissionMetrics       bool
 }
 
 func (c Config) Validate() error {

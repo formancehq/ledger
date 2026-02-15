@@ -130,6 +130,8 @@ spec:
         - name: AUDIT_ENABLED
           value: {{ .Values.config.audit.enabled | toString | default "true" | quote }}
         {{- end }}
+        - name: ADMISSION_METRICS
+          value: {{ .Values.config.admissionMetrics | toString | default "false" | quote }}
         # Health check configuration
         {{- if .Values.config.health }}
         {{- if .Values.config.health.interval }}

@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -45,7 +46,8 @@ type Admission struct {
 	// Attribute loaders to avoid duplicate store loads
 	loaders *Loaders
 
-	// Metrics
+	// Metrics (noop when metricsEnabled is false)
+	metricsEnabled            bool
 	commandDurationHistogram  metric.Int64Histogram
 	commandSizeHistogram      metric.Int64Histogram
 	proposeQueueLoadHistogram metric.Int64Histogram
@@ -59,6 +61,14 @@ type Admission struct {
 }
 
 // NewAdmission creates a new Admission handler.
+// WithMetrics enables admission metrics. By default metrics are disabled
+// (noop) to avoid contention under high concurrency.
+func WithMetrics() func(*Admission) {
+	return func(a *Admission) {
+		a.metricsEnabled = true
+	}
+}
+
 func NewAdmission(
 	cache *cache.Cache,
 	store *data.Store,
@@ -67,8 +77,29 @@ func NewAdmission(
 	attrs *attributes.Attributes,
 	meterProvider metric.MeterProvider,
 	healthChecker health.Checker,
+	opts ...func(*Admission),
 ) *Admission {
-	meter := meterProvider.Meter("admission")
+	a := &Admission{
+		cache:         cache,
+		store:         store,
+		logger:        logger,
+		proposer:      proposer,
+		attrs:         attrs,
+		healthChecker: healthChecker,
+		loaders:       NewLoaders(),
+	}
+	for _, opt := range opts {
+		opt(a)
+	}
+
+	// Use noop meter when metrics are disabled to eliminate contention
+	// from OTel histogram/counter internals under high concurrency.
+	var meter metric.Meter
+	if a.metricsEnabled {
+		meter = meterProvider.Meter("admission")
+	} else {
+		meter = noop.Meter{}
+	}
 
 	commandDurationHistogram, err := meter.Int64Histogram(
 		"admission.command.duration",
@@ -163,24 +194,15 @@ func NewAdmission(
 		panic(err)
 	}
 
-	a := &Admission{
-		cache:                     cache,
-		store:                     store,
-		logger:                    logger,
-		proposer:                  proposer,
-		attrs:                     attrs,
-		healthChecker:             healthChecker,
-		loaders:                   NewLoaders(),
-		commandDurationHistogram:  commandDurationHistogram,
-		commandSizeHistogram:      commandSizeHistogram,
-		proposeQueueLoadHistogram: proposeQueueLoadHistogram,
-		proposeQueueFullCounter:   proposeQueueFullCounter,
-		proposeDurationHistogram:  proposeDurationHistogram,
-		preloadDurationHistogram:  preloadDurationHistogram,
-		preloadCounter:            preloadCounter,
-		preloadKeysNeededCounter:  preloadKeysNeededCounter,
-		preloadCacheHitsCounter:   preloadCacheHitsCounter,
-	}
+	a.commandDurationHistogram = commandDurationHistogram
+	a.commandSizeHistogram = commandSizeHistogram
+	a.proposeQueueLoadHistogram = proposeQueueLoadHistogram
+	a.proposeQueueFullCounter = proposeQueueFullCounter
+	a.proposeDurationHistogram = proposeDurationHistogram
+	a.preloadDurationHistogram = preloadDurationHistogram
+	a.preloadCounter = preloadCounter
+	a.preloadKeysNeededCounter = preloadKeysNeededCounter
+	a.preloadCacheHitsCounter = preloadCacheHitsCounter
 	a.nextIndex.Store(proposer.InitialIndex())
 	return a
 }

@@ -194,6 +194,7 @@ func Module() fx.Option {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
 			func(
+				cfg *Config,
 				node *node.Node,
 				cache *cache.Cache,
 				store *data.Store,
@@ -202,6 +203,10 @@ func Module() fx.Option {
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 			) ctrl.Admission {
+				var opts []func(*admission.Admission)
+				if cfg.AdmissionMetrics {
+					opts = append(opts, admission.WithMetrics())
+				}
 				return admission.NewAdmission(
 					cache,
 					store,
@@ -210,6 +215,7 @@ func Module() fx.Option {
 					attrs,
 					meterProvider,
 					hc,
+					opts...,
 				)
 			},
 			func(

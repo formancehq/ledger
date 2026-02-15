@@ -125,6 +125,10 @@ config:
   audit:
     enabled: true
 
+  # Admission metrics (histograms/counters in the admission hot path).
+  # Disabled by default to avoid contention under high concurrency.
+  admissionMetrics: false
+
   # Debug logging
   debug: false
   
