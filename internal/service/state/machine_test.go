@@ -558,9 +558,15 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// First compaction at index 4: prunes diffs strictly before 4
 	// Removes diffs at indexes 2 and 3; diffs at 4 and 5 remain.
 	// ---------------------------------------------------------------
-	dirtyKeys := map[string]struct{}{
-		string(aliceInputKey):  {},
-		string(worldOutputKey): {},
+	dirtyKeys := map[string]uint32{
+		string(aliceInputKey):  4,
+		string(worldOutputKey): 4,
+	}
+	// Simulate newer entries existing (as after the dirty key shift in ApplyEntries).
+	// slot[1] or slot[2] must contain the keys for compaction to proceed.
+	machine.dirtyVolumeKeys[1] = map[string]uint32{
+		string(aliceInputKey):  1,
+		string(worldOutputKey): 1,
 	}
 	batch := dataStore.NewBatch()
 	err = machine.compactVolumeDiffs(batch, 4, dirtyKeys)
@@ -630,6 +636,76 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(600), alicePair.InputKnown.Value().Int64(),
 		"alice input should remain 600 after second compaction")
+}
+
+// TestVolumeDiffCompactionSkipsInactiveKeys verifies that compaction is skipped
+// for keys that have no entries in a more recent generation. This prevents
+// DeleteOldest from removing the only remaining Pebble entries (including bases)
+// for accounts that were active in the compacted generation but dormant since.
+func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, attrs := newTestMachine(t)
+
+	activeKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:active"},
+		Asset:      "EUR",
+	}.Bytes()
+
+	dormantKey := data.VolumeKey{
+		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:dormant"},
+		Asset:      "EUR",
+	}.Bytes()
+
+	// Write 4 diffs for both keys at indexes 2-5
+	for i, amount := range []int64{100, 200, 300, 400} {
+		batch := dataStore.NewBatch()
+		err := attrs.Volume.AddDiff(batch, uint64(i+2), activeKey, &raftcmdpb.VolumePair{
+			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+		})
+		require.NoError(t, err)
+		err = attrs.Volume.AddDiff(batch, uint64(i+2), dormantKey, &raftcmdpb.VolumePair{
+			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+		})
+		require.NoError(t, err)
+		require.NoError(t, batch.Commit())
+	}
+
+	// Both keys are in the generation being compacted
+	dirtyKeys := map[string]uint32{
+		string(activeKey):  4,
+		string(dormantKey): 4,
+	}
+
+	// Only the active key has entries in a newer generation (slot[1] after shift)
+	machine.dirtyVolumeKeys[1] = map[string]uint32{
+		string(activeKey): 1,
+	}
+	// dormantKey is NOT in slot[1] or slot[2] → should be skipped
+
+	batch := dataStore.NewBatch()
+	err := machine.compactVolumeDiffs(batch, 4, dirtyKeys)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	// Active key: compacted (old diffs removed)
+	activeEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, activeKey)
+	require.Len(t, activeEntries, 2, "active key should have 2 diffs remaining after compaction")
+	require.Equal(t, uint64(4), activeEntries[0].RaftIndex)
+	require.Equal(t, uint64(5), activeEntries[1].RaftIndex)
+
+	// Dormant key: NOT compacted (all 4 diffs preserved)
+	dormantEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, dormantKey)
+	require.Len(t, dormantEntries, 4, "dormant key should keep all 4 diffs (compaction skipped)")
+
+	// Both computed values are still correct
+	activePair, err := attrs.Volume.ComputeValue(dataStore, 5, activeKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), activePair.InputKnown.Value().Int64())
+
+	dormantPair, err := attrs.Volume.ComputeValue(dataStore, 5, dormantKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(400), dormantPair.InputKnown.Value().Int64())
 }
 
 // makeLedgerPreloadSet creates a PreloadSet that injects ledger info into the cache.

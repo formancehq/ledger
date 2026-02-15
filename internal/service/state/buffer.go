@@ -82,7 +82,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 				return fmt.Errorf("failed adding volume diff: %w", err)
 			}
 		}
-		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)] = struct{}{}
+		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)]++
 	}
 
 	// Defensive check: double-entry invariant.

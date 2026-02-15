@@ -56,8 +56,9 @@ type Machine struct {
 	processor *processing.RequestProcessor
 
 	// dirtyVolumeKeys tracks canonical key bytes written during each generation.
+	// The uint32 value counts how many diffs were written for this key in that generation.
 	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
-	dirtyVolumeKeys [3]map[string]struct{}
+	dirtyVolumeKeys [3]map[string]uint32
 
 	// dirtyBoundaryKeys tracks boundary canonical keys that have been updated
 	// since the last generation rotation. Boundaries are flushed to Pebble only
@@ -140,10 +141,10 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		nextLedgerID:        1,
 		nextSequenceID:      1,
 		nextAuditSequenceID: 0,
-		dirtyVolumeKeys: [3]map[string]struct{}{
-			make(map[string]struct{}),
-			make(map[string]struct{}),
-			make(map[string]struct{}),
+		dirtyVolumeKeys: [3]map[string]uint32{
+			make(map[string]uint32),
+			make(map[string]uint32),
+			make(map[string]uint32),
 		},
 		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
 	}
@@ -191,7 +192,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			keysToCompact := fsm.dirtyVolumeKeys[2]
 			fsm.dirtyVolumeKeys[2] = fsm.dirtyVolumeKeys[1]
 			fsm.dirtyVolumeKeys[1] = fsm.dirtyVolumeKeys[0]
-			fsm.dirtyVolumeKeys[0] = make(map[string]struct{})
+			fsm.dirtyVolumeKeys[0] = make(map[string]uint32)
 
 			// Compaction using tracked keys in the same batch (no Pebble scan)
 			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact); err != nil {
@@ -236,6 +237,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	return ret, nil
 }
 
+// volumeCompactionMinDiffs is the minimum number of diff entries a volume key
+// must have accumulated in a generation before compaction (DeleteRange) is
+// worthwhile.  For keys with fewer diffs the Pebble range-delete tombstone
+// costs more than letting the native LSM compaction clean them up.
+const volumeCompactionMinDiffs uint32 = 4
+
 // compactVolumeDiffs prunes old volume diff entries during generation rotation.
 //
 // Volume diffs are cumulative: each diff stores the total delta since the original base.
@@ -246,10 +253,29 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 // We do NOT create a new base because existing diffs are cumulative from the original base,
 // and introducing a new base would make subsequent diffs inconsistent.
 //
-// dirtyKeys contain the canonical keys written during the generation being
-// compacted. This eliminates the need for a full Pebble prefix scan (List()).
-func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]struct{}) error {
-	for keyStr := range dirtyKeys {
+// Safety: DeleteOldest removes both bases and diffs before compactionIndex.
+// A key that was only active in the compacted generation (no entries in newer
+// generations) would lose all its Pebble data. To prevent this, we skip
+// compaction for keys that have no entries in a more recent generation —
+// their stale entries are left for Pebble's native LSM compaction or will be
+// superseded when the account is next preloaded.
+//
+// dirtyKeys maps canonical keys to the number of diffs written during the
+// generation being compacted. Keys with fewer than volumeCompactionMinDiffs
+// writes are skipped — the overhead of a Pebble range-delete tombstone is
+// not worth it for a handful of entries.
+func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) error {
+	for keyStr, count := range dirtyKeys {
+		if count < volumeCompactionMinDiffs {
+			continue
+		}
+		// Only compact if newer entries exist in a more recent generation.
+		// After the dirty key shift: slot[1] = Gen N, slot[2] = Gen N-1.
+		_, inPrevGen := fsm.dirtyVolumeKeys[2][keyStr]
+		_, inCurGen := fsm.dirtyVolumeKeys[1][keyStr]
+		if !inPrevGen && !inCurGen {
+			continue
+		}
 		canonicalKey := []byte(keyStr)
 		if err := fsm.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
 			return fmt.Errorf("compacting volume: %w", err)
@@ -828,10 +854,10 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	// Reset dirty key tracking. The first 2 rotations after restore will do
 	// less cleanup, but the system self-corrects as new keys are tracked.
-	fsm.dirtyVolumeKeys = [3]map[string]struct{}{
-		make(map[string]struct{}),
-		make(map[string]struct{}),
-		make(map[string]struct{}),
+	fsm.dirtyVolumeKeys = [3]map[string]uint32{
+		make(map[string]uint32),
+		make(map[string]uint32),
+		make(map[string]uint32),
 	}
 	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
 
