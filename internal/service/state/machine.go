@@ -240,7 +240,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 // We do NOT create a new base because existing diffs are cumulative from the original base,
 // and introducing a new base would make subsequent diffs inconsistent.
 //
-// dirtyKeys contains the canonical keys that were written during the generation being
+// dirtyKeys contain the canonical keys written during the generation being
 // compacted. This eliminates the need for a full Pebble prefix scan (List()).
 func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]struct{}) error {
 	for keyStr := range dirtyKeys {

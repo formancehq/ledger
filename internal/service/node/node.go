@@ -924,7 +924,7 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future, error) {
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
-	fsmFuture := futures.NewFuture()
+	fsmFuture := futures.New()
 	node.futures.Store(proposal.commandID, fsmFuture)
 
 	select {
@@ -1275,6 +1275,6 @@ func NewProposal(commandID uint64, data []byte) *Proposal {
 	return &Proposal{
 		commandID: commandID,
 		data:      data,
-		Future:    futures.NewFuture(),
+		Future:    futures.New(),
 	}
 }

@@ -86,6 +86,13 @@ config:
     # WARNING: Risks data loss on crash. Only use for testing or ephemeral data
     disableWAL: false
   
+  # Cache configuration
+  cache:
+    # Number of Raft log entries before rotating cache generations (default: 1000)
+    # Smaller values mean more frequent rotations (more preload reads from store, less memory)
+    # Larger values mean less frequent rotations (fewer preload reads, more memory usage)
+    rotationThreshold: 1000
+
   # Raft configuration
   raft:
     snapshotThreshold: 15000   # Number of logs before triggering a snapshot

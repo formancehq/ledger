@@ -169,35 +169,53 @@ The admission service handles order processing before Raft consensus. It preload
 
 ### Preload Metrics
 
-When a value is not guaranteed to be in cache (based on the cache generation), the admission service loads it from the persistent store. These metrics track the performance of these preload operations.
+When a value is not guaranteed to be in cache (based on the cache generation), the admission service loads it from the persistent store. These metrics track the performance and volume of these preload operations.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `admission.preload.duration` | Histogram | µs | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
-| `admission.preload.total` | Counter | 1 | Total number of preload operations from store. High rates may indicate cache miss issues or cold startup. |
+| `admission.preload.total` | Counter | 1 | Total number of preload operations from store (cache misses). High rates may indicate cache miss issues or cold startup. |
+| `admission.preload.keys_needed` | Counter | 1 | Total number of keys that needed resolving during preload. This is the total demand before cache filtering. |
+| `admission.preload.cache_hits` | Counter | 1 | Total number of keys found guaranteed in cache (no store read needed). Use with `keys_needed` to compute cache hit ratio. |
 
 **Attributes**:
-- `type`: Attribute type being preloaded (`input`, `output`, `reversions`, `idempotency_keys`)
+- `type`: Attribute type being preloaded (`input`, `output`, `ledgers`, `reversions`, `idempotency_keys`, `references`, `boundaries`)
 
 **Attribute Types**:
 | Type | Description |
 |------|-------------|
 | `input` | Account input volumes (credits received) |
 | `output` | Account output volumes (debits sent) |
+| `ledgers` | Ledger info and metadata |
 | `reversions` | Transaction reversion status |
 | `idempotency_keys` | Idempotency key mappings |
+| `references` | Transaction reference mappings |
+| `boundaries` | Ledger boundaries (next IDs) |
 
-**Preload Flow**: When processing a transaction, the admission service checks if required values (volumes, reversion status, idempotency keys) are in cache. If not guaranteed in cache due to generation rotation, it loads them from the persistent store. These metrics help identify:
+**Derived Metrics**:
+- **Cache hit ratio**: `cache_hits / keys_needed * 100` — percentage of keys served from cache
+- **Store read ratio**: `total / keys_needed * 100` — percentage requiring store reads
+
+**Preload Flow**: When processing a transaction, the admission service checks if required values (volumes, reversion status, idempotency keys, references, boundaries) are in cache. If not guaranteed in cache due to generation rotation, it loads them from the persistent store. These metrics help identify:
 - Storage performance issues (high preload duration)
-- Cache efficiency problems (high preload rate after warmup)
-- Cold start behavior (expected high preload rate initially)
+- Cache efficiency problems (low cache hit ratio after warmup)
+- Cold start behavior (expected low cache hit ratio initially)
+- Read volume per transaction type (keys_needed by type)
 
 ### Command Metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `admission.command.duration` | Histogram | µs | Total time from Apply call to future resolution. Includes preload, proposal, and FSM application. |
+| `admission.propose.duration` | Histogram | µs | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
+
+### Propose Queue Metrics
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `admission.propose_queue.load` | Histogram | 1 | Current number of in-flight proposals. High values indicate backpressure from Raft consensus. |
+| `admission.propose_queue.full` | Counter | 1 | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
 
 ## Pebble Storage Metrics
 
@@ -463,7 +481,12 @@ The dashboard is organized into the following sections:
 - Preload Duration (by type)
 - Preload Rate (by type)
 - Command Duration Percentiles
+- Propose Duration Percentiles
 - Command Size Distribution
+- Preload Keys Needed Rate (by type)
+- Preload Cache Hit Ratio (%)
+- Preload Store Reads vs Cache Hits (by type)
+- Propose Queue Load
 
 ### k6 Dashboard
 

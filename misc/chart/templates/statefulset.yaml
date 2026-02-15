@@ -76,6 +76,12 @@ spec:
         - name: CLUSTER_ID
           value: {{ .Values.config.clusterID | quote }}
         {{- end }}
+        {{- if .Values.config.cache }}
+        {{- if .Values.config.cache.rotationThreshold }}
+        - name: CACHE_ROTATION_THRESHOLD
+          value: {{ .Values.config.cache.rotationThreshold | quote }}
+        {{- end }}
+        {{- end }}
         {{- if .Values.config.raft.snapshotThreshold }}
         - name: SNAPSHOT_THRESHOLD
           value: {{ .Values.config.raft.snapshotThreshold | quote }}

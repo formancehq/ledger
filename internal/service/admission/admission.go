@@ -51,6 +51,7 @@ type Admission struct {
 	proposeQueueLoadHistogram metric.Int64Histogram
 	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
+	proposeDurationHistogram  metric.Int64Histogram
 	preloadDurationHistogram  metric.Int64Histogram
 	preloadCounter            metric.Int64Counter
 	preloadKeysNeededCounter  metric.Int64Counter
@@ -111,6 +112,18 @@ func NewAdmission(
 		panic(err)
 	}
 
+	proposeDurationHistogram, err := meter.Int64Histogram(
+		"admission.propose.duration",
+		metric.WithDescription("Time waiting for Raft to accept and replicate a proposal (Propose + Wait)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	preloadDurationHistogram, err := meter.Int64Histogram(
 		"admission.preload.duration",
 		metric.WithDescription("Time spent loading preload values from store"),
@@ -163,6 +176,7 @@ func NewAdmission(
 		commandSizeHistogram:      commandSizeHistogram,
 		proposeQueueLoadHistogram: proposeQueueLoadHistogram,
 		proposeQueueFullCounter:   proposeQueueFullCounter,
+		proposeDurationHistogram:  proposeDurationHistogram,
 		preloadDurationHistogram:  preloadDurationHistogram,
 		preloadCounter:            preloadCounter,
 		preloadKeysNeededCounter:  preloadKeysNeededCounter,
@@ -620,6 +634,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	proposal := node.NewProposal(cmd.Id, cmdData)
 
 	// Reacquire lock before proposing to ensure correct ordering
+	proposeStart := time.Now()
 	a.admissionLock.Lock()
 	fsmFuture, err := a.proposer.Propose(proposal)
 	if err != nil {
@@ -642,6 +657,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		a.proposeQueueInflight.Add(-1)
 		return nil, err
 	}
+	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
 
 	// Wait for FSM to apply the command
 	logs, err := fsmFuture.Wait()

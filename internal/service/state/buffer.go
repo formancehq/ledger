@@ -51,6 +51,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	}
 
 	// Process Boundary updates
+	// TODO: We don't need to store boundaries at each log, we can just store the latest one when rotating generation
 	boundaryUpdates, _, err := b.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)

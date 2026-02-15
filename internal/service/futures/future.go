@@ -40,7 +40,7 @@ func (f *Future) Wait() ([]*commonpb.Log, error) {
 	return logs, err
 }
 
-func NewFuture() *Future {
+func New() *Future {
 	ret := &Future{}
 	ret.cond = sync.NewCond(&ret.mu)
 	return ret

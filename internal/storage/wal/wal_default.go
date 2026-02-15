@@ -393,9 +393,9 @@ func (s *DefaultWAL) Snapshot() (raftpb.Snapshot, error) {
 // Append appends entries to the log
 func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if hardState == s.hardState && len(entries) == 0 {
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -430,22 +430,25 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		}
 	}
 
+	newHardState := s.hardState
 	if !raft.IsEmptyHardState(hardState) {
 		s.hardState = hardState
+		newHardState = hardState
 	}
+	s.mu.Unlock()
 	s.appendCacheHistogram.Record(context.Background(), time.Since(cacheStart).Microseconds())
 
 	s.logger.
 		WithFields(map[string]any{
-			"hardState.Term":   s.hardState.Term,
-			"hardState.Vote":   s.hardState.Vote,
-			"hardState.Commit": s.hardState.Commit,
+			"hardState.Term":   newHardState.Term,
+			"hardState.Vote":   newHardState.Vote,
+			"hardState.Commit": newHardState.Commit,
 		}).
 		Debug("Saving DefaultWAL entries to disk")
 
 	// Save to DefaultWAL
 	saveStart := time.Now()
-	err := s.wal.Save(s.hardState, entries)
+	err := s.wal.Save(newHardState, entries)
 	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Microseconds())
 	s.appendBatchSizeHistogram.Record(context.Background(), int64(len(entries)))
 

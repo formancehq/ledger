@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -88,7 +87,7 @@ func (a *AttributeCache[T]) reset() {
 	)
 }
 
-// IsGuaranteed checks if a key will still be in the cache when we reach
+// IsGuaranteedInCache checks if a key will still be in the cache when we reach
 // the future raft index `at`. This is used to determine if cached data will survive
 // until a future point in time.
 //
@@ -182,13 +181,6 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 
 	c.recordRotation()
 	c.recordGeneration(int64(newGeneration))
-
-	// Help the GC by triggering a collection after rotation.
-	// This is necessary because Go maps don't release their internal memory
-	// even after all entries are removed. By forcing a GC cycle here,
-	// we help ensure the old generation's map memory is reclaimed promptly.
-	// This runs in a goroutine to avoid blocking the hot path.
-	go runtime.GC()
 }
 
 // Reset clears all cache data and resets the state to initial values.

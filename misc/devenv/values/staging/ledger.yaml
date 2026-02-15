@@ -7,6 +7,8 @@ config:
   httpPort: 9000
   audit:
     enabled: false
+  cache:
+    rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
   pebble:
     memTableSize: 268435456         # 256MB
@@ -116,10 +118,10 @@ replicaCount: 3
 resources:
   limits:
     cpu: 8000m
-    memory: 6144Mi
+    memory: 8192Mi
   requests:
     cpu: 8000m
-    memory: 6144Mi
+    memory: 8192Mi
 service:
   grpcPort: 8888
   httpPort: 9000
