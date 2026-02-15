@@ -245,9 +245,9 @@ func unmarshalStateFile(data []byte, to *raftpb.Snapshot) error {
 
 // saveSnapshot saves snapshot to disk
 // Format: [snapshotLength (8 bytes)][snapshotData]
-func (s *DefaultWAL) saveSnapshot() error {
+func (s *DefaultWAL) saveSnapshot(snap raftpb.Snapshot) error {
 	// Marshal Snapshot
-	snapshotData, err := s.snapshot.Marshal()
+	snapshotData, err := snap.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
@@ -458,7 +458,6 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 // CreateSnapshot creates a snapshot at the given index
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
 
@@ -469,6 +468,7 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		len(s.snapshot.Metadata.ConfState.Voters) == 0 &&
 		len(s.entries) == 0
 	if !isEmptyInitial && index <= s.snapshot.Metadata.Index {
+		s.mu.Unlock()
 		return raft.ErrSnapOutOfDate
 	}
 
@@ -482,11 +482,12 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	} else {
 		term, err = s.termLocked(index)
 		if err != nil {
+			s.mu.Unlock()
 			return err
 		}
 	}
 
-	s.snapshot = raftpb.Snapshot{
+	snap := raftpb.Snapshot{
 		Metadata: raftpb.SnapshotMetadata{
 			Index:     index,
 			Term:      term,
@@ -494,14 +495,16 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		},
 		Data: data,
 	}
+	s.snapshot = snap
+	s.mu.Unlock()
 
-	if err := s.saveSnapshot(); err != nil {
+	if err := s.saveSnapshot(snap); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
 	if err := s.wal.SaveSnapshot(walpb.Snapshot{
-		Index:     index,
-		Term:      term,
+		Index:     snap.Metadata.Index,
+		Term:      snap.Metadata.Term,
 		ConfState: cs,
 	}); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
@@ -557,7 +560,7 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.entries = nil // Clear entries after applying snapshot
 
 	// Save to disk
-	if err := s.saveSnapshot(); err != nil {
+	if err := s.saveSnapshot(snap); err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
 	}
 
