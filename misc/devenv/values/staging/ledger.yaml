@@ -56,7 +56,7 @@ config:
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"
-      profileTypes: "cpu,alloc_space,inuse_space,goroutines"
+      profileTypes: "cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
       uploadRate: "30s"
   raft:
     electionTick: 10
@@ -111,7 +111,7 @@ persistence:
     accessMode: ReadWriteOnce
     size: 50Gi
 
-replicaCount: 3
+replicaCount: 1
 resources:
   limits:
     cpu: 8000m
