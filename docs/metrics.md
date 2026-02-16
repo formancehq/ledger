@@ -72,6 +72,15 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 | `raft.append_entries` | Histogram | µs | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
 | `raft.process_entry` | Histogram | µs | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
 
+### Gating Metrics
+
+Gating occurs when the node performs a maintenance task (snapshot install, checkpoint restore). During gating, Raft Readies are spooled instead of applied directly to the FSM.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `raft.node.gating.wait_duration` | Histogram | µs | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
+| `raft.node.gating.readies_processed` | Histogram | 1 | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
+
 ### WAL Metrics
 
 The Write-Ahead Log (WAL) metrics track the performance of the WAL append operations.
@@ -460,6 +469,8 @@ The dashboard is organized into the following sections:
 - WAL Cache Update Time
 - WAL Save Time
 - WAL Append Batch Size
+- Gating Wait Duration
+- Readies During Gating
 
 **Pebble Section**:
 - Flush / Second
