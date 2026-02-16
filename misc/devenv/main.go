@@ -573,13 +573,14 @@ func main() {
 		}
 
 		// Deploy k6-operator (optional, enabled by default)
+		var k6Operator *helm.Release
 		if getConfigBool("k6operator-enabled", true) {
 			k6OperatorValues, err := getConfigObject("k6operator")
 			if err != nil {
 				// k6-operator can work with default values, so we use empty map if not configured
 				k6OperatorValues = make(map[string]interface{})
 			}
-			k6Operator, err := helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
+			k6Operator, err = helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
 				Name:           pulumi.String("k6-operator"),
 				Chart:          pulumi.String("k6-operator"),
 				RepositoryOpts: &helm.RepositoryOptsArgs{Repo: pulumi.String("https://grafana.github.io/helm-charts")},
@@ -615,6 +616,11 @@ func main() {
 
 			benchmarkChartPath := filepath.Join("..", "benchmark-operator", "chart")
 
+			benchmarkDeps := []pulumi.Resource{namespace, otlp, benchmarkOperatorImage}
+			if k6Operator != nil {
+				benchmarkDeps = append(benchmarkDeps, k6Operator)
+			}
+
 			benchmarkOperator, err := helm.NewRelease(ctx, "benchmark-operator", &helm.ReleaseArgs{
 				Name:             pulumi.String("benchmark-operator"),
 				Chart:            pulumi.String(benchmarkChartPath),
@@ -623,7 +629,7 @@ func main() {
 				DependencyUpdate: pulumi.Bool(true),
 				ForceUpdate:      pulumi.Bool(true),
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace, otlp, benchmarkOperatorImage}),
+				pulumi.DependsOn(benchmarkDeps),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
