@@ -144,7 +144,7 @@ func TestFilterTemplateResolution(t *testing.T) {
 
 	for _, tc := range []testCase{
 		{
-			name:            "trivial case",
+			name:            "null filter",
 			resource:        ResourceKindAccount,
 			varDeclarations: map[string]VarDecl{},
 			source:          `null`,
@@ -152,7 +152,7 @@ func TestFilterTemplateResolution(t *testing.T) {
 			expectedFilter:  `null`,
 		},
 		{
-			name:            "trivial case",
+			name:            "simple filter",
 			resource:        ResourceKindAccount,
 			varDeclarations: map[string]VarDecl{},
 			source: `{

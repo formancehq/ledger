@@ -56,6 +56,7 @@ func ValidateVarDeclarations(vars map[string]VarDecl) error {
 	return nil
 }
 
+// expectedType must be non-nil
 func validateValueType(expectedType FieldType, v any) error {
 	var err error
 	switch expectedType.(type) {
