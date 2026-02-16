@@ -8,28 +8,26 @@
 
 ## 1. Problem Statement
 
-The ledger currently provides only basic read capabilities:
+The ledger currently provides these read capabilities:
 
 | Operation | What it does |
 |-----------|-------------|
 | `GetAccount(ledger, address)` | Volumes + metadata for a single account |
 | `GetTransaction(ledger, txID)` | Single transaction by ID |
 | `ListTransactions(ledger, pageSize, afterTxID)` | Paginated list, newest-first, no filter |
+| `ListAccounts(ledger, pageSize, afterAddr, prefix)` | Paginated list with optional address prefix filter |
 | `GetAllLedgersInfo` / `GetLedger` | Ledger listing |
 | `ListAuditEntries` | Audit trail with ledger + failures-only filter |
 
 This is insufficient for real-world use cases:
 
-- **"Show me all accounts starting with `users:`"** — impossible without scanning every transaction
 - **"What is the total balance across all merchant accounts?"** — requires N individual GetAccount calls
 - **"List all transactions involving Alice"** — requires scanning all transactions
 - **"How many transactions does this ledger have?"** — no stats endpoint
 
-The original `github.com/formancehq/ledger` supports ListAccounts, aggregate balances, ListLogs, and account stats — all missing from the POC.
+The original `github.com/formancehq/ledger` supports aggregate balances, ListLogs, and account stats — all missing from the POC.
 
 ## 2. Goals
-
-> **Note**: **ListAccounts** has been implemented (see `ListAccountAddresses` in `attributes.go`, `ListAccounts` across all layers). It derives the account list from Volume attribute keys — no separate account index is needed. It uses forward Pebble iteration with SeekGE-based deduplication, prefix filtering, and cursor pagination.
 
 1. **AggregateBalances**: sum volumes across accounts with optional filters
 2. **ListLogs**: list ledger logs (per-ledger)
