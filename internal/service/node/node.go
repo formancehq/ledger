@@ -233,12 +233,7 @@ func NewNode(
 		metric.WithDescription("Time spent applying entries to Machine"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
-			// Fine-grained buckets for small values (0-100ms)
-			0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
-			12000, 15000, 18000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
-			60000, 70000, 80000, 90000, 100000,
-			// Medium buckets (100-500ms)
-			125000, 150000, 175000, 200000, 250000, 300000, 350000, 400000, 450000, 500000,
+			0, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 500000,
 		),
 	)
 	if err != nil {
@@ -306,14 +301,7 @@ func NewNode(
 		metric.WithDescription("Time spent creating snapshot in syncer"),
 		metric.WithUnit("ms"),
 		metric.WithExplicitBucketBoundaries(
-			// Fine-grained buckets for small values (0-100ms)
-			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-			12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
-			60, 70, 80, 90, 100,
-			// Medium buckets (100-500ms)
-			125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
-			// Larger buckets (500ms-5s)
-			600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+			0, 5, 10, 25, 50, 100, 250, 500, 1000, 5000,
 		),
 	)
 	if err != nil {

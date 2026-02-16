@@ -5,8 +5,8 @@ config:
   walDir: /data/wal
   debug: false
   httpPort: 9000
-  audit:
-    enabled: false
+#  audit:
+#    enabled: false
   cache:
     rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
@@ -36,7 +36,7 @@ config:
       enabled: true
       endpoint: otel-opentelemetry-collector
       exporter: otlp
-      exporterPushInterval: 5s
+      exporterPushInterval: 15s
       insecure: "true"
       mode: grpc
       port: "4317"
@@ -56,10 +56,8 @@ config:
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"
-      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
-      uploadRate: "15s"
-      mutexProfileFraction: 5
-      blockProfileRate: 5
+      profileTypes: "cpu,alloc_space,inuse_space,goroutines"
+      uploadRate: "30s"
   raft:
     electionTick: 10
     heartbeatTick: 1
@@ -67,7 +65,6 @@ config:
     maxSizePerMsg: 2097152
     compactionMargin: 50000
     proposeQueueCapacity: 1024
-    snapshotInterval: 30s
     snapshotThreshold: "10000"
     tickInterval: 100ms
     transport:

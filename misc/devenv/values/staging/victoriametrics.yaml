@@ -6,10 +6,10 @@ server:
     size: 10Gi
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 2000m
+      memory: 2048Mi
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: 2000m
+      memory: 2048Mi
 service:
   type: ClusterIP

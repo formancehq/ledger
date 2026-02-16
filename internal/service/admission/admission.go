@@ -3,6 +3,7 @@ package admission
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +24,15 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 )
+
+// marshalBufPool holds reusable buffers for proto.MarshalAppend to avoid
+// repeated buffer growth allocations in the proposal hot path.
+var marshalBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 4096)
+		return &b
+	},
+}
 
 type Proposer interface {
 	Propose(*node.Proposal) (*futures.Future, error)
@@ -104,7 +114,7 @@ func NewAdmission(
 		metric.WithDescription("Total time to resolve a command (from Apply call to future resolution)"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
-			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
+			0, 1000, 5000, 20000, 100000, 500000, 2000000,
 		),
 	)
 	if err != nil {
@@ -116,7 +126,7 @@ func NewAdmission(
 		metric.WithDescription("Size of marshalled Raft commands in bytes"),
 		metric.WithUnit("By"),
 		metric.WithExplicitBucketBoundaries(
-			0, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576,
+			0, 512, 2048, 8192, 32768, 131072, 524288,
 		),
 	)
 	if err != nil {
@@ -146,7 +156,7 @@ func NewAdmission(
 		metric.WithDescription("Time waiting for Raft to accept and replicate a proposal (Propose + Wait)"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
-			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000,
+			0, 1000, 5000, 20000, 100000, 500000, 2000000,
 		),
 	)
 	if err != nil {
@@ -158,7 +168,7 @@ func NewAdmission(
 		metric.WithDescription("Time spent loading preload values from store"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
-			0, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
 		),
 	)
 	if err != nil {
@@ -607,16 +617,25 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
-	// todo: add a reusable buffer to marshal the command
-	cmdData, err := proto.Marshal(cmd)
+	// Marshal into a pooled buffer to avoid repeated growth allocations.
+	// Copy to exact-size slice since Raft retains a reference to proposal data.
+	bufp := marshalBufPool.Get().(*[]byte)
+	cmdData, err := proto.MarshalOptions{}.MarshalAppend((*bufp)[:0], cmd)
 	if err != nil {
+		*bufp = cmdData
+		marshalBufPool.Put(bufp)
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
 	// Record command size for monitoring memory usage
 	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
 
-	proposal := node.NewProposal(cmd.Id, cmdData)
+	proposalData := make([]byte, len(cmdData))
+	copy(proposalData, cmdData)
+	*bufp = cmdData // preserve grown capacity for future calls
+	marshalBufPool.Put(bufp)
+
+	proposal := node.NewProposal(cmd.Id, proposalData)
 
 	proposeStart := time.Now()
 	fsmFuture, err := a.proposer.Propose(proposal)

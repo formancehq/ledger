@@ -210,7 +210,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 
-		cmd.Reset()
 		if err := proto.Unmarshal(entry.Data, cmd); err != nil {
 			return nil, err
 		}
