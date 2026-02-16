@@ -305,6 +305,9 @@ func main() {
 			return string(data), nil
 		}
 
+		// Deploy monitoring backends sequentially to avoid Helm release storage conflicts
+		// (concurrent helm install in the same namespace causes Secret race conditions)
+
 		// Deploy VictoriaMetrics
 		victoriaMetricsValues, err := getConfigObject("victoriametrics")
 		if err != nil {
@@ -325,7 +328,7 @@ func main() {
 			return fmt.Errorf("failed to deploy VictoriaMetrics: %w", err)
 		}
 
-		// Deploy Tempo
+		// Deploy Tempo (after VictoriaMetrics)
 		tempoValues, err := getConfigObject("tempo")
 		if err != nil {
 			return fmt.Errorf("failed to read Tempo values: %w", err)
@@ -338,14 +341,14 @@ func main() {
 			Values:         pulumi.ToMap(tempoValues),
 			ForceUpdate:    pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.DependsOn([]pulumi.Resource{namespace, victoriaMetrics}),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Tempo: %w", err)
 		}
 
-		// Deploy Loki
+		// Deploy Loki (after Tempo)
 		lokiValues, err := getConfigObject("loki")
 		if err != nil {
 			return fmt.Errorf("failed to read Loki values: %w", err)
@@ -358,14 +361,14 @@ func main() {
 			Values:         pulumi.ToMap(lokiValues),
 			ForceUpdate:    pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.DependsOn([]pulumi.Resource{namespace, tempo}),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Loki: %w", err)
 		}
 
-		// Deploy Pyroscope (optional, enabled by default)
+		// Deploy Pyroscope (optional, enabled by default, after Loki)
 		var pyroscope *helm.Release
 		if getConfigBool("pyroscope-enabled", true) {
 			pyroscopeValues, err := getConfigObject("pyroscope")
@@ -373,6 +376,7 @@ func main() {
 				// Pyroscope can work with default values
 				pyroscopeValues = make(map[string]interface{})
 			}
+			pyroscopeDeps := []pulumi.Resource{namespace, loki}
 			pyroscope, err = helm.NewRelease(ctx, "pyroscope", &helm.ReleaseArgs{
 				Name:           pulumi.String("pyroscope"),
 				Chart:          pulumi.String("pyroscope"),
@@ -381,7 +385,7 @@ func main() {
 				Values:         pulumi.ToMap(pyroscopeValues),
 				ForceUpdate:    pulumi.Bool(true),
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace}),
+				pulumi.DependsOn(pyroscopeDeps),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
@@ -389,10 +393,14 @@ func main() {
 			}
 		}
 
-		// Deploy OpenTelemetry Collector
+		// Deploy OpenTelemetry Collector (after Loki/Pyroscope — needs backends ready for exporters)
 		otlpValues, err := getConfigObject("otlp")
 		if err != nil {
 			return fmt.Errorf("failed to read OTLP values: %w", err)
+		}
+		otlpDeps := []pulumi.Resource{namespace, victoriaMetrics, tempo, loki}
+		if pyroscope != nil {
+			otlpDeps = append(otlpDeps, pyroscope)
 		}
 		otlp, err := helm.NewRelease(ctx, "otel", &helm.ReleaseArgs{
 			Name:           pulumi.String("otel"),
@@ -402,7 +410,7 @@ func main() {
 			Values:         pulumi.ToMap(otlpValues),
 			ForceUpdate:    pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace}),
+			pulumi.DependsOn(otlpDeps),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
@@ -579,7 +587,7 @@ func main() {
 				Values:         pulumi.ToMap(k6OperatorValues),
 				ForceUpdate:    pulumi.Bool(true),
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace}),
+				pulumi.DependsOn([]pulumi.Resource{namespace, otlp}),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
@@ -615,7 +623,7 @@ func main() {
 				DependencyUpdate: pulumi.Bool(true),
 				ForceUpdate:      pulumi.Bool(true),
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace, benchmarkOperatorImage}),
+				pulumi.DependsOn([]pulumi.Resource{namespace, otlp, benchmarkOperatorImage}),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
