@@ -187,7 +187,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			}
 		}
 
-		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(fsm.lastAppliedIndex); rotated {
+		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(entry.Index); rotated {
 			// Rotate dirty key tracking: consume slot[2], shift down, allocate new slot[0]
 			keysToCompact := fsm.dirtyVolumeKeys[2]
 			fsm.dirtyVolumeKeys[2] = fsm.dirtyVolumeKeys[1]
