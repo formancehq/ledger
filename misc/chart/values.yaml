@@ -126,8 +126,7 @@ config:
     enabled: true
 
   # Admission metrics (histograms/counters in the admission hot path).
-  # Disabled by default to avoid contention under high concurrency.
-  admissionMetrics: false
+  admissionMetrics: true
 
   # Debug logging
   debug: false

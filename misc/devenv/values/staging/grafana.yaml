@@ -77,11 +77,11 @@ plugins:
   - grafana-pyroscope-app
 resources:
   limits:
-    cpu: 300m
-    memory: 512Mi
+    cpu: 1000m
+    memory: 1024Mi
   requests:
-    cpu: 50m
-    memory: 128Mi
+    cpu: 1000m
+    memory: 1024Mi
 service:
   type: ClusterIP
 sidecar:

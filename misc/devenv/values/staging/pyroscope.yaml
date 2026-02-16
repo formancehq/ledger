@@ -13,8 +13,8 @@ pyroscope:
       cpu: 1000m
       memory: 1024Mi
     requests:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1000m
+      memory: 1024Mi
   persistence:
     enabled: true
     size: 50Gi

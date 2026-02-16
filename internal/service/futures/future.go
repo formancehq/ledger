@@ -7,6 +7,7 @@ import (
 )
 
 // Future represents a future for an applied entry
+// todo: generify the future
 type Future struct {
 	mu   sync.Mutex
 	cond *sync.Cond

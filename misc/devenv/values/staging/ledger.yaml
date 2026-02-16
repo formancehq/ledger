@@ -5,8 +5,8 @@ config:
   walDir: /data/wal
   debug: false
   httpPort: 9000
-#  audit:
-#    enabled: false
+  audit:
+    enabled: false
   cache:
     rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
