@@ -328,26 +328,28 @@ func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
 }
 
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
-// Uses the provided tmp big.Int for intermediate computations to avoid heap allocations.
-func addVolumeSideDelta(acc *big.Int, tmp *big.Int, newKnown, newDiff *commonpb.BigInt, oldKnown, oldDiff *commonpb.BigInt) {
+// Uses the provided tmp and scratch big.Ints for intermediate computations to avoid heap allocations.
+func addVolumeSideDelta(acc *big.Int, tmp *big.Int, scratch *big.Int, newKnown, newDiff *commonpb.BigInt, oldKnown, oldDiff *commonpb.BigInt) {
 	if newKnown != nil {
-		newVal := newKnown.Value()
+		newKnown.ValueInto(tmp)
 		if oldKnown != nil {
-			tmp.Sub(newVal, oldKnown.Value())
+			oldKnown.ValueInto(scratch)
+			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
 			return
 		}
-		acc.Add(acc, newVal)
+		acc.Add(acc, tmp)
 		return
 	}
 	if newDiff != nil {
-		newVal := newDiff.Value()
+		newDiff.ValueInto(tmp)
 		if oldDiff != nil {
-			tmp.Sub(newVal, oldDiff.Value())
+			oldDiff.ValueInto(scratch)
+			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
 			return
 		}
-		acc.Add(acc, newVal)
+		acc.Add(acc, tmp)
 	}
 }
 
@@ -361,6 +363,7 @@ func checkDoubleEntryInvariant(
 		inputSum  big.Int
 		outputSum big.Int
 		tmp       big.Int
+		scratch   big.Int
 	)
 
 	for _, update := range volumeUpdates {
@@ -374,8 +377,8 @@ func checkDoubleEntryInvariant(
 				oldOutputDiff = old.OutputDiff
 			}
 		}
-		addVolumeSideDelta(&inputSum, &tmp, update.New.InputKnown, update.New.InputDiff, oldInputKnown, oldInputDiff)
-		addVolumeSideDelta(&outputSum, &tmp, update.New.OutputKnown, update.New.OutputDiff, oldOutputKnown, oldOutputDiff)
+		addVolumeSideDelta(&inputSum, &tmp, &scratch, update.New.InputKnown, update.New.InputDiff, oldInputKnown, oldInputDiff)
+		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.OutputKnown, update.New.OutputDiff, oldOutputKnown, oldOutputDiff)
 	}
 
 	if inputSum.Cmp(&outputSum) != 0 {

@@ -323,6 +323,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	}
 
 	// Helper function to put a preloaded volume pair into a cache generation
+	var scratchA, scratchB big.Int // reused across all preload volume merges
 	putInCacheVolumePair := func(
 		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]],
 		attrID *raftcmdpb.AttributeID,
@@ -338,20 +339,24 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		if ok {
 			// If InputKnown is not yet set, merge preloaded input with any existing diff
 			if value.Data.InputKnown == nil && pair.InputKnown != nil {
-				value.Data.InputKnown = pair.InputKnown
 				if value.Data.InputDiff != nil {
-					value.Data.InputKnown = commonpb.NewBigInt(
-						new(big.Int).Add(value.Data.InputKnown.Value(), value.Data.InputDiff.Value()),
-					)
+					pair.InputKnown.ValueInto(&scratchA)
+					value.Data.InputDiff.ValueInto(&scratchB)
+					scratchA.Add(&scratchA, &scratchB)
+					value.Data.InputKnown = commonpb.NewBigInt(&scratchA)
+				} else {
+					value.Data.InputKnown = pair.InputKnown
 				}
 			}
 			// If OutputKnown is not yet set, merge preloaded output with any existing diff
 			if value.Data.OutputKnown == nil && pair.OutputKnown != nil {
-				value.Data.OutputKnown = pair.OutputKnown
 				if value.Data.OutputDiff != nil {
-					value.Data.OutputKnown = commonpb.NewBigInt(
-						new(big.Int).Add(value.Data.OutputKnown.Value(), value.Data.OutputDiff.Value()),
-					)
+					pair.OutputKnown.ValueInto(&scratchA)
+					value.Data.OutputDiff.ValueInto(&scratchB)
+					scratchA.Add(&scratchA, &scratchB)
+					value.Data.OutputKnown = commonpb.NewBigInt(&scratchA)
+				} else {
+					value.Data.OutputKnown = pair.OutputKnown
 				}
 			}
 			return value.Data

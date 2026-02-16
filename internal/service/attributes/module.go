@@ -42,28 +42,29 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 		prefix:   data.AttributePrefixVolume,
 		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
 		computeFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
-			inputResult := big.NewInt(0)
-			outputResult := big.NewInt(0)
+			var inputResult, outputResult, tmp big.Int
 
 			if base != nil {
 				if base.InputKnown != nil {
-					inputResult = base.InputKnown.Value()
+					base.InputKnown.ValueInto(&inputResult)
 				}
 				if base.OutputKnown != nil {
-					outputResult = base.OutputKnown.Value()
+					base.OutputKnown.ValueInto(&outputResult)
 				}
 			}
 			if lastDiff != nil {
 				if lastDiff.InputKnown != nil {
-					inputResult = new(big.Int).Add(inputResult, lastDiff.InputKnown.Value())
+					lastDiff.InputKnown.ValueInto(&tmp)
+					inputResult.Add(&inputResult, &tmp)
 				}
 				if lastDiff.OutputKnown != nil {
-					outputResult = new(big.Int).Add(outputResult, lastDiff.OutputKnown.Value())
+					lastDiff.OutputKnown.ValueInto(&tmp)
+					outputResult.Add(&outputResult, &tmp)
 				}
 			}
 			return &raftcmdpb.VolumePair{
-				InputKnown:  commonpb.NewBigInt(inputResult),
-				OutputKnown: commonpb.NewBigInt(outputResult),
+				InputKnown:  commonpb.NewBigInt(&inputResult),
+				OutputKnown: commonpb.NewBigInt(&outputResult),
 			}
 		},
 		keyBuf: make([]byte, 128),

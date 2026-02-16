@@ -607,6 +607,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
+	// todo: add a reusable buffer to marshal the command
 	cmdData, err := proto.Marshal(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling command: %w", err)

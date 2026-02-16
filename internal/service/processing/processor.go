@@ -607,8 +607,9 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		Asset: posting.Asset,
 	}
 
-	// Decode posting amount once and reuse
-	amount := posting.Amount.Value()
+	// Decode posting amount into stack variable to avoid heap allocation
+	var amount big.Int
+	posting.Amount.ValueInto(&amount)
 
 	// Get current volume pair for source
 	sourceVol, err := s.GetVolume(sourceKey)
@@ -624,25 +625,27 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		if sourceVol.InputKnown == nil {
 			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
-		var outputValue *big.Int
+		var inputValue, outputValue, balance big.Int
+		sourceVol.InputKnown.ValueInto(&inputValue)
 		if sourceVol.OutputKnown != nil {
-			outputValue = sourceVol.OutputKnown.Value()
-		} else {
-			outputValue = big.NewInt(0)
+			sourceVol.OutputKnown.ValueInto(&outputValue)
 		}
-		balance := new(big.Int).Sub(sourceVol.InputKnown.Value(), outputValue)
-		if balance.Cmp(amount) < 0 {
+		balance.Sub(&inputValue, &outputValue)
+		if balance.Cmp(&amount) < 0 {
 			return &ErrInsufficientFunds{
 				Account: posting.Source,
 				Asset:   posting.Asset,
-				Amount:  amount,
-				Balance: balance,
+				Amount:  new(big.Int).Set(&amount),
+				Balance: new(big.Int).Set(&balance),
 			}
 		}
 	}
 
+	// scratch is reused across both addToVolumeSide calls
+	var scratch big.Int
+
 	// Increase Output for source (money going out)
-	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, amount, posting.Amount)
+	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &amount, posting.Amount, &scratch)
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
@@ -661,7 +664,7 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	if destVol == nil {
 		destVol = &raftcmdpb.VolumePair{}
 	}
-	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, amount, posting.Amount)
+	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &amount, posting.Amount, &scratch)
 	s.PutVolume(destKey, destVol)
 
 	return nil
@@ -670,18 +673,21 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 // addToVolumeSide adds amount to one side (input or output) of a VolumePair.
 // If Known is set, it updates Known (SetBase path). Otherwise, it updates Diff (AddDiff path).
 // rawAmount is the original proto BigInt used when Diff is nil to avoid re-encoding.
-func addToVolumeSide(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt) {
+// scratch is a caller-provided big.Int to avoid heap allocation.
+func addToVolumeSide(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt, scratch *big.Int) {
 	if *known != nil {
-		var tmp big.Int
-		tmp.Add((*known).Value(), amount)
-		*known = commonpb.NewBigInt(&tmp)
+		// Safe to mutate in-place: *known is always a cloned cache value, never shared.
+		(*known).ValueInto(scratch)
+		scratch.Add(scratch, amount)
+		(*known).SetFromBigInt(scratch)
 	} else {
 		if *diff == nil {
 			*diff = rawAmount
 		} else {
-			var tmp big.Int
-			tmp.Add((*diff).Value(), amount)
-			*diff = commonpb.NewBigInt(&tmp)
+			// Must create new *BigInt: *diff may point to a shared rawAmount (posting.Amount).
+			(*diff).ValueInto(scratch)
+			scratch.Add(scratch, amount)
+			*diff = commonpb.NewBigInt(scratch)
 		}
 	}
 }

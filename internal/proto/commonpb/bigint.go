@@ -17,6 +17,19 @@ func (b *BigInt) Value() *big.Int {
 	return unmarshalBigIntBytes(b.Data)
 }
 
+// ValueInto decodes the stored value into dst without allocating a new big.Int.
+// It reuses dst's internal storage when possible. Returns dst for convenience.
+func (b *BigInt) ValueInto(dst *big.Int) *big.Int {
+	unmarshalBigIntBytesInto(b.Data, dst)
+	return dst
+}
+
+// SetFromBigInt encodes v into the existing BigInt, reusing the Data buffer
+// when it has sufficient capacity to avoid allocation.
+func (b *BigInt) SetFromBigInt(v *big.Int) {
+	b.Data = marshalBigIntBytesReuse(v, b.Data)
+}
+
 func NewBigInt(v *big.Int) *BigInt {
 	return &BigInt{Data: marshalBigIntBytes(v)}
 }
@@ -63,4 +76,46 @@ func unmarshalBigIntBytes(b []byte) *big.Int {
 		x.Neg(x)
 	}
 	return x
+}
+
+// unmarshalBigIntBytesInto decodes bytes into an existing big.Int without allocating.
+// Uses SetBytes which reuses dst's internal nat buffer when it has sufficient capacity.
+func unmarshalBigIntBytesInto(b []byte, dst *big.Int) {
+	if len(b) == 0 {
+		dst.SetInt64(0)
+		return
+	}
+	sign := b[0]
+	dst.SetBytes(b[1:])
+	if sign == 1 && dst.Sign() != 0 {
+		dst.Neg(dst)
+	}
+}
+
+// marshalBigIntBytesReuse encodes a big.Int to bytes, reusing buf when it has
+// sufficient capacity. Uses FillBytes to write directly into the buffer,
+// avoiding the intermediate allocation from Bytes().
+func marshalBigIntBytesReuse(x *big.Int, buf []byte) []byte {
+	if x == nil || x.Sign() == 0 {
+		if cap(buf) >= 1 {
+			buf = buf[:1]
+			buf[0] = 0
+			return buf
+		}
+		return []byte{0}
+	}
+	sign := byte(0)
+	if x.Sign() < 0 {
+		sign = 1
+	}
+	byteLen := (x.BitLen() + 7) / 8
+	needed := 1 + byteLen
+	if cap(buf) >= needed {
+		buf = buf[:needed]
+	} else {
+		buf = make([]byte, needed)
+	}
+	buf[0] = sign
+	x.FillBytes(buf[1:])
+	return buf
 }

@@ -62,6 +62,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
+	var scratch big.Int // reused across all postings
 	for i, posting := range result.Postings {
 		postings[i] = &commonpb.Posting{
 			Source:      posting.Source,
@@ -85,7 +86,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		if sourceVol == nil {
 			sourceVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, posting.Amount, postings[i].Amount)
+		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, posting.Amount, postings[i].Amount, &scratch)
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -103,7 +104,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		if destVol == nil {
 			destVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, posting.Amount, postings[i].Amount)
+		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, posting.Amount, postings[i].Amount, &scratch)
 		s.PutVolume(destKey, destVol)
 	}
 
@@ -156,6 +157,8 @@ var maxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.BalanceQuery) (numscript.Balances, error) {
 	balances := make(numscript.Balances)
 
+	var inputVal, outputVal big.Int // stack scratch reused across iterations
+
 	for account, assets := range query {
 		accountBalance := make(numscript.AccountBalance)
 		balances[account] = accountBalance
@@ -187,22 +190,22 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 			}
 
 			// Calculate balance: Input - Output
-			var inputValue, outputValue *big.Int
+			// Decode into stack scratch to avoid intermediate allocations
 			if vol.InputKnown != nil {
-				inputValue = vol.InputKnown.Value()
+				vol.InputKnown.ValueInto(&inputVal)
 			} else {
-				inputValue = vol.InputDiff.Value()
+				vol.InputDiff.ValueInto(&inputVal)
 			}
 
+			outputVal.SetInt64(0)
 			if vol.OutputKnown != nil {
-				outputValue = vol.OutputKnown.Value()
+				vol.OutputKnown.ValueInto(&outputVal)
 			} else if vol.OutputDiff != nil {
-				outputValue = vol.OutputDiff.Value()
-			} else {
-				outputValue = big.NewInt(0)
+				vol.OutputDiff.ValueInto(&outputVal)
 			}
 
-			balance := new(big.Int).Sub(inputValue, outputValue)
+			// balance escapes into the map, so it must be heap-allocated
+			balance := new(big.Int).Sub(&inputVal, &outputVal)
 			accountBalance[asset] = balance
 		}
 	}
