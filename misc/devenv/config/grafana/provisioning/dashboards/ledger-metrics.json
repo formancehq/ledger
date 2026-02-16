@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 55,
+  "id": 6,
   "links": [],
   "panels": [
     {
@@ -297,7 +297,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 9
+            "y": 93
           },
           "id": 303,
           "options": {
@@ -393,7 +393,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 9
+            "y": 93
           },
           "id": 304,
           "options": {
@@ -508,7 +508,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 17
+            "y": 101
           },
           "id": 305,
           "options": {
@@ -637,7 +637,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 17
+            "y": 101
           },
           "id": 306,
           "options": {
@@ -752,7 +752,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 25
+            "y": 109
           },
           "id": 307,
           "options": {
@@ -855,7 +855,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 25
+            "y": 109
           },
           "id": 308,
           "options": {
@@ -955,7 +955,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 25
+            "y": 109
           },
           "id": 309,
           "options": {
@@ -1070,7 +1070,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 33
+            "y": 117
           },
           "id": 310,
           "options": {
@@ -1171,7 +1171,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 33
+            "y": 117
           },
           "id": 311,
           "options": {
@@ -1274,7 +1274,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 33
+            "y": 117
           },
           "id": 312,
           "options": {
@@ -1376,7 +1376,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 41
+            "y": 125
           },
           "id": 313,
           "options": {
@@ -1547,7 +1547,7 @@
             "h": 10,
             "w": 8,
             "x": 0,
-            "y": 8
+            "y": 92
           },
           "id": 315,
           "options": {
@@ -1566,7 +1566,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -1750,7 +1750,7 @@
             "h": 10,
             "w": 8,
             "x": 8,
-            "y": 8
+            "y": 92
           },
           "id": 316,
           "options": {
@@ -1769,7 +1769,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -1828,7 +1828,7 @@
             "h": 10,
             "w": 8,
             "x": 16,
-            "y": 8
+            "y": 92
           },
           "id": 317,
           "options": {
@@ -1847,7 +1847,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -2036,7 +2036,7 @@
             "h": 4,
             "w": 24,
             "x": 0,
-            "y": 18
+            "y": 102
           },
           "id": 318,
           "options": {
@@ -2135,7 +2135,7 @@
             "h": 10,
             "w": 8,
             "x": 0,
-            "y": 22
+            "y": 106
           },
           "id": 319,
           "options": {
@@ -2194,7 +2194,7 @@
             "h": 10,
             "w": 8,
             "x": 8,
-            "y": 22
+            "y": 106
           },
           "id": 320,
           "options": {
@@ -2213,7 +2213,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -2277,7 +2277,7 @@
             "h": 10,
             "w": 8,
             "x": 16,
-            "y": 22
+            "y": 106
           },
           "id": 321,
           "options": {
@@ -2378,7 +2378,7 @@
             "h": 10,
             "w": 8,
             "x": 0,
-            "y": 32
+            "y": 116
           },
           "id": 322,
           "options": {
@@ -2437,7 +2437,7 @@
             "h": 10,
             "w": 8,
             "x": 8,
-            "y": 32
+            "y": 116
           },
           "id": 323,
           "options": {
@@ -2456,7 +2456,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -2557,7 +2557,7 @@
             "h": 10,
             "w": 8,
             "x": 16,
-            "y": 32
+            "y": 116
           },
           "id": 324,
           "options": {
@@ -2655,7 +2655,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 42
+            "y": 126
           },
           "id": 325,
           "options": {
@@ -2762,7 +2762,7 @@
             "h": 6,
             "w": 12,
             "x": 12,
-            "y": 42
+            "y": 126
           },
           "id": 326,
           "options": {
@@ -2824,7 +2824,7 @@
             "h": 10,
             "w": 8,
             "x": 0,
-            "y": 48
+            "y": 132
           },
           "id": 327,
           "options": {
@@ -2843,7 +2843,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -3027,7 +3027,7 @@
             "h": 10,
             "w": 8,
             "x": 8,
-            "y": 48
+            "y": 132
           },
           "id": 328,
           "options": {
@@ -3046,7 +3046,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -3105,7 +3105,7 @@
             "h": 10,
             "w": 8,
             "x": 16,
-            "y": 48
+            "y": 132
           },
           "id": 329,
           "options": {
@@ -3124,7 +3124,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -3346,7 +3346,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 58
+            "y": 142
           },
           "id": 330,
           "options": {
@@ -3405,7 +3405,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 58
+            "y": 142
           },
           "id": 331,
           "options": {
@@ -3424,7 +3424,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-09
+              "le": 1e-9
             },
             "legend": {
               "show": true
@@ -3646,7 +3646,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 58
+            "y": 142
           },
           "id": 332,
           "options": {
@@ -3771,7 +3771,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 66
+            "y": 150
           },
           "id": 333,
           "options": {
@@ -3804,114 +3804,13 @@
           ],
           "title": "Pending responses",
           "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 12,
-            "x": 12,
-            "y": 66
-          },
-          "id": 334,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
-              "instant": false,
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Snapshot creation",
-          "type": "timeseries"
         }
       ],
       "title": "Transport & Queues",
       "type": "row"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -3919,1808 +3818,2320 @@
         "y": 2
       },
       "id": 3,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "description": "Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 3
-          },
-          "id": 335,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "rate({\"raft.process_entry_sum\", \"service.node_id\"=~\"$node\"})",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Process ready entry time passed",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 3
-          },
-          "id": 336,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Applying entries time passed",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of Raft ready entries processed per second.\n\nThis metric shows the throughput of the Raft ready processing loop. Higher values indicate more activity in the Raft consensus layer.\n\nCorrelate with 'Process ready entry time passed' to understand both throughput and latency.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 11
-          },
-          "id": 337,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Process ready entry rate",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Percentile distribution of time spent processing Raft ready entries (in microseconds).\n\nShows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.\n\nHigh latencies may indicate:\n- Heavy message processing load\n- Slow WAL writes\n- FSM apply bottlenecks",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 11
-          },
-          "id": 338,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.process_entry_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Process ready entry latency",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "description": "Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 19
-          },
-          "id": 339,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Append entries time passed",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Latency percentiles (P75, P95, P99) for appending entries to the WAL, in microseconds.\n\nThis measures the time spent writing Raft log entries to durable storage:\n- P75: 75% of append operations complete within this time\n- P95: 95% of append operations complete within this time\n- P99: 99% of append operations complete within this time\n\nHigh latencies indicate slow disk I/O or storage bottlenecks.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 19
-          },
-          "id": 340,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.append_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Append entries latency",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of committed entries per Raft Ready batch.\n\nShows P99, P95, P75 percentiles and average count of committed entries received in each Ready from the Raft consensus layer.\n\nHigher values indicate more batching efficiency. Low values (close to 1) indicate entries are being processed one at a time.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "short"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 27
-          },
-          "id": 341,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.ready.committed_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.ready.committed_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Committed entries per Ready",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Distribution of batch sizes when applying entries (P75, P95, P99 percentiles).\n\nLarger batches are more efficient:\n- Batch size 1: Each entry applied individually (less efficient)\n- Batch size >1: Multiple entries applied together (better throughput)\n\nHigher percentiles indicate the system is effectively batching under load, which improves throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 27
-          },
-          "id": 342,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "D"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.batch_size_distribution_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "E"
-            }
-          ],
-          "title": "Apply entries Batch size distribution",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 35
-          },
-          "id": 343,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Applying entries percentiles",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate × average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 35
-          },
-          "id": 344,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"})",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Applying entries rate",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Time spent updating the in-memory cache (s.entries) during WAL append operations, in microseconds.\n\nThis measures the time to update the in-memory entry cache before persisting to disk. Should be very fast as it's purely in-memory operations.\n\nHigh values may indicate:\n- Memory pressure\n- Large entry batches\n- GC pauses",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 43
-          },
-          "id": 345,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "rate(wal.append.cache.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "WAL cache update time",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 43
-          },
-          "id": 346,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "rate(wal.append.save.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "WAL save time",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Distribution of batch sizes when appending entries to the WAL (P75, P95, P99 percentiles).\n\nThis shows how many entries are appended at once:\n- Batch size 1: Single entry per append (less efficient)\n- Batch size >1: Multiple entries batched together (better throughput)\n\nHigher batch sizes indicate the system is efficiently batching entries under load.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "short"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 51
-          },
-          "id": 347,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "legendFormat": "Node {{service.node_id}}: P99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: P75",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(wal.append.batch_size_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "hide": false,
-              "legendFormat": "Node {{service.node_id}}: Avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "WAL append batch size",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Time spent waiting for a Ready from the Raft state machine. This measures the idle time between processing consecutive Ready batches.\n\nHigh wait times indicate:\n- Low activity (normal when idle)\n- System is not under load\n\nLow wait times indicate:\n- High throughput\n- System is processing many transactions",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 51
-          },
-          "id": 348,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}} p99",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}} p95",
-              "range": true,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}} p50",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.node.ready.wait_duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}} avg",
-              "range": true,
-              "refId": "D"
-            }
-          ],
-          "title": "Ready wait duration",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "description": "Number of Ready events processed per second. Each Ready contains a batch of entries to apply to the state machine.\n\nHigher rates indicate:\n- More transactions being processed\n- More Raft activity (heartbeats, elections, etc.)",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 59
-          },
-          "id": 349,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
-              "interval": "1s",
-              "legendFormat": "Node {{service.node_id}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Ready rate",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P4169E866C3094E38"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "showValues": false,
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "µs"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 59
-          },
-          "id": 350,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "editorMode": "code",
-              "expr": "rate({\"raft.node.ready.wait_duration_sum\", \"service.node_id\"=~\"$node\"})",
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Ready wait cumulated",
-          "type": "timeseries"
-        }
-      ],
+      "panels": [],
       "title": "Ready Loop",
       "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "description": "Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "id": 335,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate({\"raft.process_entry_sum\", \"service.node_id\"=~\"$node\"})",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Process ready entry time passed",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "id": 336,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Applying entries time passed",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of Raft ready entries processed per second.\n\nThis metric shows the throughput of the Raft ready processing loop. Higher values indicate more activity in the Raft consensus layer.\n\nCorrelate with 'Process ready entry time passed' to understand both throughput and latency.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "id": 337,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Process ready entry rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Percentile distribution of time spent processing Raft ready entries (in microseconds).\n\nShows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.\n\nHigh latencies may indicate:\n- Heavy message processing load\n- Slow WAL writes\n- FSM apply bottlenecks",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "id": 338,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.process_entry_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Process ready entry latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "description": "Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "id": 339,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Append entries time passed",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Latency percentiles (P75, P95, P99) for appending entries to the WAL, in microseconds.\n\nThis measures the time spent writing Raft log entries to durable storage:\n- P75: 75% of append operations complete within this time\n- P95: 95% of append operations complete within this time\n- P99: 99% of append operations complete within this time\n\nHigh latencies indicate slow disk I/O or storage bottlenecks.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "id": 340,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.append_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Append entries latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of committed entries per Raft Ready batch.\n\nShows P99, P95, P75 percentiles and average count of committed entries received in each Ready from the Raft consensus layer.\n\nHigher values indicate more batching efficiency. Low values (close to 1) indicate entries are being processed one at a time.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "id": 341,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.ready.committed_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.ready.committed_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Committed entries per Ready",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Distribution of batch sizes when applying entries (P75, P95, P99 percentiles).\n\nLarger batches are more efficient:\n- Batch size 1: Each entry applied individually (less efficient)\n- Batch size >1: Multiple entries applied together (better throughput)\n\nHigher percentiles indicate the system is effectively batching under load, which improves throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "id": 342,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.batch_size_distribution_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "E"
+        }
+      ],
+      "title": "Apply entries Batch size distribution",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 343,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Applying entries percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate × average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "id": 344,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"})",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Applying entries rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent updating the in-memory cache (s.entries) during WAL append operations, in microseconds.\n\nThis measures the time to update the in-memory entry cache before persisting to disk. Should be very fast as it's purely in-memory operations.\n\nHigh values may indicate:\n- Memory pressure\n- Large entry batches\n- GC pauses",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "id": 345,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(wal.append.cache.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "WAL cache update time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "id": 346,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(wal.append.save.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "WAL save time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Distribution of batch sizes when appending entries to the WAL (P75, P95, P99 percentiles).\n\nThis shows how many entries are appended at once:\n- Batch size 1: Single entry per append (less efficient)\n- Batch size >1: Multiple entries batched together (better throughput)\n\nHigher batch sizes indicate the system is efficiently batching entries under load.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "id": 347,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "legendFormat": "Node {{service.node_id}}: P99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: P75",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(wal.append.batch_size_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "hide": false,
+          "legendFormat": "Node {{service.node_id}}: Avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "WAL append batch size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent waiting for a Ready from the Raft state machine. This measures the idle time between processing consecutive Ready batches.\n\nHigh wait times indicate:\n- Low activity (normal when idle)\n- System is not under load\n\nLow wait times indicate:\n- High throughput\n- System is processing many transactions",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "id": 348,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p50",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.node.ready.wait_duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} avg",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Ready wait duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Number of Ready events processed per second. Each Ready contains a batch of entries to apply to the state machine.\n\nHigher rates indicate:\n- More transactions being processed\n- More Raft activity (heartbeats, elections, etc.)",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 59
+      },
+      "id": 349,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 59
+      },
+      "id": 350,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate({\"raft.node.ready.wait_duration_sum\", \"service.node_id\"=~\"$node\"})",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready wait cumulated",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 67
+      },
+      "id": 334,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot creation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in microseconds).\n\nHigh values indicate the orchestrate loop is slow to pick up completed Readies, which means the ready processing pipeline is stalled waiting for Advance.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 67
+      },
+      "id": 381,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p50",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Ready terminated wait duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint restore). During this time, spooled entries are replayed into the store.\n\nLong unspool times indicate many entries were spooled during the maintenance task, which means the system was under heavy write load when the snapshot was triggered.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "\u00b5s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 75
+      },
+      "id": 382,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "rate(raft.node.unspool.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Unspool duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Rate of snapshots triggered per second. Each snapshot causes the state machine to be short-circuited (entries are spooled) while the snapshot is created and WAL is compacted.\n\nFrequent snapshots may indicate the snapshot threshold is too low relative to throughput.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 75
+      },
+      "id": 380,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "rate(raft.snapshot.triggered{service.node_id=~\"$node\"}[$__rate_interval])",
+          "instant": false,
+          "legendFormat": "Node {{service.node_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot triggered",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine.\n\nThis measures how long the ready processing pipeline is stalled while a snapshot or checkpoint restore is in progress.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "\u00b5s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 82
+      },
+      "id": 383,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p99",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "interval": "1s",
+          "legendFormat": "Node {{service.node_id}} p50",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Gating wait duration",
+      "type": "timeseries"
     },
     {
       "collapsed": true,
@@ -5728,7 +6139,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 3
+        "y": 89
       },
       "id": 4,
       "panels": [
@@ -5798,7 +6209,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 4
+            "y": 88
           },
           "id": 351,
           "options": {
@@ -5894,7 +6305,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 4
+            "y": 88
           },
           "id": 352,
           "options": {
@@ -6012,7 +6423,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 4
+            "y": 88
           },
           "id": 353,
           "options": {
@@ -6107,7 +6518,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 12
+            "y": 96
           },
           "id": 354,
           "options": {
@@ -6228,7 +6639,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 12
+            "y": 96
           },
           "id": 355,
           "options": {
@@ -6345,7 +6756,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 12
+            "y": 96
           },
           "id": 356,
           "options": {
@@ -6440,7 +6851,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 20
+            "y": 104
           },
           "id": 357,
           "options": {
@@ -6535,7 +6946,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 20
+            "y": 104
           },
           "id": 358,
           "options": {
@@ -6631,7 +7042,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 20
+            "y": 104
           },
           "id": 359,
           "options": {
@@ -6692,7 +7103,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 83
       },
       "id": 5,
       "panels": [
@@ -6759,7 +7170,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 5
+            "y": 89
           },
           "id": 360,
           "options": {
@@ -6894,7 +7305,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 5
+            "y": 89
           },
           "id": 361,
           "options": {
@@ -6991,7 +7402,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 97
           },
           "id": 362,
           "options": {
@@ -7047,7 +7458,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 84
       },
       "id": 6,
       "panels": [
@@ -7100,8 +7511,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7113,7 +7523,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 6
+            "y": 90
           },
           "id": 363,
           "options": {
@@ -7223,8 +7633,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7236,7 +7645,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 6
+            "y": 90
           },
           "id": 364,
           "options": {
@@ -7322,8 +7731,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7335,7 +7743,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 14
+            "y": 98
           },
           "id": 365,
           "options": {
@@ -7421,8 +7829,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7434,7 +7841,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 14
+            "y": 98
           },
           "id": 366,
           "options": {
@@ -7520,8 +7927,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7533,7 +7939,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 22
+            "y": 106
           },
           "id": 367,
           "options": {
@@ -7631,8 +8037,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7644,7 +8049,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 22
+            "y": 106
           },
           "id": 368,
           "options": {
@@ -7754,8 +8159,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7767,7 +8171,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 30
+            "y": 114
           },
           "id": 369,
           "options": {
@@ -7861,8 +8265,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -7874,7 +8277,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 30
+            "y": 114
           },
           "id": 370,
           "options": {
@@ -7981,7 +8384,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 38
+            "y": 122
           },
           "id": 371,
           "options": {
@@ -8103,7 +8506,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 38
+            "y": 122
           },
           "id": 372,
           "options": {
@@ -8188,8 +8591,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -8201,7 +8603,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 46
+            "y": 130
           },
           "id": 379,
           "options": {
@@ -8272,7 +8674,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 85
       },
       "id": 7,
       "panels": [
@@ -8339,7 +8741,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 91
           },
           "id": 373,
           "options": {
@@ -8462,7 +8864,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 91
           },
           "id": 374,
           "options": {
@@ -8520,7 +8922,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 86
       },
       "id": 8,
       "panels": [
@@ -8538,7 +8940,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 8
+            "y": 92
           },
           "id": 375,
           "options": {
@@ -8578,7 +8980,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 28
+            "y": 112
           },
           "id": 376,
           "options": {
@@ -8618,7 +9020,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 48
+            "y": 132
           },
           "id": 377,
           "options": {
@@ -8658,7 +9060,7 @@
             "h": 20,
             "w": 24,
             "x": 0,
-            "y": 68
+            "y": 152
           },
           "id": 378,
           "options": {

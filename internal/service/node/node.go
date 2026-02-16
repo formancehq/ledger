@@ -104,7 +104,7 @@ type Node struct {
 	readies           chan raft.Ready
 	readyTerminated   chan raft.Ready
 	tasks             *taskSet
-	stopChannel chan chan struct{}
+	stopChannel       chan chan struct{}
 
 	// Metrics
 	applyEntriesHistogram             metric.Int64Histogram
@@ -115,7 +115,11 @@ type Node struct {
 	leadMonitorHistogram              metric.Int64Gauge
 	committedEntriesPerReadyHistogram metric.Int64Histogram
 	createSnapshotHistogram           metric.Float64Histogram
+	snapshotTriggeredCounter          metric.Int64Counter
 	readyWaitDurationHistogram        metric.Int64Histogram
+	readyTerminatedWaitHistogram      metric.Int64Histogram
+	unspoolDurationHistogram          metric.Float64Histogram
+	gatingWaitDurationHistogram       metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -226,7 +230,7 @@ func NewNode(
 		readies:                 make(chan raft.Ready, 1),
 		readyTerminated:         make(chan raft.Ready, 1),
 		tasks:                   newTaskSet(),
-		stopChannel: make(chan chan struct{}),
+		stopChannel:             make(chan chan struct{}),
 	}
 
 	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
@@ -308,9 +312,53 @@ func NewNode(
 		panic(err)
 	}
 
+	node.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
+		metric.WithDescription("Number of snapshots triggered"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
 		"raft.node.ready.wait_duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.readyTerminatedWaitHistogram, err = meter.Int64Histogram(
+		"raft.node.ready_terminated.wait_duration",
+		metric.WithDescription("Time spent waiting for orchestrate to consume readyTerminated"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.unspoolDurationHistogram, err = meter.Float64Histogram(
+		"raft.node.unspool.duration",
+		metric.WithDescription("Time spent in unspoolAndResume after a maintenance task (snapshot/checkpoint)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.gatingWaitDurationHistogram, err = meter.Int64Histogram(
+		"raft.node.gating.wait_duration",
+		metric.WithDescription("Time spent waiting for gatingTerminated (maintenance task completion)"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
@@ -397,17 +445,22 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 			if err != nil {
 				return err
 			}
+			terminatedStart := time.Now()
 			select {
 			case node.readyTerminated <- rd:
+				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Microseconds())
 			case <-stop:
 				return nil
 			}
 		case <-node.gatingTerminated:
+			node.gatingWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
 			// Drain the spool in this goroutine - no race condition possible
 			// since this is the same goroutine that does spooling
+			unspoolStart := time.Now()
 			if err := node.unspoolAndResume(ctx); err != nil {
 				return err
 			}
+			node.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			node.gatingTerminated = nil
 		case <-stop:
 			return nil
@@ -576,6 +629,7 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
 		// Short circuit the state machine
 		// Futures entries will be spooled and applied later
+		node.snapshotTriggeredCounter.Add(ctx, 1)
 		node.status.Store(statusSnapshotting)
 
 		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
