@@ -27,7 +27,7 @@ type Batch struct {
 func (s *Store) NewBatch() *Batch {
 	return &Batch{
 		store:       s,
-		batch:       s.db.NewBatch(),
+		batch:       s.getDB().NewBatch(),
 		KeyBuilder:  NewKeyBuilder(),
 		protoBuffer: make([]byte, 0, 1024),
 	}

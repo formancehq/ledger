@@ -120,6 +120,7 @@ type Node struct {
 	readyTerminatedWaitHistogram      metric.Int64Histogram
 	unspoolDurationHistogram          metric.Float64Histogram
 	gatingWaitDurationHistogram       metric.Int64Histogram
+	readiesDuringGatingHistogram      metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -368,6 +369,18 @@ func NewNode(
 		panic(err)
 	}
 
+	node.readiesDuringGatingHistogram, err = meter.Int64Histogram(
+		"raft.node.gating.readies_processed",
+		metric.WithDescription("Number of Readies processed during each gating period"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			0, 1, 2, 3, 5, 10, 20, 50, 100, 200,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	// Check if store is up to date and replay spool if needed
 	isStoreUpToDate, err := fsm.IsStoreUpToDate(context.Background())
 	if err != nil {
@@ -434,16 +447,28 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 }
 
 func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error {
+	var (
+		readiesDuringGating int64
+		gatingStart         time.Time
+	)
+
 	for {
 		waitStart := time.Now()
 		select {
 		case rd := <-node.readies:
 			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+			if !gatingStart.IsZero() {
+				readiesDuringGating++
+			}
 			now := time.Now()
 			err := node.processReady(ctx, rd)
 			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
 			if err != nil {
 				return err
+			}
+			// Detect if gating just started during processReady
+			if node.gatingTerminated != nil && gatingStart.IsZero() {
+				gatingStart = time.Now()
 			}
 			terminatedStart := time.Now()
 			select {
@@ -453,7 +478,10 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 				return nil
 			}
 		case <-node.gatingTerminated:
-			node.gatingWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+			node.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Microseconds())
+			node.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
+			readiesDuringGating = 0
+			gatingStart = time.Time{}
 			// Drain the spool in this goroutine - no race condition possible
 			// since this is the same goroutine that does spooling
 			unspoolStart := time.Now()
@@ -476,7 +504,12 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 
 	if rd.SoftState != nil {
 		ss := rd.SoftState
-		if ss.Lead != 0 && node.status.Load() == statusOutOfSync {
+		// Only trigger sync from SoftState if this Ready does NOT also contain
+		// a snapshot. When both are present, the snapshot processing below will
+		// trigger its own syncSnapshot. Doing it here too would start a background
+		// task that is immediately interrupted by the second syncSnapshot call,
+		// which corrupts the spool read cache (entries read but never applied).
+		if ss.Lead != 0 && node.status.Load() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
 			if err := node.syncSnapshot(ctx, ss.Lead); err != nil {
 				return fmt.Errorf("syncing snapshot: %w", err)
 			}
@@ -632,9 +665,11 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		node.snapshotTriggeredCounter.Add(ctx, 1)
 		node.status.Store(statusSnapshotting)
 
+		lastEntryIndex := entries[len(entries)-1].Index
+
 		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 			node.logger.WithFields(map[string]any{
-				"applied":           entries[len(entries)-1].Index,
+				"applied":           lastEntryIndex,
 				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
 				"snapshotThreshold": node.snapshotThreshold,
 				"compactionMargin":  node.compactionMargin,
@@ -646,23 +681,25 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 				return 0, err
 			}
 
-			err = node.wal.CreateSnapshot(entries[len(entries)-1].Index, confState, data)
+			err = node.wal.CreateSnapshot(lastEntryIndex, confState, data)
 			if err != nil {
 				return 0, err
 			}
-			duration := time.Since(startTime)
-			node.createSnapshotHistogram.Record(ctx, float64(duration.Milliseconds()))
+			node.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 
+			return lastEntryIndex, nil
+		}, func(ctx context.Context) {
+			// WAL compaction runs after gating ends to avoid holding the WAL
+			// mutex during the spooling window, which would block wal.Append
+			// and stall the Ready pipeline.
 			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-			// todo: decorallate compaction as it increase the spooling time and this is not needed
-			if entries[len(entries)-1].Index > node.compactionMargin {
-				err = node.wal.Compact(entries[len(entries)-1].Index - node.compactionMargin)
-				if err != nil && !errors.Is(err, raft.ErrCompacted) {
-					return 0, err
+			if lastEntryIndex > node.compactionMargin {
+				if err := node.wal.Compact(lastEntryIndex - node.compactionMargin); err != nil && !errors.Is(err, raft.ErrCompacted) {
+					node.logger.WithFields(map[string]any{
+						"error": err,
+					}).Errorf("Failed to compact WAL")
 				}
 			}
-
-			return entries[len(entries)-1].Index, nil
 		})
 	}
 
@@ -843,7 +880,7 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 			return 0, err
 		}
 		return 0, nil
-	})
+	}, nil)
 
 	return nil
 }
@@ -896,22 +933,37 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 	return nil
 }
 
-func (node *Node) runMaintenanceTask(ctx context.Context, task func(ctx context.Context) (uint64, error)) {
+func (node *Node) runMaintenanceTask(
+	ctx context.Context,
+	task func(ctx context.Context) (uint64, error),
+	postGating func(ctx context.Context),
+) {
 	gatingTerminated := make(chan struct{})
 	node.gatingTerminated = gatingTerminated
 
 	node.taskExecutor.interrupt()
 	node.taskExecutor.run(ctx, func(ctx context.Context) error {
-		defer func() {
-			close(gatingTerminated)
-		}()
-
 		frozenAtIndex, err := task(ctx)
 		if err != nil {
+			close(gatingTerminated)
 			return err
 		}
 
-		return node.replaySpool(ctx, frozenAtIndex)
+		if err := node.replaySpool(ctx, frozenAtIndex); err != nil {
+			close(gatingTerminated)
+			return err
+		}
+
+		// End gating before post-gating work (e.g. WAL compaction).
+		// Post-gating work doesn't need the FSM to be frozen and would
+		// unnecessarily extend the spooling window, increasing latency.
+		close(gatingTerminated)
+
+		if postGating != nil {
+			postGating(ctx)
+		}
+
+		return nil
 	})
 }
 

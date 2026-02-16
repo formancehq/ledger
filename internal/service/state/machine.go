@@ -692,6 +692,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		NextAuditSequenceId:  fsm.nextAuditSequenceID,
 	}
 
+	// todo: use a reusable buffer as the snapshot can be big
 	return proto.Marshal(snapshot)
 }
 

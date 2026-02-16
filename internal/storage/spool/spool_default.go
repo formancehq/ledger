@@ -484,6 +484,25 @@ func (s *Default) openWriter(id uint64) error {
 		return err
 	}
 
+	// If the segment ends with a trailer (written during a previous graceful
+	// close), truncate it so new records are appended right after the last
+	// data record. Without this, the trailer would be embedded in the middle
+	// of the segment, causing corrupt-record errors on replay.
+	if pos >= trailerLen {
+		_, _, hasTrailer := readTrailer(f)
+		if hasTrailer {
+			pos -= trailerLen
+			if err := f.Truncate(pos); err != nil {
+				_ = f.Close()
+				return err
+			}
+		}
+		if _, err := f.Seek(pos, io.SeekStart); err != nil {
+			_ = f.Close()
+			return err
+		}
+	}
+
 	s.f = f
 	s.w = bufio.NewWriterSize(f, s.cfg.WriteBufBytes)
 	s.size = pos
@@ -558,7 +577,12 @@ func readRecord(r *bufio.Reader) (raftpb.Entry, int, error) {
 	if _, err := io.ReadFull(r, h); err != nil {
 		return e, 0, err
 	}
-	if binary.LittleEndian.Uint32(h[0:4]) != recMagic {
+	magic := binary.LittleEndian.Uint32(h[0:4])
+	if magic == trailMagic {
+		// Trailer encountered mid-segment: treat as end of data records.
+		return e, 0, io.EOF
+	}
+	if magic != recMagic {
 		return e, 0, ErrCorrupt
 	}
 	n := int(binary.LittleEndian.Uint32(h[4:8]))

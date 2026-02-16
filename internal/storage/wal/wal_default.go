@@ -570,9 +570,9 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 // Compact compacts the log up to the given index
 func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if compactIndex > s.snapshot.Metadata.Index {
+		s.mu.Unlock()
 		return fmt.Errorf(
 			"index (%d) after last snapshot index(%d): %w",
 			compactIndex,
@@ -583,10 +583,12 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 
 	firstIndex := s.firstIndexLocked()
 	if compactIndex < firstIndex {
+		s.mu.Unlock()
 		return fmt.Errorf("index before first index: %w", raft.ErrCompacted)
 	}
 
 	if len(s.entries) == 0 {
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -604,6 +606,11 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 		// Set to nil instead of s.entries[:0] to release the backing array
 		s.entries = nil
 	}
+
+	// Release s.mu before the I/O-bound ReleaseLockTo call.
+	// The in-memory compaction is done; holding s.mu during file cleanup
+	// would block Append (which also needs s.mu), stalling the Ready pipeline.
+	s.mu.Unlock()
 
 	// IMPORTANT: Release WAL file locks up to compactIndex.
 	// This allows the etcd WAL to release memory associated with old log entries

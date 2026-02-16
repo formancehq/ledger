@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -32,6 +33,7 @@ const (
 // Store is a Pebble implementation of data.Store
 // It stores balances and account metadata
 type Store struct {
+	dbMu              sync.RWMutex // protects db during RestoreCheckpoint
 	db                *pebble.DB
 	opts              *pebble.Options
 	logger            logging.Logger
@@ -39,6 +41,14 @@ type Store struct {
 	currentCheckPoint uint64
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
+}
+
+// getDB returns the current pebble.DB, safe for concurrent use with RestoreCheckpoint.
+func (s *Store) getDB() *pebble.DB {
+	s.dbMu.RLock()
+	db := s.db
+	s.dbMu.RUnlock()
+	return db
 }
 
 // Key prefixes for Pebble storage
@@ -188,14 +198,13 @@ func NewStore(
 
 // Close closes the Pebble database
 func (s *Store) Close() error {
-	var errs []error
+	s.dbMu.Lock()
+	defer s.dbMu.Unlock()
+
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
-			errs = append(errs, err)
+			return fmt.Errorf("closing store: %w", err)
 		}
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("closing store: %v", errs)
 	}
 	return nil
 }
@@ -206,7 +215,7 @@ func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 	kb.PutByte(keyPrefixLog).
 		PutUInt64(sequence)
 
-	value, closer, err := s.db.Get(kb.Build())
+	value, closer, err := s.getDB().Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -232,7 +241,7 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 	kb.PutByte(keyPrefixIdempotency).
 		PutString(idempotencyKey)
 
-	value, closer, err := s.db.Get(kb.Build())
+	value, closer, err := s.getDB().Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -268,7 +277,7 @@ func (s *Store) ListTransactionIDs(ledgerID uint32, pageSize uint32, afterTxID u
 	}
 	upperBound := kb.Build()
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -357,7 +366,7 @@ func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]
 	kb.PutByte(0xFF)
 	upperBound := kb.Build()
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -395,7 +404,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
-	if err := s.db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+	if err := s.getDB().Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
@@ -500,7 +509,7 @@ func (s *Store) CreateBackupCheckpoint(backupID string) (string, error) {
 		return "", fmt.Errorf("removing existing backup directory: %w", err)
 	}
 
-	if err := s.db.Checkpoint(backupPath, pebble.WithFlushedWAL()); err != nil {
+	if err := s.getDB().Checkpoint(backupPath, pebble.WithFlushedWAL()); err != nil {
 		return "", fmt.Errorf("creating backup checkpoint: %w", err)
 	}
 
@@ -548,7 +557,11 @@ func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
 
 // RestoreCheckpoint restores the database from a checkpoint.
 // This closes the current database, replaces it with the checkpoint, and reopens.
+// Holds dbMu write lock to prevent concurrent reads from seeing a closed DB.
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
+	s.dbMu.Lock()
+	defer s.dbMu.Unlock()
+
 	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
 
 	// Verify the checkpoint exists
@@ -608,7 +621,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 }
 
 func (s *Store) GetLastAppliedIndex() (uint64, error) {
-	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedIndex})
+	get, closer, err := s.getDB().Get([]byte{keyPrefixLastAppliedIndex})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -628,7 +641,7 @@ func (s *Store) GetLastAppliedIndex() (uint64, error) {
 
 // GetLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch).
 func (s *Store) GetLastAppliedTimestamp() (uint64, error) {
-	get, closer, err := s.db.Get([]byte{keyPrefixLastAppliedTimestamp})
+	get, closer, err := s.getDB().Get([]byte{keyPrefixLastAppliedTimestamp})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -658,7 +671,7 @@ func (s *Store) GetLastSequence() (uint64, error) {
 		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 	upperBound := kb.Build()
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -704,7 +717,7 @@ func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEn
 		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 	upperBound := kb2.Build()
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -774,7 +787,7 @@ func (s *Store) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 	lowerBound := []byte{keyPrefixLedgerInfo}
 	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -822,7 +835,7 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 	key[0] = keyPrefixLedgerInfo
 	binary.BigEndian.PutUint32(key[1:], id)
 
-	value, closer, err := s.db.Get(key)
+	value, closer, err := s.getDB().Get(key)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, ErrNotFound
@@ -845,7 +858,7 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 }
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
-	return s.db.NewIter(p)
+	return s.getDB().NewIter(p)
 }
 
 func HardLink(srcDir, dstDir string) error {
