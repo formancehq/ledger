@@ -17,24 +17,36 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-// AttributeCache is a lock-free dual-generation cache for attribute values.
-// It uses atomic.Pointer for Gen0/Gen1 backed by kv.SyncMap, so
-// reads (Get, IsGuaranteedInCache) are completely lock-free.
-// Writes (Put, Del) are also lock-free thanks to sync.Map.
+// u128Hash extracts the low 64 bits of a U128 for shard selection.
+// U128 keys are BLAKE3 hashes, so Lo is uniformly distributed.
+func u128Hash(k attributes.U128) uint64 {
+	return k.Lo()
+}
+
+// newShardedMap creates a ShardedMap keyed by U128 with the standard hash function.
+func newShardedMap[T any]() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
+	return kv.NewShardedMap[attributes.U128, attributes.Entry[T]](u128Hash)
+}
+
+// AttributeCache is a dual-generation cache for attribute values.
+// It uses atomic.Pointer for Gen0/Gen1 backed by kv.ShardedMap (64 shards
+// with per-shard RWMutex). Readers (Get, IsGuaranteedInCache) take a shared
+// RLock on a single shard — no interface boxing, no heap allocation for U128 keys.
+// Writers (Put, Del) are called only from the FSM goroutine.
 // Only Rotate needs synchronization, which is done by the FSM goroutine
 // under Cache.mu — no contention with admission goroutines.
 type AttributeCache[T any] struct {
-	gen0      atomic.Pointer[kv.SyncMap[attributes.U128, attributes.Entry[T]]]
-	gen1      atomic.Pointer[kv.SyncMap[attributes.U128, attributes.Entry[T]]]
+	gen0      atomic.Pointer[kv.ShardedMap[attributes.U128, attributes.Entry[T]]]
+	gen1      atomic.Pointer[kv.ShardedMap[attributes.U128, attributes.Entry[T]]]
 	Cache     *Cache
 	cacheType string
 }
 
-func (a *AttributeCache[T]) Gen0() *kv.SyncMap[attributes.U128, attributes.Entry[T]] {
+func (a *AttributeCache[T]) Gen0() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
 	return a.gen0.Load()
 }
 
-func (a *AttributeCache[T]) Gen1() *kv.SyncMap[attributes.U128, attributes.Entry[T]] {
+func (a *AttributeCache[T]) Gen1() *kv.ShardedMap[attributes.U128, attributes.Entry[T]] {
 	return a.gen1.Load()
 }
 
@@ -73,19 +85,19 @@ func (a *AttributeCache[T]) Iter() iter.Seq2[attributes.U128, attributes.Entry[T
 }
 
 // Rotate performs a generation rotation: Gen1 is replaced by Gen0,
-// and Gen0 is replaced by a new empty SyncMap.
+// and Gen0 is replaced by a new empty ShardedMap.
 // Called only from the FSM goroutine under Cache.mu.
 func (a *AttributeCache[T]) Rotate() {
 	old := a.gen0.Load()
 	a.gen1.Store(old)
-	a.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	a.gen0.Store(newShardedMap[T]())
 }
 
 // reset clears all data in both generations.
 // Called only from Cache.Reset under Cache.mu.
 func (a *AttributeCache[T]) reset() {
-	a.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
-	a.gen1.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	a.gen0.Store(newShardedMap[T]())
+	a.gen1.Store(newShardedMap[T]())
 }
 
 // IsGuaranteedInCache checks if a key will still be in the cache when we reach
@@ -102,7 +114,7 @@ func (a *AttributeCache[T]) reset() {
 // - If `at` is in the next generation: one rotation, data must be in Gen0 to survive
 // - If `at` is 2+ generations ahead: data will be lost (too many rotations)
 //
-// This method is completely lock-free thanks to atomic.Pointer + sync.Map.
+// This method only takes a brief shared RLock on a single shard.
 func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
 	threshold := a.Cache.GenerationThreshold // immutable after init
 	if threshold == 0 {
@@ -134,8 +146,8 @@ func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T]
 		Cache:     cache,
 		cacheType: cacheType,
 	}
-	ac.gen0.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
-	ac.gen1.Store(kv.NewSyncMap[attributes.U128, attributes.Entry[T]]())
+	ac.gen0.Store(newShardedMap[T]())
+	ac.gen1.Store(newShardedMap[T]())
 	return ac
 }
 
