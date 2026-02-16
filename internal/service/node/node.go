@@ -643,6 +643,18 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		return nil
 	}
 
+	// Check HasReady immediately after stepping messages to avoid the
+	// processingTick delay (~10ms) in the commit pipeline. Without this,
+	// follower responses that make entries committable aren't detected
+	// until the next processingTick, adding up to 10ms to every commit cycle.
+	maybeCreateReady := func() {
+		if node.readyTerminated == nil && node.rawNode.HasReady() {
+			node.readyTerminated = make(chan raft.Ready, 1)
+			processingTick.Stop()
+			node.readies <- node.rawNode.Ready()
+		}
+	}
+
 	for {
 		select {
 		case <-ticker.C:
@@ -658,16 +670,19 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			if err := stepMessages(msgs); err != nil {
 				return err
 			}
+			maybeCreateReady()
 		default:
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
 				if err := stepMessages(msgs); err != nil {
 					return err
 				}
+				maybeCreateReady()
 			case msgs := <-node.transport.RecvMediumPriority():
 				if err := stepMessages(msgs); err != nil {
 					return err
 				}
+				maybeCreateReady()
 			case p := <-node.proposeCh:
 				p.Resolve(nil, node.rawNode.Propose(p.data))
 			case cmd := <-node.clusterCommandCh:
@@ -700,14 +715,17 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
+					maybeCreateReady()
 				case msgs := <-node.transport.RecvMediumPriority():
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
+					maybeCreateReady()
 				case msgs := <-node.transport.RecvLowPriority():
 					if err := stepMessages(msgs); err != nil {
 						return err
 					}
+					maybeCreateReady()
 				case p := <-node.proposeCh:
 					p.Resolve(nil, node.rawNode.Propose(p.data))
 				case cmd := <-node.clusterCommandCh:
