@@ -44,7 +44,6 @@ config:
       logs:
         exporters:
           - otlphttp/logs
-          - debug
         processors:
           - batch
         receivers:
