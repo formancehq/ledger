@@ -933,20 +933,5 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 
 // computeCorrectHash computes the correct hash for a log entry, matching the production logic.
 func computeCorrectHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
-	logForHash := &commonpb.Log{
-		Sequence:    log.Sequence,
-		Payload:     log.Payload,
-		Idempotency: log.Idempotency,
-	}
-
-	logBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(logForHash)
-	if err != nil {
-		panic(err)
-	}
-	hasher.Reset()
-	if len(lastHash) > 0 {
-		_, _ = hasher.Write(lastHash)
-	}
-	_, _ = hasher.Write(logBytes)
-	return hasher.Sum(nil)
+	return processing.ComputeLogHash(hasher, lastHash, log)
 }

@@ -181,21 +181,6 @@ func computeOrderHash(order *raftcmdpb.Order) []byte {
 	return hash[:]
 }
 
-// ComputeLogHash computes a blake3 hash for log chaining: blake3(lastHash || serialize(log)).
-// The log is serialized with Deterministic: true to ensure stable output.
-// The hasher is reset and reused to avoid allocation overhead.
-func ComputeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
-	logBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(log)
-	if err != nil {
-		panic(fmt.Sprintf("failed to marshal log for hash chaining: %v", err))
-	}
-	hasher.Reset()
-	if len(lastHash) > 0 {
-		_, _ = hasher.Write(lastHash)
-	}
-	_, _ = hasher.Write(logBytes)
-	return hasher.Sum(nil)
-}
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commonpb.LogPayload, error) {

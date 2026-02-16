@@ -86,14 +86,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		// 2. Verify hash chain
-		// Recreate the log without the Hash field, as the production code computes
-		// the hash before setting it on the log.
-		logForHash := &commonpb.Log{
-			Sequence:    log.Sequence,
-			Payload:     log.Payload,
-			Idempotency: log.Idempotency,
-		}
-		expectedHash := processing.ComputeLogHash(hasher, lastHash, logForHash)
+		// ComputeLogHash only hashes sequence, payload, and idempotency fields,
+		// skipping the hash field by design, so we can pass the stored log directly.
+		expectedHash := processing.ComputeLogHash(hasher, lastHash, log)
 		if !bytes.Equal(expectedHash, log.Hash) {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("hash mismatch at sequence %d: expected %x, got %x", seq, expectedHash, log.Hash),
