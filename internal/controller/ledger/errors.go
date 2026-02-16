@@ -324,3 +324,20 @@ func newErrSchemaAlreadyExists(version string) ErrSchemaAlreadyExists {
 		version,
 	}
 }
+
+type ErrQueryValidation struct {
+	err error
+}
+
+func (e ErrQueryValidation) Error() string {
+	return fmt.Sprintf("failed to resolve query template: %s", e.err.Error())
+}
+func (e ErrQueryValidation) Is(err error) bool {
+	_, ok := err.(ErrQueryValidation)
+	return ok
+}
+func newErrQueryValidation(err error) ErrQueryValidation {
+	return ErrQueryValidation{
+		err,
+	}
+}

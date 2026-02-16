@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/queries"
 	storage "github.com/formancehq/ledger/internal/storage/common"
 )
@@ -26,7 +28,12 @@ func runQuery(paginationConfig storage.PaginationConfig) http.HandlerFunc {
 
 			resource, cursor, err := l.RunQuery(r.Context(), schemaVersion, queryId, payload, paginationConfig)
 			if err != nil {
-				common.HandleCommonPaginationErrors(w, r, err)
+				switch {
+				case errors.Is(err, ledgercontroller.ErrQueryValidation{}):
+					api.BadRequest(w, common.ErrValidation, err)
+				default:
+					common.HandleCommonPaginationErrors(w, r, err)
+				}
 				return
 			}
 

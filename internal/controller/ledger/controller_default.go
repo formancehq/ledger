@@ -678,7 +678,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 	case queries.ResourceKindTransaction:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, newErrQueryValidation(err)
 		}
 		r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
 		if err != nil {
@@ -688,7 +688,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 	case queries.ResourceKindAccount:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, newErrQueryValidation(err)
 		}
 		r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
 		if err != nil {
@@ -698,7 +698,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 	case queries.ResourceKindLog:
 		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, newErrQueryValidation(err)
 		}
 		r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
 		if err != nil {
@@ -708,7 +708,7 @@ func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template 
 	case queries.ResourceKindVolume:
 		resourceQuery, err := storagecommon.UnmarshalCursor[ledger.GetVolumesOptions](*q.Cursor)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, newErrQueryValidation(err)
 		}
 		r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
 		if err != nil {
@@ -751,7 +751,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 			var result *bunpaginate.Cursor[any]
 			builder, err := queries.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, newErrQueryValidation(err)
 			}
 			switch template.Resource {
 			case queries.ResourceKindTransaction:
@@ -761,7 +761,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				}.Overwrite(template.Params, q.Params)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, newErrQueryValidation(err)
 				}
 				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
 				r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
@@ -776,7 +776,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 				}.Overwrite(template.Params, q.Params)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, newErrQueryValidation(err)
 				}
 				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
 				r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
@@ -791,7 +791,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				}.Overwrite(template.Params, q.Params)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, newErrQueryValidation(err)
 				}
 				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
 				r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
@@ -810,7 +810,7 @@ func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion strin
 					},
 				}.Overwrite(template.Params, q.Params)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, newErrQueryValidation(err)
 				}
 				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
 				r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
