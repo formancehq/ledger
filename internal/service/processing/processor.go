@@ -69,8 +69,9 @@ type Store interface {
 }
 
 type RequestProcessor struct {
-	numscriptCache *NumscriptCache
-	logHasher      *blake3.Hasher
+	numscriptCache   *NumscriptCache
+	logHasher        *blake3.Hasher
+	orderHashBuf     []byte // reusable buffer for order hash marshaling
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -87,6 +88,7 @@ func NewRequestProcessor(m metric.Meter) (*RequestProcessor, error) {
 	return &RequestProcessor{
 		numscriptCache: cache,
 		logHasher:      blake3.New(),
+		orderHashBuf:   make([]byte, 0, 512),
 	}, nil
 }
 
@@ -100,7 +102,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 		hasIdempotency := order.Idempotency != nil && order.Idempotency.Key != ""
 		var orderHash []byte
 		if hasIdempotency {
-			orderHash = computeOrderHash(order)
+			orderHash = p.computeOrderHash(order)
 
 			ikKey := data.IdempotencyKey{Key: order.Idempotency.Key}
 			storedValue, err := s.GetIdempotencyKey(ikKey)
@@ -164,19 +166,28 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 	}, nil
 }
 
-// computeOrderHash computes a blake3 hash of the order content (excluding idempotency) for idempotency checking.
-func computeOrderHash(order *raftcmdpb.Order) []byte {
-	// Create a copy without the idempotency field to compute hash
-	orderCopy := order.CloneVT()
-	orderCopy.Idempotency = nil
+// computeOrderHash computes a blake3 hash of the order content (excluding
+// idempotency) for idempotency checking. It reuses p.orderHashBuf across calls
+// to avoid allocations. Safe because ProcessProposal is single-threaded.
+func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
+	// Temporarily nil the idempotency field to exclude it from the hash,
+	// then restore it. This avoids a full CloneVT of the order.
+	saved := order.Idempotency
+	order.Idempotency = nil
 
-	// todo: need to stabilize the format
-	data, err := orderCopy.MarshalVT()
+	size := order.SizeVT()
+	if cap(p.orderHashBuf) < size {
+		p.orderHashBuf = make([]byte, size)
+	} else {
+		p.orderHashBuf = p.orderHashBuf[:size]
+	}
+	n, err := order.MarshalToVT(p.orderHashBuf)
+	order.Idempotency = saved
 	if err != nil {
-		// This should never happen with a valid order
 		panic(fmt.Sprintf("failed to marshal order: %v", err))
 	}
-	hash := blake3.Sum256(data)
+
+	hash := blake3.Sum256(p.orderHashBuf[:n])
 	return hash[:]
 }
 

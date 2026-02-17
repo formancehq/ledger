@@ -98,7 +98,7 @@ func TestProcessProposal_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	}
 
 	// Compute the expected hash for this order
-	expectedHash := computeOrderHash(order)
+	expectedHash := processor.computeOrderHash(order)
 
 	proposal := &raftcmdpb.Proposal{
 		Id:     1,
