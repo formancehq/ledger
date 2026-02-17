@@ -10,7 +10,6 @@ import (
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -168,11 +167,11 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 // computeOrderHash computes a blake3 hash of the order content (excluding idempotency) for idempotency checking.
 func computeOrderHash(order *raftcmdpb.Order) []byte {
 	// Create a copy without the idempotency field to compute hash
-	orderCopy := proto.CloneOf(order)
+	orderCopy := order.CloneVT()
 	orderCopy.Idempotency = nil
 
 	// todo: need to stabilize the format
-	data, err := proto.Marshal(orderCopy)
+	data, err := orderCopy.MarshalVT()
 	if err != nil {
 		// This should never happen with a valid order
 		panic(fmt.Sprintf("failed to marshal order: %v", err))

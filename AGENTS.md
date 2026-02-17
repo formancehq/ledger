@@ -374,14 +374,14 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/cluster.proto` - Cluster management (ClusterService: GetClusterState, TransferLeader, AddLearner, PromoteLearner, Backup)
   - `misc/proto/snapshot.proto` - Snapshot service definitions
   - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
-- **Generated code**: 
+- **Generated code**:
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
-  - `internal/proto/commonpb/` - Common types (common.pb.go, etc.)
-  - `internal/proto/raftcmdpb/` - FSM command types (raftcmd.pb.go, etc.)
-  - `internal/proto/servicepb/` - gRPC service (service.pb.go, service_grpc.pb.go, etc.)
-  - `internal/proto/clusterpb/` - Cluster state (cluster.pb.go, etc.)
-  - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go)
-  - `internal/proto/auditpb/` - Audit log types (audit.pb.go)
+  - `internal/proto/commonpb/` - Common types (common.pb.go, common_vtproto.pb.go, etc.)
+  - `internal/proto/raftcmdpb/` - FSM command types (raftcmd.pb.go, raftcmd_vtproto.pb.go, etc.)
+  - `internal/proto/servicepb/` - gRPC service (service.pb.go, service_grpc.pb.go, service_vtproto.pb.go, etc.)
+  - `internal/proto/clusterpb/` - Cluster state (cluster.pb.go, cluster_vtproto.pb.go, etc.)
+  - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go, snapshot_vtproto.pb.go)
+  - `internal/proto/auditpb/` - Audit log types (audit.pb.go, audit_vtproto.pb.go)
 
 ### Regenerating Code
 
@@ -393,18 +393,41 @@ just generate-proto
 
 This command:
 1. Reads the `.proto` files from the `proto/` directory
-2. Generates Go code using `protoc` with the `protoc-gen-go` and `protoc-gen-go-grpc` plugins
-3. Places the generated files in the appropriate directories (`internal/raft/` or `internal/service/`) based on the `go_package` option specified in each `.proto` file
+2. Generates Go code using `protoc` with the `protoc-gen-go`, `protoc-gen-go-grpc`, and `protoc-gen-go-vtproto` plugins
+3. Places the generated files in the appropriate directories based on the `go_package` option specified in each `.proto` file
+4. The `_vtproto.pb.go` files contain reflection-free `MarshalVT`, `UnmarshalVT`, `SizeVT`, `CloneVT`, and `EqualVT` methods
+
+### vtprotobuf (Fast Protobuf Serialization)
+
+The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to generate unrolled, reflection-free protobuf methods that are ~2-3x faster with fewer allocations than standard `proto.Marshal`/`proto.Unmarshal`.
+
+**Features enabled**: `marshal`, `unmarshal`, `size`, `clone`, `equal`
+
+**How it works**:
+- The `protoc-gen-go-vtproto` plugin generates `*_vtproto.pb.go` files alongside standard `*.pb.go` files
+- These files add VT methods (`MarshalVT()`, `UnmarshalVT()`, `SizeVT()`, `CloneVT()`, `EqualVT()`) to all generated message types
+- The wire format is identical to standard protobuf — no compatibility impact on external clients
+- A vtprotobuf gRPC codec is registered server-side in `internal/application/grpc_server.go` via `init()`, so all gRPC message serialization uses VT methods automatically
+- The client (`cmd/ledgerctl/`) does NOT import the codec registration, so it uses standard protobuf — no client changes needed
+
+**Hot-path optimizations**: Server-internal code calls VT methods directly in:
+- `internal/service/admission/admission.go` — proposal marshal (`SizeVT` + `MarshalToVT`)
+- `internal/service/state/machine.go` — proposal unmarshal (`UnmarshalVT`), snapshot marshal/unmarshal
+- `internal/service/attributes/attributes.go` — attribute value marshal/unmarshal (VT-aware helpers with fallback)
+- `internal/storage/data/batch.go` — batch marshal (VT-aware helper with fallback)
+- `internal/service/processing/processor.go` — order hash (`CloneVT` + `MarshalVT`)
+- `internal/service/state/buffer.go` — clone functions (`CloneVT` method references)
 
 ### Prerequisites
 
 - `protoc` (Protocol Buffer Compiler) must be installed
-- Go plugins: `protoc-gen-go` and `protoc-gen-go-grpc` must be available in your PATH
+- Go plugins: `protoc-gen-go`, `protoc-gen-go-grpc`, and `protoc-gen-go-vtproto` must be available in your PATH
 
 To install the Go plugins:
 ```bash
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.20240319094008-0393e58bdf10
 ```
 
 ### Modifying Protocol Definitions

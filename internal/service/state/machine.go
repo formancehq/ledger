@@ -18,7 +18,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
-	"google.golang.org/protobuf/proto"
 )
 
 type Machine struct {
@@ -210,7 +209,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 
-		if err := proto.Unmarshal(entry.Data, cmd); err != nil {
+		cmd.Reset()
+		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			return nil, err
 		}
 
@@ -693,7 +693,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	// todo: use a reusable buffer as the snapshot can be big
-	return proto.Marshal(snapshot)
+	return snapshot.MarshalVT()
 }
 
 // serializeCacheGeneration serializes either Gen0 (genIndex=0) or Gen1 (genIndex=1) from the cache
@@ -824,7 +824,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.snapshotIndex = snapshot.Metadata.Index
 
 	memSnapshot := &raftcmdpb.MemorySnapshot{}
-	if err := proto.Unmarshal(snapshot.Data, memSnapshot); err != nil {
+	if err := memSnapshot.UnmarshalVT(snapshot.Data); err != nil {
 		return err
 	}
 

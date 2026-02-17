@@ -51,6 +51,44 @@ func prefixLen(canonicalKey []byte) int {
 	return 2 + len(canonicalKey) // 1 for KeyPrefixAttributes + N for canonicalKey + 1 for attrType
 }
 
+// vtSizedMarshaler is implemented by vtprotobuf-generated messages.
+type vtSizedMarshaler interface {
+	SizeVT() int
+	MarshalToVT([]byte) (int, error)
+}
+
+// vtUnmarshaler is implemented by vtprotobuf-generated messages.
+type vtUnmarshaler interface {
+	UnmarshalVT([]byte) error
+}
+
+// marshalProto marshals a proto message using vtprotobuf when available,
+// falling back to standard proto.MarshalOptions otherwise.
+// The provided buf is reused when large enough; the returned slice may be a
+// different backing array.
+func marshalProto(buf []byte, msg proto.Message) ([]byte, error) {
+	if m, ok := msg.(vtSizedMarshaler); ok {
+		size := m.SizeVT()
+		if cap(buf) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+		n, err := m.MarshalToVT(buf)
+		return buf[:n], err
+	}
+	return proto.MarshalOptions{}.MarshalAppend(buf[:0], msg)
+}
+
+// unmarshalProto unmarshals data into a proto message using vtprotobuf when
+// available, falling back to standard proto.Unmarshal otherwise.
+func unmarshalProto(data []byte, msg proto.Message) error {
+	if m, ok := msg.(vtUnmarshaler); ok {
+		return m.UnmarshalVT(data)
+	}
+	return proto.Unmarshal(data, msg)
+}
+
 // writeEntry writes a base (entryType=0) or diff (entryType=1) entry to the batch.
 // Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes][entryType].
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
@@ -62,7 +100,7 @@ func (a *Attribute[V]) writeEntry(batch *data.Batch, index uint64, canonicalKey 
 	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
 	a.keyBuf[keyLen-1] = entryType
 
-	valueBytes, err := proto.MarshalOptions{}.MarshalAppend(a.protoBuffer[:0], value)
+	valueBytes, err := marshalProto(a.protoBuffer, value)
 	if err != nil {
 		return fmt.Errorf("marshaling value: %w", err)
 	}
@@ -139,7 +177,7 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 		}
 
 		v := a.newValue()
-		if err := proto.Unmarshal(valueBytes, v); err != nil {
+		if err := unmarshalProto(valueBytes, v); err != nil {
 			return zeroValue, fmt.Errorf("unmarshaling value: %w", err)
 		}
 
@@ -234,7 +272,7 @@ func (a *Attribute[V]) ScanEntries(s *data.Store, canonicalKey []byte) (*ScanRes
 					return nil, fmt.Errorf("reading base value: %w", err)
 				}
 				v := a.newValue()
-				if err := proto.Unmarshal(valueBytes, v); err != nil {
+				if err := unmarshalProto(valueBytes, v); err != nil {
 					return nil, fmt.Errorf("unmarshaling base value: %w", err)
 				}
 				result.LatestBase = v

@@ -14,6 +14,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.3
+	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/pterm/pterm v0.12.82
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1

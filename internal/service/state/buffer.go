@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
-	"google.golang.org/protobuf/proto"
 )
 
 type Buffered struct {
@@ -192,17 +191,17 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		fsm:                 fsm,
 		attrs:               fsm.Attrs,
 		Date:                at,
-		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, proto.CloneOf),
-		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, proto.CloneOf),
+		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, (*commonpb.LedgerInfo).CloneVT),
+		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
 		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
 		LastLogHash:         fsm.lastLogHash,
-		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, proto.CloneOf),
-		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, proto.CloneOf),
-		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, proto.CloneOf),
+		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, (*raftcmdpb.VolumePair).CloneVT),
+		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
+		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, (*commonpb.MetadataValue).CloneVT),
 		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
-		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, proto.CloneOf),
-		References:          attributes.NewDerivedKeyStore(fsm.References, proto.CloneOf),
+		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
+		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
 	}
 }

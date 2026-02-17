@@ -11,6 +11,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
+// vtSizedMarshaler is implemented by vtprotobuf-generated messages.
+type vtSizedMarshaler interface {
+	SizeVT() int
+	MarshalToVT([]byte) (int, error)
+}
+
 // Batch provides atomic operations on the store using a pebble.Batch with NoSync.
 // All operations are buffered until Commit is called.
 // Cancel must be called if the batch is not committed to release resources.
@@ -21,6 +27,22 @@ type Batch struct {
 	protoBuffer    []byte
 	committed      bool
 	marshalOptions proto.MarshalOptions
+}
+
+// marshalProto marshals a proto message using vtprotobuf when available,
+// falling back to standard MarshalAppend otherwise.
+func (b *Batch) marshalProto(msg proto.Message) ([]byte, error) {
+	if m, ok := msg.(vtSizedMarshaler); ok {
+		size := m.SizeVT()
+		if cap(b.protoBuffer) >= size {
+			b.protoBuffer = b.protoBuffer[:size]
+		} else {
+			b.protoBuffer = make([]byte, size)
+		}
+		n, err := m.MarshalToVT(b.protoBuffer)
+		return b.protoBuffer[:n], err
+	}
+	return b.marshalOptions.MarshalAppend(b.protoBuffer, msg)
 }
 
 // NewBatch creates a new Batch for atomic operations.
@@ -71,7 +93,7 @@ func (b *Batch) AppendLogs(logs ...*commonpb.Log) error {
 
 	for _, log := range logs {
 		// Store the system log by sequence
-		logBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, log)
+		logBinary, err := b.marshalProto(log)
 		if err != nil {
 			return fmt.Errorf("marshaling system log to protobuf: %w", err)
 		}
@@ -108,7 +130,7 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 	}
 
 	// Marshal LedgerInfo to protobuf
-	infoBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, info)
+	infoBinary, err := b.marshalProto(info)
 	if err != nil {
 		return fmt.Errorf("marshaling ledger info to protobuf: %w", err)
 	}
@@ -138,7 +160,7 @@ func (b *Batch) StoreTransactionUpdate(key TransactionKey, update *commonpb.Tran
 		PutUInt64(key.ID).
 		PutUInt64(update.ByLog)
 
-	updateData, err := b.marshalOptions.MarshalAppend(b.protoBuffer, update)
+	updateData, err := b.marshalProto(update)
 	if err != nil {
 		return fmt.Errorf("marshaling transaction update: %w", err)
 	}
@@ -188,7 +210,7 @@ func (b *Batch) AppendAuditEntries(entries ...*auditpb.AuditEntry) error {
 	}
 
 	for _, entry := range entries {
-		entryBinary, err := b.marshalOptions.MarshalAppend(b.protoBuffer, entry)
+		entryBinary, err := b.marshalProto(entry)
 		if err != nil {
 			return fmt.Errorf("marshaling audit entry to protobuf: %w", err)
 		}

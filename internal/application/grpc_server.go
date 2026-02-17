@@ -14,9 +14,44 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/encoding"
+	_ "google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
+
+// vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
+// and falls back to standard proto.Marshal/Unmarshal otherwise.
+// This is necessary because the process registers a single global codec,
+// and non-VT messages (e.g. OpenTelemetry OTLP) must still work.
+type vtFallbackCodec struct{}
+
+func (vtFallbackCodec) Name() string { return "proto" }
+
+func (vtFallbackCodec) Marshal(v any) ([]byte, error) {
+	if m, ok := v.(interface{ MarshalVT() ([]byte, error) }); ok {
+		return m.MarshalVT()
+	}
+	if m, ok := v.(proto.Message); ok {
+		return proto.Marshal(m)
+	}
+	return nil, fmt.Errorf("failed to marshal: %T is not a proto.Message", v)
+}
+
+func (vtFallbackCodec) Unmarshal(data []byte, v any) error {
+	if m, ok := v.(interface{ UnmarshalVT([]byte) error }); ok {
+		return m.UnmarshalVT(data)
+	}
+	if m, ok := v.(proto.Message); ok {
+		return proto.Unmarshal(data, m)
+	}
+	return fmt.Errorf("failed to unmarshal: %T is not a proto.Message", v)
+}
+
+func init() {
+	encoding.RegisterCodec(vtFallbackCodec{})
+}
 
 // baseServer contains common server functionality
 type baseServer struct {

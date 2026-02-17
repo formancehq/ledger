@@ -55,6 +55,9 @@ generate-proto:
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
+        --go-vtproto_out=. \
+        --go-vtproto_opt=module=github.com/formancehq/ledger-v3-poc \
+        --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \

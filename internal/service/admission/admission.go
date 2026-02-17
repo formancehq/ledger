@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 )
 
 // marshalBufPool holds reusable buffers for proto.MarshalAppend to avoid
@@ -620,19 +619,27 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Marshal into a pooled buffer to avoid repeated growth allocations.
 	// Copy to exact-size slice since Raft retains a reference to proposal data.
 	bufp := marshalBufPool.Get().(*[]byte)
-	cmdData, err := proto.MarshalOptions{}.MarshalAppend((*bufp)[:0], cmd)
+	size := cmd.SizeVT()
+	buf := *bufp
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	} else {
+		buf = buf[:size]
+	}
+	n, err := cmd.MarshalToVT(buf)
 	if err != nil {
-		*bufp = cmdData
+		*bufp = buf
 		marshalBufPool.Put(bufp)
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
+	cmdData := buf[:n]
 
 	// Record command size for monitoring memory usage
 	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
 
 	proposalData := make([]byte, len(cmdData))
 	copy(proposalData, cmdData)
-	*bufp = cmdData // preserve grown capacity for future calls
+	*bufp = buf // preserve grown capacity for future calls
 	marshalBufPool.Put(bufp)
 
 	proposal := node.NewProposal(cmd.Id, proposalData)
