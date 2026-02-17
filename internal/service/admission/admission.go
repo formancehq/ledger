@@ -258,7 +258,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "ledgers")))
 	for ledgerKey := range neededLedgers {
 		canonicalKey := ledgerKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Ledgers.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
@@ -322,7 +322,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "boundaries")))
 	for boundaryKey := range neededBoundaries {
 		canonicalKey := boundaryKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Boundaries.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
@@ -384,7 +384,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "volumes")))
 	for volumeKey := range neededVolumes {
 		canonicalKey := volumeKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Volumes.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
@@ -442,7 +442,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "reversions")))
 	for txKey := range neededTransactions {
 		canonicalKey := txKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 		attrID := &raftcmdpb.AttributeID{
 			Id:  id[:],
 			Tag: tag,
@@ -502,7 +502,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "idempotency_keys")))
 	for ikKey := range neededIdempotencyKeys {
 		canonicalKey := ikKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		// Check IdempotencyKeys cache
 		if !a.cache.IdempotencyKeys.IsGuaranteedInCache(nextIndex, id) {
@@ -561,7 +561,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		metric.WithAttributes(attribute.String("type", "references")))
 	for refKey := range neededReferences {
 		canonicalKey := refKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultKeys, canonicalKey)
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.References.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()

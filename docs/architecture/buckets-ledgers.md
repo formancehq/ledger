@@ -376,7 +376,7 @@ The system supports idempotency keys to avoid duplicate operations:
 ### Storage
 
 Idempotency keys are stored as attributes in the generation-based cache and persisted to Pebble:
-- Keyed by a 128-bit BLAKE3 hash of the key string (system-wide, no ledger prefix)
+- Keyed by a 128-bit XXH3 hash of the key string (system-wide, no ledger prefix)
 - Linked to the **global sequence number** of the resulting log and a content hash for conflict detection
 - Use `GetSequenceForIdempotencyKey()` to retrieve the associated sequence from Pebble
 - See [Idempotency](./idempotency.md) for detailed documentation

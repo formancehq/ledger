@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 
-	"github.com/zeebo/blake3"
+	"github.com/zeebo/xxh3"
 )
 
 // U128 is a comparable 128-bit identifier usable as a map key.
@@ -53,41 +53,19 @@ func (u U128) Hex() string {
 // Equal returns true if u and v are equal.
 func (u U128) Equal(v U128) bool { return u == v }
 
-// HashU128 computes a deterministic 128-bit ID from canonical bytes.
-// We use keyed BLAKE3 to avoid hash-flooding and to keep IDs namespace-safe.
-func HashU128(keys Keys, canonical []byte) U128 {
-	h, err := blake3.NewKeyed(keys.IDKey[:])
-	if err != nil {
-		panic(err)
-	}
-	_, err = h.Write(canonical)
-	if err != nil {
-		panic(err)
-	}
-	sum := h.Sum(nil) // 32 bytes
-
-	// Take first 16 bytes as U128 (little-endian from hash, stored as big-endian in U128)
-	lo := binary.LittleEndian.Uint64(sum[0:8])
-	hi := binary.LittleEndian.Uint64(sum[8:16])
-	return NewU128(hi, lo)
+// HashU128 computes a deterministic 128-bit ID from canonical bytes using XXH3-128.
+func HashU128(seeds Seeds, canonical []byte) U128 {
+	u := xxh3.Hash128Seed(canonical, seeds.IDSeed)
+	return NewU128(u.Hi, u.Lo)
 }
 
-// Tag64 computes a secondary fingerprint from canonical bytes.
+// Tag64 computes a secondary fingerprint from canonical bytes using XXH3-64.
 // It is used to detect rare collisions locally without storing original keys.
-func Tag64(keys Keys, canonical []byte) uint64 {
-	h, err := blake3.NewKeyed(keys.TagKey[:])
-	if err != nil {
-		panic(err)
-	}
-	_, err = h.Write(canonical)
-	if err != nil {
-		panic(err)
-	}
-	sum := h.Sum(nil)
-	return binary.LittleEndian.Uint64(sum[0:8])
+func Tag64(seeds Seeds, canonical []byte) uint64 {
+	return xxh3.HashSeed(canonical, seeds.TagSeed)
 }
 
 // MakeKey returns (u128, tag64) from canonical bytes.
-func MakeKey(keys Keys, canonical []byte) (U128, uint64) {
-	return HashU128(keys, canonical), Tag64(keys, canonical)
+func MakeKey(seeds Seeds, canonical []byte) (U128, uint64) {
+	return HashU128(seeds, canonical), Tag64(seeds, canonical)
 }

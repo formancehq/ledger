@@ -713,7 +713,7 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 // This mimics what the admission layer does for entries where the ledger info
 // may have been evicted from cache due to generation rotation.
 func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerInfo *commonpb.LedgerInfo) *raftcmdpb.PreloadSet {
-	hasher := attributes.NewKeyHasher(attributes.DefaultKeys)
+	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
 	id, tag := hasher.MakeKey(data.LedgerKey{Name: ledgerName}.Bytes())
 
 	return &raftcmdpb.PreloadSet{

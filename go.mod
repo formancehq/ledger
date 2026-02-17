@@ -20,6 +20,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
+	github.com/zeebo/xxh3 v1.1.0
 	go.etcd.io/etcd/client/pkg/v3 v3.5.25
 	go.etcd.io/etcd/raft/v3 v3.5.25
 	go.etcd.io/etcd/server/v3 v3.5.25
@@ -135,7 +136,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect

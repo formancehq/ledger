@@ -107,35 +107,35 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		Attrs:                       attrs,
 		Cache:                       cache,
 		Volumes: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumePair](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.Volumes,
 		),
 		AccountMetadata: attributes.NewKeyStore[data.MetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.AccountMetadata,
 		),
 		LedgerMetadata: attributes.NewKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.LedgerMetadata,
 		),
 		Reversions: attributes.NewKeyStore[data.TransactionKey, bool](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.Reversions,
 		),
 		IdempotencyKeys: attributes.NewKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.IdempotencyKeys,
 		),
 		References: attributes.NewKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.References,
 		),
 		Ledgers: attributes.NewKeyStore[data.LedgerKey, *commonpb.LedgerInfo](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.Ledgers,
 		),
 		Boundaries: attributes.NewKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries](
-			attributes.DefaultKeys,
+			attributes.DefaultSeeds,
 			cache.Boundaries,
 		),
 		nextLedgerID:        1,

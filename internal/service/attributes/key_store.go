@@ -4,11 +4,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/zeebo/blake3"
+	"github.com/zeebo/xxh3"
 )
 
 type ErrCollisionDetected struct {
@@ -29,82 +29,48 @@ func newErrCollisionDetected(bytes []byte, originalTag, newTag uint64) *ErrColli
 	}
 }
 
-// Keys holds domain-separated BLAKE3 keys for ID (128) and Tag (64).
-// Use a single MasterKey (32 bytes) and derive both keys once at startup.
-type Keys struct {
-	IDKey  [32]byte // for hash128
-	TagKey [32]byte // for hash64/tag
+// Seeds holds domain-separated XXH3 seeds for ID (128-bit) and Tag (64-bit).
+// Use a single MasterKey (32 bytes) and derive both seeds once at startup.
+type Seeds struct {
+	IDSeed  uint64 // seed for xxh3.Hash128Seed (128-bit ID)
+	TagSeed uint64 // seed for xxh3.HashSeed (64-bit collision tag)
 }
 
-var DefaultKeys = DeriveKeys([32]byte{
+var DefaultSeeds = DeriveSeeds([32]byte{
 	0x3C, 0x3C, 0x69, 0x66, 0x79, 0x6F, 0x75, 0x72,
 	0x65, 0x61, 0x64, 0x74, 0x68, 0x69, 0x73, 0x79,
 	0x6F, 0x75, 0x66, 0x6F, 0x75, 0x6E, 0x64, 0x61,
 	0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 0x3E, 0x3E,
 })
 
-// DeriveKeys derives two independent keys from a single master key using
-// domain separation. MasterKey MUST be 32 bytes.
-func DeriveKeys(masterKey [32]byte) Keys {
-	return Keys{
-		IDKey:  blake3.Sum256(append([]byte("attrid:v1:id128:"), masterKey[:]...)),
-		TagKey: blake3.Sum256(append([]byte("attrid:v1:tag64:"), masterKey[:]...)),
+// DeriveSeeds derives two independent uint64 seeds from a single master key
+// using domain-separated BLAKE3. MasterKey MUST be 32 bytes.
+func DeriveSeeds(masterKey [32]byte) Seeds {
+	idHash := blake3.Sum256(append([]byte("attrid:v1:id128:"), masterKey[:]...))
+	tagHash := blake3.Sum256(append([]byte("attrid:v1:tag64:"), masterKey[:]...))
+	return Seeds{
+		IDSeed:  binary.LittleEndian.Uint64(idHash[:8]),
+		TagSeed: binary.LittleEndian.Uint64(tagHash[:8]),
 	}
 }
 
-// KeyHasher provides efficient hashing by reusing BLAKE3 hashers.
-// It holds two pre-initialized keyed hashers: one for ID (128-bit) and one for Tag (64-bit).
-// Pre-allocated buffers avoid allocations during Sum() calls.
-// Thread-safe: protected by mutex for concurrent access.
+// KeyHasher provides efficient hashing using XXH3.
+// XXH3 functions are stateless, so no mutex or pre-allocated buffers are needed.
 type KeyHasher struct {
-	mu        sync.Mutex
-	idHasher  *blake3.Hasher
-	tagHasher *blake3.Hasher
-	idBuf     [32]byte // pre-allocated buffer for ID hash output
-	tagBuf    [32]byte // pre-allocated buffer for Tag hash output
+	seeds Seeds
 }
 
-// NewKeyHasher creates a new KeyHasher with the given keys.
-func NewKeyHasher(keys Keys) *KeyHasher {
-	idHasher, err := blake3.NewKeyed(keys.IDKey[:])
-	if err != nil {
-		panic(err)
-	}
-	tagHasher, err := blake3.NewKeyed(keys.TagKey[:])
-	if err != nil {
-		panic(err)
-	}
-	return &KeyHasher{
-		idHasher:  idHasher,
-		tagHasher: tagHasher,
-	}
+// NewKeyHasher creates a new KeyHasher with the given seeds.
+func NewKeyHasher(seeds Seeds) *KeyHasher {
+	return &KeyHasher{seeds: seeds}
 }
 
-// MakeKey computes (U128, tag64) from canonical bytes, reusing internal hashers.
-// Uses pre-allocated buffers to avoid allocations.
-// Thread-safe: protected by mutex.
+// MakeKey computes (U128, tag64) from canonical bytes using XXH3.
+// Lock-free: XXH3 functions are stateless.
 func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
-	kh.mu.Lock()
-	defer kh.mu.Unlock()
-
-	// Compute ID (128-bit) using pre-allocated buffer
-	kh.idHasher.Reset()
-	_, _ = kh.idHasher.Write(canonical)
-	idSum := kh.idHasher.Sum(kh.idBuf[:0])
-
-	// Compute Tag (64-bit) using pre-allocated buffer
-	kh.tagHasher.Reset()
-	_, _ = kh.tagHasher.Write(canonical)
-	tagSum := kh.tagHasher.Sum(kh.tagBuf[:0])
-
-	// Extract U128 from first 16 bytes of idSum
-	lo := binary.LittleEndian.Uint64(idSum[0:8])
-	hi := binary.LittleEndian.Uint64(idSum[8:16])
-
-	// Extract tag from first 8 bytes of tagSum
-	tag := binary.LittleEndian.Uint64(tagSum[0:8])
-
-	return NewU128(hi, lo), tag
+	u := xxh3.Hash128Seed(canonical, kh.seeds.IDSeed)
+	tag := xxh3.HashSeed(canonical, kh.seeds.TagSeed)
+	return NewU128(u.Hi, u.Lo), tag
 }
 
 // Store is a thin wrapper around map[U128]Entry[T] that enforces
@@ -114,9 +80,9 @@ type KeyStore[K Key, T any] struct {
 	M      kv.KV[U128, Entry[T]]
 }
 
-func NewKeyStore[K Key, T any](keys Keys, m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
+func NewKeyStore[K Key, T any](seeds Seeds, m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
 	return &KeyStore[K, T]{
-		hasher: NewKeyHasher(keys),
+		hasher: NewKeyHasher(seeds),
 		M:      m,
 	}
 }
