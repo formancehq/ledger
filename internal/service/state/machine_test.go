@@ -569,7 +569,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 		string(worldOutputKey): 1,
 	}
 	batch := dataStore.NewBatch()
-	err = machine.compactVolumeDiffs(batch, 4, dirtyKeys)
+	_, err = machine.compactVolumeDiffs(batch, 4, dirtyKeys)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -619,7 +619,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Removes diffs at indexes 4 and 5; diffs at 6 and 7 remain.
 	// ---------------------------------------------------------------
 	batch = dataStore.NewBatch()
-	err = machine.compactVolumeDiffs(batch, 6, dirtyKeys)
+	_, err = machine.compactVolumeDiffs(batch, 6, dirtyKeys)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -684,7 +684,7 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	// dormantKey is NOT in slot[1] or slot[2] → should be skipped
 
 	batch := dataStore.NewBatch()
-	err := machine.compactVolumeDiffs(batch, 4, dirtyKeys)
+	_, err := machine.compactVolumeDiffs(batch, 4, dirtyKeys)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 

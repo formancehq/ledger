@@ -60,8 +60,9 @@ type Admission struct {
 	proposeQueueLoadHistogram metric.Int64Histogram
 	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
-	proposeDurationHistogram  metric.Int64Histogram
-	preloadDurationHistogram  metric.Int64Histogram
+	proposeDurationHistogram    metric.Int64Histogram
+	fsmFutureWaitHistogram      metric.Int64Histogram
+	preloadDurationHistogram    metric.Int64Histogram
 	preloadCounter            metric.Int64Counter
 	preloadKeysNeededCounter  metric.Int64Counter
 	preloadCacheHitsCounter   metric.Int64Counter
@@ -162,6 +163,18 @@ func NewAdmission(
 		panic(err)
 	}
 
+	fsmFutureWaitHistogram, err := meter.Int64Histogram(
+		"admission.fsm_future.wait.duration",
+		metric.WithDescription("Time waiting for FSM to apply the command after Raft acceptance. Spikes here indicate gating or pipeline stalls."),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 1000, 5000, 20000, 100000, 500000, 2000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	preloadDurationHistogram, err := meter.Int64Histogram(
 		"admission.preload.duration",
 		metric.WithDescription("Time spent loading preload values from store"),
@@ -206,6 +219,7 @@ func NewAdmission(
 	a.proposeQueueLoadHistogram = proposeQueueLoadHistogram
 	a.proposeQueueFullCounter = proposeQueueFullCounter
 	a.proposeDurationHistogram = proposeDurationHistogram
+	a.fsmFutureWaitHistogram = fsmFutureWaitHistogram
 	a.preloadDurationHistogram = preloadDurationHistogram
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
@@ -667,7 +681,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
 
 	// Wait for FSM to apply the command
+	fsmWaitStart := time.Now()
 	logs, err := fsmFuture.Wait()
+	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
 
 	// Decrement inflight counter after command is fully processed
 	a.proposeQueueInflight.Add(-1)

@@ -121,6 +121,8 @@ type Node struct {
 	unspoolDurationHistogram          metric.Float64Histogram
 	gatingWaitDurationHistogram       metric.Int64Histogram
 	readiesDuringGatingHistogram      metric.Int64Histogram
+	maintenanceSnapshotHistogram      metric.Float64Histogram
+	maintenanceReplaySpoolHistogram   metric.Float64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -375,6 +377,30 @@ func NewNode(
 		metric.WithUnit("1"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1, 2, 3, 5, 10, 20, 50, 100, 200,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
+		"raft.node.maintenance.snapshot_creation.duration",
+		metric.WithDescription("Time spent creating the snapshot during a maintenance task (excluding replay spool)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	node.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
+		"raft.node.maintenance.replay_spool.duration",
+		metric.WithDescription("Time spent replaying spooled entries after snapshot creation in a maintenance task"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
 		),
 	)
 	if err != nil {
@@ -943,16 +969,20 @@ func (node *Node) runMaintenanceTask(
 
 	node.taskExecutor.interrupt()
 	node.taskExecutor.run(ctx, func(ctx context.Context) error {
+		snapshotStart := time.Now()
 		frozenAtIndex, err := task(ctx)
 		if err != nil {
 			close(gatingTerminated)
 			return err
 		}
+		node.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
 
+		replayStart := time.Now()
 		if err := node.replaySpool(ctx, frozenAtIndex); err != nil {
 			close(gatingTerminated)
 			return err
 		}
+		node.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
 
 		// End gating before post-gating work (e.g. WAL compaction).
 		// Post-gating work doesn't need the FSM to be frozen and would

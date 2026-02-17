@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
@@ -65,8 +66,11 @@ type Machine struct {
 	dirtyBoundaryKeys map[string]*raftcmdpb.LedgerBoundaries
 
 	// Metrics
-	logsAppendedCounter metric.Int64Counter
-	lastPersistedIndex  atomic.Uint64
+	logsAppendedCounter       metric.Int64Counter
+	rotationDurationHistogram metric.Int64Histogram
+	rotationKeysCompacted     metric.Int64Counter
+	batchCommitHistogram      metric.Int64Histogram
+	lastPersistedIndex        atomic.Uint64
 }
 
 func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, auditEnabled bool) (*Machine, error) {
@@ -89,6 +93,39 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("creating logs_appended counter: %w", err)
 	}
 
+	rotationDurationHistogram, err := meter.Int64Histogram(
+		"raft.fsm.rotation.duration",
+		metric.WithDescription("Time spent in generation rotation (compaction + boundary flush) during ApplyEntries"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating rotation_duration histogram: %w", err)
+	}
+
+	rotationKeysCompacted, err := meter.Int64Counter(
+		"raft.fsm.rotation.keys_compacted",
+		metric.WithDescription("Number of volume keys compacted during generation rotation. Use rate() for keys/s."),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating rotation_keys_compacted counter: %w", err)
+	}
+
+	batchCommitHistogram, err := meter.Int64Histogram(
+		"raft.fsm.batch_commit.duration",
+		metric.WithDescription("Time spent in PebbleDB batch.Commit() during ApplyEntries"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
+	}
+
 	processor, err := processing.NewRequestProcessor(meter)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
@@ -101,6 +138,9 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		lastAppliedTimestamp:        lastAppliedTimestamp,
 		generationRotationThreshold: generationRotationThreshold,
 		logsAppendedCounter:         logsAppendedCounter,
+		rotationDurationHistogram:   rotationDurationHistogram,
+		rotationKeysCompacted:       rotationKeysCompacted,
+		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		auditEnabled:                auditEnabled,
 		Attrs:                       attrs,
@@ -187,6 +227,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(entry.Index); rotated {
+			rotationStart := time.Now()
+
 			// Rotate dirty key tracking: consume slot[2], shift down, allocate new slot[0]
 			keysToCompact := fsm.dirtyVolumeKeys[2]
 			fsm.dirtyVolumeKeys[2] = fsm.dirtyVolumeKeys[1]
@@ -194,7 +236,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			fsm.dirtyVolumeKeys[0] = make(map[string]uint32)
 
 			// Compaction using tracked keys in the same batch (no Pebble scan)
-			if err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact); err != nil {
+			compactedKeys, err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact)
+			if err != nil {
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
 			}
 
@@ -202,6 +245,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			if err := fsm.flushBoundaries(batch, fsm.Cache.BaseIndex.Gen0); err != nil {
 				return nil, fmt.Errorf("flushing boundaries at rotation: %w", err)
 			}
+
+			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
+			fsm.rotationKeysCompacted.Add(context.Background(), compactedKeys)
 		}
 		fsm.lastAppliedIndex++
 
@@ -227,9 +273,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
+	commitStart := time.Now()
 	if err := batch.Commit(); err != nil {
 		return nil, fmt.Errorf("committing batch: %w", err)
 	}
+	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 
@@ -263,7 +311,8 @@ const volumeCompactionMinDiffs uint32 = 4
 // generation being compacted. Keys with fewer than volumeCompactionMinDiffs
 // writes are skipped — the overhead of a Pebble range-delete tombstone is
 // not worth it for a handful of entries.
-func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) error {
+func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) (int64, error) {
+	var compacted int64
 	for keyStr, count := range dirtyKeys {
 		if count < volumeCompactionMinDiffs {
 			continue
@@ -277,10 +326,11 @@ func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64
 		}
 		canonicalKey := []byte(keyStr)
 		if err := fsm.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
-			return fmt.Errorf("compacting volume: %w", err)
+			return 0, fmt.Errorf("compacting volume: %w", err)
 		}
+		compacted++
 	}
-	return nil
+	return compacted, nil
 }
 
 // flushBoundaries writes all dirty boundary keys to Pebble and clears the tracking map.
