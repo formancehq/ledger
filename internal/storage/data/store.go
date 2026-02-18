@@ -60,7 +60,9 @@ var (
 	keyPrefixLastAppliedTimestamp byte = 0x04 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
 	KeyPrefixAttributes byte = 0x09
-	keyPrefixAudit      byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
+	keyPrefixAudit         byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
+	keyPrefixSigningKey    byte = 0x0B // [keyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
+	keyPrefixSigningConfig byte = 0x0C // [keyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -779,6 +781,58 @@ func (c *cursor[T]) Close() error {
 		return c.iter.Close()
 	}
 	return nil
+}
+
+// LoadSigningKeys loads all signing keys from Pebble.
+// Returns a map of keyID → publicKey (32-byte Ed25519 public key).
+func (s *Store) LoadSigningKeys() (map[string][]byte, error) {
+	lowerBound := []byte{keyPrefixSigningKey}
+	upperBound := []byte{keyPrefixSigningKey + 1}
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for signing keys: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	keys := make(map[string][]byte)
+	for iter.First(); iter.Valid(); iter.Next() {
+		// Key format: [keyPrefixSigningKey(1)][keyID(variable)]
+		key := iter.Key()
+		keyID := string(key[1:]) // skip the prefix byte
+
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading signing key value: %w", err)
+		}
+
+		pubKey := make([]byte, len(value))
+		copy(pubKey, value)
+		keys[keyID] = pubKey
+	}
+
+	return keys, nil
+}
+
+// LoadSigningConfig loads the require-signatures flag from Pebble.
+// Returns false if the config key does not exist.
+func (s *Store) LoadSigningConfig() (bool, error) {
+	value, closer, err := s.getDB().Get([]byte{keyPrefixSigningConfig})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("loading signing config: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	if len(value) == 0 {
+		return false, nil
+	}
+	return value[0] == 0x01, nil
 }
 
 // ListLedgers returns a cursor over all registered ledgers.

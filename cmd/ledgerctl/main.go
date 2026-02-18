@@ -29,6 +29,10 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address")
 	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS)")
 
+	// Add persistent flags for request signing
+	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded)")
+	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\")")
+
 	// Add subcommands
 	rootCmd.AddCommand(newLedgersCommand())
 	rootCmd.AddCommand(newAccountsCommand())
@@ -36,6 +40,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newStoreCommand())
 	rootCmd.AddCommand(newClusterCommand())
 	rootCmd.AddCommand(newAuditCommand())
+	rootCmd.AddCommand(newSigningCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd

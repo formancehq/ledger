@@ -326,26 +326,31 @@ func runTransactionsCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Creating transaction...")
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledgerName,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:  postings,
-								Script:    script,
-								Reference: reference,
-								Metadata:  commonpb.MetadataSetFromMap(metadata),
-								Force:     force,
-							},
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledgerName,
+					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:  postings,
+							Script:    script,
+							Reference: reference,
+							Metadata:  commonpb.MetadataSetFromMap(metadata),
+							Force:     force,
 						},
 					},
 				},
 			},
 		},
-	})
+	}
+
+	if err := signRequests(cmd, requests); err != nil {
+		spinner.Fail("Failed to sign request")
+		return err
+	}
+
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		spinner.Fail("Failed to create transaction")
 		return formatGRPCError("failed to create transaction", err)

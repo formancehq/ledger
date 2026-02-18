@@ -48,6 +48,8 @@ go build -o build/ledgerctl ./cmd/ledgerctl
 | **Transactions** | `demo_transactions.tape` | Force transactions (bypass balance check), revert transactions |
 | **Metadata** | `demo_metadata.tape` | Set and delete metadata on accounts and transactions |
 | **Operations** | `demo_operations.tape` | Cluster status, store integrity check, store backup |
+| **Audit** | `demo_audit.tape` | Audit log listing, failures-only filter, ledger filter |
+| **Signing** | `demo_signing.tape` | Generate keypair, bootstrap key registration, signed requests, key management |
 
 Each demo is self-contained: it creates its own ledger, runs the scenario, and cleans up.
 

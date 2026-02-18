@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -108,6 +109,7 @@ func Module() fx.Option {
 					SnapshotFetcherProvider state.SnapshotFetcherProvider
 					Cache                   *cache.Cache
 					Attrs                   *attributes.Attributes
+					KeyStore                *keystore.KeyStore
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -128,6 +130,7 @@ func Module() fx.Option {
 					params.SnapshotFetcherProvider,
 					params.Cache,
 					params.Attrs,
+					params.KeyStore,
 					params.Config.AuditEnabled,
 				)
 				if err != nil {
@@ -188,6 +191,9 @@ func Module() fx.Option {
 					cfg.HealthConfig.ClockSkewThreshold,
 				)
 			},
+			func() *keystore.KeyStore {
+				return keystore.NewKeyStore()
+			},
 			httpcompat.NewServer,
 			httpcompat.NewHandler,
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
@@ -202,6 +208,7 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
+				ks *keystore.KeyStore,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -215,6 +222,7 @@ func Module() fx.Option {
 					attrs,
 					meterProvider,
 					hc,
+					ks,
 					opts...,
 				)
 			},

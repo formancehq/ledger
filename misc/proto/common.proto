@@ -4,6 +4,8 @@ package common;
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb";
 
+import "signature.proto";
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -150,6 +152,7 @@ message Log {
   LogPayload payload = 2;
   Idempotency idempotency = 3;
   bytes hash = 4;
+  signature.RequestSignature signature = 5;
 }
 
 message LogPayload {
@@ -157,7 +160,30 @@ message LogPayload {
     CreateLedgerLog create_ledger = 1;
     DeleteLedgerLog delete_ledger = 2;
     ApplyLedgerLog apply = 3;
+    RegisterSigningKeyLog register_signing_key = 4;
+    RevokeSigningKeyLog revoke_signing_key = 5;
+    SetSigningConfigLog set_signing_config = 6;
   }
+}
+
+// ============================================================================
+// Signing Key Log Messages
+// ============================================================================
+
+// RegisterSigningKeyLog records a signing key registration.
+message RegisterSigningKeyLog {
+  string key_id = 1;
+  bytes public_key = 2;
+}
+
+// RevokeSigningKeyLog records a signing key revocation.
+message RevokeSigningKeyLog {
+  string key_id = 1;
+}
+
+// SetSigningConfigLog records a signing configuration change.
+message SetSigningConfigLog {
+  bool require_signatures = 1;
 }
 
 message CreateLedgerLog {

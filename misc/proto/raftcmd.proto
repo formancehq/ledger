@@ -5,6 +5,7 @@ package raft;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb";
 
 import "common.proto";
+import "signature.proto";
 
 // ============================================================================
 // Raft FSM State
@@ -31,7 +32,25 @@ message Order {
     LedgerApplyOrder apply = 2;
     CreateLedgerOrder create_ledger = 3;
     DeleteLedgerOrder delete_ledger = 4;
+    RegisterSigningKeyOrder register_signing_key = 6;
+    RevokeSigningKeyOrder revoke_signing_key = 7;
+    SetSigningConfigOrder set_signing_config = 8;
   }
+  signature.RequestSignature signature = 5;
+}
+
+// Signing key management orders
+message RegisterSigningKeyOrder {
+  string key_id = 1;
+  bytes public_key = 2;
+}
+
+message RevokeSigningKeyOrder {
+  string key_id = 1;
+}
+
+message SetSigningConfigOrder {
+  bool require_signatures = 1;
 }
 
 message CreateLedgerOrder {
@@ -208,6 +227,8 @@ message MemorySnapshot {
   uint64 current_generation = 7;
   uint64 last_applied_timestamp = 8;  // HLC timestamp (microseconds since epoch)
   uint64 next_audit_sequence_id = 9;  // Next audit log sequence ID
+  // Signing keys are persisted in Pebble, not in the memory snapshot.
+  // They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
 }
 
 message GenerationSnapshot {

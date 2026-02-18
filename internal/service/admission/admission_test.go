@@ -1,10 +1,14 @@
 package admission
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -92,10 +96,13 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 	preloadDuration, _ := meter.Int64Histogram("test_preload_duration")
 	preloadCounter, _ := meter.Int64Counter("test_preload_counter")
 
+	ks := keystore.NewKeyStore()
+
 	a := &Admission{
 		cache:                     testCache,
 		store:                     store,
 		logger:                    logger,
+		keyStore:                  ks,
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDuration,
 		proposeQueueLoadHistogram: proposeQueueLoad,
@@ -982,5 +989,252 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		_, hasMerchant := volumes[merchantKey]
 		require.True(t, hasBank, "should use explicit posting source")
 		require.True(t, hasMerchant, "should use explicit posting destination")
+	})
+}
+
+// generateTestKeyPair generates an Ed25519 key pair for testing.
+func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+	t.Helper()
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return pubKey, privKey
+}
+
+func TestVerifyAndResolveSignatures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("bootstrap: unsigned RegisterSigningKey allowed when no keys exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		pubKey, _ := generateTestKeyPair(t)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_RegisterSigningKey{
+					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+						KeyId:     "first-key",
+						PublicKey: []byte(pubKey),
+					},
+				},
+			},
+		}
+
+		result, err := adm.verifyAndResolveSignatures(requests)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Nil(t, result[0].Signature, "bootstrap request should have no signature")
+	})
+
+	t.Run("unsigned RegisterSigningKey rejected when keys exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		existingPubKey, _ := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("existing", existingPubKey)
+
+		newPubKey, _ := generateTestKeyPair(t)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_RegisterSigningKey{
+					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+						KeyId:     "new-key",
+						PublicKey: []byte(newPubKey),
+					},
+				},
+			},
+		}
+
+		_, err := adm.verifyAndResolveSignatures(requests)
+		require.ErrorIs(t, err, signing.ErrMissingSignature)
+	})
+
+	t.Run("unsigned RevokeSigningKey rejected when keys exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		pubKey, _ := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("my-key", pubKey)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_RevokeSigningKey{
+					RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+						KeyId: "my-key",
+					},
+				},
+			},
+		}
+
+		_, err := adm.verifyAndResolveSignatures(requests)
+		require.ErrorIs(t, err, signing.ErrMissingSignature)
+	})
+
+	t.Run("unsigned SetSigningConfig rejected when keys exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		pubKey, _ := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("my-key", pubKey)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_SetSigningConfig{
+					SetSigningConfig: &servicepb.SetSigningConfigRequest{
+						RequireSignatures: true,
+					},
+				},
+			},
+		}
+
+		_, err := adm.verifyAndResolveSignatures(requests)
+		require.ErrorIs(t, err, signing.ErrMissingSignature)
+	})
+
+	t.Run("signed RegisterSigningKey works when keys exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		existingPubKey, existingPrivKey := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("existing", existingPubKey)
+
+		newPubKey, _ := generateTestKeyPair(t)
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_RegisterSigningKey{
+				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+					KeyId:     "new-key",
+					PublicKey: []byte(newPubKey),
+				},
+			},
+		}
+
+		err := signing.Sign(req, "existing", existingPrivKey)
+		require.NoError(t, err)
+
+		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.NotNil(t, result[0].Signature, "signature should be preserved for propagation")
+	})
+
+	t.Run("unsigned regular request allowed when requireSignatures is false", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "test-ledger",
+					},
+				},
+			},
+		}
+
+		result, err := adm.verifyAndResolveSignatures(requests)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+	})
+
+	t.Run("unsigned regular request rejected when requireSignatures is true", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		adm.keyStore.SetRequireSignatures(true)
+
+		requests := []*servicepb.Request{
+			{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "test-ledger",
+					},
+				},
+			},
+		}
+
+		_, err := adm.verifyAndResolveSignatures(requests)
+		require.ErrorIs(t, err, signing.ErrMissingSignature)
+	})
+
+	t.Run("signed regular request works regardless of requireSignatures", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		pubKey, privKey := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("my-key", pubKey)
+		adm.keyStore.SetRequireSignatures(true)
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "signed-ledger",
+				},
+			},
+		}
+
+		err := signing.Sign(req, "my-key", privKey)
+		require.NoError(t, err)
+
+		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.NotNil(t, result[0].Signature)
+	})
+
+	t.Run("unknown key ID rejected", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		_, privKey := generateTestKeyPair(t)
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		err := signing.Sign(req, "unknown-key", privKey)
+		require.NoError(t, err)
+
+		_, err = adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		require.ErrorIs(t, err, signing.ErrUnknownKeyID)
+	})
+
+	t.Run("invalid signature rejected", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		pubKey, _ := generateTestKeyPair(t)
+		_, otherPrivKey := generateTestKeyPair(t)
+		adm.keyStore.AddPublicKey("my-key", pubKey)
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		// Sign with a different private key
+		err := signing.Sign(req, "my-key", otherPrivKey)
+		require.NoError(t, err)
+
+		_, err = adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		require.ErrorIs(t, err, signing.ErrInvalidSignature)
 	})
 }

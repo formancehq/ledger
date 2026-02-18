@@ -169,3 +169,4 @@ func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 		return nil
 	}
 }
+

@@ -326,6 +326,10 @@ func (s *inMemoryStore) PutTransactionReference(key data.TransactionReferenceKey
 
 func (s *inMemoryStore) AddTransactionUpdate(_ data.TransactionKey, _ *commonpb.TransactionUpdate) {}
 
+func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)  {}
+func (s *inMemoryStore) RemoveSigningKey(_ string)          {}
+func (s *inMemoryStore) SetRequireSignatures(_ bool)        {}
+
 func (s *inMemoryStore) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
 }
