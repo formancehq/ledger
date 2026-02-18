@@ -1045,6 +1045,62 @@ ledgerctl signing require false --signing-key /path/to/seed
 
 ---
 
+### periods
+
+Manage accounting periods.
+
+**Aliases:** `period`, `pd`
+
+#### periods list
+
+List all periods with their status.
+
+```bash
+ledgerctl periods list
+```
+
+**Output columns:**
+
+| Column | Description |
+|--------|-------------|
+| ID | Period identifier |
+| Status | OPEN, CLOSING, CLOSED, or ARCHIVED |
+| Start | Period start timestamp |
+| End | Period end timestamp (set when closed) |
+| Close Seq | Log sequence at which the period was closed |
+
+**Example:**
+
+```bash
+# List all periods
+ledgerctl periods list
+
+# With remote server
+ledgerctl --server node1:8888 periods list
+```
+
+#### periods close
+
+Close the current open period and open a new one. A background seal process will compute the sealing hash.
+
+```bash
+ledgerctl periods close
+```
+
+**Example:**
+
+```bash
+# Close the current period
+ledgerctl periods close
+
+# Output:
+#  SUCCESS  Period 1 closed successfully
+#  INFO  New period 2 opened
+#  INFO  Background sealing process will compute the sealing hash
+```
+
+---
+
 ## Connection Examples
 
 ### Local Development

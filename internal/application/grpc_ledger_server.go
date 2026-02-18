@@ -14,26 +14,29 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
 )
 
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
-	logger       logging.Logger
-	ctrl         ctrl.Controller
-	store        *data.Store
-	attrs        *attributes.Attributes
-	auditEnabled bool
+	logger        logging.Logger
+	ctrl          ctrl.Controller
+	store         *data.Store
+	attrs         *attributes.Attributes
+	auditEnabled  bool
+	receiptSigner *receipt.Signer
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, auditEnabled bool) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
-		logger:       logger,
-		ctrl:         ctrl,
-		store:        s,
-		attrs:        attrs,
-		auditEnabled: auditEnabled,
+		logger:        logger,
+		ctrl:          ctrl,
+		store:         s,
+		attrs:         attrs,
+		auditEnabled:  auditEnabled,
+		receiptSigner: receiptSigner,
 	}
 }
 
@@ -49,7 +52,53 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
+	// Sign receipts for created transactions (outside FSM to avoid Raft nondeterminism)
+	if impl.receiptSigner != nil {
+		for _, log := range logs {
+			impl.signReceiptIfNeeded(log)
+		}
+	}
+
 	return &servicepb.ApplyResponse{Logs: logs}, nil
+}
+
+// signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.
+func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
+	applyLog := log.Payload.GetApply()
+	if applyLog == nil || applyLog.Log == nil {
+		return
+	}
+	created := applyLog.Log.Data.GetCreatedTransaction()
+	if created == nil || created.Transaction == nil {
+		return
+	}
+
+	tx := created.Transaction
+	receiptToken, err := impl.receiptSigner.Sign(
+		applyLog.LedgerName,
+		tx.Id,
+		tx.Postings,
+		tx.Timestamp,
+		0, // period ID is not tracked on individual logs
+	)
+	if err != nil {
+		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.Id, err)
+		return
+	}
+	log.Receipt = receiptToken
+}
+
+func (impl *BucketServiceServerImpl) ListPeriods(_ *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
+	periods, err := impl.ctrl.ListPeriods(stream.Context())
+	if err != nil {
+		return fmt.Errorf("listing periods: %w", err)
+	}
+	for _, period := range periods {
+		if err := stream.Send(period); err != nil {
+			return fmt.Errorf("sending period: %w", err)
+		}
+	}
+	return nil
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {

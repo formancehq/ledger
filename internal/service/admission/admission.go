@@ -1092,6 +1092,17 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Name: reqType.RemoveEventsSink.Name,
 			},
 		}
+	case *servicepb.Request_ClosePeriod:
+		order.Type = &raftcmdpb.Order_ClosePeriod{
+			ClosePeriod: &raftcmdpb.ClosePeriodOrder{},
+		}
+	case *servicepb.Request_SealPeriod:
+		order.Type = &raftcmdpb.Order_SealPeriod{
+			SealPeriod: &raftcmdpb.SealPeriodOrder{
+				PeriodId:    reqType.SealPeriod.PeriodId,
+				SealingHash: reqType.SealPeriod.SealingHash,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}

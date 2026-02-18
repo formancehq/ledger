@@ -434,7 +434,7 @@ func (a *Attribute[V]) ListAccountAddresses(
 type volumeAccountCursor struct {
 	iter     *pebble.Iterator
 	attrType byte
-	seeked   bool   // true when the iterator is already positioned via SeekGE
+	seeked   bool // true when the iterator is already positioned via SeekGE
 	pageSize uint32
 	count    uint32
 	seekBuf  []byte // reusable buffer for SeekGE operations
@@ -492,7 +492,7 @@ func (c *volumeAccountCursor) Next() (string, error) {
 		if len(c.seekBuf) < seekLen {
 			c.seekBuf = make([]byte, seekLen+32)
 		}
-		c.seekBuf[0] = iterKey[0]         // 0x09
+		c.seekBuf[0] = iterKey[0]          // 0x09
 		copy(c.seekBuf[1:5], iterKey[1:5]) // ledgerID
 		copy(c.seekBuf[5:], account)
 		c.seekBuf[5+len(account)] = 0x01

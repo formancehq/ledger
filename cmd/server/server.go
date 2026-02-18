@@ -120,6 +120,9 @@ func NewRunCommand() *cobra.Command {
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
 
+	// Receipt signing key for JWT transaction receipts
+	runCmd.Flags().String("receipt-signing-key", "", "HMAC key for signing JWT transaction receipts (empty = disabled)")
+
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
@@ -332,6 +335,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Admission metrics
 	cfg.AdmissionMetrics = getBool("admission-metrics", false)
+
+	// Receipt signing key
+	cfg.ReceiptSigningKey = getString("receipt-signing-key", "")
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")

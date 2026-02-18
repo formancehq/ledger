@@ -262,6 +262,11 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 	return ledgerInfo, nil
 }
 
+// ListPeriods returns all periods from the Pebble data store.
+func (ctrl *DefaultController) ListPeriods(_ context.Context) ([]*commonpb.Period, error) {
+	return ctrl.store.GetPeriods()
+}
+
 // Apply applies a list of requests and returns the resulting logs.
 // The controller forwards requests to the Raft admission layer.
 // The FSM is responsible for interpreting orders, validating, and applying changes.

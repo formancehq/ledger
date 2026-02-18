@@ -78,6 +78,18 @@ func (mr *MockStoreMockRecorder) AddTransactionUpdate(key, update any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTransactionUpdate", reflect.TypeOf((*MockStore)(nil).AddTransactionUpdate), key, update)
 }
 
+// ClearClosingPeriod mocks base method.
+func (m *MockStore) ClearClosingPeriod() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ClearClosingPeriod")
+}
+
+// ClearClosingPeriod indicates an expected call of ClearClosingPeriod.
+func (mr *MockStoreMockRecorder) ClearClosingPeriod() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearClosingPeriod", reflect.TypeOf((*MockStore)(nil).ClearClosingPeriod))
+}
+
 // DeleteAccountMetadata mocks base method.
 func (m *MockStore) DeleteAccountMetadata(key data.MetadataKey) {
 	m.ctrl.T.Helper()
@@ -118,6 +130,36 @@ func (m *MockStore) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, b
 func (mr *MockStoreMockRecorder) GetBoundaries(ledger any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBoundaries", reflect.TypeOf((*MockStore)(nil).GetBoundaries), ledger)
+}
+
+// GetClosingPeriod mocks base method.
+func (m *MockStore) GetClosingPeriod() (*commonpb.Period, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClosingPeriod")
+	ret0, _ := ret[0].(*commonpb.Period)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetClosingPeriod indicates an expected call of GetClosingPeriod.
+func (mr *MockStoreMockRecorder) GetClosingPeriod() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClosingPeriod", reflect.TypeOf((*MockStore)(nil).GetClosingPeriod))
+}
+
+// GetCurrentOpenPeriod mocks base method.
+func (m *MockStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentOpenPeriod")
+	ret0, _ := ret[0].(*commonpb.Period)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetCurrentOpenPeriod indicates an expected call of GetCurrentOpenPeriod.
+func (mr *MockStoreMockRecorder) GetCurrentOpenPeriod() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentOpenPeriod", reflect.TypeOf((*MockStore)(nil).GetCurrentOpenPeriod))
 }
 
 // GetDate mocks base method.
@@ -190,6 +232,20 @@ func (m *MockStore) GetNextLedgerID() uint32 {
 func (mr *MockStoreMockRecorder) GetNextLedgerID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextLedgerID", reflect.TypeOf((*MockStore)(nil).GetNextLedgerID))
+}
+
+// GetNextPeriodID mocks base method.
+func (m *MockStore) GetNextPeriodID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextPeriodID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// GetNextPeriodID indicates an expected call of GetNextPeriodID.
+func (mr *MockStoreMockRecorder) GetNextPeriodID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextPeriodID", reflect.TypeOf((*MockStore)(nil).GetNextPeriodID))
 }
 
 // GetNextSequenceID mocks base method.
@@ -278,6 +334,20 @@ func (m *MockStore) IncrementNextLedgerID() uint32 {
 func (mr *MockStoreMockRecorder) IncrementNextLedgerID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextLedgerID", reflect.TypeOf((*MockStore)(nil).IncrementNextLedgerID))
+}
+
+// IncrementNextPeriodID mocks base method.
+func (m *MockStore) IncrementNextPeriodID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementNextPeriodID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// IncrementNextPeriodID indicates an expected call of IncrementNextPeriodID.
+func (mr *MockStoreMockRecorder) IncrementNextPeriodID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextPeriodID", reflect.TypeOf((*MockStore)(nil).IncrementNextPeriodID))
 }
 
 // IncrementNextSequenceID mocks base method.
@@ -412,6 +482,30 @@ func (m *MockStore) RemoveSinkConfig(name string) {
 func (mr *MockStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockStore)(nil).RemoveSinkConfig), name)
+}
+
+// SetClosingPeriod mocks base method.
+func (m *MockStore) SetClosingPeriod(period *commonpb.Period) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetClosingPeriod", period)
+}
+
+// SetClosingPeriod indicates an expected call of SetClosingPeriod.
+func (mr *MockStoreMockRecorder) SetClosingPeriod(period any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClosingPeriod", reflect.TypeOf((*MockStore)(nil).SetClosingPeriod), period)
+}
+
+// SetCurrentOpenPeriod mocks base method.
+func (m *MockStore) SetCurrentOpenPeriod(period *commonpb.Period) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCurrentOpenPeriod", period)
+}
+
+// SetCurrentOpenPeriod indicates an expected call of SetCurrentOpenPeriod.
+func (mr *MockStoreMockRecorder) SetCurrentOpenPeriod(period any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCurrentOpenPeriod", reflect.TypeOf((*MockStore)(nil).SetCurrentOpenPeriod), period)
 }
 
 // SetLastLogHash mocks base method.

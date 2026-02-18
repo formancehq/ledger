@@ -21,6 +21,11 @@ const (
 	ErrReasonAuditDisabled                = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists            = "SINK_ALREADY_EXISTS"
 	ErrReasonSinkNotFound                 = "SINK_NOT_FOUND"
+	ErrReasonNoPeriodOpen                 = "NO_PERIOD_OPEN"
+	ErrReasonPeriodAlreadyClosing         = "PERIOD_ALREADY_CLOSING"
+	ErrReasonPeriodNotFound               = "PERIOD_NOT_FOUND"
+	ErrReasonPeriodNotClosing             = "PERIOD_NOT_CLOSING"
+	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -173,4 +178,37 @@ type ErrNonDeterministicScript struct {
 
 func (e *ErrNonDeterministicScript) Error() string {
 	return fmt.Sprintf("non-deterministic script: %s called more than once", e.Method)
+}
+
+// Period-related sentinel errors.
+var (
+	ErrNoPeriodOpen      = errors.New("no open period exists")
+	ErrPeriodAlreadyClosing = errors.New("a period is already in CLOSING state")
+)
+
+// ErrPeriodNotFound is returned when a period ID does not match any known period.
+type ErrPeriodNotFound struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotFound) Error() string {
+	return fmt.Sprintf("period %d not found", e.PeriodID)
+}
+
+// ErrPeriodNotClosing is returned when attempting to seal a period that is not in CLOSING state.
+type ErrPeriodNotClosing struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotClosing) Error() string {
+	return fmt.Sprintf("period %d is not in CLOSING state", e.PeriodID)
+}
+
+// ErrInvalidReceipt is returned when a JWT receipt fails verification.
+type ErrInvalidReceipt struct {
+	Reason string
+}
+
+func (e *ErrInvalidReceipt) Error() string {
+	return fmt.Sprintf("invalid receipt: %s", e.Reason)
 }

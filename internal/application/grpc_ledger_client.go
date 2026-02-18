@@ -93,4 +93,21 @@ func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
+func (g *LedgerGrpcClient) ListPeriods(ctx context.Context) ([]*commonpb.Period, error) {
+	stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
+	}
+
+	var periods []*commonpb.Period
+	for {
+		period, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		periods = append(periods, period)
+	}
+	return periods, nil
+}
+
 var _ ctrl.Controller = (*LedgerGrpcClient)(nil)

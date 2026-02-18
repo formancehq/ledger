@@ -20,6 +20,9 @@ type Controller interface {
 	GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error)
 
+	// Period operations
+	ListPeriods(ctx context.Context) ([]*commonpb.Period, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 }

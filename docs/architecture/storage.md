@@ -331,6 +331,8 @@ For detailed information on available storage backends and their configuration, 
   - Reversion status
 - **Transaction updates** (`0x08` prefix) - Track modifications per transaction (metadata, reverts)
 - **Audit entries** (`0x0A` prefix) - Audit trail of proposals (success/failure)
+- **Periods state** (`0x0B` prefix) - All periods as a single protobuf blob (lifecycle, sealing hashes)
+- **Next period ID** (`0x0C` prefix) - Counter for period ID generation
 - **Last applied Raft index** (`0x00` prefix) - For recovery after restart
 - **Last applied HLC timestamp** (`0x04` prefix) - Hybrid logical clock state
 
@@ -363,11 +365,14 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
+├── seal/                          # Temporary seal checkpoint (period closing)
 └── runtime/                       # All ledgers data (Pebble)
     ├── live/                      # Active database
     ├── checkpoints/               # Checkpoint directories for snapshots
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
+
+The `seal/` directory contains a temporary Pebble checkpoint created when a period is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Periods](./periods.md) for details on the sealing process.
 
 ## Durability and Guarantees
 

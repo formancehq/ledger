@@ -77,6 +77,15 @@ type Store interface {
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
 	GetDate() *commonpb.Timestamp
+
+	// Period operations
+	GetCurrentOpenPeriod() (*commonpb.Period, bool)
+	GetClosingPeriod() (*commonpb.Period, bool)
+	SetCurrentOpenPeriod(period *commonpb.Period)
+	SetClosingPeriod(period *commonpb.Period)
+	ClearClosingPeriod()
+	GetNextPeriodID() uint64
+	IncrementNextPeriodID() uint64
 }
 
 type RequestProcessor struct {
@@ -223,6 +232,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processAddEventsSink(orderType.AddEventsSink, s)
 	case *raftcmdpb.Order_RemoveEventsSink:
 		return p.processRemoveEventsSink(orderType.RemoveEventsSink, s)
+	case *raftcmdpb.Order_ClosePeriod:
+		return p.processClosePeriod(orderType.ClosePeriod, s)
+	case *raftcmdpb.Order_SealPeriod:
+		return p.processSealPeriod(orderType.SealPeriod, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}

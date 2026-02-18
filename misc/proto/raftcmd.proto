@@ -37,6 +37,8 @@ message Order {
     SetSigningConfigOrder set_signing_config = 8;
     AddEventsSinkOrder add_events_sink = 9;
     RemoveEventsSinkOrder remove_events_sink = 10;
+    ClosePeriodOrder close_period = 11;
+    SealPeriodOrder seal_period = 12;
   }
   signature.RequestSignature signature = 5;
 }
@@ -61,6 +63,13 @@ message RevokeSigningKeyOrder {
 
 message SetSigningConfigOrder {
   bool require_signatures = 1;
+}
+
+message ClosePeriodOrder {}
+
+message SealPeriodOrder {
+  uint64 period_id = 1;
+  bytes sealing_hash = 2;
 }
 
 message CreateLedgerOrder {
@@ -254,6 +263,9 @@ message MemorySnapshot {
   uint64 next_audit_sequence_id = 9;  // Next audit log sequence ID
   // Signing keys are persisted in Pebble, not in the memory snapshot.
   // They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
+  common.Period open_period = 10;     // Current open period (may be nil before first proposal)
+  common.Period closing_period = 11;  // Period being sealed (nil when no period is closing)
+  uint64 next_period_id = 12;
 }
 
 message GenerationSnapshot {
@@ -303,3 +315,4 @@ message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
 }
+

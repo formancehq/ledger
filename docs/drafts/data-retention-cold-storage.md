@@ -104,10 +104,8 @@ enum PeriodStatus {
 ### 5.3 Two-Step Close Process
 
 Closing a period cannot be done in a single synchronous Raft command because:
-- The **in-memory FSM cache only contains hot keys** (recently accessed accounts)
-- **Cold accounts** (not accessed within the last two generations) exist only in Pebble
-- Computing a complete balance snapshot requires a **full scan of Pebble** (all volume attributes)
-- A synchronous scan would block the Raft consensus loop, degrading latency
+- Computing the sealing hash requires creating a **Pebble checkpoint** and iterating all attribute entries
+- A synchronous checkpoint + hash computation would block the Raft consensus loop, degrading latency
 
 The close process is therefore split into two steps:
 
@@ -139,21 +137,34 @@ This is a lightweight Raft command that executes in the FSM hot path without blo
 
 Runs asynchronously on the leader after the ClosePeriod command is applied:
 
-1. **Scan Pebble** for all volume attributes (Input `'I'` + Output `'O'` prefixes under `0x09`)
-2. For each canonical key, call `ComputeValue()` at the `close_sequence` boundary to get the consolidated value (base + diffs)
-3. Compute the **balance snapshot hash** from all consolidated volumes
-4. Compute the **sealing hash**: `BLAKE3(period_id || close_sequence || last_log_hash || balance_snapshot_hash)`
-5. Propose a **SealPeriod** Raft command containing the sealing hash and balance snapshot
+1. **Create a Pebble checkpoint** — a frozen point-in-time snapshot of the entire Pebble DB at the exact ClosePeriod boundary. Remaining Raft entries (received after ClosePeriod) are spooled and replayed afterward.
+2. **Open the checkpoint read-only** and iterate all attribute entries in `[0x09, 0x0A)` to compute the **state hash**: `BLAKE3(all key+value pairs)`
+3. Compute the **sealing hash**: `BLAKE3(period_id || close_sequence || last_log_hash || state_hash)`
+4. **Remove the checkpoint** from disk (no longer needed)
+5. Propose a **SealPeriod** Raft command containing the sealing hash
 6. Upon application, the period transitions from CLOSING to CLOSED
 
-This reuses a similar pattern to the inline compaction in `ApplyEntries` which already prunes old volume diffs during generation rotation.
+The checkpoint approach is simpler and more correct than per-key scanning: the checkpoint captures the exact Pebble state at the ClosePeriod boundary, so no filtering or index-based lookups are needed. Determinism is guaranteed because Pebble iteration order is deterministic and compaction is 100% deterministic via Raft.
 
 #### Failure handling
 
-If the leader crashes between Step 1 and Step 2:
-- The period remains in `CLOSING` state
-- The new leader detects the `CLOSING` period on startup and re-triggers Step 2
-- The scan is idempotent — re-scanning produces the same snapshot
+Two crash windows exist between ClosePeriod and SealPeriod:
+
+**Window 1: Crash after ClosePeriod batch commit but before checkpoint creation**
+- Pebble is at the exact ClosePeriod boundary (spooled entries not yet replayed)
+- On restart, `NewNode()` detects a CLOSING period with no seal checkpoint on disk
+- It creates the checkpoint **before** spool replay (critical: replay would advance Pebble past the boundary)
+- Sends the seal request to the Sealer channel
+
+**Window 2: Crash after checkpoint creation but before SealPeriod proposal**
+- The seal checkpoint exists on disk (only removed on success)
+- On restart, `Sealer.Start()` detects a CLOSING period with an existing checkpoint
+- It sends the seal request to re-trigger sealing
+
+**Transient seal failures** (e.g., disk I/O error opening the checkpoint):
+- The Sealer retries with exponential backoff (100ms → 10s max)
+- The checkpoint remains on disk until sealing succeeds
+- Retrying is safe because the checkpoint is immutable
 
 #### Constraints during CLOSING
 
@@ -162,24 +173,23 @@ While a period is in `CLOSING` state:
 - The `CLOSING` period cannot be archived (must be `CLOSED` first)
 - A new close cannot be initiated until the current one is sealed
 
-### 5.4 Balance Snapshot
+### 5.4 State Hash (Checkpoint-based)
 
-The balance snapshot captures the **complete state** of all accounts at the close boundary:
+The state hash captures a cryptographic digest of the **entire Pebble attribute store** at the close boundary:
 
-- **Per-account, per-asset volumes** (input, output) as of `close_sequence`
-- Computed by scanning all volume attributes in Pebble (not just the in-memory cache)
-- Uses `ComputeValue()` which consolidates base + diffs at the boundary index
+- Computed by iterating all attribute entries in `[0x09, 0x0A)` inside a frozen Pebble checkpoint
+- Each key+value pair is fed into BLAKE3: `state_hash = BLAKE3(key₁ || value₁ || key₂ || value₂ || ...)`
+- The checkpoint is a point-in-time snapshot created at the exact ClosePeriod boundary, before any subsequent entries modify Pebble
+- Deterministic: Pebble iteration order is deterministic, and compaction is fully deterministic via Raft
 
-The balance snapshot enables the system to operate correctly after the detailed data is purged:
-- Balance queries work from the snapshot + current period's diffs
-- No need to replay historical transactions
+This approach is simpler and more comprehensive than per-key volume scanning — it covers all attribute types (volumes, metadata, ledger info, boundaries, etc.) in a single pass.
 
 ### 5.5 Sealing Hash
 
-Once the snapshot is complete, a **sealing hash** anchors the period:
+Once the state hash is computed, a **sealing hash** anchors the period:
 
 ```
-sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || balance_snapshot_hash)
+sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)
 ```
 
 This anchors the hash chain at the period boundary. After archival and purge, the sealing hash serves as proof of integrity for the purged data. The archived data in cold storage can be independently verified against this hash.
@@ -401,8 +411,8 @@ message ClosePeriodOrder {}  // No fields — closes the current open period
 
 message SealPeriodOrder {
   uint64 period_id = 1;
-  bytes sealing_hash = 2;         // Computed from balance snapshot
-  bytes balance_snapshot = 3;     // Serialized snapshot (protobuf)
+  bytes sealing_hash = 2;         // Computed from Pebble checkpoint state hash
+  // Future: bytes balance_snapshot = 3;  // For data retention / cold storage
 }
 
 message ArchivePeriodOrder {
@@ -413,7 +423,7 @@ message ArchivePeriodOrder {
 ### 9.2 Coordination
 
 - **ClosePeriod** (Step 1): instant Raft command. Marks the boundary, opens new period. All nodes transition the period to `CLOSING`.
-- **SealPeriod** (Step 2): proposed by the leader after background Pebble scan. Contains the balance snapshot and sealing hash. All nodes transition the period to `CLOSED`. Followers don't need to re-scan — they trust the snapshot from the leader (verified by Raft consensus).
+- **SealPeriod** (Step 2): proposed by the leader after checkpoint-based hash computation. Contains the sealing hash. All nodes transition the period to `CLOSED`. Followers don't need to recompute — they trust the hash from the leader (verified by Raft consensus).
 - **Archive** (Phase 2): the leader exports to cold storage, then proposes `ArchivePeriod`. All nodes purge the data upon applying the command (deterministic range delete on Pebble).
 
 ### 9.3 Snapshot Impact

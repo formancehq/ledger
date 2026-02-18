@@ -151,6 +151,11 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`audit.go`** : Parent command for audit log operations
 - **`audit_list.go`** : `audit list` command to list audit entries (success + failure) via gRPC streaming
 
+**Period commands:**
+- **`periods.go`** : Parent command for period operations
+- **`periods_list.go`** : `periods list` command to list all periods via gRPC streaming
+- **`periods_close.go`** : `periods close` command to close the current open period via gRPC
+
 **Cluster commands:**
 - **`cluster.go`** : Parent command for cluster operations
 - **`cluster_status.go`** : `cluster status` command to display cluster state via gRPC

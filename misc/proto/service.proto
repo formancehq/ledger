@@ -1,3 +1,4 @@
+
 syntax = "proto3";
 
 package ledger;
@@ -36,6 +37,8 @@ service BucketService {
   rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
   // GetEventsSinks returns the current per-sink configurations and statuses
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
+  // ListPeriods streams all periods
+  rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
 }
 
 // ============================================================================
@@ -107,6 +110,8 @@ message Request {
     SetSigningConfigRequest set_signing_config = 8;
     AddEventsSinkRequest add_events_sink = 9;
     RemoveEventsSinkRequest remove_events_sink = 10;
+    ClosePeriodRequest close_period = 11;
+    SealPeriodRequest seal_period = 12;
   }
   signature.RequestSignature signature = 5;
 }
@@ -145,6 +150,15 @@ message SetSigningConfigRequest {
   bool require_signatures = 1;   // Whether to reject unsigned requests
 }
 
+message ClosePeriodRequest {}
+
+message SealPeriodRequest {
+  uint64 period_id = 1;
+  bytes sealing_hash = 2;
+}
+
+message ListPeriodsRequest {}
+
 // ============================================================================
 // Ledger Actions (used by Apply RPC)
 // ============================================================================
@@ -166,6 +180,7 @@ message RevertTransactionPayload {
   bool force = 2;
   bool at_effective_date = 3;
   common.MetadataSet metadata = 4;
+  string receipt = 5;
 }
 
 // LedgerAction represents a single ledger action

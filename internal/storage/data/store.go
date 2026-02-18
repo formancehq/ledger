@@ -28,6 +28,7 @@ const (
 	currentCheckpointFile = "CURRENT_CHECKPOINT"
 	checkpointsDir        = "checkpoints"
 	backupsDir            = "backups"
+	sealDir               = "seal"
 )
 
 // Store is a Pebble implementation of data.Store
@@ -59,13 +60,15 @@ var (
 	keyPrefixLedgerInfo           byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
 	keyPrefixLastAppliedTimestamp byte = 0x04 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
-	KeyPrefixAttributes byte = 0x09
+	KeyPrefixAttributes    byte = 0x09
 	keyPrefixAudit         byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
 	keyPrefixSigningKey    byte = 0x0B // [keyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
 	keyPrefixSigningConfig byte = 0x0C // [keyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
-	keyPrefixSinkCursor   byte = 0x0D // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
-	keyPrefixEventsConfig byte = 0x0E // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
-	keyPrefixSinkStatus   byte = 0x0F // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
+	keyPrefixSinkCursor    byte = 0x0D // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
+	keyPrefixEventsConfig  byte = 0x0E // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
+	keyPrefixSinkStatus    byte = 0x0F // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
+	keyPrefixPeriods       byte = 0x10 // [keyPrefixPeriods][periodID] -> Period
+	keyPrefixNextPeriodID  byte = 0x11 // [keyPrefixNextPeriodID] -> uint64 (next period ID)
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -530,6 +533,42 @@ func (s *Store) RemoveBackupCheckpoint(backupID string) error {
 	return nil
 }
 
+// CreateSealCheckpoint creates a Pebble checkpoint in a separate seal/ directory
+// for computing a deterministic seal hash during period closing.
+// Unlike CreateSnapshot, this does not modify currentCheckPoint or CURRENT_CHECKPOINT.
+// The caller must call RemoveSealCheckpoint after the SealPeriod order is applied.
+func (s *Store) CreateSealCheckpoint() (string, error) {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+
+	if err := os.RemoveAll(sealPath); err != nil {
+		return "", fmt.Errorf("removing existing seal directory: %w", err)
+	}
+
+	if err := s.getDB().Checkpoint(sealPath, pebble.WithFlushedWAL()); err != nil {
+		return "", fmt.Errorf("creating seal checkpoint: %w", err)
+	}
+
+	return sealPath, nil
+}
+
+// RemoveSealCheckpoint removes the seal checkpoint created by CreateSealCheckpoint.
+func (s *Store) RemoveSealCheckpoint() error {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+	if err := os.RemoveAll(sealPath); err != nil {
+		return fmt.Errorf("removing seal checkpoint: %w", err)
+	}
+	return nil
+}
+
+// SealCheckpointPath returns the path to the seal checkpoint directory and whether it exists.
+func (s *Store) SealCheckpointPath() (string, bool) {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+	if _, err := os.Stat(sealPath); err != nil {
+		return "", false
+	}
+	return sealPath, true
+}
+
 // cleanupOrphanedBackups removes the entire backups/ directory on startup.
 // Backup checkpoints are ephemeral and only needed during streaming;
 // any leftover entries are from a previous crash and can be safely deleted.
@@ -662,6 +701,54 @@ func (s *Store) GetLastAppliedTimestamp() (uint64, error) {
 	}
 
 	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+// GetPeriods returns all periods stored in Pebble, ordered by period ID.
+// Returns nil if no periods have been persisted yet.
+func (s *Store) GetPeriods() ([]*commonpb.Period, error) {
+	lowerBound := []byte{keyPrefixPeriods}
+	upperBound := []byte{keyPrefixPeriods, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for periods: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var periods []*commonpb.Period
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading period value: %w", err)
+		}
+		period := &commonpb.Period{}
+		if err := proto.Unmarshal(value, period); err != nil {
+			return nil, fmt.Errorf("unmarshaling period: %w", err)
+		}
+		periods = append(periods, period)
+	}
+
+	return periods, nil
+}
+
+// GetNextPeriodID returns the next period ID stored in Pebble.
+// Returns 1 if not found (default starting value).
+func (s *Store) GetNextPeriodID() (uint64, error) {
+	value, closer, err := s.getDB().Get([]byte{keyPrefixNextPeriodID})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 1, nil
+		}
+		return 0, fmt.Errorf("getting next period ID: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
 // GetLastSequence returns the last sequence number for system logs.
@@ -1077,6 +1164,12 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
 	return s.getDB().NewIter(p)
+}
+
+// NewSnapshot returns a point-in-time Pebble snapshot.
+// The caller must call Close() on the returned snapshot when done.
+func (s *Store) NewSnapshot() *pebble.Snapshot {
+	return s.getDB().NewSnapshot()
 }
 
 func HardLink(srcDir, dstDir string) error {

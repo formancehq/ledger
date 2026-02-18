@@ -9,10 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -136,19 +133,10 @@ func NewNode(
 	spool spool.Spool,
 	wal wal.WAL,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
-	cache *cache.Cache,
-	attrs *attributes.Attributes,
-	ks *keystore.KeyStore,
-	auditEnabled bool,
-	eventNotifier state.EventNotifier,
+	fsm *state.Machine,
 ) (*Node, error) {
 
 	cfg.SetDefaults()
-
-	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, ks, auditEnabled, eventNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("creating Machine: %w", err)
-	}
 
 	snapshot, err := wal.Snapshot()
 	if err != nil {
@@ -420,6 +408,25 @@ func NewNode(
 		logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		node.status.Store(statusOutOfSync)
 	} else {
+		// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
+		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
+		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
+		if period := fsm.ClosingPeriod(); period != nil {
+			if _, exists := store.SealCheckpointPath(); !exists {
+				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.Id)
+				checkpointPath, err := store.CreateSealCheckpoint()
+				if err != nil {
+					return nil, fmt.Errorf("creating recovery seal checkpoint: %w", err)
+				}
+				req := state.SealRequestFromPeriod(period)
+				req.CheckpointPath = checkpointPath
+				select {
+				case fsm.SealRequestCh() <- *req:
+				default:
+				}
+			}
+		}
+
 		storeLastAppliedIndex, err := store.GetLastAppliedIndex()
 		if err != nil {
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
@@ -660,33 +667,38 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 	return nil
 }
 
-func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) error {
+func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
-	results, err := node.fsm.ApplyEntries(ctx, entries...)
+	result, err := node.fsm.ApplyEntries(ctx, entries...)
 	if err != nil {
-		return fmt.Errorf("applying entries to Machine: %w", err)
+		return nil, fmt.Errorf("applying entries to Machine: %w", err)
 	}
 	node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
-	node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(results)))
-	node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(results)))
+	node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
+	node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
-	for _, result := range results {
-		future, exists := node.futures.Load(result.ProposalID)
+	for _, r := range result.Results {
+		future, exists := node.futures.Load(r.ProposalID)
 		if !exists {
 			continue
 		}
-		future.Resolve(result.Logs, result.Error)
-		node.futures.Delete(result.ProposalID)
+		future.Resolve(r.Logs, r.Error)
+		node.futures.Delete(r.ProposalID)
 	}
 
-	return nil
+	return result, nil
 }
 
 // applyEntriesToFSM applies entries directly to the Machine
 func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	err := node.applyEntriesAndResolveCommands(ctx, entries...)
+	result, err := node.applyEntriesAndResolveCommands(ctx, entries...)
 	if err != nil {
 		return err
+	}
+
+	// If Machine stopped at ClosePeriod, create seal checkpoint and enter snapshot mode
+	if result.CheckpointRequired {
+		return node.handleClosePeriod(ctx, entries, result)
 	}
 
 	lastSnapshot, err := node.wal.Snapshot()
@@ -695,50 +707,90 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 	}
 
 	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
-		// Short circuit the state machine
-		// Futures entries will be spooled and applied later
-		node.snapshotTriggeredCounter.Add(ctx, 1)
-		node.status.Store(statusSnapshotting)
-
-		lastEntryIndex := entries[len(entries)-1].Index
-
-		node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-			node.logger.WithFields(map[string]any{
-				"applied":           lastEntryIndex,
-				"lastSnapshotIndex": lastSnapshot.Metadata.Index,
-				"snapshotThreshold": node.snapshotThreshold,
-				"compactionMargin":  node.compactionMargin,
-			}).Infof("Creating new snapshot")
-
-			startTime := time.Now()
-			data, err := node.fsm.CreateSnapshot(ctx)
-			if err != nil {
-				return 0, err
-			}
-
-			err = node.wal.CreateSnapshot(lastEntryIndex, confState, data)
-			if err != nil {
-				return 0, err
-			}
-			node.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
-
-			return lastEntryIndex, nil
-		}, func(ctx context.Context) {
-			// WAL compaction runs after gating ends to avoid holding the WAL
-			// mutex during the spooling window, which would block wal.Append
-			// and stall the Ready pipeline.
-			// todo: Each follower should have a "matchIndex", we can use it to determine the index to compact
-			if lastEntryIndex > node.compactionMargin {
-				if err := node.wal.Compact(lastEntryIndex - node.compactionMargin); err != nil && !errors.Is(err, raft.ErrCompacted) {
-					node.logger.WithFields(map[string]any{
-						"error": err,
-					}).Errorf("Failed to compact WAL")
-				}
-			}
-		})
+		node.triggerSnapshot(ctx, confState, entries[len(entries)-1].Index, lastSnapshot.Metadata.Index)
 	}
 
 	return nil
+}
+
+// handleClosePeriod enters maintenance mode to create the seal checkpoint off
+// the Raft hot path. While the checkpoint is being created, new committed
+// entries are spooled and replayed afterward.
+func (node *Node) handleClosePeriod(
+	ctx context.Context,
+	entries []raftpb.Entry,
+	applyResult *state.ApplyEntriesResult,
+) error {
+	// Spool remaining entries — they'll be replayed after the maintenance task
+	if len(applyResult.RemainingEntries) > 0 {
+		if err := node.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
+			return fmt.Errorf("spooling remaining entries after ClosePeriod: %w", err)
+		}
+	}
+
+	// Last applied index: the ClosePeriod entry (before any remaining entries)
+	var frozenAtIndex uint64
+	if len(applyResult.RemainingEntries) > 0 {
+		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
+	} else {
+		frozenAtIndex = entries[len(entries)-1].Index
+	}
+
+	node.status.Store(statusSnapshotting)
+
+	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+		// Create seal checkpoint (captures exact Pebble state at ClosePeriod)
+		sealCheckpointPath, err := node.store.CreateSealCheckpoint()
+		if err != nil {
+			return 0, fmt.Errorf("creating seal checkpoint: %w", err)
+		}
+
+		// Notify the FSM that the checkpoint is ready — it will forge and send the SealRequest
+		applyResult.OnCheckpointDone(sealCheckpointPath)
+
+		return frozenAtIndex, nil
+	}, nil)
+
+	return nil
+}
+
+// triggerSnapshot creates a Raft snapshot when the threshold is reached.
+func (node *Node) triggerSnapshot(ctx context.Context, confState *raftpb.ConfState, lastEntryIndex, lastSnapshotIndex uint64) {
+	node.snapshotTriggeredCounter.Add(ctx, 1)
+	node.status.Store(statusSnapshotting)
+
+	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+		node.logger.WithFields(map[string]any{
+			"applied":           lastEntryIndex,
+			"lastSnapshotIndex": lastSnapshotIndex,
+			"snapshotThreshold": node.snapshotThreshold,
+			"compactionMargin":  node.compactionMargin,
+		}).Infof("Creating new snapshot")
+
+		startTime := time.Now()
+		snapshotData, err := node.fsm.CreateSnapshot(ctx)
+		if err != nil {
+			return 0, err
+		}
+
+		if err := node.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {
+			return 0, err
+		}
+		node.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
+
+		return lastEntryIndex, nil
+	}, func(ctx context.Context) {
+		// WAL compaction runs after gating ends to avoid holding the WAL
+		// mutex during the spooling window, which would block wal.Append
+		// and stall the Ready pipeline.
+		if lastEntryIndex > node.compactionMargin {
+			if err := node.wal.Compact(lastEntryIndex - node.compactionMargin); err != nil && !errors.Is(err, raft.ErrCompacted) {
+				node.logger.WithFields(map[string]any{
+					"error": err,
+				}).Errorf("Failed to compact WAL")
+			}
+		}
+	})
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
@@ -938,12 +990,20 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
 		batch = append(batch, entry)
 		if len(batch) >= 1000 { // todo: configure
-			if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+			result, err := node.applyEntriesAndResolveCommands(ctx, batch...)
+			if err != nil {
 				return err
 			}
 			count += len(batch)
 			batch = batch[:0]
 			lastEntry = &entry
+
+			// Handle ClosePeriod during replay
+			if result.CheckpointRequired {
+				if err := node.handleClosePeriodDuringReplay(ctx, result); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}); err != nil {
@@ -951,10 +1011,18 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 	}
 	if len(batch) > 0 {
 		count += len(batch)
-		if err := node.applyEntriesAndResolveCommands(ctx, batch...); err != nil {
+		result, err := node.applyEntriesAndResolveCommands(ctx, batch...)
+		if err != nil {
 			return err
 		}
 		lastEntry = pointer.For(batch[len(batch)-1])
+
+		// Handle ClosePeriod during replay
+		if result.CheckpointRequired {
+			if err := node.handleClosePeriodDuringReplay(ctx, result); err != nil {
+				return err
+			}
+		}
 	}
 	if lastEntry != nil {
 		logFields["last_entry_index"] = lastEntry.Index
@@ -964,6 +1032,32 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		WithFields(logFields).
 		WithField("count", count).
 		Infof("Replayed spool")
+
+	return nil
+}
+
+// handleClosePeriodDuringReplay creates a seal checkpoint and calls the
+// FSM-provided callback when a ClosePeriod is encountered during spool replay.
+// Unlike handleClosePeriod, this does not enter maintenance mode — the
+// checkpoint is created synchronously (acceptable since we're already off
+// the hot path) and remaining entries are applied directly.
+func (node *Node) handleClosePeriodDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
+	// Create seal checkpoint
+	sealCheckpointPath, err := node.store.CreateSealCheckpoint()
+	if err != nil {
+		return fmt.Errorf("creating seal checkpoint during replay: %w", err)
+	}
+
+	// Notify the FSM that the checkpoint is ready
+	applyResult.OnCheckpointDone(sealCheckpointPath)
+
+	// Apply remaining entries directly (no re-spool needed since we're replaying)
+	if len(applyResult.RemainingEntries) > 0 {
+		_, err := node.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
+		if err != nil {
+			return fmt.Errorf("applying remaining entries after ClosePeriod during replay: %w", err)
+		}
+	}
 
 	return nil
 }

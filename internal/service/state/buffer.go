@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"google.golang.org/protobuf/proto"
 )
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
@@ -44,6 +45,10 @@ type Buffered struct {
 	pendingSigningKeyUpdates   []signingKeyUpdate
 	pendingSigningConfigUpdate *signingConfigUpdate
 	sinkConfigChanged          bool
+	currentOpenPeriod          *commonpb.Period
+	closingPeriod              *commonpb.Period
+	changedPeriods             []*commonpb.Period
+	NextPeriodID               uint64
 }
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
@@ -236,15 +241,35 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
+	for _, p := range b.changedPeriods {
+		if err := batch.StorePeriod(p); err != nil {
+			return fmt.Errorf("storing period %d: %w", p.Id, err)
+		}
+	}
+	if err := batch.StoreNextPeriodID(b.NextPeriodID); err != nil {
+		return fmt.Errorf("storing next period ID: %w", err)
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.lastLogHash = b.LastLogHash
+	b.fsm.currentOpenPeriod = b.currentOpenPeriod
+	b.fsm.closingPeriod = b.closingPeriod
+	b.fsm.nextPeriodID = b.NextPeriodID
 
 	return nil
 }
 
 func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
+	var clonedOpen, clonedClosing *commonpb.Period
+	if fsm.currentOpenPeriod != nil {
+		clonedOpen = proto.CloneOf(fsm.currentOpenPeriod)
+	}
+	if fsm.closingPeriod != nil {
+		clonedClosing = proto.CloneOf(fsm.closingPeriod)
+	}
+
 	return &Buffered{
 		fsm:                 fsm,
 		attrs:               fsm.Attrs,
@@ -262,6 +287,9 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
 		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
+		currentOpenPeriod:   clonedOpen,
+		closingPeriod:       clonedClosing,
+		NextPeriodID:        fsm.nextPeriodID,
 	}
 }
 
@@ -489,6 +517,50 @@ func checkDoubleEntryInvariant(
 	}
 
 	return nil
+}
+
+// Period operations
+
+func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+	if b.currentOpenPeriod != nil {
+		return b.currentOpenPeriod, true
+	}
+	return nil, false
+}
+
+func (b *Buffered) GetClosingPeriod() (*commonpb.Period, bool) {
+	if b.closingPeriod != nil {
+		return b.closingPeriod, true
+	}
+	return nil, false
+}
+
+func (b *Buffered) SetCurrentOpenPeriod(period *commonpb.Period) {
+	b.currentOpenPeriod = period
+	b.changedPeriods = append(b.changedPeriods, period)
+}
+
+func (b *Buffered) SetClosingPeriod(period *commonpb.Period) {
+	b.closingPeriod = period
+	b.changedPeriods = append(b.changedPeriods, period)
+}
+
+// ClearClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
+func (b *Buffered) ClearClosingPeriod() {
+	if b.closingPeriod != nil {
+		b.changedPeriods = append(b.changedPeriods, b.closingPeriod)
+	}
+	b.closingPeriod = nil
+}
+
+func (b *Buffered) GetNextPeriodID() uint64 {
+	return b.NextPeriodID
+}
+
+func (b *Buffered) IncrementNextPeriodID() uint64 {
+	id := b.NextPeriodID
+	b.NextPeriodID++
+	return id
 }
 
 // Ensure Buffered implements Store

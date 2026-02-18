@@ -63,6 +63,12 @@ type Machine struct {
 	lastLogHash         []byte
 	lastCheckpointID    uint64
 
+	// Period state: only the current open and optionally closing period are kept in memory.
+	// Historical (CLOSED/ARCHIVED) periods are in Pebble only, read via data.Store.GetPeriods().
+	currentOpenPeriod *commonpb.Period
+	closingPeriod     *commonpb.Period
+	nextPeriodID      uint64
+
 	lastAppliedIndex            uint64
 	lastAppliedTimestamp        uint64
 	snapshotIndex               uint64
@@ -84,6 +90,10 @@ type Machine struct {
 	// since the last generation rotation. Boundaries are flushed to Pebble only
 	// at rotation time instead of on every log entry.
 	dirtyBoundaryKeys map[string]*raftcmdpb.LedgerBoundaries
+
+	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
+	// The Sealer reads from this channel to perform background sealing.
+	sealRequestCh chan SealRequest
 
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
@@ -148,6 +158,26 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
+	}
+
+	allPeriods, err := dataStore.GetPeriods()
+	if err != nil {
+		return nil, fmt.Errorf("loading periods from store: %w", err)
+	}
+
+	var currentOpenPeriod, closingPeriod *commonpb.Period
+	for _, p := range allPeriods {
+		switch p.Status {
+		case commonpb.PeriodStatus_PERIOD_OPEN:
+			currentOpenPeriod = p
+		case commonpb.PeriodStatus_PERIOD_CLOSING:
+			closingPeriod = p
+		}
+	}
+
+	nextPeriodID, err := dataStore.GetNextPeriodID()
+	if err != nil {
+		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
 
 	processor, err := processing.NewRequestProcessor(meter)
@@ -224,15 +254,20 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			attributes.DefaultSeeds,
 			cache.SinkConfigs,
 		),
-		nextLedgerID:        1,
-		nextSequenceID:      1,
+		nextLedgerID:   1,
+		nextSequenceID: 1,
+		// todo: should be 1 to be coherent with other ids
 		nextAuditSequenceID: 0,
+		currentOpenPeriod:   currentOpenPeriod,
+		closingPeriod:       closingPeriod,
+		nextPeriodID:        nextPeriodID,
 		dirtyVolumeKeys: [3]map[string]uint32{
 			make(map[string]uint32),
 			make(map[string]uint32),
 			make(map[string]uint32),
 		},
 		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
+		sealRequestCh:     make(chan SealRequest, 1),
 	}
 
 	return fsm, nil
@@ -242,7 +277,7 @@ func (fsm *Machine) LastPersistedIndex() (uint64, error) {
 	return fsm.lastPersistedIndex.Load(), nil
 }
 
-func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) ([]ApplyResult, error) {
+func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
@@ -259,12 +294,14 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	}()
 
 	cmd := &raftcmdpb.Proposal{}
-	ret := make([]ApplyResult, 0, len(entries))
+	ret := &ApplyEntriesResult{
+		Results: make([]ApplyResult, 0, len(entries)),
+	}
 	eventsConfigChanged := false
 
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if entry.Index <= fsm.lastAppliedIndex {
-			ret = append(ret, ApplyResult{})
+			ret.Results = append(ret.Results, ApplyResult{})
 			continue
 		}
 		if entry.Index > fsm.lastAppliedIndex+1 {
@@ -315,7 +352,39 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		if configChanged {
 			eventsConfigChanged = true
 		}
-		ret = append(ret, *result)
+		ret.Results = append(ret.Results, *result)
+
+		// If ClosePeriod was detected, stop processing immediately.
+		// Commit the batch so the ClosePeriod state is persisted,
+		// then signal the caller to create a Pebble checkpoint.
+		if sealReqBase := fsm.checkClosePeriod(result); sealReqBase != nil {
+			if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
+				return nil, fmt.Errorf("setting applied index: %w", err)
+			}
+			if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
+				return nil, fmt.Errorf("setting last applied timestamp: %w", err)
+			}
+			if err := batch.Commit(); err != nil {
+				return nil, fmt.Errorf("committing batch at ClosePeriod: %w", err)
+			}
+			fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+
+			ret.CheckpointRequired = true
+			if i+1 < len(entries) {
+				ret.RemainingEntries = make([]raftpb.Entry, len(entries[i+1:]))
+				copy(ret.RemainingEntries, entries[i+1:])
+			}
+			ret.OnCheckpointDone = func(checkpointPath string) {
+				sealReqBase.CheckpointPath = checkpointPath
+				select {
+				case fsm.sealRequestCh <- *sealReqBase:
+				default:
+				}
+			}
+
+			return ret, nil
+		}
+
 	}
 
 	if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
@@ -757,6 +826,16 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := fsm.hlcTimestamp(proposal.Date)
 
+	// Auto-bootstrap first period deterministically at first proposal
+	if fsm.currentOpenPeriod == nil {
+		fsm.currentOpenPeriod = &commonpb.Period{
+			Id:     1,
+			Start:  effectiveDate,
+			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+		}
+		fsm.nextPeriodID = 2
+	}
+
 	// Create buffer for this proposal
 	buffer := NewBuffer(effectiveDate, fsm)
 
@@ -859,6 +938,9 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		CurrentGeneration:    fsm.Cache.CurrentGeneration(),
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
 		NextAuditSequenceId:  fsm.nextAuditSequenceID,
+		OpenPeriod:           fsm.currentOpenPeriod,
+		ClosingPeriod:        fsm.closingPeriod,
+		NextPeriodId:         fsm.nextPeriodID,
 	}
 
 	// todo: use a reusable buffer as the snapshot can be big
@@ -1004,6 +1086,9 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.lastLogHash = memSnapshot.LastLogHash
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 	fsm.lastAppliedTimestamp = memSnapshot.LastAppliedTimestamp
+	fsm.currentOpenPeriod = memSnapshot.OpenPeriod
+	fsm.closingPeriod = memSnapshot.ClosingPeriod
+	fsm.nextPeriodID = memSnapshot.NextPeriodId
 
 	// Reset the cache and deserialize both generations into it
 	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
@@ -1217,8 +1302,60 @@ func (fsm *Machine) IsStoreUpToDate(ctx context.Context) (bool, error) {
 	return fsm.lastAppliedIndex >= fsm.snapshotIndex, nil
 }
 
+// SealRequestCh returns the channel used to communicate seal requests between
+// the Machine (writer, on ClosePeriod) and the Sealer (reader).
+// Both sides need send access (Machine for normal flow, Sealer/Node for recovery).
+func (fsm *Machine) SealRequestCh() chan SealRequest {
+	return fsm.sealRequestCh
+}
+
+// ClosingPeriod returns the period currently in CLOSING state, or nil.
+// Used for crash recovery on startup.
+func (fsm *Machine) ClosingPeriod() *commonpb.Period {
+	return fsm.closingPeriod
+}
+
+// checkClosePeriod checks if the apply result contains a ClosePeriod log
+// and returns a SealRequest if the sealer should be triggered.
+func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
+	if result == nil {
+		return nil
+	}
+	for _, log := range result.Logs {
+		if closePeriodLog := log.Payload.GetClosePeriod(); closePeriodLog != nil {
+			return SealRequestFromPeriod(closePeriodLog.ClosedPeriod)
+		}
+	}
+	return nil
+}
+
+func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
+	return &SealRequest{
+		PeriodID:      period.Id,
+		CloseSequence: period.CloseSequence,
+		LastLogHash:   period.LastLogHash,
+	}
+}
+
 type ApplyResult struct {
 	ProposalID uint64
 	Logs       []*commonpb.Log
 	Error      error
+}
+
+// ApplyEntriesResult is the structured return value of ApplyEntries.
+type ApplyEntriesResult struct {
+	// Results contains one ApplyResult per processed entry that carried a proposal.
+	Results []ApplyResult
+
+	// RemainingEntries holds unprocessed entries when a ClosePeriod stopped processing early.
+	RemainingEntries []raftpb.Entry
+
+	// CheckpointRequired is true when the caller must create a Pebble checkpoint
+	// before resuming entry processing (e.g. after a ClosePeriod).
+	CheckpointRequired bool
+
+	// OnCheckpointDone is called by Node once the Pebble checkpoint has been created.
+	// It forges a SealRequest and sends it to the sealer.  Nil when CheckpointRequired is false.
+	OnCheckpointDone func(checkpointPath string)
 }

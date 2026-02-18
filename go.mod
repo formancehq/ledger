@@ -12,6 +12,7 @@ require (
 	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
 	github.com/formancehq/numscript v0.0.21
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/holiman/uint256 v1.3.2
 	github.com/invopop/jsonschema v0.13.0

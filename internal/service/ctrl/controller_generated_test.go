@@ -136,6 +136,21 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, prefix)
 }
 
+// ListPeriods mocks base method.
+func (m *MockController) ListPeriods(ctx context.Context) ([]*commonpb.Period, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPeriods", ctx)
+	ret0, _ := ret[0].([]*commonpb.Period)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPeriods indicates an expected call of ListPeriods.
+func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockController)(nil).ListPeriods), ctx)
+}
+
 // ListTransactions mocks base method.
 func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
 	m.ctrl.T.Helper()

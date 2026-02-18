@@ -289,7 +289,7 @@ func (b *Batch) DeleteAllSigningKeys() error {
 }
 
 // SaveSinkConfig stores a per-sink configuration in the batch.
-// Key: [0x0E][name] → SinkConfig protobuf.
+// Key: [0x0E][name] -> SinkConfig protobuf.
 func (b *Batch) SaveSinkConfig(config *commonpb.SinkConfig) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
@@ -372,6 +372,41 @@ func (b *Batch) ClearSinkStatus(sinkName string) error {
 
 	if err := b.batch.Delete(b.KeyBuilder.Build(), pebble.NoSync); err != nil {
 		return fmt.Errorf("clearing sink status: %w", err)
+	}
+	return nil
+}
+
+// StorePeriod marshals and writes a single period keyed by its ID.
+func (b *Batch) StorePeriod(period *commonpb.Period) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.
+		PutByte(keyPrefixPeriods).
+		PutUInt64(period.Id)
+
+	periodData, err := b.marshalProto(period)
+	if err != nil {
+		return fmt.Errorf("marshaling period: %w", err)
+	}
+
+	if err := b.batch.Set(b.KeyBuilder.Build(), periodData, pebble.NoSync); err != nil {
+		return fmt.Errorf("storing period: %w", err)
+	}
+	return nil
+}
+
+// StoreNextPeriodID writes the next period ID as 8-byte big-endian uint64.
+func (b *Batch) StoreNextPeriodID(id uint64) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, id)
+	if err := b.batch.Set([]byte{keyPrefixNextPeriodID}, value, pebble.NoSync); err != nil {
+		return fmt.Errorf("storing next period ID: %w", err)
 	}
 	return nil
 }
