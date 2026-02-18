@@ -78,7 +78,7 @@ func runTransactionsGet(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching transaction #%d...", txID))
 
-	tx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+	resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: txID,
 	})
@@ -89,11 +89,13 @@ func runTransactionsGet(cmd *cobra.Command, args []string) error {
 
 	_ = spinner.Stop()
 
+	tx := resp.Transaction
+
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(tx)
+		return encoder.Encode(resp)
 	}
 
 	pterm.Println()
@@ -121,6 +123,11 @@ func runTransactionsGet(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		pterm.Printf("Reverted:    %s\n", pterm.Green("No"))
+	}
+
+	// Display receipt if available
+	if resp.Receipt != "" {
+		pterm.Printf("Receipt:     %s\n", pterm.Gray(resp.Receipt))
 	}
 
 	// Display postings

@@ -2293,6 +2293,7 @@ type CreatedTransaction struct {
 	state           protoimpl.MessageState  `protogen:"open.v1"`
 	Transaction     *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
 	AccountMetadata map[string]*MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PeriodId        uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"` // Period that was OPEN when this transaction was created
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2339,6 +2340,13 @@ func (x *CreatedTransaction) GetAccountMetadata() map[string]*MetadataSet {
 		return x.AccountMetadata
 	}
 	return nil
+}
+
+func (x *CreatedTransaction) GetPeriodId() uint64 {
+	if x != nil {
+		return x.PeriodId
+	}
+	return 0
 }
 
 type RevertedTransaction struct {
@@ -3503,10 +3511,11 @@ const file_common_proto_rawDesc = "" +
 	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.common.RevertedTransactionH\x00R\x13revertedTransaction\x12>\n" +
 	"\x0esaved_metadata\x18\x03 \x01(\v2\x15.common.SavedMetadataH\x00R\rsavedMetadata\x12D\n" +
 	"\x10deleted_metadata\x18\x04 \x01(\v2\x17.common.DeletedMetadataH\x00R\x0fdeletedMetadataB\t\n" +
-	"\apayload\"\x80\x02\n" +
+	"\apayload\"\x9d\x02\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
-	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
+	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1b\n" +
+	"\tperiod_id\x18\x03 \x01(\x04R\bperiodId\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x91\x01\n" +

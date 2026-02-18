@@ -371,7 +371,7 @@ ledgerctl transactions list
 
 #### transactions get
 
-Get detailed information about a transaction.
+Get detailed information about a transaction. If the server has receipt signing configured, the response includes a JWT receipt.
 
 **Aliases:** `g`, `show`, `describe`
 
@@ -384,7 +384,7 @@ ledgerctl transactions get [transaction-id] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--json` | `false` | Output as JSON |
+| `--json` | `false` | Output as JSON (includes receipt) |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**
@@ -395,6 +395,9 @@ ledgerctl transactions get 42 --ledger my-ledger
 
 # Interactive mode
 ledgerctl transactions get
+
+# Get transaction with receipt (displayed if signing key is configured)
+ledgerctl transactions get 42 --ledger my-ledger --json
 ```
 
 #### transactions create
@@ -507,6 +510,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 | `--force` | `false` | Force revert even if funds have been spent |
 | `--at-effective-date` | `false` | Use the original transaction timestamp for the revert |
 | `--metadata` | | Metadata for the revert transaction (key=value) |
+| `--receipt` | | JWT receipt for the transaction (avoids server-side lookup) |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -516,6 +520,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 - By default, prompts for confirmation before reverting
 - Use `-y` or `--yes` to skip the confirmation prompt
 - Use `--force` to revert even if funds have already been spent from receiving accounts
+- Use `--receipt` to provide a JWT receipt (obtained from `transactions get` or the original create response); the server will extract the postings from the receipt instead of reading from storage
 
 **Example:**
 
@@ -528,6 +533,9 @@ ledgerctl transactions revert 42 --ledger my-ledger --force
 
 # Revert at the original transaction timestamp
 ledgerctl transactions revert 42 --ledger my-ledger --at-effective-date
+
+# Revert using a receipt (avoids server-side transaction lookup)
+ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 
 # Skip confirmation prompt
 ledgerctl transactions revert 42 --ledger my-ledger -y

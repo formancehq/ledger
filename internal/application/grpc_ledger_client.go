@@ -34,10 +34,14 @@ func (g *LedgerGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Req
 }
 
 func (g *LedgerGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	return g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+	resp, err := g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: transactionID,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Transaction, nil
 }
 
 func (g *LedgerGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {

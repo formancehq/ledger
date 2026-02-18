@@ -402,6 +402,46 @@ func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]
 	return updates, nil
 }
 
+// FindTransactionCreationLog returns the system log that created a transaction.
+// It resolves the ledger name to an ID, finds the TransactionInit update, and retrieves the log.
+func (s *Store) FindTransactionCreationLog(ledgerName string, txID uint64) (*commonpb.Log, error) {
+	ledgerInfo, err := s.GetLedgerByName(ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ledger ID for %s: %w", ledgerName, err)
+	}
+
+	updates, err := s.GetTransactionUpdates(ledgerInfo.Id, txID)
+	if err != nil {
+		return nil, fmt.Errorf("getting transaction updates for %d: %w", txID, err)
+	}
+
+	var sequence uint64
+	for _, update := range updates {
+		for _, ut := range update.Updates {
+			if ut.GetTransactionInit() != nil {
+				sequence = update.ByLog
+				break
+			}
+		}
+		if sequence != 0 {
+			break
+		}
+	}
+	if sequence == 0 {
+		return nil, ErrNotFound
+	}
+
+	log, err := s.GetLogBySequence(sequence)
+	if err != nil {
+		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
+	}
+	if log == nil {
+		return nil, ErrNotFound
+	}
+
+	return log, nil
+}
+
 // CreateSnapshot creates a new checkpoint of the database and returns the checkpoint ID.
 func (s *Store) CreateSnapshot() (uint64, error) {
 	s.logger.Infof("Creating snapshot")

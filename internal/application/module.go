@@ -239,10 +239,14 @@ func Module() fx.Option {
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
+				receiptSigner *receipt.Signer,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
+				}
+				if receiptSigner != nil {
+					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
 				return admission.NewAdmission(
 					cache,

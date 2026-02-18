@@ -163,6 +163,13 @@ func WithAuditEnabled(v bool) testservice.InstrumentationFunc {
 	}
 }
 
+func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--receipt-signing-key", key)
+		return nil
+	}
+}
+
 func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--join", serviceAddr)

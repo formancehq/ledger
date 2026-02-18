@@ -287,6 +287,7 @@ message LedgerLogPayload {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataSet> account_metadata = 2;
+  uint64 period_id = 3;  // Period that was OPEN when this transaction was created
 }
 
 message RevertedTransaction {

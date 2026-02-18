@@ -22,7 +22,7 @@ service BucketService {
   // GetAccount retrieves an account by address
   rpc GetAccount(GetAccountRequest) returns (common.Account);
   // GetTransaction retrieves a transaction by ID
-  rpc GetTransaction(GetTransactionRequest) returns (common.Transaction);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   // ListTransactions streams all transactions for a ledger (newest first)
   rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction);
   // ListAccounts streams all accounts for a ledger (alphabetical order)
@@ -53,6 +53,11 @@ message GetAccountRequest {
 message GetTransactionRequest {
   string ledger = 1;
   uint64 transaction_id = 2;
+}
+
+message GetTransactionResponse {
+  common.Transaction transaction = 1;
+  string receipt = 2;  // JWT receipt (empty if signing key not configured)
 }
 
 message ListTransactionsRequest {

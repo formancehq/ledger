@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -181,6 +182,153 @@ var _ = Describe("Periods", Ordered, func() {
 			if !gotExpectedError {
 				Skip("Sealer completed too quickly to catch CLOSING state in e2e — covered by unit test TestProcessClosePeriod_AlreadyClosing")
 			}
+		})
+	})
+})
+
+var _ = Describe("Receipts", Ordered, func() {
+	var (
+		ctx    context.Context
+		client servicepb.BucketServiceClient
+	)
+
+	const (
+		httpPort   = testSingleHTTPPort
+		grpcPort   = testSingleGRPCPort
+		signingKey = "test-receipt-signing-key-32bytes!"
+		ledger     = "receipt-test"
+	)
+
+	BeforeAll(func() {
+		ctx, client, _ = setupSingleNode(httpPort, grpcPort, testserver.WithReceiptSigningKey(signingKey))
+
+		// Create a ledger
+		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{createLedgerAction(ledger, nil)},
+		})
+		Expect(err).To(Succeed())
+	})
+
+	Context("GetTransaction receipt", Ordered, func() {
+		var txID uint64
+
+		BeforeAll(func() {
+			// Create a transaction
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledger, []*commonpb.Posting{
+						newPosting("world", "users:alice", big.NewInt(1000), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			applyLog := resp.Logs[0].Payload.GetApply()
+			Expect(applyLog).NotTo(BeNil())
+			txID = applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
+		})
+
+		It("Should return a non-empty receipt on GetTransaction", func() {
+			resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+				Ledger:        ledger,
+				TransactionId: txID,
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Transaction).NotTo(BeNil())
+			Expect(resp.Transaction.Id).To(Equal(txID))
+			Expect(resp.Receipt).NotTo(BeEmpty(), "receipt should be non-empty when signing key is configured")
+		})
+	})
+
+	Context("Receipt-based revert", Ordered, func() {
+		var (
+			txID    uint64
+			receipt string
+		)
+
+		BeforeAll(func() {
+			// Create a transaction
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledger, []*commonpb.Posting{
+						newPosting("world", "users:bob", big.NewInt(500), "EUR"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			applyLog := resp.Logs[0].Payload.GetApply()
+			Expect(applyLog).NotTo(BeNil())
+			txID = applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
+
+			// Get the receipt via GetTransaction
+			getTxResp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+				Ledger:        ledger,
+				TransactionId: txID,
+			})
+			Expect(err).To(Succeed())
+			Expect(getTxResp.Receipt).NotTo(BeEmpty())
+			receipt = getTxResp.Receipt
+		})
+
+		It("Should revert using receipt", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{
+						Type: &servicepb.Request_Apply{
+							Apply: &servicepb.LedgerApplyRequest{
+								Ledger: ledger,
+								Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+									RevertTransaction: &servicepb.RevertTransactionPayload{
+										TransactionId: txID,
+										Force:         true,
+										Receipt:       receipt,
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			applyLog := resp.Logs[0].Payload.GetApply()
+			Expect(applyLog).NotTo(BeNil())
+			revertedTx := applyLog.Log.Data.GetRevertedTransaction()
+			Expect(revertedTx).NotTo(BeNil())
+			Expect(revertedTx.RevertTransaction).NotTo(BeNil())
+		})
+
+		It("Should reject reverting the same transaction again", func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{
+						Type: &servicepb.Request_Apply{
+							Apply: &servicepb.LedgerApplyRequest{
+								Ledger: ledger,
+								Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+									RevertTransaction: &servicepb.RevertTransactionPayload{
+										TransactionId: txID,
+										Force:         true,
+										Receipt:       receipt,
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+
+			info := extractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionAlreadyReverted))
 		})
 	})
 })

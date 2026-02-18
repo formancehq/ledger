@@ -141,7 +141,7 @@ The Sealer uses exponential backoff (100ms → 10s max) to retry on transient er
 
 ## Transaction Receipts (JWT)
 
-Every transaction created during a period includes a JWT receipt that links the transaction to its period.
+Every transaction created during a period includes a JWT receipt that links the transaction to its period. The `period_id` is captured from the FSM's current open period at transaction creation time and stored in the `CreatedTransaction` log entry.
 
 ### Receipt Claims
 
@@ -158,10 +158,33 @@ Every transaction created during a period includes a JWT receipt that links the 
 }
 ```
 
-- **Signing**: HMAC-SHA256 with a configurable key.
+- **Signing**: HMAC-SHA256 with a configurable key (`--receipt-signing-key`).
 - **Verification**: The receipt can be verified independently to prove a transaction was recorded in a specific period.
+- **Period ID**: Set from the current open period in `processCreateTransaction` (FSM). If no period is open, `periodId` is `0`.
 
 **File**: `internal/service/receipt/receipt.go`
+
+### Obtaining Receipts
+
+Receipts are available in two ways:
+
+1. **On creation**: The `Apply()` response includes a receipt for each newly created transaction (signed outside the FSM to avoid Raft nondeterminism).
+2. **Via `GetTransaction`**: The `GetTransaction` RPC returns a `GetTransactionResponse` containing both the transaction and its receipt. The receipt is computed on-the-fly from the stored creation log.
+
+### Receipt-Based Revert
+
+When reverting a transaction, the client can provide the receipt instead of requiring the server to read the original transaction from Pebble. This is useful after a period is closed and data may be archived.
+
+The admission layer verifies the receipt's signature and validates that the ledger name and transaction ID match the request. If valid, the postings are extracted from the receipt claims instead of reading from storage.
+
+```bash
+# Revert using a receipt (avoids server-side transaction lookup)
+ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
+```
+
+**Files**:
+- `internal/service/admission/admission.go` — Receipt verification and postings extraction
+- `internal/application/grpc_ledger_server.go` — Receipt signing and `GetTransaction` receipt computation
 
 ## gRPC API
 

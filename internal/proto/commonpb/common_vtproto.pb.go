@@ -967,6 +967,7 @@ func (m *CreatedTransaction) CloneVT() *CreatedTransaction {
 	}
 	r := new(CreatedTransaction)
 	r.Transaction = m.Transaction.CloneVT()
+	r.PeriodId = m.PeriodId
 	if rhs := m.AccountMetadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataSet, len(rhs))
 		for k, v := range rhs {
@@ -2895,6 +2896,9 @@ func (this *CreatedTransaction) EqualVT(that *CreatedTransaction) bool {
 				return false
 			}
 		}
+	}
+	if this.PeriodId != that.PeriodId {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -5843,6 +5847,11 @@ func (m *CreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PeriodId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.AccountMetadata) > 0 {
 		for k := range m.AccountMetadata {
 			v := m.AccountMetadata[k]
@@ -7842,6 +7851,9 @@ func (m *CreatedTransaction) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
+	}
+	if m.PeriodId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14149,6 +14161,25 @@ func (m *CreatedTransaction) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AccountMetadata[mapkey] = mapvalue
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+			}
+			m.PeriodId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PeriodId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

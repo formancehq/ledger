@@ -79,7 +79,7 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 		tx.Id,
 		tx.Postings,
 		tx.Timestamp,
-		0, // period ID is not tracked on individual logs
+		created.PeriodId,
 	)
 	if err != nil {
 		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.Id, err)
@@ -101,12 +101,44 @@ func (impl *BucketServiceServerImpl) ListPeriods(_ *servicepb.ListPeriodsRequest
 	return nil
 }
 
-func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*commonpb.Transaction, error) {
+func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
 	if req.Ledger == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	return impl.ctrl.GetTransaction(ctx, req.Ledger, req.TransactionId)
+	tx, err := impl.ctrl.GetTransaction(ctx, req.Ledger, req.TransactionId)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &servicepb.GetTransactionResponse{Transaction: tx}
+	if impl.receiptSigner != nil {
+		receiptToken, err := impl.computeTransactionReceipt(req.Ledger, req.TransactionId, tx)
+		if err == nil {
+			resp.Receipt = receiptToken
+		}
+	}
+	return resp, nil
+}
+
+// computeTransactionReceipt computes a JWT receipt for an existing transaction
+// by looking up its creation log to extract the period ID.
+func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
+	log, err := impl.store.FindTransactionCreationLog(ledger, txID)
+	if err != nil {
+		return "", err
+	}
+
+	applyLog := log.Payload.GetApply()
+	if applyLog == nil || applyLog.Log == nil {
+		return "", fmt.Errorf("not an apply log")
+	}
+	created := applyLog.Log.Data.GetCreatedTransaction()
+	if created == nil {
+		return "", fmt.Errorf("not a created transaction log")
+	}
+
+	return impl.receiptSigner.Sign(ledger, txID, tx.Postings, tx.Timestamp, created.PeriodId)
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {

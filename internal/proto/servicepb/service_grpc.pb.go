@@ -48,7 +48,7 @@ type BucketServiceClient interface {
 	// GetAccount retrieves an account by address
 	GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
-	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error)
+	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)
 	// ListAccounts streams all accounts for a ledger (alphabetical order)
@@ -114,9 +114,9 @@ func (c *bucketServiceClient) GetAccount(ctx context.Context, in *GetAccountRequ
 	return out, nil
 }
 
-func (c *bucketServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error) {
+func (c *bucketServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(commonpb.Transaction)
+	out := new(GetTransactionResponse)
 	err := c.cc.Invoke(ctx, BucketService_GetTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ type BucketServiceServer interface {
 	// GetAccount retrieves an account by address
 	GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
-	GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error)
+	GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error
 	// ListAccounts streams all accounts for a ledger (alphabetical order)
@@ -298,7 +298,7 @@ func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerReq
 func (UnimplementedBucketServiceServer) GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAccount not implemented")
 }
-func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error) {
+func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransaction not implemented")
 }
 func (UnimplementedBucketServiceServer) ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error {

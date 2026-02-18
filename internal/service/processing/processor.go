@@ -595,6 +595,12 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 		timestamp = s.GetDate()
 	}
 
+	// Get the current open period ID for the receipt
+	var periodID uint64
+	if p, ok := s.GetCurrentOpenPeriod(); ok {
+		periodID = p.Id
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
@@ -608,6 +614,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 					UpdatedAt:  s.GetDate(),
 				},
 				AccountMetadata: accountMetadata,
+				PeriodId:        periodID,
 			},
 		},
 	}, nil
