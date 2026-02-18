@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
@@ -174,6 +178,58 @@ func parseKeyValue(s string) (string, string, error) {
 		return "", "", fmt.Errorf("expected key=value format")
 	}
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+}
+
+// loadSigningKey loads the signing key and key ID from command flags.
+// Returns empty values if no signing key is configured.
+func loadSigningKey(cmd *cobra.Command) (string, ed25519.PrivateKey, error) {
+	keyPath, _ := cmd.Flags().GetString("signing-key")
+	if keyPath == "" {
+		return "", nil, nil
+	}
+
+	keyID, _ := cmd.Flags().GetString("signing-key-id")
+	if keyID == "" {
+		keyID = "default"
+	}
+
+	// Read the seed file
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read signing key file: %w", err)
+	}
+
+	// Try to interpret as hex-encoded seed
+	seed := data
+	trimmed := strings.TrimSpace(string(data))
+	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == ed25519.SeedSize {
+		seed = decoded
+	}
+
+	if len(seed) != ed25519.SeedSize {
+		return "", nil, fmt.Errorf("signing key seed must be %d bytes, got %d", ed25519.SeedSize, len(seed))
+	}
+
+	return keyID, ed25519.NewKeyFromSeed(seed), nil
+}
+
+// signRequests signs each request using the signing key from command flags.
+// If no signing key is configured, this is a no-op.
+func signRequests(cmd *cobra.Command, requests []*servicepb.Request) error {
+	keyID, privKey, err := loadSigningKey(cmd)
+	if err != nil {
+		return err
+	}
+	if privKey == nil {
+		return nil
+	}
+
+	for _, req := range requests {
+		if err := signing.Sign(req, keyID, privKey); err != nil {
+			return fmt.Errorf("failed to sign request: %w", err)
+		}
+	}
+	return nil
 }
 
 // formatBytes formats a byte count as a human-readable string.

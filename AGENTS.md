@@ -159,6 +159,13 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`cluster_add_learner.go`** : `cluster add-learner` command to add a non-voting learner node via gRPC
 - **`cluster_promote_learner.go`** : `cluster promote-learner` command to promote a learner to voter via gRPC
 
+**Signing commands:**
+- **`signing.go`** : Parent command for signing key management
+- **`signing_generate_key.go`** : `signing generate-key` command to generate an Ed25519 keypair locally
+- **`signing_register_key.go`** : `signing register-key` command to register an Ed25519 public key via gRPC
+- **`signing_revoke_key.go`** : `signing revoke-key` command to revoke a signing key via gRPC
+- **`signing_require.go`** : `signing require` command to enable/disable mandatory signatures via gRPC
+
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
@@ -171,6 +178,7 @@ VHS tape files for generating animated GIF demos of the CLI. Each demo is self-c
 - **`demo_metadata.tape`** : Account and transaction metadata CRUD
 - **`demo_operations.tape`** : Cluster status, store integrity check, store backup
 - **`demo_audit.tape`** : Audit log listing, failures-only filter, ledger filter
+- **`demo_signing.tape`** : Generate keypair, bootstrap key registration, signed requests, key management
 - **`README.md`** : Documentation for generating demos
 
 **Generating demos:**
@@ -366,7 +374,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 
 ### File Locations
 
-- **Protocol definitions**: 
+- **Protocol definitions**:
   - `misc/proto/raft_transport.proto` - Raft transport messages
   - `misc/proto/common.proto` - Common types (Posting, Transaction, Log, etc.)
   - `misc/proto/raftcmd.proto` - FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
@@ -374,12 +382,14 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/cluster.proto` - Cluster management (ClusterService: GetClusterState, TransferLeader, AddLearner, PromoteLearner, Backup)
   - `misc/proto/snapshot.proto` - Snapshot service definitions
   - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
+  - `misc/proto/signature.proto` - Request signature (RequestSignature: key_id, signature, signed_payload)
 - **Generated code**:
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
   - `internal/proto/commonpb/` - Common types (common.pb.go, common_vtproto.pb.go, etc.)
   - `internal/proto/raftcmdpb/` - FSM command types (raftcmd.pb.go, raftcmd_vtproto.pb.go, etc.)
   - `internal/proto/servicepb/` - gRPC service (service.pb.go, service_grpc.pb.go, service_vtproto.pb.go, etc.)
   - `internal/proto/clusterpb/` - Cluster state (cluster.pb.go, cluster_vtproto.pb.go, etc.)
+  - `internal/proto/signaturepb/` - Signature types (signature.pb.go, signature_vtproto.pb.go)
   - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go, snapshot_vtproto.pb.go)
   - `internal/proto/auditpb/` - Audit log types (audit.pb.go, audit_vtproto.pb.go)
 
@@ -521,6 +531,94 @@ The serialization flow:
 2. Protobuf message → Binary (using `proto.Marshal`)
 3. Binary → Protobuf message (using `proto.Unmarshal`)
 4. Protobuf message → Go struct (using conversion functions)
+
+## Request Signing (Ed25519)
+
+The ledger supports Ed25519 request signing for authenticity, integrity, and non-repudiation.
+
+### Architecture
+
+- **`internal/crypto/signing/`** - Core sign/verify logic (transport-agnostic)
+- **`internal/crypto/keystore/`** - Thread-safe in-memory key cache (updated by FSM on apply)
+- **Admission layer** (`internal/service/admission/`) - Signature verification with bootstrap logic
+- **Signature propagation** - Request → Order → Log → AuditEntry
+- **Persistence** - Signing keys and config are persisted in Pebble (key prefixes `0x0B`/`0x0C`) and applied atomically via `Buffered.Merge()`
+
+### Data Flow
+
+```
+Client → gRPC Apply() → Admission (verify signature) → Proposal → Raft consensus
+  → FSM Apply → Buffered.Merge() → Pebble batch (persist) + KeyStore (in-memory update)
+```
+
+On startup, signing keys are loaded from Pebble into the in-memory KeyStore.
+On follower snapshot restore (`SynchronizeWithLeader`), keys are reloaded from the restored Pebble checkpoint.
+
+### Envelope Pattern
+
+Protobuf serialization is not deterministic across languages. The solution uses a `signed_payload` field:
+1. Client serializes the Request (without signature), producing opaque bytes
+2. Client signs those bytes with Ed25519
+3. Client sends `RequestSignature{key_id, signature, signed_payload}` alongside the Request
+4. Server verifies the signature on `signed_payload` (never re-serializes)
+5. Server deserializes `signed_payload` to get the trusted Request content
+
+This means the request payload is sent twice (once in the Request fields, once in `signed_payload`).
+The server ignores the outer Request fields for signed requests and uses the deserialized `signed_payload` as the authoritative content.
+
+### Dynamic Key Management
+
+Keys are managed via gRPC API calls (no server-side config files):
+- `RegisterSigningKey` - Register an Ed25519 public key
+- `RevokeSigningKey` - Revoke a registered key
+- `SetSigningConfig` - Enable/disable mandatory signatures
+
+**Bootstrap**: The first `RegisterSigningKey` can be unsigned. Once keys exist,
+all key management operations must be signed by an existing key.
+
+### Consistency Model
+
+Signing key changes follow the Raft consensus path: they take effect only when the FSM applies the corresponding log entry. This has an important implication:
+
+**Revocation latency**: When a `RevokeSigningKey` order is submitted, the key remains valid in the in-memory KeyStore until the FSM applies the revocation. Concurrent requests arriving at the Admission layer between submission and FSM apply will still accept signatures made with the revoked key. This is inherent to the Raft consensus model where all state changes are eventually consistent through the log. The same applies to `SetSigningConfig` (enabling/disabling mandatory signatures).
+
+In practice, this window is very short (milliseconds under normal conditions) and is acceptable for a financial ledger where the audit trail records all operations with their signatures.
+
+### Audit and Signature Verification
+
+Signature verification is performed in the **Admission layer** (before Raft consensus), not in the FSM. This is a deliberate design choice:
+
+- **Valid signatures**: the cryptographic proof (`RequestSignature`) is propagated through Order → Log → AuditEntry. Any auditor can verify signatures after the fact from the stored `signed_payload`.
+- **Invalid/missing signatures**: rejected immediately in the Admission layer. These failures do **not** appear in the replicated audit log because no Proposal is created.
+
+Moving verification into the FSM was considered but rejected for two reasons:
+1. **DoS risk**: invalid signatures would traverse Raft consensus (network round-trips + log persistence on all replicas) before being rejected, allowing an attacker to waste cluster resources with bad signatures.
+2. **Architectural complexity**: the `signed_payload` contains a serialized `Request`, but the FSM operates on `Order` objects. Verifying in the FSM would require re-converting Request → Order inside the FSM to confirm the Order matches the signed content, duplicating the Admission conversion logic.
+
+If traceability of rejected signatures is needed, application-level logging on the leader node (non-replicated) can be added at the Admission layer.
+
+### Client Flags
+
+| Flag | Description |
+|------|-------------|
+| `--signing-key` | Path to Ed25519 seed file (32 bytes raw or hex) |
+| `--signing-key-id` | Key ID (default: "default") |
+
+### CLI Commands
+
+```bash
+# Bootstrap: register first key (unsigned)
+ledgerctl signing register-key --key-id admin --public-key-file /path/to/pubkey
+
+# Register additional key (signed)
+ledgerctl signing register-key --key-id ops --public-key <hex> --signing-key /path/to/seed
+
+# Revoke a key (signed)
+ledgerctl signing revoke-key --key-id ops --signing-key /path/to/seed
+
+# Enable mandatory signatures (signed)
+ledgerctl signing require true --signing-key /path/to/seed
+```
 
 ## Finite State Machine (FSM) Design Principles
 

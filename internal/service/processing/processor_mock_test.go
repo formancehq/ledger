@@ -42,6 +42,18 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
+// AddSigningKey mocks base method.
+func (m *MockStore) AddSigningKey(keyID string, publicKey []byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AddSigningKey", keyID, publicKey)
+}
+
+// AddSigningKey indicates an expected call of AddSigningKey.
+func (mr *MockStoreMockRecorder) AddSigningKey(keyID, publicKey any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSigningKey", reflect.TypeOf((*MockStore)(nil).AddSigningKey), keyID, publicKey)
+}
+
 // AddTransactionUpdate mocks base method.
 func (m *MockStore) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
 	m.ctrl.T.Helper()
@@ -351,6 +363,18 @@ func (mr *MockStoreMockRecorder) PutVolume(key, value any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutVolume", reflect.TypeOf((*MockStore)(nil).PutVolume), key, value)
 }
 
+// RemoveSigningKey mocks base method.
+func (m *MockStore) RemoveSigningKey(keyID string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RemoveSigningKey", keyID)
+}
+
+// RemoveSigningKey indicates an expected call of RemoveSigningKey.
+func (mr *MockStoreMockRecorder) RemoveSigningKey(keyID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSigningKey", reflect.TypeOf((*MockStore)(nil).RemoveSigningKey), keyID)
+}
+
 // SetLastLogHash mocks base method.
 func (m *MockStore) SetLastLogHash(hash []byte) {
 	m.ctrl.T.Helper()
@@ -361,6 +385,18 @@ func (m *MockStore) SetLastLogHash(hash []byte) {
 func (mr *MockStoreMockRecorder) SetLastLogHash(hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastLogHash", reflect.TypeOf((*MockStore)(nil).SetLastLogHash), hash)
+}
+
+// SetRequireSignatures mocks base method.
+func (m *MockStore) SetRequireSignatures(require bool) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetRequireSignatures", require)
+}
+
+// SetRequireSignatures indicates an expected call of SetRequireSignatures.
+func (mr *MockStoreMockRecorder) SetRequireSignatures(require any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRequireSignatures", reflect.TypeOf((*MockStore)(nil).SetRequireSignatures), require)
 }
 
 // MockpostingProducer is a mock of postingProducer interface.

@@ -7,9 +7,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"crypto/ed25519"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -53,6 +56,9 @@ type Machine struct {
 	generationRotationThreshold uint64
 	auditEnabled                bool
 
+	// KeyStore holds registered signing keys (updated after proposal apply)
+	keyStore *keystore.KeyStore
+
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
@@ -74,7 +80,7 @@ type Machine struct {
 	lastPersistedIndex        atomic.Uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, auditEnabled bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -132,6 +138,23 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}
 
+	// Load signing keys from Pebble on startup
+	if ks != nil {
+		signingKeys, err := dataStore.LoadSigningKeys()
+		if err != nil {
+			return nil, fmt.Errorf("loading signing keys from store: %w", err)
+		}
+		for keyID, pubKeyBytes := range signingKeys {
+			ks.AddPublicKey(keyID, pubKeyBytes)
+		}
+
+		requireSig, err := dataStore.LoadSigningConfig()
+		if err != nil {
+			return nil, fmt.Errorf("loading signing config from store: %w", err)
+		}
+		ks.SetRequireSignatures(requireSig)
+	}
+
 	fsm := &Machine{
 		logger:                      logger,
 		dataStore:                   dataStore,
@@ -144,6 +167,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		auditEnabled:                auditEnabled,
+		keyStore:                    ks,
 		Attrs:                       attrs,
 		Cache:                       cache,
 		Volumes: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumePair](
@@ -896,6 +920,9 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Update currentGeneration to match the snapshot
 	fsm.Cache.SetCurrentGeneration(memSnapshot.CurrentGeneration)
 
+	// Signing keys are not in the memory snapshot — they live in Pebble.
+	// They will be reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
+
 	// Reset dirty key tracking. The first 2 rotations after restore will do
 	// less cleanup, but the system self-corrects as new keys are tracked.
 	fsm.dirtyVolumeKeys = [3]map[string]uint32{
@@ -904,6 +931,32 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		make(map[string]uint32),
 	}
 	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
+
+	return nil
+}
+
+// reloadSigningKeysFromStore reloads signing keys and config from Pebble into the in-memory KeyStore.
+// Called after SynchronizeWithLeader restores the Pebble checkpoint from the leader.
+func (fsm *Machine) reloadSigningKeysFromStore() error {
+	if fsm.keyStore == nil {
+		return nil
+	}
+
+	fsm.keyStore.Reset()
+
+	signingKeys, err := fsm.dataStore.LoadSigningKeys()
+	if err != nil {
+		return fmt.Errorf("loading signing keys: %w", err)
+	}
+	for keyID, pubKeyBytes := range signingKeys {
+		fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(pubKeyBytes))
+	}
+
+	requireSig, err := fsm.dataStore.LoadSigningConfig()
+	if err != nil {
+		return fmt.Errorf("loading signing config: %w", err)
+	}
+	fsm.keyStore.SetRequireSignatures(requireSig)
 
 	return nil
 }
@@ -1013,6 +1066,12 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 			}
 		}
 	}
+
+	// Reload signing keys from Pebble (the checkpoint contains the leader's keys)
+	if err := fsm.reloadSigningKeysFromStore(); err != nil {
+		return 0, fmt.Errorf("reloading signing keys after sync: %w", err)
+	}
+
 	fsm.lastAppliedIndex = fsm.snapshotIndex
 
 	return fsm.snapshotIndex, nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
@@ -137,12 +138,13 @@ func NewNode(
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	cache *cache.Cache,
 	attrs *attributes.Attributes,
+	ks *keystore.KeyStore,
 	auditEnabled bool,
 ) (*Node, error) {
 
 	cfg.SetDefaults()
 
-	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, auditEnabled)
+	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, ks, auditEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("creating Machine: %w", err)
 	}

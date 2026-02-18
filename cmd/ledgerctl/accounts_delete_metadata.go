@@ -130,6 +130,11 @@ func runAccountsDeleteMetadata(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	if err := signRequests(cmd, req.Requests); err != nil {
+		spinner.Fail("Failed to sign request")
+		return err
+	}
+
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		spinner.Fail("Failed to delete metadata")

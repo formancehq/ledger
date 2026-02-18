@@ -11,6 +11,18 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
+// signingKeyUpdate represents a pending signing key change to be applied during Merge.
+type signingKeyUpdate struct {
+	keyID     string
+	publicKey []byte // nil for removals
+	remove    bool
+}
+
+// signingConfigUpdate represents a pending require-signatures change.
+type signingConfigUpdate struct {
+	requireSignatures bool
+}
+
 type Buffered struct {
 	fsm                 *Machine
 	attrs               *attributes.Attributes
@@ -26,8 +38,10 @@ type Buffered struct {
 	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
 	IdempotencyKeys     *attributes.DerivedKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
 	References          *attributes.DerivedKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	TransactionsUpdates map[data.TransactionKey][]*commonpb.TransactionUpdate
-	PendingLogs         []*commonpb.Log
+	TransactionsUpdates        map[data.TransactionKey][]*commonpb.TransactionUpdate
+	PendingLogs                []*commonpb.Log
+	pendingSigningKeyUpdates   []signingKeyUpdate
+	pendingSigningConfigUpdate *signingConfigUpdate
 }
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
@@ -178,6 +192,33 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
 
+	// Apply signing key updates to Pebble batch and in-memory KeyStore
+	for _, update := range b.pendingSigningKeyUpdates {
+		if update.remove {
+			if err := batch.DeleteSigningKey(update.keyID); err != nil {
+				return fmt.Errorf("deleting signing key: %w", err)
+			}
+			if b.fsm.keyStore != nil {
+				b.fsm.keyStore.RemovePublicKey(update.keyID)
+			}
+		} else {
+			if err := batch.SaveSigningKey(update.keyID, update.publicKey); err != nil {
+				return fmt.Errorf("saving signing key: %w", err)
+			}
+			if b.fsm.keyStore != nil {
+				b.fsm.keyStore.AddPublicKey(update.keyID, update.publicKey)
+			}
+		}
+	}
+	if b.pendingSigningConfigUpdate != nil {
+		if err := batch.SaveSigningConfig(b.pendingSigningConfigUpdate.requireSignatures); err != nil {
+			return fmt.Errorf("saving signing config: %w", err)
+		}
+		if b.fsm.keyStore != nil {
+			b.fsm.keyStore.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
+		}
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
@@ -282,6 +323,26 @@ func (b *Buffered) PutTransactionReference(key data.TransactionReferenceKey, val
 
 func (b *Buffered) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
 	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
+}
+
+func (b *Buffered) AddSigningKey(keyID string, publicKey []byte) {
+	b.pendingSigningKeyUpdates = append(b.pendingSigningKeyUpdates, signingKeyUpdate{
+		keyID:     keyID,
+		publicKey: publicKey,
+	})
+}
+
+func (b *Buffered) RemoveSigningKey(keyID string) {
+	b.pendingSigningKeyUpdates = append(b.pendingSigningKeyUpdates, signingKeyUpdate{
+		keyID:  keyID,
+		remove: true,
+	})
+}
+
+func (b *Buffered) SetRequireSignatures(require bool) {
+	b.pendingSigningConfigUpdate = &signingConfigUpdate{
+		requireSignatures: require,
+	}
 }
 
 func (b *Buffered) GetNextLedgerID() uint32 {

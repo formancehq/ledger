@@ -6,6 +6,7 @@ option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/servicep
 
 import "common.proto";
 import "audit.proto";
+import "signature.proto";
 
 // ============================================================================
 // gRPC Service
@@ -99,7 +100,35 @@ message Request {
     LedgerApplyRequest apply = 2;
     CreateLedgerRequest create_ledger = 3;
     DeleteLedgerRequest delete_ledger = 4;
+    RegisterSigningKeyRequest register_signing_key = 6;
+    RevokeSigningKeyRequest revoke_signing_key = 7;
+    SetSigningConfigRequest set_signing_config = 8;
   }
+  signature.RequestSignature signature = 5;
+}
+
+// ============================================================================
+// Signing Key Management Messages
+// ============================================================================
+
+// RegisterSigningKeyRequest registers an Ed25519 public key for signature verification.
+// Bootstrap: when no keys are registered yet, this request can be unsigned.
+// Once at least one key is registered, this request must be signed by an existing key.
+message RegisterSigningKeyRequest {
+  string key_id = 1;       // Unique identifier for this key
+  bytes public_key = 2;    // Ed25519 public key (32 bytes)
+}
+
+// RevokeSigningKeyRequest removes a registered signing key.
+// Must be signed by an existing key (cannot revoke all keys if require_signatures is enabled).
+message RevokeSigningKeyRequest {
+  string key_id = 1;       // Key ID to revoke
+}
+
+// SetSigningConfigRequest updates the signing configuration.
+// Must be signed by an existing key when keys are registered.
+message SetSigningConfigRequest {
+  bool require_signatures = 1;   // Whether to reject unsigned requests
 }
 
 // ============================================================================

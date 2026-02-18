@@ -227,6 +227,67 @@ func (b *Batch) AppendAuditEntries(entries ...*auditpb.AuditEntry) error {
 	return nil
 }
 
+// SaveSigningKey stores an Ed25519 public key in the batch.
+func (b *Batch) SaveSigningKey(keyID string, publicKey []byte) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.
+		PutByte(keyPrefixSigningKey).
+		PutString(keyID)
+
+	if err := b.batch.Set(b.KeyBuilder.Build(), publicKey, pebble.NoSync); err != nil {
+		return fmt.Errorf("saving signing key: %w", err)
+	}
+	return nil
+}
+
+// DeleteSigningKey removes a signing key from the batch.
+func (b *Batch) DeleteSigningKey(keyID string) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.
+		PutByte(keyPrefixSigningKey).
+		PutString(keyID)
+
+	if err := b.batch.Delete(b.KeyBuilder.Build(), pebble.NoSync); err != nil {
+		return fmt.Errorf("deleting signing key: %w", err)
+	}
+	return nil
+}
+
+// SaveSigningConfig stores the require-signatures flag in the batch.
+func (b *Batch) SaveSigningConfig(requireSignatures bool) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	value := []byte{0x00}
+	if requireSignatures {
+		value[0] = 0x01
+	}
+
+	if err := b.batch.Set([]byte{keyPrefixSigningConfig}, value, pebble.NoSync); err != nil {
+		return fmt.Errorf("saving signing config: %w", err)
+	}
+	return nil
+}
+
+// DeleteAllSigningKeys removes all signing keys from the batch using a range delete.
+func (b *Batch) DeleteAllSigningKeys() error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+	return b.batch.DeleteRange(
+		[]byte{keyPrefixSigningKey},
+		[]byte{keyPrefixSigningKey + 1},
+		pebble.NoSync,
+	)
+}
+
 // DeleteRange deletes all keys in the range [start, end).
 func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
 	return b.batch.DeleteRange(start, end, options)

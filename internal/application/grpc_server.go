@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -185,6 +186,17 @@ func convertToGRPCError(err error) error {
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
 		return err
+	}
+
+	// Convert signature errors to proper gRPC codes
+	if errors.Is(err, signing.ErrMissingSignature) {
+		return status.Error(codes.Unauthenticated, err.Error())
+	}
+	if errors.Is(err, signing.ErrInvalidSignature) {
+		return status.Error(codes.PermissionDenied, err.Error())
+	}
+	if errors.Is(err, signing.ErrUnknownKeyID) {
+		return status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	// Convert ErrNoLeader to Unavailable (client should retry)

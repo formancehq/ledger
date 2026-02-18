@@ -62,18 +62,23 @@ func runLedgersCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating ledger %s...", name))
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
-						Name:     name,
-						Metadata: commonpb.MetadataSetFromMap(metadata),
-					},
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name:     name,
+					Metadata: commonpb.MetadataSetFromMap(metadata),
 				},
 			},
 		},
-	})
+	}
+
+	if err := signRequests(cmd, requests); err != nil {
+		spinner.Fail("Failed to sign request")
+		return err
+	}
+
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		spinner.Fail("Failed to create ledger")
 		return formatGRPCError("failed to create ledger", err)

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -47,6 +49,7 @@ type Admission struct {
 	proposer      Proposer
 	attrs         *attributes.Attributes
 	healthChecker health.Checker
+	keyStore      *keystore.KeyStore
 
 	nextIndex atomic.Uint64
 
@@ -85,6 +88,7 @@ func NewAdmission(
 	attrs *attributes.Attributes,
 	meterProvider metric.MeterProvider,
 	healthChecker health.Checker,
+	keyStore *keystore.KeyStore,
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
@@ -94,6 +98,7 @@ func NewAdmission(
 		proposer:      proposer,
 		attrs:         attrs,
 		healthChecker: healthChecker,
+		keyStore:      keyStore,
 		loaders:       NewLoaders(),
 	}
 	for _, opt := range opts {
@@ -238,6 +243,12 @@ func NewAdmission(
 func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	if !a.healthChecker.IsHealthy() {
 		return nil, health.ErrUnhealthy
+	}
+
+	// Verify signatures and resolve signed payloads
+	requests, err := a.verifyAndResolveSignatures(requests)
+	if err != nil {
+		return nil, err
 	}
 
 	// Convert requests to orders
@@ -695,6 +706,78 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	return logs, err
 }
 
+// verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.
+// For each signed request, it verifies the signature, then deserializes signed_payload
+// to obtain the authoritative Request content (preserving the signature for propagation).
+//
+// Bootstrap logic for unsigned requests:
+//   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
+//   - All other signing management requests require a signature when keys exist
+//   - Regular requests check the requireSignatures flag
+func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([]*servicepb.Request, error) {
+	result := make([]*servicepb.Request, len(requests))
+	for i, req := range requests {
+		if req.Signature != nil {
+			// Look up public key
+			pubKey := a.keyStore.GetPublicKey(req.Signature.KeyId)
+			if pubKey == nil {
+				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, req.Signature.KeyId)
+			}
+
+			// Verify the signature on signed_payload
+			if err := signing.Verify(req.Signature, pubKey); err != nil {
+				return nil, err
+			}
+
+			// Deserialize signed_payload to get the trusted Request
+			trusted, err := signing.ExtractRequest(req.Signature)
+			if err != nil {
+				return nil, fmt.Errorf("extracting signed request: %w", err)
+			}
+
+			// Attach the original signature to the trusted request for propagation
+			trusted.Signature = req.Signature
+			result[i] = trusted
+		} else {
+			// No signature — apply bootstrap rules
+			if isSigningManagementRequest(req) {
+				// Bootstrap: allow unsigned RegisterSigningKey when no keys exist
+				if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
+					result[i] = req
+					continue
+				}
+				// Keys exist — signing management requires a signature
+				return nil, signing.ErrMissingSignature
+			}
+			// Regular request — check requireSignatures flag
+			if a.keyStore.RequireSignatures() {
+				return nil, signing.ErrMissingSignature
+			}
+			result[i] = req
+		}
+	}
+	return result, nil
+}
+
+// isSigningManagementRequest returns true if the request is a signing key
+// management operation (register, revoke, or config change).
+func isSigningManagementRequest(req *servicepb.Request) bool {
+	switch req.Type.(type) {
+	case *servicepb.Request_RegisterSigningKey,
+		*servicepb.Request_RevokeSigningKey,
+		*servicepb.Request_SetSigningConfig:
+		return true
+	}
+	return false
+}
+
+// isRegisterSigningKeyRequest returns true if the request is specifically
+// a RegisterSigningKey request.
+func isRegisterSigningKeyRequest(req *servicepb.Request) bool {
+	_, ok := req.Type.(*servicepb.Request_RegisterSigningKey)
+	return ok
+}
+
 // extractNeededVolumes extracts all volume keys that are needed for the given orders.
 // Both sources and destinations need preloading:
 // - Sources need balance checks (Input + Output to compute balance)
@@ -907,6 +990,25 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: applyOrder,
 		}
+	case *servicepb.Request_RegisterSigningKey:
+		order.Type = &raftcmdpb.Order_RegisterSigningKey{
+			RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+				KeyId:     reqType.RegisterSigningKey.KeyId,
+				PublicKey: reqType.RegisterSigningKey.PublicKey,
+			},
+		}
+	case *servicepb.Request_RevokeSigningKey:
+		order.Type = &raftcmdpb.Order_RevokeSigningKey{
+			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+				KeyId: reqType.RevokeSigningKey.KeyId,
+			},
+		}
+	case *servicepb.Request_SetSigningConfig:
+		order.Type = &raftcmdpb.Order_SetSigningConfig{
+			SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
+				RequireSignatures: reqType.SetSigningConfig.RequireSignatures,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}
@@ -917,6 +1019,9 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			Key: req.IdempotencyKey,
 		}
 	}
+
+	// Propagate signature for audit trail
+	order.Signature = req.Signature
 
 	return order, nil
 }

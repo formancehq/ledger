@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package signature;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb";
+
+// RequestSignature contains the Ed25519 signature of a Request.
+// The client serializes the Request (without signature), signs the bytes,
+// and attaches them here. The server verifies the signature on signed_payload,
+// then deserializes signed_payload to obtain the authoritative content.
+message RequestSignature {
+  string key_id = 1;         // ID of the public key used to sign
+  bytes signature = 2;       // Ed25519 signature (64 bytes)
+  bytes signed_payload = 3;  // Exact serialized bytes signed by the client
+}

@@ -57,6 +57,11 @@ type Store interface {
 	// Transaction updates
 	AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate)
 
+	// Signing key operations
+	AddSigningKey(keyID string, publicKey []byte)
+	RemoveSigningKey(keyID string)
+	SetRequireSignatures(require bool)
+
 	// Log hash chaining
 	GetLastLogHash() []byte
 	SetLastLogHash(hash []byte)
@@ -138,6 +143,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 			Sequence:    nextSequenceID,
 			Payload:     payload,
 			Idempotency: order.Idempotency,
+			Signature:   order.Signature,
 		}
 		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.Hash)
@@ -202,9 +208,49 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processCreateLedger(orderType.CreateLedger, s)
 	case *raftcmdpb.Order_DeleteLedger:
 		return p.processDeleteLedger(orderType.DeleteLedger, s)
+	case *raftcmdpb.Order_RegisterSigningKey:
+		return p.processRegisterSigningKey(orderType.RegisterSigningKey, s)
+	case *raftcmdpb.Order_RevokeSigningKey:
+		return p.processRevokeSigningKey(orderType.RevokeSigningKey, s)
+	case *raftcmdpb.Order_SetSigningConfig:
+		return p.processSetSigningConfig(orderType.SetSigningConfig, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}
+}
+
+func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s Store) (*commonpb.LogPayload, error) {
+	s.AddSigningKey(order.KeyId, order.PublicKey)
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_RegisterSigningKey{
+			RegisterSigningKey: &commonpb.RegisterSigningKeyLog{
+				KeyId:     order.KeyId,
+				PublicKey: order.PublicKey,
+			},
+		},
+	}, nil
+}
+
+func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s Store) (*commonpb.LogPayload, error) {
+	s.RemoveSigningKey(order.KeyId)
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_RevokeSigningKey{
+			RevokeSigningKey: &commonpb.RevokeSigningKeyLog{
+				KeyId: order.KeyId,
+			},
+		},
+	}, nil
+}
+
+func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s Store) (*commonpb.LogPayload, error) {
+	s.SetRequireSignatures(order.RequireSignatures)
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetSigningConfig{
+			SetSigningConfig: &commonpb.SetSigningConfigLog{
+				RequireSignatures: order.RequireSignatures,
+			},
+		},
+	}, nil
 }
 
 func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s Store) (*commonpb.LogPayload, error) {

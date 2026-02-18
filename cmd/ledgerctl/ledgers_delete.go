@@ -87,17 +87,22 @@ func runLedgersDelete(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Deleting ledger %s...", name))
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_DeleteLedger{
-					DeleteLedger: &servicepb.DeleteLedgerRequest{
-						Name: name,
-					},
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_DeleteLedger{
+				DeleteLedger: &servicepb.DeleteLedgerRequest{
+					Name: name,
 				},
 			},
 		},
-	})
+	}
+
+	if err := signRequests(cmd, requests); err != nil {
+		spinner.Fail("Failed to sign request")
+		return err
+	}
+
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		spinner.Fail("Failed to delete ledger")
 		return formatGRPCError("failed to delete ledger", err)

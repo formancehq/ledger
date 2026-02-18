@@ -24,6 +24,22 @@ These flags are available for all commands:
 |------|---------|-------------|
 | `--server` | `localhost:8888` | gRPC server address |
 | `--insecure` | `false` | Use insecure connection (no TLS) |
+| `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
+| `--signing-key-id` | `default` | Key ID for request signatures |
+
+### Request Signing
+
+All write commands (create/delete ledger, create/revert transaction, set/delete metadata) support Ed25519 request signing. When `--signing-key` is provided, each request is signed before being sent to the server.
+
+```bash
+# Sign requests with a key file
+ledgerctl --signing-key /path/to/seed.key ledgers create --name my-ledger
+
+# Sign with a specific key ID
+ledgerctl --signing-key /path/to/seed.key --signing-key-id admin-key-1 transactions create --ledger my-ledger --posting "world,bank,1000,USD"
+```
+
+The key file should contain a 32-byte Ed25519 seed, either as raw binary or hex-encoded text.
 
 ## Commands
 
@@ -930,6 +946,102 @@ ledgerctl cluster du --json
 **Output sections:**
 - **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
 - **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
+
+### signing
+
+![Signing Demo](../misc/demo/demo_signing.gif)
+
+Manage Ed25519 signing keys and signature configuration.
+
+Signing keys are managed dynamically via the gRPC API (not server-side config files).
+The first key registration can be unsigned (bootstrap). Once keys exist, all key management
+operations must be signed by an existing key.
+
+**Aliases:** `sign`, `keys`
+
+#### signing generate-key
+
+Generate an Ed25519 keypair for request signing. Creates two hex-encoded files in the specified output directory.
+
+**Aliases:** `gen-key`, `keygen`
+
+```bash
+ledgerctl signing generate-key <output-directory>
+```
+
+**Output files:**
+- `seed.hex` — 32-byte Ed25519 seed (hex-encoded, mode 0600), used with `--signing-key`
+- `pubkey.hex` — 32-byte Ed25519 public key (hex-encoded), used with `signing register-key`
+
+**Example:**
+
+```bash
+# Generate a keypair
+ledgerctl signing generate-key ./my-keys
+
+# Use the generated files
+ledgerctl signing register-key --key-id admin --public-key-file ./my-keys/pubkey.hex
+ledgerctl --signing-key ./my-keys/seed.hex ledgers create --name my-ledger
+```
+
+#### signing register-key
+
+Register an Ed25519 public key for signature verification.
+
+**Aliases:** `add-key`, `register`
+
+```bash
+# Bootstrap: register the first key (unsigned)
+ledgerctl signing register-key --key-id admin --public-key-file /path/to/pubkey.hex
+
+# Register with hex-encoded public key
+ledgerctl signing register-key --key-id admin --public-key <hex-encoded-32-bytes>
+
+# Register additional key (must be signed by existing key)
+ledgerctl signing register-key --key-id ops --public-key-file /path/to/pubkey.hex --signing-key /path/to/seed
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--key-id` | Yes | Unique identifier for the key |
+| `--public-key` | One of | Ed25519 public key as hex-encoded string (32 bytes) |
+| `--public-key-file` | One of | Path to file containing Ed25519 public key (raw 32 bytes or hex-encoded) |
+| `--timeout` | No | Request timeout (default: 10s) |
+
+#### signing revoke-key
+
+Revoke a registered signing key. Must be signed by an existing key.
+
+**Aliases:** `remove-key`, `revoke`
+
+```bash
+ledgerctl signing revoke-key --key-id ops --signing-key /path/to/seed
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--key-id` | Yes | Key ID to revoke |
+| `--timeout` | No | Request timeout (default: 10s) |
+
+#### signing require
+
+Enable or disable mandatory request signatures. Must be signed by an existing key.
+
+```bash
+# Enable mandatory signatures
+ledgerctl signing require true --signing-key /path/to/seed
+
+# Disable mandatory signatures
+ledgerctl signing require false --signing-key /path/to/seed
+```
+
+| Argument | Description |
+|----------|-------------|
+| `true` / `false` | Enable or disable mandatory signatures (also accepts `1`/`0`, `yes`/`no`, `on`/`off`, `enable`/`disable`) |
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
 
 ---
 

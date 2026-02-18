@@ -52,6 +52,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | Audit log disable/enable | ✅ | ❌ | `--audit-enabled` flag |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
+| **Security** |
+| Request signing (Ed25519) | ✅ | ❌ | Envelope pattern with signed_payload |
+| Dynamic key management | ✅ | ❌ | Register/revoke keys via gRPC API (bootstrap: first key unsigned) |
+| Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |

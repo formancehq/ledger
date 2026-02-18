@@ -302,6 +302,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			snapshotFetcherProvider,
 			nodeCache,
 			attributes.New(),
+			nil, // keystore
 			true, // audit enabled
 		)
 		require.NoError(t, err)
@@ -590,6 +591,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		snapshotFetcherProvider,
 		nodeCache,
 		attributes.New(),
+		nil, // keystore
 		true, // audit enabled
 	)
 	if err != nil {
