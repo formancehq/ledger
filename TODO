@@ -27,4 +27,6 @@
 * Mode not atomic
 * Convert K6 tests to GRPC
 * Event system
-* Use UInt256 instead of big int
+* Eventual consistency (read your writes)
+* Flow control
+* Ajoute un checkpoint a l'extinction
