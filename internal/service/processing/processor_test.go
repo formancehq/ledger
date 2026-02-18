@@ -1,7 +1,6 @@
 package processing
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -581,14 +580,14 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	// Source has 1000 input, 0 output -> balance = 1000
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(1000)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+		InputKnown:  commonpb.NewUint256FromUint64(1000),
+		OutputKnown: commonpb.NewUint256FromUint64(0),
 	}
 
 	// Destination starts with 0
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+		InputKnown:  commonpb.NewUint256FromUint64(0),
+		OutputKnown: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -598,14 +597,14 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100
-			require.Equal(t, int64(100), value.OutputKnown.Value().Int64())
+			require.Equal(t, int64(100), value.OutputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.InputKnown.Value().Int64())
+			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -621,7 +620,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 							{
 								Source:      "bank",
 								Destination: "users:123",
-								Amount:      commonpb.NewBigInt(big.NewInt(100)),
+								Amount:      commonpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -663,8 +662,8 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output)
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(100)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+		InputKnown:  commonpb.NewUint256FromUint64(100),
+		OutputKnown: commonpb.NewUint256FromUint64(50),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -680,7 +679,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 							{
 								Source:      "users:123",
 								Destination: "merchant",
-								Amount:      commonpb.NewBigInt(big.NewInt(100)), // Wants 100, has only 50
+								Amount:      commonpb.NewUint256FromUint64(100), // Wants 100, has only 50
 								Asset:       "USD",
 							},
 						},
@@ -720,12 +719,12 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	// World has negative balance (but "world" bypasses balance check)
 	worldVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(1000000)),
+		InputKnown:  commonpb.NewUint256FromUint64(0),
+		OutputKnown: commonpb.NewUint256FromUint64(1000000),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+		InputKnown:  commonpb.NewUint256FromUint64(0),
+		OutputKnown: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -748,7 +747,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 							{
 								Source:      "world", // Can go negative
 								Destination: "users:123",
-								Amount:      commonpb.NewBigInt(big.NewInt(1000)),
+								Amount:      commonpb.NewUint256FromUint64(1000),
 								Asset:       "USD",
 							},
 						},
@@ -803,8 +802,8 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 // All Numscript tests use flexible (AnyTimes) volume mocking with zero balances.
 func setupNumscriptVolumeMocks(mockStore *MockStore) {
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+		InputKnown:  commonpb.NewUint256FromUint64(0),
+		OutputKnown: commonpb.NewUint256FromUint64(0),
 	}, nil).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 }
@@ -865,7 +864,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	posting := createdTx.Transaction.Postings[0]
 	require.Equal(t, "world", posting.Source)
 	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(10000), posting.Amount.Value().Int64())
+	require.Equal(t, int64(10000), posting.Amount.ToBigInt().Int64())
 	require.Equal(t, "USD/2", posting.Asset)
 }
 
@@ -931,7 +930,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	posting := createdTx.Transaction.Postings[0]
 	require.Equal(t, "world", posting.Source)
 	require.Equal(t, "merchants:shop1", posting.Destination)
-	require.Equal(t, int64(5000), posting.Amount.Value().Int64())
+	require.Equal(t, int64(5000), posting.Amount.ToBigInt().Int64())
 	require.Equal(t, "EUR/2", posting.Asset)
 }
 
@@ -993,12 +992,12 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	// Verify first posting
 	require.Equal(t, "world", createdTx.Transaction.Postings[0].Source)
 	require.Equal(t, "users:alice", createdTx.Transaction.Postings[0].Destination)
-	require.Equal(t, int64(10000), createdTx.Transaction.Postings[0].Amount.Value().Int64())
+	require.Equal(t, int64(10000), createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64())
 
 	// Verify second posting
 	require.Equal(t, "world", createdTx.Transaction.Postings[1].Source)
 	require.Equal(t, "users:bob", createdTx.Transaction.Postings[1].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.Value().Int64())
+	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
@@ -1056,7 +1055,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	posting := createdTx.Transaction.Postings[0]
 	require.Equal(t, "bank:main", posting.Source)
 	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(100000), posting.Amount.Value().Int64())
+	require.Equal(t, int64(100000), posting.Amount.ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
@@ -1206,11 +1205,11 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	// Should split 10000 into 5000 each
 	require.Equal(t, "world", createdTx.Transaction.Postings[0].Source)
 	require.Equal(t, "users:alice", createdTx.Transaction.Postings[0].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[0].Amount.Value().Int64())
+	require.Equal(t, int64(5000), createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64())
 
 	require.Equal(t, "world", createdTx.Transaction.Postings[1].Source)
 	require.Equal(t, "users:bob", createdTx.Transaction.Postings[1].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.Value().Int64())
+	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
@@ -1377,12 +1376,12 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output) - not enough for 100
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(100)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+		InputKnown:  commonpb.NewUint256FromUint64(100),
+		OutputKnown: commonpb.NewUint256FromUint64(50),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(0)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(0)),
+		InputKnown:  commonpb.NewUint256FromUint64(0),
+		OutputKnown: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -1393,14 +1392,14 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100 (50 + 100 = 150)
-			require.Equal(t, int64(150), value.OutputKnown.Value().Int64())
+			require.Equal(t, int64(150), value.OutputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.InputKnown.Value().Int64())
+			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1417,7 +1416,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 							{
 								Source:      "users:123",
 								Destination: "merchant",
-								Amount:      commonpb.NewBigInt(big.NewInt(100)), // Wants 100, has only 50
+								Amount:      commonpb.NewUint256FromUint64(100), // Wants 100, has only 50
 								Asset:       "USD",
 							},
 						},
@@ -1474,7 +1473,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should use OutputDiff since we don't know the absolute value
 			require.Nil(t, value.OutputKnown)
-			require.Equal(t, int64(100), value.OutputDiff.Value().Int64())
+			require.Equal(t, int64(100), value.OutputDiff.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(nil, data.ErrNotFound)
@@ -1482,7 +1481,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should use InputDiff since we don't know the absolute value
 			require.Nil(t, value.InputKnown)
-			require.Equal(t, int64(100), value.InputDiff.Value().Int64())
+			require.Equal(t, int64(100), value.InputDiff.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1499,7 +1498,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 							{
 								Source:      "users:new",
 								Destination: "merchant",
-								Amount:      commonpb.NewBigInt(big.NewInt(100)),
+								Amount:      commonpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -1573,7 +1572,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	posting := createdTx.Transaction.Postings[0]
 	require.Equal(t, "users:broke", posting.Source)
 	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(100000), posting.Amount.Value().Int64())
+	require.Equal(t, int64(100000), posting.Amount.ToBigInt().Int64())
 }
 
 func TestProcessProposal_HashChaining(t *testing.T) {
@@ -1697,4 +1696,101 @@ func TestProcessProposal_HashChaining(t *testing.T) {
 			"hash %d should be deterministic", i,
 		)
 	}
+}
+
+func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	setupNumscriptVolumeMocks(mockStore)
+
+	// 2^256 = 115792089237316195423570985008687907853269984665640564039457584007913129639936
+	// This exceeds the uint256 max (2^256 - 1) and must be rejected.
+	overflow256 := "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: `
+								vars {
+									monetary $amount
+								}
+								send $amount (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+							Vars: map[string]string{
+								"amount": "USD/2 " + overflow256,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Contains(t, err.Error(), "exceeds 256 bits")
+}
+
+func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	setupNumscriptVolumeMocks(mockStore)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: `
+								vars {
+									monetary $amount
+								}
+								send $amount (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+							Vars: map[string]string{
+								"amount": "USD/2 -100",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
 }

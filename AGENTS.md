@@ -418,6 +418,21 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 - `internal/service/processing/processor.go` — order hash (`CloneVT` + `MarshalVT`)
 - `internal/service/state/buffer.go` — clone functions (`CloneVT` method references)
 
+### Uint256 Wire Format for Monetary Amounts
+
+All monetary amounts (posting amounts, volume inputs/outputs) use the `Uint256` protobuf message — a fixed-size 4 × `fixed64` representation that maps directly to `holiman/uint256.Int`'s `[4]uint64` internal layout.
+
+**Why Uint256 instead of BigInt (bytes)?**
+- **Zero allocation on hot path**: converting between proto and `uint256.Int` is just 4 `uint64` assignments — no `Bytes()`/`SetBytes()` allocations
+- **All amounts are non-negative**: the sign byte in BigInt was wasted; negative balances are computed at read time as `input - output`
+- **2^256 range is sufficient**: 1.16 × 10^77 covers any real-world monetary quantity
+
+**Key files**:
+- `internal/proto/commonpb/uint256.go` — `IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`
+- The old `BigInt` proto message and `bigint.go` helpers have been fully removed — no code references them
+
+See [docs/architecture/uint256-wire-format.md](docs/architecture/uint256-wire-format.md) for the full design rationale.
+
 ### Prerequisites
 
 - `protoc` (Protocol Buffer Compiler) must be installed

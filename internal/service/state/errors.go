@@ -1,9 +1,6 @@
 package state
 
-import (
-	"fmt"
-	"math/big"
-)
+import "fmt"
 
 // ErrNodeOutOfSync is returned when the snapshot index exceeds the last applied index,
 // indicating the node has fallen behind and cannot apply entries.
@@ -48,8 +45,8 @@ func (e *ErrGenerationMismatch) Error() string {
 // ErrDoubleEntryInvariantViolated is returned when the sum of input deltas
 // does not equal the sum of output deltas, indicating a broken accounting invariant.
 type ErrDoubleEntryInvariantViolated struct {
-	InputSum  *big.Int
-	OutputSum *big.Int
+	InputSum  string
+	OutputSum string
 }
 
 func (e *ErrDoubleEntryInvariantViolated) Error() string {

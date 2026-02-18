@@ -2,7 +2,6 @@ package admission
 
 import (
 	"errors"
-	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -316,12 +315,12 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	key4 := attributes.NewU128(4, 4)
 
 	_, err := loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
-		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(42))}, nil
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(42)}, nil
 	})
 	require.NoError(t, err)
 
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
-		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(43))}, nil
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(43)}, nil
 	})
 	require.NoError(t, err)
 
@@ -349,7 +348,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	volumeLoadCount := 0
 	_, err = loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount++
-		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(100))}, nil
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after MarkApplied")
@@ -357,7 +356,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	volumeLoadCount2 := 0
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount2++
-		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewBigInt(big.NewInt(100))}, nil
+		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after MarkApplied")

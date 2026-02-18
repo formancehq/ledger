@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -121,13 +120,13 @@ func TestGetTransactionPostings(t *testing.T) {
 			{
 				Source:      "world",
 				Destination: "user:alice",
-				Amount:      commonpb.NewBigInt(big.NewInt(100)),
+				Amount:      commonpb.NewUint256FromUint64(100),
 				Asset:       "USD",
 			},
 			{
 				Source:      "world",
 				Destination: "user:bob",
-				Amount:      commonpb.NewBigInt(big.NewInt(50)),
+				Amount:      commonpb.NewUint256FromUint64(50),
 				Asset:       "EUR",
 			},
 		}
@@ -196,7 +195,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -247,7 +246,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -295,13 +294,13 @@ func TestExtractNeededVolumes(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 									{
 										Source:      "user:alice",
 										Destination: "user:bob",
-										Amount:      commonpb.NewBigInt(big.NewInt(50)),
+										Amount:      commonpb.NewUint256FromUint64(50),
 										Asset:       "USD",
 									},
 								},
@@ -359,7 +358,7 @@ func TestExtractNeededTransactions(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -399,7 +398,7 @@ func TestExtractNeededTransactions(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -477,7 +476,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			{
 				Source:      "world",
 				Destination: "user:alice",
-				Amount:      commonpb.NewBigInt(big.NewInt(100)),
+				Amount:      commonpb.NewUint256FromUint64(100),
 				Asset:       "USD",
 			},
 		}
@@ -568,7 +567,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 									{
 										Source:      "users:alice",
 										Destination: "users:bob",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -602,7 +601,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 									{
 										Source:      "users:alice",
 										Destination: "users:bob",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -651,7 +650,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 									{
 										Source:      "users:force_source",
 										Destination: "users:force_dest",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -672,7 +671,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 									{
 										Source:      "users:normal_source",
 										Destination: "users:normal_dest",
-										Amount:      commonpb.NewBigInt(big.NewInt(200)),
+										Amount:      commonpb.NewUint256FromUint64(200),
 										Asset:       "EUR",
 									},
 								},
@@ -725,7 +724,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "USD",
 									},
 								},
@@ -761,7 +760,7 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 						{
 							Source:      "users:alice",
 							Destination: "users:bob",
-							Amount:      commonpb.NewBigInt(big.NewInt(100)),
+							Amount:      commonpb.NewUint256FromUint64(100),
 							Asset:       "USD",
 						},
 					},
@@ -791,7 +790,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			{
 				Source:      "bank",
 				Destination: "user:charlie",
-				Amount:      commonpb.NewBigInt(big.NewInt(500)),
+				Amount:      commonpb.NewUint256FromUint64(500),
 				Asset:       "EUR",
 			},
 		}
@@ -954,7 +953,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 									{
 										Source:      "bank",
 										Destination: "merchant",
-										Amount:      commonpb.NewBigInt(big.NewInt(100)),
+										Amount:      commonpb.NewUint256FromUint64(100),
 										Asset:       "EUR",
 									},
 								},

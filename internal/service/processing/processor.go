@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/holiman/uint256"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -603,8 +604,8 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	}
 
 	// Decode posting amount into stack variable to avoid heap allocation
-	var amount big.Int
-	posting.Amount.ValueInto(&amount)
+	var amount uint256.Int
+	posting.Amount.IntoUint256(&amount)
 
 	// Get current volume pair for source
 	sourceVol, err := s.GetVolume(sourceKey)
@@ -620,24 +621,27 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 		if sourceVol.InputKnown == nil {
 			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
-		var inputValue, outputValue, balance big.Int
-		sourceVol.InputKnown.ValueInto(&inputValue)
+		// Overflow-safe balance check: input >= output + amount
+		var inputValue, outputValue, outputPlusAmount uint256.Int
+		sourceVol.InputKnown.IntoUint256(&inputValue)
 		if sourceVol.OutputKnown != nil {
-			sourceVol.OutputKnown.ValueInto(&outputValue)
+			sourceVol.OutputKnown.IntoUint256(&outputValue)
 		}
-		balance.Sub(&inputValue, &outputValue)
-		if balance.Cmp(&amount) < 0 {
+		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
+		if overflow || inputValue.Lt(sum) {
+			// Only compute signed balance for the error message
+			balanceBig := new(big.Int).Sub(inputValue.ToBig(), outputValue.ToBig())
 			return &ErrInsufficientFunds{
 				Account: posting.Source,
 				Asset:   posting.Asset,
-				Amount:  new(big.Int).Set(&amount),
-				Balance: new(big.Int).Set(&balance),
+				Amount:  amount.Dec(),
+				Balance: balanceBig.String(),
 			}
 		}
 	}
 
 	// scratch is reused across both addToVolumeSide calls
-	var scratch big.Int
+	var scratch uint256.Int
 
 	// Increase Output for source (money going out)
 	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &amount, posting.Amount, &scratch)
@@ -667,22 +671,22 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 
 // addToVolumeSide adds amount to one side (input or output) of a VolumePair.
 // If Known is set, it updates Known (SetBase path). Otherwise, it updates Diff (AddDiff path).
-// rawAmount is the original proto BigInt used when Diff is nil to avoid re-encoding.
-// scratch is a caller-provided big.Int to avoid heap allocation.
-func addToVolumeSide(known **commonpb.BigInt, diff **commonpb.BigInt, amount *big.Int, rawAmount *commonpb.BigInt, scratch *big.Int) {
+// rawAmount is the original proto Uint256 used when Diff is nil to avoid re-encoding.
+// scratch is a caller-provided uint256.Int to avoid heap allocation.
+func addToVolumeSide(known **commonpb.Uint256, diff **commonpb.Uint256, amount *uint256.Int, rawAmount *commonpb.Uint256, scratch *uint256.Int) {
 	if *known != nil {
 		// Safe to mutate in-place: *known is always a cloned cache value, never shared.
-		(*known).ValueInto(scratch)
+		(*known).IntoUint256(scratch)
 		scratch.Add(scratch, amount)
-		(*known).SetFromBigInt(scratch)
+		(*known).SetFromUint256(scratch)
 	} else {
 		if *diff == nil {
 			*diff = rawAmount
 		} else {
-			// Must create new *BigInt: *diff may point to a shared rawAmount (posting.Amount).
-			(*diff).ValueInto(scratch)
+			// Must create new *Uint256: *diff may point to a shared rawAmount (posting.Amount).
+			(*diff).IntoUint256(scratch)
 			scratch.Add(scratch, amount)
-			*diff = commonpb.NewBigInt(scratch)
+			*diff = commonpb.NewUint256(scratch)
 		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/cockroachdb/pebble"
@@ -118,7 +117,7 @@ func newPosting(source, destination, asset string, amount int64) *commonpb.Posti
 	return &commonpb.Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      commonpb.NewBigInt(big.NewInt(amount)),
+		Amount:      commonpb.NewUint256FromUint64(uint64(amount)),
 		Asset:       asset,
 	}
 }
@@ -130,10 +129,10 @@ func effectiveVolumeInput(vp *raftcmdpb.VolumePair) int64 {
 		return 0
 	}
 	if vp.InputKnown != nil {
-		return vp.InputKnown.Value().Int64()
+		return vp.InputKnown.ToBigInt().Int64()
 	}
 	if vp.InputDiff != nil {
-		return vp.InputDiff.Value().Int64()
+		return vp.InputDiff.ToBigInt().Int64()
 	}
 	return 0
 }
@@ -145,10 +144,10 @@ func effectiveVolumeOutput(vp *raftcmdpb.VolumePair) int64 {
 		return 0
 	}
 	if vp.OutputKnown != nil {
-		return vp.OutputKnown.Value().Int64()
+		return vp.OutputKnown.ToBigInt().Int64()
 	}
 	if vp.OutputDiff != nil {
-		return vp.OutputDiff.Value().Int64()
+		return vp.OutputDiff.ToBigInt().Int64()
 	}
 	return 0
 }
@@ -354,10 +353,10 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			var gotInput, gotOutput int64
 			if pair != nil {
 				if pair.InputKnown != nil {
-					gotInput = pair.InputKnown.Value().Int64()
+					gotInput = pair.InputKnown.ToBigInt().Int64()
 				}
 				if pair.OutputKnown != nil {
-					gotOutput = pair.OutputKnown.Value().Int64()
+					gotOutput = pair.OutputKnown.ToBigInt().Int64()
 				}
 			}
 
@@ -395,7 +394,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.InputKnown)
-		require.Equal(t, int64(300), pair.InputKnown.Value().Int64(),
+		require.Equal(t, int64(300), pair.InputKnown.ToBigInt().Int64(),
 			"merchant:bob store input should be 300 (batch 3 only)")
 	})
 
@@ -417,7 +416,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.OutputKnown)
-		require.Equal(t, int64(330), pair.OutputKnown.Value().Int64(),
+		require.Equal(t, int64(330), pair.OutputKnown.ToBigInt().Int64(),
 			"customer:dave store output should be 330 (batch 3 only)")
 	})
 
@@ -439,7 +438,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.InputKnown)
-		require.Equal(t, int64(50), pair.InputKnown.Value().Int64(),
+		require.Equal(t, int64(50), pair.InputKnown.ToBigInt().Int64(),
 			"platform:revenue store input should be 50 (20+30)")
 	})
 }
@@ -519,7 +518,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	for i, amount := range []int64{100, 200, 300, 400} {
 		batch := dataStore.NewBatch()
 		err := attrs.Volume.AddDiff(batch, uint64(i+2), aliceInputKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+			InputKnown: commonpb.NewUint256FromUint64(uint64(amount)),
 		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
@@ -529,7 +528,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	for i, amount := range []int64{100, 200, 300, 400} {
 		batch := dataStore.NewBatch()
 		err := attrs.Volume.AddDiff(batch, uint64(i+2), worldOutputKey, &raftcmdpb.VolumePair{
-			OutputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+			OutputKnown: commonpb.NewUint256FromUint64(uint64(amount)),
 		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
@@ -548,11 +547,11 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Verify computed values before compaction: latest cumul diff = 400
 	alicePair, err := attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), alicePair.InputKnown.Value().Int64())
+	require.Equal(t, int64(400), alicePair.InputKnown.ToBigInt().Int64())
 
 	worldPair, err := attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), worldPair.OutputKnown.Value().Int64())
+	require.Equal(t, int64(400), worldPair.OutputKnown.ToBigInt().Int64())
 
 	// ---------------------------------------------------------------
 	// First compaction at index 4: prunes diffs strictly before 4
@@ -587,12 +586,12 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Computed values unchanged: latest cumul diff = 400
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), alicePair.InputKnown.Value().Int64(),
+	require.Equal(t, int64(400), alicePair.InputKnown.ToBigInt().Int64(),
 		"alice input should still be 400 after compaction")
 
 	worldPair, err = attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), worldPair.OutputKnown.Value().Int64(),
+	require.Equal(t, int64(400), worldPair.OutputKnown.ToBigInt().Int64(),
 		"world output should still be 400 after compaction")
 
 	// ---------------------------------------------------------------
@@ -602,7 +601,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	for i, amount := range []int64{500, 600} {
 		batch := dataStore.NewBatch()
 		err := attrs.Volume.AddDiff(batch, uint64(i+6), aliceInputKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+			InputKnown: commonpb.NewUint256FromUint64(uint64(amount)),
 		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
@@ -611,7 +610,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Latest cumul diff at index 7 = 600 -> computed value = 0 + 600 = 600
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), alicePair.InputKnown.Value().Int64(),
+	require.Equal(t, int64(600), alicePair.InputKnown.ToBigInt().Int64(),
 		"alice input should be 600 (latest cumulative diff from implicit base 0)")
 
 	// ---------------------------------------------------------------
@@ -634,7 +633,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Computed value unchanged: latest cumul diff at index 7 = 600
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), alicePair.InputKnown.Value().Int64(),
+	require.Equal(t, int64(600), alicePair.InputKnown.ToBigInt().Int64(),
 		"alice input should remain 600 after second compaction")
 }
 
@@ -661,11 +660,11 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	for i, amount := range []int64{100, 200, 300, 400} {
 		batch := dataStore.NewBatch()
 		err := attrs.Volume.AddDiff(batch, uint64(i+2), activeKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+			InputKnown: commonpb.NewUint256FromUint64(uint64(amount)),
 		})
 		require.NoError(t, err)
 		err = attrs.Volume.AddDiff(batch, uint64(i+2), dormantKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(amount)),
+			InputKnown: commonpb.NewUint256FromUint64(uint64(amount)),
 		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
@@ -701,11 +700,11 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	// Both computed values are still correct
 	activePair, err := attrs.Volume.ComputeValue(dataStore, 5, activeKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), activePair.InputKnown.Value().Int64())
+	require.Equal(t, int64(400), activePair.InputKnown.ToBigInt().Int64())
 
 	dormantPair, err := attrs.Volume.ComputeValue(dataStore, 5, dormantKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), dormantPair.InputKnown.Value().Int64())
+	require.Equal(t, int64(400), dormantPair.InputKnown.ToBigInt().Int64())
 }
 
 // makeLedgerPreloadSet creates a PreloadSet that injects ledger info into the cache.
@@ -799,7 +798,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pair)
 	require.NotNil(t, pair.InputKnown)
-	require.Equal(t, int64(4100), pair.InputKnown.Value().Int64(),
+	require.Equal(t, int64(4100), pair.InputKnown.ToBigInt().Int64(),
 		"users:alice input should be 4100 (41 * 100)")
 
 	// Verify that compaction pruned old entries.

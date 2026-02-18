@@ -98,10 +98,10 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerID uin
 		output := big.NewInt(0)
 		if pair != nil {
 			if pair.InputKnown != nil {
-				input = pair.InputKnown.Value()
+				input = pair.InputKnown.ToBigInt()
 			}
 			if pair.OutputKnown != nil {
-				output = pair.OutputKnown.Value()
+				output = pair.OutputKnown.ToBigInt()
 			}
 		}
 		balance := new(big.Int).Sub(input, output)

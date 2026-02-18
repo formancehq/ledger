@@ -8655,7 +8655,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.InputKnown == nil {
-				m.InputKnown = &commonpb.BigInt{}
+				m.InputKnown = &commonpb.Uint256{}
 			}
 			if err := m.InputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -8691,7 +8691,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.InputDiff == nil {
-				m.InputDiff = &commonpb.BigInt{}
+				m.InputDiff = &commonpb.Uint256{}
 			}
 			if err := m.InputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -8727,7 +8727,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.OutputKnown == nil {
-				m.OutputKnown = &commonpb.BigInt{}
+				m.OutputKnown = &commonpb.Uint256{}
 			}
 			if err := m.OutputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -8763,7 +8763,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.OutputDiff == nil {
-				m.OutputDiff = &commonpb.BigInt{}
+				m.OutputDiff = &commonpb.Uint256{}
 			}
 			if err := m.OutputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -9287,7 +9287,7 @@ func (m *PreloadVolume) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Input == nil {
-				m.Input = &commonpb.BigInt{}
+				m.Input = &commonpb.Uint256{}
 			}
 			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -9323,7 +9323,7 @@ func (m *PreloadVolume) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Output == nil {
-				m.Output = &commonpb.BigInt{}
+				m.Output = &commonpb.Uint256{}
 			}
 			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -10590,7 +10590,7 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.InputKnown == nil {
-				m.InputKnown = &commonpb.BigInt{}
+				m.InputKnown = &commonpb.Uint256{}
 			}
 			if err := m.InputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -10626,7 +10626,7 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.InputDiff == nil {
-				m.InputDiff = &commonpb.BigInt{}
+				m.InputDiff = &commonpb.Uint256{}
 			}
 			if err := m.InputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -10662,7 +10662,7 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.OutputKnown == nil {
-				m.OutputKnown = &commonpb.BigInt{}
+				m.OutputKnown = &commonpb.Uint256{}
 			}
 			if err := m.OutputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -10698,7 +10698,7 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.OutputDiff == nil {
-				m.OutputDiff = &commonpb.BigInt{}
+				m.OutputDiff = &commonpb.Uint256{}
 			}
 			if err := m.OutputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

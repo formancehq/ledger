@@ -77,7 +77,7 @@ send $amount (
 			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("bank"))
 			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
 			// Verify the posting amount is correct
-			Expect(createdTx.Transaction.Postings[0].Amount.Value().String()).To(Equal("1000"))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("1000"))
 
 			// Verify account balance (use Eventually to handle potential timing issues)
 			Eventually(func(g Gomega) {

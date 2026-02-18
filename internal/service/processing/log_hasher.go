@@ -38,13 +38,7 @@ func (h *logHasher) writeString(s string) {
 	}
 }
 
-func (h *logHasher) writeBytes(b []byte) {
-	binary.LittleEndian.PutUint32(h.buf[:4], uint32(len(b)))
-	_, _ = h.w.Write(h.buf[:4])
-	if len(b) > 0 {
-		_, _ = h.w.Write(b)
-	}
-}
+
 
 func (h *logHasher) writeBool(v bool) {
 	if v {
@@ -220,17 +214,20 @@ func (h *logHasher) hashPosting(p *commonpb.Posting) {
 	h.writePresence(true)
 	h.writeString(p.Source)
 	h.writeString(p.Destination)
-	h.hashBigInt(p.Amount)
+	h.hashUint256(p.Amount)
 	h.writeString(p.Asset)
 }
 
-func (h *logHasher) hashBigInt(bi *commonpb.BigInt) {
-	if bi == nil {
+func (h *logHasher) hashUint256(u *commonpb.Uint256) {
+	if u == nil {
 		h.writePresence(false)
 		return
 	}
 	h.writePresence(true)
-	h.writeBytes(bi.Data)
+	h.writeUint64(u.V0)
+	h.writeUint64(u.V1)
+	h.writeUint64(u.V2)
+	h.writeUint64(u.V3)
 }
 
 func (h *logHasher) hashRevertedTransaction(rt *commonpb.RevertedTransaction) {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -132,8 +131,8 @@ func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
 	require.True(t, errors.As(bizErr, &fundsErr))
 	require.Equal(t, "user:001", fundsErr.Account)
 	require.Equal(t, "USD", fundsErr.Asset)
-	require.Equal(t, big.NewInt(1000), fundsErr.Amount)
-	require.Equal(t, big.NewInt(500), fundsErr.Balance)
+	require.Equal(t, "1000", fundsErr.Amount)
+	require.Equal(t, "500", fundsErr.Balance)
 }
 
 func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
@@ -191,7 +190,7 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"transaction reference conflict", &processing.ErrTransactionReferenceConflict{LedgerID: 1, Reference: "ref-1"}},
 		{"transaction not found", &processing.ErrTransactionNotFound{TransactionID: 100}},
 		{"transaction already reverted", &processing.ErrTransactionAlreadyReverted{TransactionID: 100}},
-		{"insufficient funds", &processing.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: big.NewInt(10), Balance: big.NewInt(5)}},
+		{"insufficient funds", &processing.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "10", Balance: "5"}},
 		{"balance not found", &processing.ErrBalanceNotFound{Account: "a", Asset: "USD"}},
 		{"balance not preloaded", &processing.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
 		{"numscript parse error", &processing.ErrNumscriptParse{Details: "bad syntax"}},
@@ -244,7 +243,7 @@ func serverSideConvert(bizErr *processing.BusinessError) *status.Status {
 		metadata = map[string]string{"transactionId": "100"}
 	case *processing.ErrInsufficientFunds:
 		code, reason = codes.FailedPrecondition, processing.ErrReasonInsufficientFunds
-		metadata = map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount.String(), "balance": e.Balance.String()}
+		metadata = map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
 	case *processing.ErrBalanceNotFound:
 		code, reason = codes.FailedPrecondition, processing.ErrReasonBalanceNotFound
 		metadata = map[string]string{"account": e.Account, "asset": e.Asset}

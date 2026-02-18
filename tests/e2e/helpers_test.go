@@ -325,12 +325,7 @@ func withTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
 
 // newPosting creates a new posting protobuf message
 func newPosting(source, destination string, amount *big.Int, asset string) *commonpb.Posting {
-	return &commonpb.Posting{
-		Source:      source,
-		Destination: destination,
-		Amount:      commonpb.NewBigInt(amount),
-		Asset:       asset,
-	}
+	return commonpb.NewPosting(source, destination, asset, amount)
 }
 
 // getAllLedgersInfo collects all ledgers from the streaming RPC into a map

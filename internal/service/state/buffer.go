@@ -2,9 +2,9 @@ package state
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/holiman/uint256"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -319,7 +319,7 @@ func (b *Buffered) SetLastLogHash(hash []byte) {
 // coalesceVolumeSide returns Known if set, otherwise Diff.
 // Used to normalize a VolumePair for Pebble storage where
 // the Known/Diff distinction is irrelevant.
-func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
+func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
 	if known != nil {
 		return known
 	}
@@ -327,12 +327,12 @@ func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
 }
 
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
-// Uses the provided tmp and scratch big.Ints for intermediate computations to avoid heap allocations.
-func addVolumeSideDelta(acc *big.Int, tmp *big.Int, scratch *big.Int, newKnown, newDiff *commonpb.BigInt, oldKnown, oldDiff *commonpb.BigInt) {
+// Uses the provided tmp and scratch uint256.Ints for intermediate computations to avoid heap allocations.
+func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, newDiff *commonpb.Uint256, oldKnown, oldDiff *commonpb.Uint256) {
 	if newKnown != nil {
-		newKnown.ValueInto(tmp)
+		newKnown.IntoUint256(tmp)
 		if oldKnown != nil {
-			oldKnown.ValueInto(scratch)
+			oldKnown.IntoUint256(scratch)
 			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
 			return
@@ -341,9 +341,9 @@ func addVolumeSideDelta(acc *big.Int, tmp *big.Int, scratch *big.Int, newKnown, 
 		return
 	}
 	if newDiff != nil {
-		newDiff.ValueInto(tmp)
+		newDiff.IntoUint256(tmp)
 		if oldDiff != nil {
-			oldDiff.ValueInto(scratch)
+			oldDiff.IntoUint256(scratch)
 			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
 			return
@@ -359,14 +359,14 @@ func checkDoubleEntryInvariant(
 	volumeUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	var (
-		inputSum  big.Int
-		outputSum big.Int
-		tmp       big.Int
-		scratch   big.Int
+		inputSum  uint256.Int
+		outputSum uint256.Int
+		tmp       uint256.Int
+		scratch   uint256.Int
 	)
 
 	for _, update := range volumeUpdates {
-		var oldInputKnown, oldInputDiff, oldOutputKnown, oldOutputDiff *commonpb.BigInt
+		var oldInputKnown, oldInputDiff, oldOutputKnown, oldOutputDiff *commonpb.Uint256
 		if update.Old.IsDefined() {
 			old := update.Old.Value()
 			if old != nil {
@@ -380,10 +380,10 @@ func checkDoubleEntryInvariant(
 		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.OutputKnown, update.New.OutputDiff, oldOutputKnown, oldOutputDiff)
 	}
 
-	if inputSum.Cmp(&outputSum) != 0 {
+	if !inputSum.Eq(&outputSum) {
 		return &ErrDoubleEntryInvariantViolated{
-			InputSum:  &inputSum,
-			OutputSum: &outputSum,
+			InputSum:  inputSum.Dec(),
+			OutputSum: outputSum.Dec(),
 		}
 	}
 

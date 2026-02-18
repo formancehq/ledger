@@ -168,10 +168,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		actualOutputVal := big.NewInt(0)
 		if pair != nil {
 			if pair.InputKnown != nil {
-				actualInputVal = pair.InputKnown.Value()
+				actualInputVal = pair.InputKnown.ToBigInt()
 			}
 			if pair.OutputKnown != nil {
-				actualOutputVal = pair.OutputKnown.Value()
+				actualOutputVal = pair.OutputKnown.ToBigInt()
 			}
 		}
 
@@ -327,7 +327,7 @@ func applyPostings(
 	expectedOutputs map[string]*big.Int,
 ) {
 	for _, posting := range postings {
-		amount := posting.Amount.Value()
+		amount := posting.Amount.ToBigInt()
 
 		// Source: increase output
 		sourceKey := data.VolumeKey{

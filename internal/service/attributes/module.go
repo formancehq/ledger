@@ -1,11 +1,10 @@
 package attributes
 
 import (
-	"math/big"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/holiman/uint256"
 	"go.uber.org/fx"
 )
 
@@ -42,29 +41,29 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 		prefix:   data.AttributePrefixVolume,
 		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
 		computeFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
-			var inputResult, outputResult, tmp big.Int
+			var inputResult, outputResult, tmp uint256.Int
 
 			if base != nil {
 				if base.InputKnown != nil {
-					base.InputKnown.ValueInto(&inputResult)
+					base.InputKnown.IntoUint256(&inputResult)
 				}
 				if base.OutputKnown != nil {
-					base.OutputKnown.ValueInto(&outputResult)
+					base.OutputKnown.IntoUint256(&outputResult)
 				}
 			}
 			if lastDiff != nil {
 				if lastDiff.InputKnown != nil {
-					lastDiff.InputKnown.ValueInto(&tmp)
+					lastDiff.InputKnown.IntoUint256(&tmp)
 					inputResult.Add(&inputResult, &tmp)
 				}
 				if lastDiff.OutputKnown != nil {
-					lastDiff.OutputKnown.ValueInto(&tmp)
+					lastDiff.OutputKnown.IntoUint256(&tmp)
 					outputResult.Add(&outputResult, &tmp)
 				}
 			}
 			return &raftcmdpb.VolumePair{
-				InputKnown:  commonpb.NewBigInt(&inputResult),
-				OutputKnown: commonpb.NewBigInt(&outputResult),
+				InputKnown:  commonpb.NewUint256(&inputResult),
+				OutputKnown: commonpb.NewUint256(&outputResult),
 			}
 		},
 		keyBuf: make([]byte, 128),

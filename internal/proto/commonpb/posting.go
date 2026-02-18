@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/accounts"
 	"github.com/formancehq/ledger/pkg/assets"
+	"github.com/holiman/uint256"
 )
 
 // Postings is a slice of Posting pointers
@@ -41,7 +42,7 @@ func (p Postings) Validate() (int, error) {
 		if posting == nil {
 			return i, errors.New("nil posting")
 		}
-		if posting.Amount.Value().Cmp(big.NewInt(0)) <= 0 {
+		if posting.Amount.IsZero() {
 			return i, errors.New("no amount defined")
 		}
 		if !accounts.ValidateAddress(posting.Source) {
@@ -58,12 +59,17 @@ func (p Postings) Validate() (int, error) {
 	return 0, nil
 }
 
-// NewPosting creates a new Posting from the given parameters
+// NewPosting creates a new Posting from the given parameters.
+// Converts the *big.Int amount to *Uint256 via uint256.Int intermediary.
 func NewPosting(source, destination, asset string, amount *big.Int) *Posting {
+	var u uint256.Int
+	if overflow := u.SetFromBig(amount); overflow {
+		panic("commonpb.NewPosting: amount exceeds 256 bits")
+	}
 	return &Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      NewBigInt(amount),
+		Amount:      NewUint256(&u),
 		Asset:       asset,
 	}
 }

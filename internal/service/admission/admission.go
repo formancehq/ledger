@@ -422,7 +422,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			}
 
 			// Extract input/output for the preload message
-			var preloadInput, preloadOutput *commonpb.BigInt
+			var preloadInput, preloadOutput *commonpb.Uint256
 			if result.Value != nil {
 				preloadInput = result.Value.InputKnown
 				preloadOutput = result.Value.OutputKnown

@@ -61,8 +61,8 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 		failure.ErrorType = processing.ErrReasonInsufficientFunds
 		failure.Context["account"] = insufficientFunds.Account
 		failure.Context["asset"] = insufficientFunds.Asset
-		failure.Context["amount"] = insufficientFunds.Amount.String()
-		failure.Context["balance"] = insufficientFunds.Balance.String()
+		failure.Context["amount"] = insufficientFunds.Amount
+		failure.Context["balance"] = insufficientFunds.Balance
 
 	case errors.As(err, &balanceNotFound):
 		failure.ErrorType = processing.ErrReasonBalanceNotFound

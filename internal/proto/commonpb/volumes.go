@@ -211,8 +211,8 @@ func (a *PostCommitVolumes) SubtractPostings(postings []*Posting) *PostCommitVol
 		if posting == nil {
 			continue
 		}
-		ret.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount.Value()))
-		ret.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount.Value()))
+		ret.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount.ToBigInt()))
+		ret.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount.ToBigInt()))
 	}
 	return ret
 }

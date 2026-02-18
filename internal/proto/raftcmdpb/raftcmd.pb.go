@@ -1199,10 +1199,10 @@ func (x *LedgerBoundaries) GetLedgerId() uint32 {
 
 type VolumePair struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	InputKnown    *commonpb.BigInt       `protobuf:"bytes,1,opt,name=input_known,json=inputKnown,proto3" json:"input_known,omitempty"`
-	InputDiff     *commonpb.BigInt       `protobuf:"bytes,2,opt,name=input_diff,json=inputDiff,proto3" json:"input_diff,omitempty"`
-	OutputKnown   *commonpb.BigInt       `protobuf:"bytes,3,opt,name=output_known,json=outputKnown,proto3" json:"output_known,omitempty"`
-	OutputDiff    *commonpb.BigInt       `protobuf:"bytes,4,opt,name=output_diff,json=outputDiff,proto3" json:"output_diff,omitempty"`
+	InputKnown    *commonpb.Uint256      `protobuf:"bytes,1,opt,name=input_known,json=inputKnown,proto3" json:"input_known,omitempty"`
+	InputDiff     *commonpb.Uint256      `protobuf:"bytes,2,opt,name=input_diff,json=inputDiff,proto3" json:"input_diff,omitempty"`
+	OutputKnown   *commonpb.Uint256      `protobuf:"bytes,3,opt,name=output_known,json=outputKnown,proto3" json:"output_known,omitempty"`
+	OutputDiff    *commonpb.Uint256      `protobuf:"bytes,4,opt,name=output_diff,json=outputDiff,proto3" json:"output_diff,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1237,28 +1237,28 @@ func (*VolumePair) Descriptor() ([]byte, []int) {
 	return file_raftcmd_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *VolumePair) GetInputKnown() *commonpb.BigInt {
+func (x *VolumePair) GetInputKnown() *commonpb.Uint256 {
 	if x != nil {
 		return x.InputKnown
 	}
 	return nil
 }
 
-func (x *VolumePair) GetInputDiff() *commonpb.BigInt {
+func (x *VolumePair) GetInputDiff() *commonpb.Uint256 {
 	if x != nil {
 		return x.InputDiff
 	}
 	return nil
 }
 
-func (x *VolumePair) GetOutputKnown() *commonpb.BigInt {
+func (x *VolumePair) GetOutputKnown() *commonpb.Uint256 {
 	if x != nil {
 		return x.OutputKnown
 	}
 	return nil
 }
 
-func (x *VolumePair) GetOutputDiff() *commonpb.BigInt {
+func (x *VolumePair) GetOutputDiff() *commonpb.Uint256 {
 	if x != nil {
 		return x.OutputDiff
 	}
@@ -1466,8 +1466,8 @@ func (*Preload_TransactionReference) isPreload_Type() {}
 type PreloadVolume struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Input         *commonpb.BigInt       `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	Output        *commonpb.BigInt       `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	Input         *commonpb.Uint256      `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	Output        *commonpb.Uint256      `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1509,14 +1509,14 @@ func (x *PreloadVolume) GetId() *AttributeID {
 	return nil
 }
 
-func (x *PreloadVolume) GetInput() *commonpb.BigInt {
+func (x *PreloadVolume) GetInput() *commonpb.Uint256 {
 	if x != nil {
 		return x.Input
 	}
 	return nil
 }
 
-func (x *PreloadVolume) GetOutput() *commonpb.BigInt {
+func (x *PreloadVolume) GetOutput() *commonpb.Uint256 {
 	if x != nil {
 		return x.Output
 	}
@@ -1995,10 +1995,10 @@ func (x *GenerationSnapshot) GetReferences() []*TransactionReferenceAttributeEnt
 type VolumeAttributeSnapshotEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	InputKnown    *commonpb.BigInt       `protobuf:"bytes,2,opt,name=input_known,json=inputKnown,proto3" json:"input_known,omitempty"`
-	InputDiff     *commonpb.BigInt       `protobuf:"bytes,3,opt,name=input_diff,json=inputDiff,proto3" json:"input_diff,omitempty"`
-	OutputKnown   *commonpb.BigInt       `protobuf:"bytes,4,opt,name=output_known,json=outputKnown,proto3" json:"output_known,omitempty"`
-	OutputDiff    *commonpb.BigInt       `protobuf:"bytes,5,opt,name=output_diff,json=outputDiff,proto3" json:"output_diff,omitempty"`
+	InputKnown    *commonpb.Uint256      `protobuf:"bytes,2,opt,name=input_known,json=inputKnown,proto3" json:"input_known,omitempty"`
+	InputDiff     *commonpb.Uint256      `protobuf:"bytes,3,opt,name=input_diff,json=inputDiff,proto3" json:"input_diff,omitempty"`
+	OutputKnown   *commonpb.Uint256      `protobuf:"bytes,4,opt,name=output_known,json=outputKnown,proto3" json:"output_known,omitempty"`
+	OutputDiff    *commonpb.Uint256      `protobuf:"bytes,5,opt,name=output_diff,json=outputDiff,proto3" json:"output_diff,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2040,28 +2040,28 @@ func (x *VolumeAttributeSnapshotEntry) GetId() *AttributeID {
 	return nil
 }
 
-func (x *VolumeAttributeSnapshotEntry) GetInputKnown() *commonpb.BigInt {
+func (x *VolumeAttributeSnapshotEntry) GetInputKnown() *commonpb.Uint256 {
 	if x != nil {
 		return x.InputKnown
 	}
 	return nil
 }
 
-func (x *VolumeAttributeSnapshotEntry) GetInputDiff() *commonpb.BigInt {
+func (x *VolumeAttributeSnapshotEntry) GetInputDiff() *commonpb.Uint256 {
 	if x != nil {
 		return x.InputDiff
 	}
 	return nil
 }
 
-func (x *VolumeAttributeSnapshotEntry) GetOutputKnown() *commonpb.BigInt {
+func (x *VolumeAttributeSnapshotEntry) GetOutputKnown() *commonpb.Uint256 {
 	if x != nil {
 		return x.OutputKnown
 	}
 	return nil
 }
 
-func (x *VolumeAttributeSnapshotEntry) GetOutputDiff() *commonpb.BigInt {
+func (x *VolumeAttributeSnapshotEntry) GetOutputDiff() *commonpb.Uint256 {
 	if x != nil {
 		return x.OutputDiff
 	}
@@ -2425,15 +2425,15 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x04R\x11nextTransactionId\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12\x1b\n" +
-	"\tledger_id\x18\x03 \x01(\rR\bledgerId\"\xd0\x01\n" +
+	"\tledger_id\x18\x03 \x01(\rR\bledgerId\"\xd4\x01\n" +
 	"\n" +
-	"VolumePair\x12/\n" +
-	"\vinput_known\x18\x01 \x01(\v2\x0e.common.BigIntR\n" +
-	"inputKnown\x12-\n" +
+	"VolumePair\x120\n" +
+	"\vinput_known\x18\x01 \x01(\v2\x0f.common.Uint256R\n" +
+	"inputKnown\x12.\n" +
 	"\n" +
-	"input_diff\x18\x02 \x01(\v2\x0e.common.BigIntR\tinputDiff\x121\n" +
-	"\foutput_known\x18\x03 \x01(\v2\x0e.common.BigIntR\voutputKnown\x12/\n" +
-	"\voutput_diff\x18\x04 \x01(\v2\x0e.common.BigIntR\n" +
+	"input_diff\x18\x02 \x01(\v2\x0f.common.Uint256R\tinputDiff\x122\n" +
+	"\foutput_known\x18\x03 \x01(\v2\x0f.common.Uint256R\voutputKnown\x120\n" +
+	"\voutput_diff\x18\x04 \x01(\v2\x0f.common.Uint256R\n" +
 	"outputDiff\"g\n" +
 	"\n" +
 	"PreloadSet\x12.\n" +
@@ -2446,11 +2446,11 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x06ledger\x18\x04 \x01(\v2\x13.raft.PreloadLedgerH\x00R\x06ledger\x123\n" +
 	"\bboundary\x18\x05 \x01(\v2\x15.raft.PreloadBoundaryH\x00R\bboundary\x12X\n" +
 	"\x15transaction_reference\x18\x06 \x01(\v2!.raft.PreloadTransactionReferenceH\x00R\x14transactionReferenceB\x06\n" +
-	"\x04type\"\x80\x01\n" +
+	"\x04type\"\x82\x01\n" +
 	"\rPreloadVolume\x12!\n" +
-	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12$\n" +
-	"\x05input\x18\x02 \x01(\v2\x0e.common.BigIntR\x05input\x12&\n" +
-	"\x06output\x18\x03 \x01(\v2\x0e.common.BigIntR\x06output\"P\n" +
+	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12%\n" +
+	"\x05input\x18\x02 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
+	"\x06output\x18\x03 \x01(\v2\x0f.common.Uint256R\x06output\"P\n" +
 	"\x0fPreloadReverted\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1a\n" +
 	"\breverted\x18\x02 \x01(\bR\breverted\"q\n" +
@@ -2491,15 +2491,15 @@ const file_raftcmd_proto_rawDesc = "" +
 	"boundaries\x12H\n" +
 	"\n" +
 	"references\x18\a \x03(\v2(.raft.TransactionReferenceAttributeEntryR\n" +
-	"references\"\x85\x02\n" +
+	"references\"\x89\x02\n" +
 	"\x1cVolumeAttributeSnapshotEntry\x12!\n" +
-	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12/\n" +
-	"\vinput_known\x18\x02 \x01(\v2\x0e.common.BigIntR\n" +
-	"inputKnown\x12-\n" +
+	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x120\n" +
+	"\vinput_known\x18\x02 \x01(\v2\x0f.common.Uint256R\n" +
+	"inputKnown\x12.\n" +
 	"\n" +
-	"input_diff\x18\x03 \x01(\v2\x0e.common.BigIntR\tinputDiff\x121\n" +
-	"\foutput_known\x18\x04 \x01(\v2\x0e.common.BigIntR\voutputKnown\x12/\n" +
-	"\voutput_diff\x18\x05 \x01(\v2\x0e.common.BigIntR\n" +
+	"input_diff\x18\x03 \x01(\v2\x0f.common.Uint256R\tinputDiff\x122\n" +
+	"\foutput_known\x18\x04 \x01(\v2\x0f.common.Uint256R\voutputKnown\x120\n" +
+	"\voutput_diff\x18\x05 \x01(\v2\x0f.common.Uint256R\n" +
 	"outputDiff\"h\n" +
 	"\x16MetadataAttributeEntry\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12+\n" +
@@ -2579,7 +2579,7 @@ var file_raftcmd_proto_goTypes = []any{
 	(*commonpb.Timestamp)(nil),                 // 43: common.Timestamp
 	(*commonpb.Target)(nil),                    // 44: common.Target
 	(*commonpb.Log)(nil),                       // 45: common.Log
-	(*commonpb.BigInt)(nil),                    // 46: common.BigInt
+	(*commonpb.Uint256)(nil),                   // 46: common.Uint256
 	(*commonpb.MetadataValue)(nil),             // 47: common.MetadataValue
 	(*commonpb.TransactionReferenceValue)(nil), // 48: common.TransactionReferenceValue
 }
@@ -2616,10 +2616,10 @@ var file_raftcmd_proto_depIdxs = []int32{
 	13, // 29: raft.CreatedTransactionMemento.transaction:type_name -> raft.TransactionResume
 	37, // 30: raft.CreatedTransactionMemento.account_metadata:type_name -> raft.CreatedTransactionMemento.AccountMetadataEntry
 	13, // 31: raft.RevertedTransactionMemento.revert_transaction:type_name -> raft.TransactionResume
-	46, // 32: raft.VolumePair.input_known:type_name -> common.BigInt
-	46, // 33: raft.VolumePair.input_diff:type_name -> common.BigInt
-	46, // 34: raft.VolumePair.output_known:type_name -> common.BigInt
-	46, // 35: raft.VolumePair.output_diff:type_name -> common.BigInt
+	46, // 32: raft.VolumePair.input_known:type_name -> common.Uint256
+	46, // 33: raft.VolumePair.input_diff:type_name -> common.Uint256
+	46, // 34: raft.VolumePair.output_known:type_name -> common.Uint256
+	46, // 35: raft.VolumePair.output_diff:type_name -> common.Uint256
 	19, // 36: raft.PreloadSet.preloads:type_name -> raft.Preload
 	20, // 37: raft.Preload.volume:type_name -> raft.PreloadVolume
 	21, // 38: raft.Preload.reverted:type_name -> raft.PreloadReverted
@@ -2628,8 +2628,8 @@ var file_raftcmd_proto_depIdxs = []int32{
 	24, // 41: raft.Preload.boundary:type_name -> raft.PreloadBoundary
 	25, // 42: raft.Preload.transaction_reference:type_name -> raft.PreloadTransactionReference
 	33, // 43: raft.PreloadVolume.id:type_name -> raft.AttributeID
-	46, // 44: raft.PreloadVolume.input:type_name -> common.BigInt
-	46, // 45: raft.PreloadVolume.output:type_name -> common.BigInt
+	46, // 44: raft.PreloadVolume.input:type_name -> common.Uint256
+	46, // 45: raft.PreloadVolume.output:type_name -> common.Uint256
 	33, // 46: raft.PreloadReverted.id:type_name -> raft.AttributeID
 	33, // 47: raft.PreloadIdempotencyKey.id:type_name -> raft.AttributeID
 	33, // 48: raft.PreloadLedger.id:type_name -> raft.AttributeID
@@ -2646,10 +2646,10 @@ var file_raftcmd_proto_depIdxs = []int32{
 	31, // 59: raft.GenerationSnapshot.boundaries:type_name -> raft.BoundaryAttributeEntry
 	32, // 60: raft.GenerationSnapshot.references:type_name -> raft.TransactionReferenceAttributeEntry
 	33, // 61: raft.VolumeAttributeSnapshotEntry.id:type_name -> raft.AttributeID
-	46, // 62: raft.VolumeAttributeSnapshotEntry.input_known:type_name -> common.BigInt
-	46, // 63: raft.VolumeAttributeSnapshotEntry.input_diff:type_name -> common.BigInt
-	46, // 64: raft.VolumeAttributeSnapshotEntry.output_known:type_name -> common.BigInt
-	46, // 65: raft.VolumeAttributeSnapshotEntry.output_diff:type_name -> common.BigInt
+	46, // 62: raft.VolumeAttributeSnapshotEntry.input_known:type_name -> common.Uint256
+	46, // 63: raft.VolumeAttributeSnapshotEntry.input_diff:type_name -> common.Uint256
+	46, // 64: raft.VolumeAttributeSnapshotEntry.output_known:type_name -> common.Uint256
+	46, // 65: raft.VolumeAttributeSnapshotEntry.output_diff:type_name -> common.Uint256
 	33, // 66: raft.MetadataAttributeEntry.id:type_name -> raft.AttributeID
 	47, // 67: raft.MetadataAttributeEntry.value:type_name -> common.MetadataValue
 	33, // 68: raft.LedgerAttributeEntry.id:type_name -> raft.AttributeID

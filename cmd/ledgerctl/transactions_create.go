@@ -410,7 +410,7 @@ func runTransactionsCreate(cmd *cobra.Command, _ []string) error {
 				posting.Source,
 				"→",
 				posting.Destination,
-				posting.Amount.Value().String(),
+				posting.Amount.Dec(),
 				posting.Asset,
 			})
 		}
@@ -461,12 +461,7 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 		return nil, fmt.Errorf("invalid amount: %s", amountStr)
 	}
 
-	return &commonpb.Posting{
-		Source:      source,
-		Destination: destination,
-		Amount:      commonpb.NewBigInt(amount),
-		Asset:       asset,
-	}, nil
+	return commonpb.NewPosting(source, destination, asset, amount), nil
 }
 
 // promptVariable prompts the user for a Numscript variable value based on its type.
@@ -579,10 +574,5 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 		pterm.Yellow(asset),
 	)
 
-	return &commonpb.Posting{
-		Source:      source,
-		Destination: destination,
-		Amount:      commonpb.NewBigInt(amount),
-		Asset:       asset,
-	}, nil
+	return commonpb.NewPosting(source, destination, asset, amount), nil
 }

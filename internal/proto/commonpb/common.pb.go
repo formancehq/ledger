@@ -206,27 +206,30 @@ func (x *MetadataSet) GetMetadata() []*Metadata {
 	return nil
 }
 
-type BigInt struct {
+type Uint256 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	V0            uint64                 `protobuf:"fixed64,1,opt,name=v0,proto3" json:"v0,omitempty"` // least significant limb
+	V1            uint64                 `protobuf:"fixed64,2,opt,name=v1,proto3" json:"v1,omitempty"`
+	V2            uint64                 `protobuf:"fixed64,3,opt,name=v2,proto3" json:"v2,omitempty"`
+	V3            uint64                 `protobuf:"fixed64,4,opt,name=v3,proto3" json:"v3,omitempty"` // most significant limb
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *BigInt) Reset() {
-	*x = BigInt{}
+func (x *Uint256) Reset() {
+	*x = Uint256{}
 	mi := &file_common_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *BigInt) String() string {
+func (x *Uint256) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*BigInt) ProtoMessage() {}
+func (*Uint256) ProtoMessage() {}
 
-func (x *BigInt) ProtoReflect() protoreflect.Message {
+func (x *Uint256) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -238,16 +241,37 @@ func (x *BigInt) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use BigInt.ProtoReflect.Descriptor instead.
-func (*BigInt) Descriptor() ([]byte, []int) {
+// Deprecated: Use Uint256.ProtoReflect.Descriptor instead.
+func (*Uint256) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *BigInt) GetData() []byte {
+func (x *Uint256) GetV0() uint64 {
 	if x != nil {
-		return x.Data
+		return x.V0
 	}
-	return nil
+	return 0
+}
+
+func (x *Uint256) GetV1() uint64 {
+	if x != nil {
+		return x.V1
+	}
+	return 0
+}
+
+func (x *Uint256) GetV2() uint64 {
+	if x != nil {
+		return x.V2
+	}
+	return 0
+}
+
+func (x *Uint256) GetV3() uint64 {
+	if x != nil {
+		return x.V3
+	}
+	return 0
 }
 
 // Posting represents a single posting in a transaction
@@ -255,7 +279,7 @@ type Posting struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
 	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Amount        *BigInt                `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Amount        *Uint256               `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
 	Asset         string                 `protobuf:"bytes,4,opt,name=asset,proto3" json:"asset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -305,7 +329,7 @@ func (x *Posting) GetDestination() string {
 	return ""
 }
 
-func (x *Posting) GetAmount() *BigInt {
+func (x *Posting) GetAmount() *Uint256 {
 	if x != nil {
 		return x.Amount
 	}
@@ -2462,13 +2486,16 @@ const file_common_proto_rawDesc = "" +
 	"\rMetadataValue\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\";\n" +
 	"\vMetadataSet\x12,\n" +
-	"\bmetadata\x18\x01 \x03(\v2\x10.common.MetadataR\bmetadata\"\x1c\n" +
-	"\x06BigInt\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\"\x81\x01\n" +
+	"\bmetadata\x18\x01 \x03(\v2\x10.common.MetadataR\bmetadata\"I\n" +
+	"\aUint256\x12\x0e\n" +
+	"\x02v0\x18\x01 \x01(\x06R\x02v0\x12\x0e\n" +
+	"\x02v1\x18\x02 \x01(\x06R\x02v1\x12\x0e\n" +
+	"\x02v2\x18\x03 \x01(\x06R\x02v2\x12\x0e\n" +
+	"\x02v3\x18\x04 \x01(\x06R\x02v3\"\x82\x01\n" +
 	"\aPosting\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
-	"\vdestination\x18\x02 \x01(\tR\vdestination\x12&\n" +
-	"\x06amount\x18\x03 \x01(\v2\x0e.common.BigIntR\x06amount\x12\x14\n" +
+	"\vdestination\x18\x02 \x01(\tR\vdestination\x12'\n" +
+	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256R\x06amount\x12\x14\n" +
 	"\x05asset\x18\x04 \x01(\tR\x05asset\"\x80\x03\n" +
 	"\vTransaction\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12/\n" +
@@ -2636,7 +2663,7 @@ var file_common_proto_goTypes = []any{
 	(*Metadata)(nil),                        // 1: common.Metadata
 	(*MetadataValue)(nil),                   // 2: common.MetadataValue
 	(*MetadataSet)(nil),                     // 3: common.MetadataSet
-	(*BigInt)(nil),                          // 4: common.BigInt
+	(*Uint256)(nil),                         // 4: common.Uint256
 	(*Posting)(nil),                         // 5: common.Posting
 	(*Transaction)(nil),                     // 6: common.Transaction
 	(*Script)(nil),                          // 7: common.Script
@@ -2683,7 +2710,7 @@ var file_common_proto_goTypes = []any{
 var file_common_proto_depIdxs = []int32{
 	2,  // 0: common.Metadata.value:type_name -> common.MetadataValue
 	1,  // 1: common.MetadataSet.metadata:type_name -> common.Metadata
-	4,  // 2: common.Posting.amount:type_name -> common.BigInt
+	4,  // 2: common.Posting.amount:type_name -> common.Uint256
 	5,  // 3: common.Transaction.postings:type_name -> common.Posting
 	3,  // 4: common.Transaction.metadata:type_name -> common.MetadataSet
 	0,  // 5: common.Transaction.timestamp:type_name -> common.Timestamp

@@ -79,8 +79,8 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		metadata = map[string]string{
 			"account": insufficientFunds.Account,
 			"asset":   insufficientFunds.Asset,
-			"amount":  insufficientFunds.Amount.String(),
-			"balance": insufficientFunds.Balance.String(),
+			"amount":  insufficientFunds.Amount,
+			"balance": insufficientFunds.Balance,
 		}
 
 	case errors.As(inner, &balanceNotFound):

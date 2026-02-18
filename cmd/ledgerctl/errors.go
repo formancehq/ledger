@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -39,8 +38,8 @@ func printErrorDetails(err error) {
 		pterm.Println()
 		pterm.Printf("  Account: %s\n", pterm.Cyan(insufficient.Account))
 		pterm.Printf("  Asset:   %s\n", pterm.Yellow(insufficient.Asset))
-		pterm.Printf("  Balance: %s\n", pterm.Red(insufficient.Balance.String()))
-		pterm.Printf("  Needed:  %s\n", insufficient.Amount.String())
+		pterm.Printf("  Balance: %s\n", pterm.Red(insufficient.Balance))
+		pterm.Printf("  Needed:  %s\n", insufficient.Amount)
 	case errors.As(err, &refConflict):
 		pterm.Println()
 		pterm.Printf("  Reference: %s\n", pterm.Cyan(refConflict.Reference))
@@ -98,13 +97,11 @@ func reconstructError(reason string, metadata map[string]string, message string)
 		return &processing.ErrTransactionAlreadyReverted{TransactionID: txID}
 
 	case processing.ErrReasonInsufficientFunds:
-		amount, _ := new(big.Int).SetString(metadata["amount"], 10)
-		balance, _ := new(big.Int).SetString(metadata["balance"], 10)
 		return &processing.ErrInsufficientFunds{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
-			Amount:  amount,
-			Balance: balance,
+			Amount:  metadata["amount"],
+			Balance: metadata["balance"],
 		}
 
 	case processing.ErrReasonBalanceNotFound:

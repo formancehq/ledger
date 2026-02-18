@@ -138,7 +138,7 @@ func runTransactionsGet(cmd *cobra.Command, args []string) error {
 				posting.Source,
 				"→",
 				posting.Destination,
-				posting.Amount.Value().String(),
+				posting.Amount.Dec(),
 				posting.Asset,
 			})
 		}

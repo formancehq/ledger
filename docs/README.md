@@ -34,6 +34,7 @@ Core design and technical architecture documentation.
 - [HTTP API](./architecture/api.md) - REST API documentation
 - [gRPC API](./architecture/grpc-api.md) - gRPC service and client examples
 - [Idempotency](./architecture/idempotency.md) - Safe request retries with hash-based conflict detection
+- [Uint256 Wire Format](./architecture/uint256-wire-format.md) - Why monetary amounts use fixed-size Uint256 instead of BigInt
 
 ### 📁 [Benchmarks](./benchmarks/)
 Performance benchmarks and analysis.

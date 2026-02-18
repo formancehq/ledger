@@ -5,6 +5,7 @@
 package commonpb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
@@ -94,16 +95,15 @@ func (m *MetadataSet) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *BigInt) CloneVT() *BigInt {
+func (m *Uint256) CloneVT() *Uint256 {
 	if m == nil {
-		return (*BigInt)(nil)
+		return (*Uint256)(nil)
 	}
-	r := new(BigInt)
-	if rhs := m.Data; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.Data = tmpBytes
-	}
+	r := new(Uint256)
+	r.V0 = m.V0
+	r.V1 = m.V1
+	r.V2 = m.V2
+	r.V3 = m.V3
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -111,7 +111,7 @@ func (m *BigInt) CloneVT() *BigInt {
 	return r
 }
 
-func (m *BigInt) CloneMessageVT() proto.Message {
+func (m *Uint256) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1060,20 +1060,29 @@ func (this *MetadataSet) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *BigInt) EqualVT(that *BigInt) bool {
+func (this *Uint256) EqualVT(that *Uint256) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if string(this.Data) != string(that.Data) {
+	if this.V0 != that.V0 {
+		return false
+	}
+	if this.V1 != that.V1 {
+		return false
+	}
+	if this.V2 != that.V2 {
+		return false
+	}
+	if this.V3 != that.V3 {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *BigInt) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*BigInt)
+func (this *Uint256) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*Uint256)
 	if !ok {
 		return false
 	}
@@ -2537,7 +2546,7 @@ func (m *MetadataSet) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *BigInt) MarshalVT() (dAtA []byte, err error) {
+func (m *Uint256) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2550,12 +2559,12 @@ func (m *BigInt) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *BigInt) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Uint256) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *BigInt) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Uint256) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2567,12 +2576,29 @@ func (m *BigInt) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Data) > 0 {
-		i -= len(m.Data)
-		copy(dAtA[i:], m.Data)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
+	if m.V3 != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V3))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x21
+	}
+	if m.V2 != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2))
+		i--
+		dAtA[i] = 0x19
+	}
+	if m.V1 != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V1))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.V0 != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V0))
+		i--
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -4803,15 +4829,23 @@ func (m *MetadataSet) SizeVT() (n int) {
 	return n
 }
 
-func (m *BigInt) SizeVT() (n int) {
+func (m *Uint256) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Data)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.V0 != 0 {
+		n += 9
+	}
+	if m.V1 != 0 {
+		n += 9
+	}
+	if m.V2 != 0 {
+		n += 9
+	}
+	if m.V3 != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -6035,7 +6069,7 @@ func (m *MetadataSet) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *BigInt) UnmarshalVT(dAtA []byte) error {
+func (m *Uint256) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6058,46 +6092,52 @@ func (m *BigInt) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: BigInt: wiretype end group for non-group")
+			return fmt.Errorf("proto: Uint256: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BigInt: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Uint256: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field V0", wireType)
 			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.V0 = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
-			if m.Data == nil {
-				m.Data = []byte{}
+			m.V0 = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field V1", wireType)
 			}
-			iNdEx = postIndex
+			m.V1 = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.V1 = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field V2", wireType)
+			}
+			m.V2 = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.V2 = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field V3", wireType)
+			}
+			m.V3 = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.V3 = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -6243,7 +6283,7 @@ func (m *Posting) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Amount == nil {
-				m.Amount = &BigInt{}
+				m.Amount = &Uint256{}
 			}
 			if err := m.Amount.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

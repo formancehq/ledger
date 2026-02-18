@@ -26,15 +26,18 @@ message MetadataSet {
   repeated Metadata metadata = 1;
 }
 
-message BigInt {
-  bytes data = 1;
+message Uint256 {
+  fixed64 v0 = 1;  // least significant limb
+  fixed64 v1 = 2;
+  fixed64 v2 = 3;
+  fixed64 v3 = 4;  // most significant limb
 }
 
 // Posting represents a single posting in a transaction
 message Posting {
   string source = 1;
   string destination = 2;
-  BigInt amount = 3;
+  Uint256 amount = 3;
   string asset = 4;
 }
 

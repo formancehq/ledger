@@ -65,7 +65,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 									{
 										Source:      "world",
 										Destination: "user:alice",
-										Amount:      commonpb.NewBigInt(nil),
+										Amount:      commonpb.NewUint256FromUint64(0),
 										Asset:       "USD",
 									},
 								},
@@ -100,7 +100,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "user:bob",
-									Amount:      commonpb.NewBigInt(nil),
+									Amount:      commonpb.NewUint256FromUint64(0),
 									Asset:       "EUR",
 								},
 							},

@@ -191,10 +191,10 @@ func (tx *Transaction) VolumeUpdates() []*AccountsVolumes {
 					continue
 				}
 				if account == posting.Source {
-					output.Add(output, posting.Amount.Value())
+					output.Add(output, posting.Amount.ToBigInt())
 				}
 				if account == posting.Destination {
-					input.Add(input, posting.Amount.Value())
+					input.Add(input, posting.Amount.ToBigInt())
 				}
 			}
 

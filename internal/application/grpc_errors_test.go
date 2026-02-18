@@ -2,7 +2,6 @@ package application
 
 import (
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -102,8 +101,8 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	bizErr := &processing.BusinessError{Err: &processing.ErrInsufficientFunds{
 		Account: "user:001",
 		Asset:   "USD",
-		Amount:  big.NewInt(1000),
-		Balance: big.NewInt(500),
+		Amount:  "1000",
+		Balance: "500",
 	}}
 	st := businessErrorToGRPCStatus(bizErr)
 

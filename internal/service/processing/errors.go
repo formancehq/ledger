@@ -3,7 +3,6 @@ package processing
 import (
 	"errors"
 	"fmt"
-	"math/big"
 )
 
 // Reason constants shared between server and client for gRPC error mapping.
@@ -104,8 +103,8 @@ func (e *ErrTransactionAlreadyReverted) Error() string {
 type ErrInsufficientFunds struct {
 	Account string
 	Asset   string
-	Amount  *big.Int // requested amount
-	Balance *big.Int // available balance (input - output)
+	Amount  string // requested amount (decimal string)
+	Balance string // available balance (decimal string)
 }
 
 func (e *ErrInsufficientFunds) Error() string {

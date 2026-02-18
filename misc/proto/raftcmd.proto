@@ -140,10 +140,10 @@ message LedgerBoundaries {
 }
 
 message VolumePair {
-  common.BigInt input_known = 1;
-  common.BigInt input_diff = 2;
-  common.BigInt output_known = 3;
-  common.BigInt output_diff = 4;
+  common.Uint256 input_known = 1;
+  common.Uint256 input_diff = 2;
+  common.Uint256 output_known = 3;
+  common.Uint256 output_diff = 4;
 }
 
 message PreloadSet {
@@ -164,8 +164,8 @@ message Preload {
 
 message PreloadVolume {
   AttributeID id = 1;
-  common.BigInt input = 2;
-  common.BigInt output = 3;
+  common.Uint256 input = 2;
+  common.Uint256 output = 3;
 }
 
 message PreloadReverted {
@@ -223,10 +223,10 @@ message GenerationSnapshot {
 // VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.
 message VolumeAttributeSnapshotEntry {
   AttributeID id = 1;
-  common.BigInt input_known = 2;
-  common.BigInt input_diff = 3;
-  common.BigInt output_known = 4;
-  common.BigInt output_diff = 5;
+  common.Uint256 input_known = 2;
+  common.Uint256 input_diff = 3;
+  common.Uint256 output_known = 4;
+  common.Uint256 output_diff = 5;
 }
 
 // MetadataKeyStoreEntry stores a single entry from KeyStore[*MetadataValue]

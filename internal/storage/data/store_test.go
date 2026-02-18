@@ -101,24 +101,24 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *data.Store) {
 		worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
-			OutputKnown: commonpb.NewBigInt(big.NewInt(100)),
+			OutputKnown: commonpb.NewUint256FromUint64(100),
 		}))
 
 		bankKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 1, bankCanonicalKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(100)),
+			InputKnown: commonpb.NewUint256FromUint64(100),
 		}))
 
 		// Index 2: bank sends 50 to user (bank cumulative: input=100, output=50)
 		userKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: testLedgerID, Account: "user"}, Asset: "USD"}
 		userCanonicalKey := userKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 2, bankCanonicalKey, &raftcmdpb.VolumePair{
-			InputKnown:  commonpb.NewBigInt(big.NewInt(100)),
-			OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+			InputKnown:  commonpb.NewUint256FromUint64(100),
+			OutputKnown: commonpb.NewUint256FromUint64(50),
 		}))
 		require.NoError(t, attrs.Volume.AddDiff(batch, 2, userCanonicalKey, &raftcmdpb.VolumePair{
-			InputKnown: commonpb.NewBigInt(big.NewInt(50)),
+			InputKnown: commonpb.NewUint256FromUint64(50),
 		}))
 
 		require.NoError(t, batch.Commit())
@@ -126,20 +126,20 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *data.Store) {
 		// world: input=0, output=100 → balance = -100
 		worldVolume, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 		require.NoError(t, err)
-		require.Equal(t, big.NewInt(0), worldVolume.InputKnown.Value())
-		require.Equal(t, big.NewInt(100), worldVolume.OutputKnown.Value())
+		require.Equal(t, big.NewInt(0), worldVolume.InputKnown.ToBigInt())
+		require.Equal(t, big.NewInt(100), worldVolume.OutputKnown.ToBigInt())
 
 		// bank: input=100, output=50 → balance = 50
 		bankVolume, err := attrs.Volume.ComputeValue(s, 100, bankCanonicalKey)
 		require.NoError(t, err)
-		require.Equal(t, big.NewInt(100), bankVolume.InputKnown.Value())
-		require.Equal(t, big.NewInt(50), bankVolume.OutputKnown.Value())
+		require.Equal(t, big.NewInt(100), bankVolume.InputKnown.ToBigInt())
+		require.Equal(t, big.NewInt(50), bankVolume.OutputKnown.ToBigInt())
 
 		// user: input=50, output=0 → balance = 50
 		userVolume, err := attrs.Volume.ComputeValue(s, 100, userCanonicalKey)
 		require.NoError(t, err)
-		require.Equal(t, big.NewInt(50), userVolume.InputKnown.Value())
-		require.Equal(t, big.NewInt(0), userVolume.OutputKnown.Value())
+		require.Equal(t, big.NewInt(50), userVolume.InputKnown.ToBigInt())
+		require.Equal(t, big.NewInt(0), userVolume.OutputKnown.ToBigInt())
 	})
 
 	t.Run("GetLogBySequence", func(t *testing.T) {
@@ -478,7 +478,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	worldKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
-		OutputKnown: commonpb.NewBigInt(big.NewInt(100)),
+		OutputKnown: commonpb.NewUint256FromUint64(100),
 	}))
 	metadataKey := data.MetadataKey{AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
@@ -526,7 +526,7 @@ func TestStoreSoftDeleteLedger(t *testing.T) {
 	// Verify data still exists (soft delete doesn't remove data)
 	volumeResult, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 	require.NoError(t, err)
-	require.Equal(t, big.NewInt(100), volumeResult.OutputKnown.Value())
+	require.Equal(t, big.NewInt(100), volumeResult.OutputKnown.ToBigInt())
 }
 
 func TestVolume(t *testing.T) {
@@ -564,117 +564,117 @@ func TestVolume(t *testing.T) {
 
 	// Initially volume should be {input: 0, output: 0}
 	v := getVolume(bankUSDKey, 100)
-	require.Equal(t, big.NewInt(0), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// Add cumulative diffs. Each diff is cumulative since the last base.
 	// In the merged Volume model, each diff carries both input and output sides.
 	batch := s.NewBatch()
 	require.NoError(t, attrs.Volume.AddDiff(batch, 1, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewBigInt(big.NewInt(100)),
+		InputKnown: commonpb.NewUint256FromUint64(100),
 	}))
 	require.NoError(t, attrs.Volume.AddDiff(batch, 2, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewBigInt(big.NewInt(150)),
+		InputKnown: commonpb.NewUint256FromUint64(150),
 	}))
 	require.NoError(t, attrs.Volume.AddDiff(batch, 3, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(150)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(30)),
+		InputKnown:  commonpb.NewUint256FromUint64(150),
+		OutputKnown: commonpb.NewUint256FromUint64(30),
 	}))
 	require.NoError(t, batch.Commit())
 
 	// At boundary 100: lastDiff at index 3 → input=150, output=30
 	v = getVolume(bankUSDKey, 100)
-	require.Equal(t, big.NewInt(150), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(30), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(150), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(30), v.OutputKnown.ToBigInt())
 
 	// At boundary 2: lastDiff at index 2 → input=150, output=0
 	v = getVolume(bankUSDKey, 2)
-	require.Equal(t, big.NewInt(150), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(150), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// At boundary 1: lastDiff at index 1 → input=100, output=0
 	v = getVolume(bankUSDKey, 1)
-	require.Equal(t, big.NewInt(100), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(100), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// At boundary 0: no diffs → input=0, output=0
 	v = getVolume(bankUSDKey, 0)
-	require.Equal(t, big.NewInt(0), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// Add a base at index 10 (captures cumulative state: input=1000, output=30)
 	batch = s.NewBatch()
 	require.NoError(t, attrs.Volume.SetBase(batch, 10, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(1000)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(30)),
+		InputKnown:  commonpb.NewUint256FromUint64(1000),
+		OutputKnown: commonpb.NewUint256FromUint64(30),
 	}))
 	require.NoError(t, batch.Commit())
 
 	// At boundary 100: base at 10, no diffs after → input=1000, output=30
 	v = getVolume(bankUSDKey, 100)
-	require.Equal(t, big.NewInt(1000), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(30), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(1000), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(30), v.OutputKnown.ToBigInt())
 
 	// At boundary 10: base → input=1000, output=30
 	v = getVolume(bankUSDKey, 10)
-	require.Equal(t, big.NewInt(1000), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(30), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(1000), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(30), v.OutputKnown.ToBigInt())
 
 	// At boundary 9: base not visible, diffs only → lastDiff at 3: input=150, output=30
 	v = getVolume(bankUSDKey, 9)
-	require.Equal(t, big.NewInt(150), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(30), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(150), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(30), v.OutputKnown.ToBigInt())
 
 	// Add cumulative diffs after the base
 	batch = s.NewBatch()
 	require.NoError(t, attrs.Volume.AddDiff(batch, 11, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(200)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(50)),
+		InputKnown:  commonpb.NewUint256FromUint64(200),
+		OutputKnown: commonpb.NewUint256FromUint64(50),
 	}))
 	require.NoError(t, batch.Commit())
 
 	// At boundary 100: base(1000,30) + diff(200,50) → input=1200, output=80
 	v = getVolume(bankUSDKey, 100)
-	require.Equal(t, big.NewInt(1200), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(80), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(1200), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(80), v.OutputKnown.ToBigInt())
 
 	// At boundary 11: base(1000,30) + diff(200,50) → input=1200, output=80
 	v = getVolume(bankUSDKey, 11)
-	require.Equal(t, big.NewInt(1200), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(80), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(1200), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(80), v.OutputKnown.ToBigInt())
 
 	// Add a newer base at index 20
 	batch = s.NewBatch()
 	require.NoError(t, attrs.Volume.SetBase(batch, 20, bankUSDKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewBigInt(big.NewInt(5000)),
-		OutputKnown: commonpb.NewBigInt(big.NewInt(80)),
+		InputKnown:  commonpb.NewUint256FromUint64(5000),
+		OutputKnown: commonpb.NewUint256FromUint64(80),
 	}))
 	require.NoError(t, batch.Commit())
 
 	// At boundary 100: newer base → input=5000, output=80
 	v = getVolume(bankUSDKey, 100)
-	require.Equal(t, big.NewInt(5000), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(80), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(5000), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(80), v.OutputKnown.ToBigInt())
 
 	// At boundary 15: older base + diffs → input=1200, output=80
 	v = getVolume(bankUSDKey, 15)
-	require.Equal(t, big.NewInt(1200), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(80), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(1200), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(80), v.OutputKnown.ToBigInt())
 
 	// Different account should have 0 volume
 	v = getVolume(userUSDKey, 100)
-	require.Equal(t, big.NewInt(0), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// Different asset should have 0 volume
 	v = getVolume(bankEURKey, 100)
-	require.Equal(t, big.NewInt(0), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// Non-existing ledger should have 0 volume
 	nonExistingKey := data.VolumeKey{AccountKey: data.AccountKey{LedgerID: 999, Account: "bank"}, Asset: "USD"}
 	nonExistingCanonicalKey := nonExistingKey.Bytes()
 	v = getVolume(nonExistingCanonicalKey, 100)
-	require.Equal(t, big.NewInt(0), v.InputKnown.Value())
-	require.Equal(t, big.NewInt(0), v.OutputKnown.Value())
+	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 }

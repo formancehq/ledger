@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -190,7 +189,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 // coalesceVolumeSide returns Known if set, otherwise Diff.
 // Used to normalize a VolumePair for Pebble storage.
-func coalesceVolumeSide(known, diff *commonpb.BigInt) *commonpb.BigInt {
+func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
 	if known != nil {
 		return known
 	}
@@ -211,7 +210,7 @@ func (e *testEngine) consolidateVolumePair(key string) {
 		if vp.InputDiff != nil {
 			vp.InputKnown = vp.InputDiff
 		} else {
-			vp.InputKnown = commonpb.NewBigInt(big.NewInt(0))
+			vp.InputKnown = commonpb.NewUint256FromUint64(0)
 		}
 	}
 	vp.InputDiff = nil
@@ -221,7 +220,7 @@ func (e *testEngine) consolidateVolumePair(key string) {
 		if vp.OutputDiff != nil {
 			vp.OutputKnown = vp.OutputDiff
 		} else {
-			vp.OutputKnown = commonpb.NewBigInt(big.NewInt(0))
+			vp.OutputKnown = commonpb.NewUint256FromUint64(0)
 		}
 	}
 	vp.OutputDiff = nil
@@ -365,7 +364,7 @@ func newPosting(source, destination, asset string, amount int64) *commonpb.Posti
 	return &commonpb.Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      commonpb.NewBigInt(big.NewInt(amount)),
+		Amount:      commonpb.NewUint256FromUint64(uint64(amount)),
 		Asset:       asset,
 	}
 }

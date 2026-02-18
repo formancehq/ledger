@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/formancehq/numscript"
+	"github.com/holiman/uint256"
 )
 
 type numscriptPostingProducer struct {
@@ -62,12 +63,21 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
-	var scratch big.Int // reused across all postings
+	var (
+		scratch   uint256.Int // reused across all postings
+		u256Amount uint256.Int
+	)
 	for i, posting := range result.Postings {
+		if posting.Amount.Sign() < 0 {
+			return nil, fmt.Errorf("numscript execution error: posting %d has negative amount %s", i, posting.Amount)
+		}
+		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
+			return nil, fmt.Errorf("numscript execution error: posting %d amount %s exceeds 256 bits", i, posting.Amount)
+		}
 		postings[i] = &commonpb.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
-			Amount:      commonpb.NewBigInt(posting.Amount),
+			Amount:      commonpb.NewUint256(&u256Amount),
 			Asset:       posting.Asset,
 		}
 
@@ -86,7 +96,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		if sourceVol == nil {
 			sourceVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, posting.Amount, postings[i].Amount, &scratch)
+		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &u256Amount, postings[i].Amount, &scratch)
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -104,7 +114,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		if destVol == nil {
 			destVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, posting.Amount, postings[i].Amount, &scratch)
+		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &u256Amount, postings[i].Amount, &scratch)
 		s.PutVolume(destKey, destVol)
 	}
 
@@ -157,7 +167,7 @@ var maxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.BalanceQuery) (numscript.Balances, error) {
 	balances := make(numscript.Balances)
 
-	var inputVal, outputVal big.Int // stack scratch reused across iterations
+	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
 
 	for account, assets := range query {
 		accountBalance := make(numscript.AccountBalance)
@@ -189,23 +199,23 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 				return nil, &ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
-			// Calculate balance: Input - Output
-			// Decode into stack scratch to avoid intermediate allocations
+			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
 			if vol.InputKnown != nil {
-				vol.InputKnown.ValueInto(&inputVal)
+				vol.InputKnown.IntoUint256(&inputVal)
 			} else {
-				vol.InputDiff.ValueInto(&inputVal)
+				vol.InputDiff.IntoUint256(&inputVal)
 			}
 
-			outputVal.SetInt64(0)
+			outputVal.Clear()
 			if vol.OutputKnown != nil {
-				vol.OutputKnown.ValueInto(&outputVal)
+				vol.OutputKnown.IntoUint256(&outputVal)
 			} else if vol.OutputDiff != nil {
-				vol.OutputDiff.ValueInto(&outputVal)
+				vol.OutputDiff.IntoUint256(&outputVal)
 			}
 
 			// balance escapes into the map, so it must be heap-allocated
-			balance := new(big.Int).Sub(&inputVal, &outputVal)
+			// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
+			balance := new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig())
 			accountBalance[asset] = balance
 		}
 	}

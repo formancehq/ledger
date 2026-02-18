@@ -253,7 +253,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			posting := createdTx.Transaction.Postings[0]
 			Expect(posting.Source).To(Equal("users:broke"))
 			Expect(posting.Destination).To(Equal("users:alice"))
-			Expect(posting.Amount.Value().Int64()).To(Equal(int64(100000)))
+			Expect(posting.Amount.ToBigInt().Int64()).To(Equal(int64(100000)))
 		})
 
 		It("Should allow Numscript with variables when force=true", func() {
@@ -287,7 +287,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			posting := createdTx.Transaction.Postings[0]
 			Expect(posting.Source).To(Equal("source:account"))
 			Expect(posting.Destination).To(Equal("destination:account"))
-			Expect(posting.Amount.Value().Int64()).To(Equal(int64(50000)))
+			Expect(posting.Amount.ToBigInt().Int64()).To(Equal(int64(50000)))
 			Expect(posting.Asset).To(Equal("EUR/2"))
 		})
 
