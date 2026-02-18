@@ -2,7 +2,7 @@
 
 **Status**: Draft for team review
 **Author**: Geoffrey + Claude
-**Date**: 2025-02-12
+**Date**: 2025-02-12 (updated 2026-02-18)
 
 ---
 
@@ -21,7 +21,7 @@ Financial ledgers naturally operate in **periods** (month, quarter, year). Once 
 
 1. **Period-based lifecycle**: introduce the concept of accounting periods with explicit close operations
 2. **Cold storage archival**: move closed period data to external storage (S3, GCS, filesystem)
-3. **Hot storage compaction**: after archival, purge detailed data from Pebble, keeping only balance snapshots
+3. **Hot storage compaction**: after archival, purge logs and transaction updates from Pebble, keeping attributes (volumes, metadata) in hot storage
 4. **Receipt-based reverts**: allow reverting archived transactions without accessing cold storage
 5. **Hash chain continuity**: maintain cryptographic integrity across period boundaries
 6. **Minimal operational impact**: archival should not block writes or degrade latency
@@ -32,10 +32,9 @@ Financial ledgers naturally operate in **periods** (month, quarter, year). Once 
 - Period model (open, closed, archived)
 - Cold storage interface (write-only) and S3 implementation
 - Period close and archive operations (manual + scheduled)
-- Auto-purge after verified archival
+- Auto-purge of logs and transaction updates after verified archival
 - Receipt mechanism (JWT) for cross-period reverts
 - Hash chain sealing at period boundaries
-- Balance snapshot at close
 
 ### Out of scope
 - Read-only querying of archived data from the ledger (Phase 3 — future)
@@ -52,22 +51,23 @@ Financial ledgers naturally operate in **periods** (month, quarter, year). Once 
   ┌─────────┐    close     ┌─────────┐   archive    ┌──────────┐
   │  OPEN   │ ──────────►  │ CLOSED  │ ──────────►  │ ARCHIVED │
   │         │              │         │              │          │
-  │ writes  │              │ read-   │              │ purged   │
-  │ allowed │              │ only    │              │ from hot │
+  │ writes  │              │ read-   │              │ logs     │
+  │ allowed │              │ only    │              │ purged   │
   └─────────┘              └─────────┘              └──────────┘
        │                        │                        │
        │ hot storage            │ hot storage             │ cold storage
        │ (Pebble)               │ (Pebble)                │ (S3/GCS/FS)
        │                        │                         │
-       │ full data              │ full data               │ full data
-       │                        │ + balance snapshot      │ + balance snapshot
+       │ full data              │ full data               │ logs + audit
        │                        │ + sealing hash          │
        │                        │                         │
        │                        │                    hot storage:
-       │                        │                    balance snapshot only
+       │                        │                    attributes (volumes,
+       │                        │                      metadata, reverts)
        │                        │                    + sealing hash
-       │                        │                    + reversion bitset
 ```
+
+**Key design decision**: attributes (volumes, metadata, reversion status) are **kept in hot storage** after archival. Only logs and transaction updates are purged. This avoids the need for a separate balance snapshot format — attributes ARE the compact, derived state. They grow with the number of unique accounts/assets, not with the number of transactions, so they remain small.
 
 ## 5. Period Model
 
@@ -129,7 +129,6 @@ Step 1: ClosePeriod         Step 2: SealPeriod
 - Sets the period status to `CLOSING`
 - Sets the period `end` timestamp
 - Opens the next period (id+1, status=OPEN, start=end of previous)
-- **Does NOT compute the balance snapshot** — returns immediately
 
 This is a lightweight Raft command that executes in the FSM hot path without blocking.
 
@@ -208,7 +207,6 @@ type ColdStorage interface {
     // Archive writes a period's data to cold storage.
     // The data is a self-contained archive (tar.gz) that includes:
     // - All logs for the period (with hash chain)
-    // - Balance snapshot at period close
     // - Audit entries for the period
     // - Period metadata (sealing hash, boundaries)
     Archive(ctx context.Context, bucketID string, period PeriodArchive) error
@@ -226,13 +224,14 @@ The archive is a **tar.gz** containing:
 ```
 period-{id}/
 ├── metadata.json         # Period metadata, sealing hash, boundaries
-├── logs.pb               # Protobuf-encoded logs (sequential)
-├── balance-snapshot.pb   # Account balances at close
+├── logs.pb               # Protobuf-encoded logs (sequential, with hash chain)
 ├── audit.pb              # Audit entries for the period
 └── checksum.sha256       # SHA-256 of all files for integrity
 ```
 
 Archives are **gzip-compressed**. This format is self-contained: an archive can be verified independently.
+
+> **Note**: No balance snapshot is included in the archive. Attributes (volumes, metadata) remain in hot storage after archival — they are the compact, derived state and do not need to be archived or restored.
 
 ### 6.3 S3 Implementation
 
@@ -326,12 +325,9 @@ Client                          Service
 
 ### 7.5 Double-Revert Prevention
 
-After archival, the detailed transaction data is purged, but the **reversion status** must survive. Two mechanisms:
+After archival, logs and transaction updates are purged, but **attributes remain in hot storage**. The reversion status (`tx_id → reverted`) is tracked as an attribute and naturally survives archival — no separate mechanism is needed.
 
-1. **Reversion attribute** (current mechanism): already tracks `tx_id → reverted` as an attribute. During archival, these are compacted into the balance snapshot.
-2. **Reversion bitset**: a compact bitset of reverted transaction IDs, kept in hot storage. For 1M transactions, this is ~125KB.
-
-The reversion attribute is already part of the generation system. During period close, reverted transaction IDs from the closed period are consolidated into a compact set that persists across archival.
+The reversion attribute is already part of the generation system and compacted alongside other attributes (volumes, metadata). This means double-revert prevention works identically whether the period is open, closed, or archived.
 
 ### 7.6 Receipts for Current Period
 
@@ -347,12 +343,11 @@ For transactions still in hot storage, the service can revert using either the r
 ### 8.1 Close Period (Manual)
 
 ```
-ledgerctl periods close [--at <timestamp>]
+ledgerctl periods close
 ```
 
-- Creates a `ClosePeriod` Raft command
-- Computes balance snapshot for all accounts across all ledgers
-- Computes sealing hash
+- Creates a `ClosePeriod` Raft command (instant, marks boundary)
+- Background sealer computes sealing hash from Pebble checkpoint
 - Opens the next period automatically
 
 ### 8.2 Close Period (Scheduled)
@@ -376,12 +371,15 @@ ledgerctl periods archive <period-id>
 ```
 
 - Verifies the period is closed
-- Exports logs, audit entries, and balance snapshot to cold storage (gzip compressed)
+- Exports logs and audit entries to cold storage (gzip compressed tar archive)
 - Verifies the archive integrity (checksum validation via `Exists`)
 - Marks the period as archived
-- **Automatically purges** detailed data from Pebble (range delete on log sequences)
+- **Purges logs and transaction updates** from Pebble (range delete on log sequences)
+- **Keeps attributes** in hot storage (volumes, metadata, reversion status)
 
 Archival and purge are a single atomic operation from the operator's perspective. There is no manual confirmation step between archive and purge — the system verifies the archive exists in cold storage before purging.
+
+After archival, reads (`GetAccount`, `ListAccounts`, volumes) continue to work normally from attributes. Only detailed transaction history (log replay) requires fetching from cold storage.
 
 ### 8.4 List Periods
 
@@ -412,7 +410,6 @@ message ClosePeriodOrder {}  // No fields — closes the current open period
 message SealPeriodOrder {
   uint64 period_id = 1;
   bytes sealing_hash = 2;         // Computed from Pebble checkpoint state hash
-  // Future: bytes balance_snapshot = 3;  // For data retention / cold storage
 }
 
 message ArchivePeriodOrder {
@@ -424,14 +421,14 @@ message ArchivePeriodOrder {
 
 - **ClosePeriod** (Step 1): instant Raft command. Marks the boundary, opens new period. All nodes transition the period to `CLOSING`.
 - **SealPeriod** (Step 2): proposed by the leader after checkpoint-based hash computation. Contains the sealing hash. All nodes transition the period to `CLOSED`. Followers don't need to recompute — they trust the hash from the leader (verified by Raft consensus).
-- **Archive** (Phase 2): the leader exports to cold storage, then proposes `ArchivePeriod`. All nodes purge the data upon applying the command (deterministic range delete on Pebble).
+- **Archive** (Phase 2): the leader exports logs and audit entries to cold storage, then proposes `ArchivePeriod`. All nodes purge logs and transaction updates upon applying the command (deterministic range delete on Pebble). Attributes (volumes, metadata, reversion status) are kept.
 
 ### 9.3 Snapshot Impact
 
-Raft snapshots only contain data from non-archived periods. This directly reduces snapshot size as periods are archived, improving:
+After archival, Raft snapshots no longer contain logs and transaction updates from archived periods. Attributes remain but are compact (proportional to unique accounts/assets, not transaction count). This reduces snapshot size as periods are archived, improving:
 - Node join time
 - Recovery time
-- Memory footprint of the FSM in-memory state
+- Pebble LSM tree depth and compaction performance
 
 ## 10. Options / Future Considerations
 
@@ -486,12 +483,15 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 
 ## 11. Implementation Plan (Suggested Phases)
 
-### Phase 1 — Foundation
+### Phase 1 — Foundation ✅ (implemented)
 - Period model (proto, FSM commands, storage)
-- Close period with balance snapshot and sealing hash
-- Receipt emission (JWT/HS256) on transaction creation
-- Receipt-based revert
+- Two-step close with sealing hash (ClosePeriod + SealPeriod)
+- Crash recovery for both failure windows
+- Receipt emission (JWT/HS256) with period_id on transaction creation
+- Receipt available on GetTransaction response
+- Receipt-based revert (admission layer verifies JWT, extracts postings)
 - CLI commands: `periods close`, `periods list`
+- CLI: `--receipt` flag on `transactions revert`, receipt display on `transactions get`
 
 ### Phase 2 — Cold Storage
 - Cold storage interface
@@ -521,8 +521,9 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 | **Cold storage cleanup** | Not the system's responsibility | Delegated to external tooling (S3 lifecycle rules, infrastructure policies) |
 | **Per-ledger retention** | Via Raft sharding (separate buckets) | Avoids complexity of mixed retention within a single Raft group |
 | **Close process** | Two-step (ClosePeriod + SealPeriod) | In-memory cache only has hot keys; cold accounts are only in Pebble. A full scan is needed but cannot block the Raft consensus loop. |
+| **No balance snapshot** | Keep attributes in hot storage, purge only logs | Attributes (volumes, metadata, reverts) ARE the compact derived state. They grow with unique accounts/assets, not transaction count. No separate snapshot format needed. Reads continue to work after archival. |
 
 ## 13. Open Questions for Team
 
-1. **Signing key provisioning**: CLI flag? Environment variable? External KMS integration later?
-2. **Receipt key rotation**: include a `kid` (key ID) in the JWT header to support rotation — confirm approach
+1. ~~**Signing key provisioning**: CLI flag? Environment variable? External KMS integration later?~~ **Resolved**: CLI flag `--receipt-signing-key` (auto-bound to `RECEIPT_SIGNING_KEY` env var). KMS integration deferred.
+2. **Receipt key rotation**: include a `kid` (key ID) in the JWT header to support verification with older keys during rotation — confirm approach
