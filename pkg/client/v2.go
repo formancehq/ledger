@@ -673,7 +673,7 @@ func (s *V2) InsertSchema(ctx context.Context, request operations.V2InsertSchema
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schema/{version}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schemas/{version}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -872,7 +872,7 @@ func (s *V2) GetSchema(ctx context.Context, request operations.V2GetSchemaReques
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schema/{version}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schemas/{version}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -1080,7 +1080,7 @@ func (s *V2) ListSchemas(ctx context.Context, request operations.V2ListSchemasRe
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schema", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/{ledger}/schemas", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}

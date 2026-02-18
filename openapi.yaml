@@ -1463,7 +1463,7 @@ paths:
       security:
         - Authorization:
             - ledger:write
-  /v2/{ledger}/schema/{version}:
+  /v2/{ledger}/schemas/{version}:
     parameters:
       - name: ledger
         in: path
@@ -1537,7 +1537,7 @@ paths:
       security:
         - Authorization:
             - ledger:read
-  /v2/{ledger}/schema:
+  /v2/{ledger}/schemas:
     parameters:
       - name: ledger
         in: path
