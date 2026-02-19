@@ -11,7 +11,6 @@
 * Branches
 * Chart of account pattern recognition
 * Backup restoration
-* Signed request
 * Mirror mode
 * Extract HTTP layer into a compat service?
 * Date precision nano?
