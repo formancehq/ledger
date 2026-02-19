@@ -57,3 +57,6 @@ Cluster-wide disk space monitoring with per-volume thresholds that automatically
 
 ### [Hybrid Logical Clock](./hybrid-logical-clock.md)
 Monotonic timestamp generation using a Hybrid Logical Clock (HLC) in the FSM to guarantee strictly increasing timestamps across leader changes and clock skew.
+
+### [Backup and Restore](./backup-restore.md)
+Complete backup and restore pipeline: point-in-time Pebble snapshots via Raft consensus, attribute compaction, tar streaming with SHA256 verification, four-step restore workflow (upload → validate → preview → finalize), and post-restore bootstrap.
