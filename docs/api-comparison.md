@@ -68,6 +68,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
+| Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Volumes (responses)** |
 | postCommitVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |

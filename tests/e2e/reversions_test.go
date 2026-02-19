@@ -406,7 +406,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(tx.Reverted).To(BeFalse())
+			Expect(tx.Transaction.Reverted).To(BeFalse())
 
 			// Revert the transaction
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -420,7 +420,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(txAfter.Reverted).To(BeTrue())
+			Expect(txAfter.Transaction.Reverted).To(BeTrue())
 		})
 
 		It("Should create a new reverting transaction", func() {

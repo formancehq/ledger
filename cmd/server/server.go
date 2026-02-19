@@ -138,6 +138,9 @@ func NewRunCommand() *cobra.Command {
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
+	// Restore mode: start in restore mode to accept backup upload
+	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
+
 	return runCmd
 }
 
@@ -199,6 +202,14 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// Configure trace sampling
 	traceSamplingCfg := traceSamplingConfigFromFlags(cmd)
 
+	// Select the application module based on mode
+	var appModule fx.Option
+	if cfg.Restore {
+		appModule = application.RestoreModule()
+	} else {
+		appModule = application.Module()
+	}
+
 	// Create fx application options
 	opts := []fx.Option{
 		// Provide configuration
@@ -212,7 +223,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		// Add Pyroscope profiling module
 		pyroscope.Module(pyroscopeCfg),
 		// Provide application module
-		application.Module(),
+		appModule,
 	}
 
 	defer func() {
@@ -373,8 +384,20 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 		CAFile:   tlsCA,
 	}
 
+	// Restore mode
+	cfg.Restore = getBool("restore", false)
+
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")
+	if cfg.Restore {
+		if cfg.RaftConfig.Bootstrap {
+			return nil, fmt.Errorf("--restore and --bootstrap are mutually exclusive")
+		}
+		if joinAddr != "" {
+			return nil, fmt.Errorf("--restore and --join are mutually exclusive")
+		}
+	}
+
 	if joinAddr != "" {
 		if cfg.RaftConfig.Bootstrap {
 			return nil, fmt.Errorf("--join and --bootstrap are mutually exclusive")

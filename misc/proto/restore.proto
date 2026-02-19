@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package restore;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/restorepb";
+
+// ============================================================================
+// gRPC Service
+// ============================================================================
+
+// RestoreService provides backup restore operations for a fresh cluster.
+// Available only when the server is started with --restore mode.
+service RestoreService {
+  // UploadBackup streams a tar archive backup into the restore staging area.
+  rpc UploadBackup(stream UploadBackupRequest) returns (UploadBackupResponse);
+
+  // ValidateRestore runs integrity checks on the staged backup data.
+  rpc ValidateRestore(ValidateRestoreRequest) returns (stream ValidateRestoreEvent);
+
+  // PreviewRestore returns a summary of the staged backup data.
+  rpc PreviewRestore(PreviewRestoreRequest) returns (PreviewRestoreResponse);
+
+  // FinalizeRestore commits the staged backup as the live data and shuts down the server.
+  rpc FinalizeRestore(FinalizeRestoreRequest) returns (FinalizeRestoreResponse);
+}
+
+// ============================================================================
+// Upload Messages
+// ============================================================================
+
+message UploadBackupRequest {
+  bytes data = 1;            // Tar archive chunk data
+  bool eof = 2;              // True for the final chunk (may be empty)
+  string content_sha256 = 3; // Expected SHA256 hash of the full archive (set on EOF)
+  uint64 content_size = 4;   // Expected total size of the archive in bytes (set on EOF)
+}
+
+message UploadBackupResponse {
+  uint64 bytes_received = 1; // Total bytes received
+  string sha256 = 2;         // Computed SHA256 hash of the received data
+}
+
+// ============================================================================
+// Validate Messages
+// ============================================================================
+
+message ValidateRestoreRequest {}
+
+message ValidateRestoreEvent {
+  oneof type {
+    ValidateRestoreError error = 1;
+    ValidateRestoreProgress progress = 2;
+  }
+}
+
+message ValidateRestoreError {
+  string message = 1;
+}
+
+message ValidateRestoreProgress {
+  uint64 logs_checked = 1;
+  uint64 total_logs = 2;
+}
+
+// ============================================================================
+// Preview Messages
+// ============================================================================
+
+message PreviewRestoreRequest {}
+
+message PreviewRestoreResponse {
+  uint64 last_applied_index = 1;     // Last Raft index applied
+  uint64 last_applied_timestamp = 2; // Last applied timestamp (HLC microseconds)
+  uint64 last_sequence = 3;          // Last log sequence number
+  uint32 ledger_count = 4;           // Number of ledgers in the backup
+  repeated string ledger_names = 5;  // Names of all ledgers
+}
+
+// ============================================================================
+// Finalize Messages
+// ============================================================================
+
+message FinalizeRestoreRequest {}
+
+message FinalizeRestoreResponse {
+  string message = 1; // Human-readable result message
+}

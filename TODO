@@ -1,5 +1,3 @@
-* Infinite data storage
-* Cold storage
 * Short circuit log ingestion
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
@@ -8,26 +6,28 @@
 * Prevent configuration changes
 * Doc performance (ulid, ordered keys, locality)
 * Roll up of existing ledgers
-* Branches
 * Chart of account pattern recognition
-* Backup restoration
 * Mirror mode
 * Extract HTTP layer into a compat service?
-* Date precision nano?
 * Checker add transactions
 * Logs export CLI (filtrage par date/ledger)
 * Sign logs hash with private key
 * Holds/pending transfers
-* Events system
 * ACL system
 * LICENCE of dependencies
 * Add nightly build
 * Mode not atomic
 * Convert K6 tests to GRPC
-* Event system
 * Eventual consistency (read your writes)
 * Flow control
 * Maintenance rpc command (block admission)
 * Wishlist Numscript
 * refactor doc (dev, user)
 * Automated periods
+* Add hash consistency tests
+* Signing :
+** when outputting the actions that were signed by a key, also output the key-id that validated the request
+** have a list of keys
+** in that list of keys, also map the key that has been used to register the key
+** when revoking a key, potentially propose to revoke all keys that were registered using this key
+** Sign responses too to avoid MITM

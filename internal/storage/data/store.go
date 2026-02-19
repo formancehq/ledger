@@ -27,8 +27,7 @@ const (
 	liveDir               = "live"
 	currentCheckpointFile = "CURRENT_CHECKPOINT"
 	checkpointsDir        = "checkpoints"
-	backupsDir            = "backups"
-	sealDir               = "seal"
+	temporaryCheckpointsDir = "tmp"
 )
 
 // Store is a Pebble implementation of data.Store
@@ -219,7 +218,7 @@ func NewStore(
 	}
 
 	// Clean up any orphaned backup checkpoints from a previous crash
-	store.cleanupOrphanedBackups()
+	store.cleanupTemporaryCheckpoints()
 
 	return store, nil
 }
@@ -227,6 +226,11 @@ func NewStore(
 // DataDir returns the base data directory path for this store.
 func (s *Store) DataDir() string {
 	return s.dataDir
+}
+
+// Flush forces a flush of Pebble's memtables to SSTs on disk.
+func (s *Store) Flush() error {
+	return s.getDB().Flush()
 }
 
 // Close closes the Pebble database
@@ -567,82 +571,55 @@ func (s *Store) GetCurrentCheckpointID() uint64 {
 	return s.currentCheckPoint
 }
 
-// CreateBackupCheckpoint creates a Pebble checkpoint in a separate backups/ directory.
+// CreateTemporaryCheckpoint creates a Pebble checkpoint in the tmp/<name> directory.
 // Unlike CreateSnapshot, this does not modify currentCheckPoint, CURRENT_CHECKPOINT,
 // or interfere with the Raft snapshot lifecycle in any way.
-// The caller must call RemoveBackupCheckpoint when the backup is complete.
-func (s *Store) CreateBackupCheckpoint(backupID string) (string, error) {
-	backupPath := filepath.Join(s.dataDir, backupsDir, backupID)
+// The caller must call RemoveTemporaryCheckpoint when the checkpoint is no longer needed.
+func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
+	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
 
-	if err := os.MkdirAll(filepath.Dir(backupPath), 0755); err != nil {
-		return "", fmt.Errorf("creating backups directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", fmt.Errorf("creating temporary checkpoint directory: %w", err)
 	}
 
-	if err := os.RemoveAll(backupPath); err != nil {
-		return "", fmt.Errorf("removing existing backup directory: %w", err)
+	if err := os.RemoveAll(path); err != nil {
+		return "", fmt.Errorf("removing existing temporary checkpoint: %w", err)
 	}
 
-	if err := s.getDB().Checkpoint(backupPath, pebble.WithFlushedWAL()); err != nil {
-		return "", fmt.Errorf("creating backup checkpoint: %w", err)
+	if err := s.getDB().Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
+		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
-	return backupPath, nil
+	return path, nil
 }
 
-// RemoveBackupCheckpoint removes a backup checkpoint created by CreateBackupCheckpoint.
-func (s *Store) RemoveBackupCheckpoint(backupID string) error {
-	backupPath := filepath.Join(s.dataDir, backupsDir, backupID)
-	if err := os.RemoveAll(backupPath); err != nil {
-		return fmt.Errorf("removing backup checkpoint: %w", err)
+// RemoveTemporaryCheckpoint removes a temporary checkpoint created by CreateTemporaryCheckpoint.
+func (s *Store) RemoveTemporaryCheckpoint(name string) error {
+	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("removing temporary checkpoint %q: %w", name, err)
 	}
 	return nil
 }
 
-// CreateSealCheckpoint creates a Pebble checkpoint in a separate seal/ directory
-// for computing a deterministic seal hash during period closing.
-// Unlike CreateSnapshot, this does not modify currentCheckPoint or CURRENT_CHECKPOINT.
-// The caller must call RemoveSealCheckpoint after the SealPeriod order is applied.
-func (s *Store) CreateSealCheckpoint() (string, error) {
-	sealPath := filepath.Join(s.dataDir, sealDir)
-
-	if err := os.RemoveAll(sealPath); err != nil {
-		return "", fmt.Errorf("removing existing seal directory: %w", err)
-	}
-
-	if err := s.getDB().Checkpoint(sealPath, pebble.WithFlushedWAL()); err != nil {
-		return "", fmt.Errorf("creating seal checkpoint: %w", err)
-	}
-
-	return sealPath, nil
-}
-
-// RemoveSealCheckpoint removes the seal checkpoint created by CreateSealCheckpoint.
-func (s *Store) RemoveSealCheckpoint() error {
-	sealPath := filepath.Join(s.dataDir, sealDir)
-	if err := os.RemoveAll(sealPath); err != nil {
-		return fmt.Errorf("removing seal checkpoint: %w", err)
-	}
-	return nil
-}
-
-// SealCheckpointPath returns the path to the seal checkpoint directory and whether it exists.
-func (s *Store) SealCheckpointPath() (string, bool) {
-	sealPath := filepath.Join(s.dataDir, sealDir)
-	if _, err := os.Stat(sealPath); err != nil {
+// TemporaryCheckpointPath returns the path to a temporary checkpoint and whether it exists.
+func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
+	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
+	if _, err := os.Stat(path); err != nil {
 		return "", false
 	}
-	return sealPath, true
+	return path, true
 }
 
-// cleanupOrphanedBackups removes the entire backups/ directory on startup.
-// Backup checkpoints are ephemeral and only needed during streaming;
-// any leftover entries are from a previous crash and can be safely deleted.
-func (s *Store) cleanupOrphanedBackups() {
-	backupsPath := filepath.Join(s.dataDir, backupsDir)
-	if err := os.RemoveAll(backupsPath); err != nil {
+// cleanupTemporaryCheckpoints removes the entire tmp/ directory on startup.
+// Temporary checkpoints are ephemeral (backups, seal hashing);
+// any leftovers are from a previous crash and can be safely deleted.
+func (s *Store) cleanupTemporaryCheckpoints() {
+	path := filepath.Join(s.dataDir, temporaryCheckpointsDir)
+	if err := os.RemoveAll(path); err != nil {
 		s.logger.WithFields(map[string]any{
 			"error": err,
-		}).Errorf("Failed to clean up orphaned backup checkpoints")
+		}).Errorf("Failed to clean up temporary checkpoints")
 	}
 }
 
@@ -1000,6 +977,109 @@ func (s *Store) GetLastSequence() (uint64, error) {
 	}
 
 	return log.Sequence, nil
+}
+
+// GetLastLog returns the full last log entry. Returns nil if no logs exist.
+func (s *Store) GetLastLog() (*commonpb.Log, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixLog)
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutByte(keyPrefixLog).
+		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	upperBound := kb.Build()
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return nil, nil
+	}
+
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading log value: %w", err)
+	}
+
+	log := &commonpb.Log{}
+	if err := proto.Unmarshal(value, log); err != nil {
+		return nil, fmt.Errorf("unmarshaling log: %w", err)
+	}
+
+	return log, nil
+}
+
+// GetMaxLedgerID returns the highest ledger ID. Returns 0, false if no ledgers exist.
+func (s *Store) GetMaxLedgerID() (uint32, bool, error) {
+	cursor, err := s.ListLedgers()
+	if err != nil {
+		return 0, false, err
+	}
+	defer func() { _ = cursor.Close() }()
+
+	var (
+		maxID uint32
+		found bool
+	)
+	for {
+		ledger, err := cursor.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, false, err
+		}
+		if !found || ledger.Id > maxID {
+			maxID = ledger.Id
+			found = true
+		}
+	}
+
+	return maxID, found, nil
+}
+
+// GetLastAuditSequence returns the last audit entry sequence. Returns 0 if no entries exist.
+func (s *Store) GetLastAuditSequence() (uint64, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixAudit)
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutByte(keyPrefixAudit).
+		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	upperBound := kb.Build()
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return 0, nil
+	}
+
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return 0, fmt.Errorf("reading audit value: %w", err)
+	}
+
+	entry := &auditpb.AuditEntry{}
+	if err := proto.Unmarshal(value, entry); err != nil {
+		return 0, fmt.Errorf("unmarshaling audit entry: %w", err)
+	}
+
+	return entry.Sequence, nil
 }
 
 // ListAuditEntries returns a cursor over audit entries after the given sequence.
@@ -1492,4 +1572,11 @@ func fsyncDir(dir string) error {
 		return fmt.Errorf("fsync dir %s: %w", dir, err)
 	}
 	return nil
+}
+
+// Checkpoint creates a Pebble checkpoint at destDir with flushed WAL.
+// This is a thin wrapper around pebble.DB.Checkpoint used for testing
+// and backup operations that need a standalone copy of the database.
+func (s *Store) Checkpoint(destDir string) error {
+	return s.getDB().Checkpoint(destDir, pebble.WithFlushedWAL())
 }

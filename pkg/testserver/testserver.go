@@ -198,3 +198,10 @@ func WithTLSCACertFile(path string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithRestore() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--restore")
+		return nil
+	}
+}
+

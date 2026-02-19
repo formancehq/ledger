@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -38,7 +39,7 @@ var marshalBufPool = sync.Pool{
 }
 
 type Proposer interface {
-	Propose(*node.Proposal) (*futures.Future, error)
+	Propose(*node.Proposal) (*futures.Future[state.ApplyResult], error)
 	InitialIndex() uint64
 }
 
@@ -758,7 +759,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Wait for FSM to apply the command
 	fsmWaitStart := time.Now()
-	logs, err := fsmFuture.Wait()
+	result, err := fsmFuture.Wait()
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
 
 	// Decrement inflight counter after command is fully processed
@@ -768,7 +769,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// At this point, the cache will have the values, so we can remove them from the loader
 	loadedKeys.MarkApplied(a.loaders)
 
-	return logs, err
+	return result.Logs, err
 }
 
 // verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.

@@ -71,7 +71,7 @@ func (s *Sealer) Start(closingPeriod *commonpb.Period) {
 	// If it doesn't exist (crashed before checkpoint creation), the node will
 	// re-apply the ClosePeriod entry from WAL replay and create the checkpoint again.
 	if closingPeriod != nil {
-		checkpointPath, exists := s.dataStore.SealCheckpointPath()
+		checkpointPath, exists := s.dataStore.TemporaryCheckpointPath("seal")
 		if exists {
 			req := SealRequestFromPeriod(closingPeriod)
 			req.CheckpointPath = checkpointPath
@@ -160,7 +160,7 @@ func (s *Sealer) seal(req SealRequest) error {
 	if !s.isPeriodStillClosing(req.PeriodID) {
 		s.logger.WithFields(logFields).Infof("Period no longer closing (sealed by leader), done")
 		// Clean up the seal checkpoint if it exists on this node
-		_ = s.dataStore.RemoveSealCheckpoint()
+		_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
 		return nil
 	}
 
@@ -187,7 +187,7 @@ func (s *Sealer) seal(req SealRequest) error {
 
 	// Clean up the seal checkpoint now that the hash has been computed.
 	// On crash recovery, the checkpoint will be re-created from WAL replay.
-	_ = s.dataStore.RemoveSealCheckpoint()
+	_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
 
 	// Compute sealing hash
 	hasher := blake3.New()

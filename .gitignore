@@ -52,3 +52,7 @@ summary.json
 
 # K6 archives (generated files)
 misc/k6/archives/
+
+# Test artifacts (Pebble data, WAL)
+tests/e2e/data/
+tests/e2e/wal/

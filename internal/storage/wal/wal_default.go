@@ -461,24 +461,30 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
 
-	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
-	// Otherwise, prevent creating snapshot at same or lower index
-	isEmptyInitial := index == 0 &&
-		s.snapshot.Metadata.Index == 0 &&
+	// Allow creating snapshot on empty storage (for initial cluster setup or restore).
+	// Otherwise, prevent creating snapshot at same or lower index.
+	isEmptyStorage := s.snapshot.Metadata.Index == 0 &&
 		len(s.snapshot.Metadata.ConfState.Voters) == 0 &&
 		len(s.entries) == 0
-	if !isEmptyInitial && index <= s.snapshot.Metadata.Index {
+	if !isEmptyStorage && index <= s.snapshot.Metadata.Index {
 		s.mu.Unlock()
 		return raft.ErrSnapOutOfDate
 	}
 
 	// Get term directly without taking another lock
 	// For initial snapshot (index 0 on empty storage), use term 0
+	// For restore snapshot (empty storage, index > 0), use term 1
 	var term uint64
 	var err error
-	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 && index == 0 {
-		// Initial snapshot at index 0 - use term 0
-		term = 0
+	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 {
+		if index == 0 {
+			// Initial snapshot at index 0 - use term 0
+			term = 0
+		} else {
+			// Restore snapshot: WAL is empty but we have restored data at a non-zero index.
+			// Use term 1 to start a new Raft term for the restored cluster.
+			term = 1
+		}
 	} else {
 		term, err = s.termLocked(index)
 		if err != nil {

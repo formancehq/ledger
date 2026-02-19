@@ -14,12 +14,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
 // Proposer proposes commands to the Raft cluster.
 type Proposer interface {
-	Propose(proposal *node.Proposal) (*futures.Future, error)
+	Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
 }
 
 // EmitterConfig holds configuration for the event emitter.

@@ -1,48 +1,40 @@
 package futures
 
-import (
-	"sync"
+import "sync"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-)
-
-// Future represents a future for an applied entry
-// todo: generify the future
-type Future struct {
-	mu   sync.Mutex
-	cond *sync.Cond
-	done bool
-	err  error
-	logs []*commonpb.Log
+// Future is a generic, goroutine-safe one-shot value container.
+// It is resolved exactly once by the producer and can be awaited by the consumer.
+type Future[T any] struct {
+	mu    sync.Mutex
+	cond  *sync.Cond
+	done  bool
+	err   error
+	value T
 }
 
-func (f *Future) Logs() []*commonpb.Log {
-	return f.logs
-}
-
-func (f *Future) Resolve(logs []*commonpb.Log, err error) {
+func (f *Future[T]) Resolve(value T, err error) {
 	f.mu.Lock()
 	f.done = true
 	f.err = err
-	f.logs = logs
+	f.value = value
 	f.cond.Signal()
 	f.mu.Unlock()
 }
 
-func (f *Future) Wait() ([]*commonpb.Log, error) {
+func (f *Future[T]) Wait() (T, error) {
 	f.mu.Lock()
 	for !f.done {
 		f.cond.Wait()
 	}
+	value := f.value
 	err := f.err
-	logs := f.logs
 	f.mu.Unlock()
 
-	return logs, err
+	return value, err
 }
 
-func New() *Future {
-	ret := &Future{}
+func New[T any]() *Future[T] {
+	ret := &Future[T]{}
 	ret.cond = sync.NewCond(&ret.mu)
 	return ret
 }

@@ -153,6 +153,10 @@ config:
     # If the secret also contains a ca.crt key, set this to enable CA verification
     caSecretKey: ""
 
+  # Restore mode: start in restore mode (no Raft, only RestoreService gRPC)
+  # When enabled, the server accepts backup uploads and does not join/bootstrap a cluster
+  restore: false
+
   # Debug logging
   debug: false
   

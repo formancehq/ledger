@@ -244,7 +244,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(tx.Id).To(Equal(transactionID))
+			Expect(tx.Transaction.Id).To(Equal(transactionID))
 		})
 
 		It("Should be able to get a transaction before and after saving metadata", func() {
@@ -267,7 +267,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed(), "GetTransaction before metadata should succeed")
-			Expect(txBefore.Id).To(Equal(transactionID))
+			Expect(txBefore.Transaction.Id).To(Equal(transactionID))
 
 			// Save metadata
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -283,8 +283,8 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed(), "GetTransaction after metadata should succeed")
-			Expect(txAfter.Id).To(Equal(transactionID))
-			Expect(txAfter.Metadata.ToMap()["key"]).To(Equal("value"))
+			Expect(txAfter.Transaction.Id).To(Equal(transactionID))
+			Expect(txAfter.Transaction.Metadata.ToMap()["key"]).To(Equal("value"))
 		})
 
 		It("Should set metadata and verify it persists", func() {
@@ -318,8 +318,8 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(tx.Metadata).NotTo(BeNil())
-			metaMap := tx.Metadata.ToMap()
+			Expect(tx.Transaction.Metadata).NotTo(BeNil())
+			metaMap := tx.Transaction.Metadata.ToMap()
 			Expect(metaMap["reference"]).To(Equal("order-123"))
 			Expect(metaMap["source"]).To(Equal("api"))
 			Expect(metaMap["status"]).To(Equal("processed"))
@@ -363,7 +363,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := tx.Metadata.ToMap()
+			metaMap := tx.Transaction.Metadata.ToMap()
 			Expect(metaMap["status"]).To(Equal("completed"))
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -404,7 +404,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := tx.Metadata.ToMap()
+			metaMap := tx.Transaction.Metadata.ToMap()
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -443,7 +443,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: newTxID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := tx.Metadata.ToMap()
+			metaMap := tx.Transaction.Metadata.ToMap()
 			Expect(metaMap["initial"]).To(Equal("metadata"))
 			Expect(metaMap["type"]).To(Equal("deposit"))
 			Expect(metaMap["additional"]).To(Equal("metadata"))
@@ -489,7 +489,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := tx.Metadata.ToMap()
+			metaMap := tx.Transaction.Metadata.ToMap()
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -532,7 +532,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: revertTxID,
 			})
 			Expect(err).To(Succeed())
-			Expect(revertTx.Metadata.ToMap()["revert_reason"]).To(Equal("test"))
+			Expect(revertTx.Transaction.Metadata.ToMap()["revert_reason"]).To(Equal("test"))
 
 			// Original transaction should still have its metadata and be marked as reverted
 			originalTx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
@@ -540,8 +540,8 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: originalTxID,
 			})
 			Expect(err).To(Succeed())
-			Expect(originalTx.Reverted).To(BeTrue())
-			Expect(originalTx.Metadata.ToMap()["original"]).To(Equal("true"))
+			Expect(originalTx.Transaction.Reverted).To(BeTrue())
+			Expect(originalTx.Transaction.Metadata.ToMap()["original"]).To(Equal("true"))
 		})
 	})
 })

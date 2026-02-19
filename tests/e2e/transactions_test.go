@@ -503,12 +503,12 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(getResp).NotTo(BeNil())
-			Expect(getResp.Id).To(Equal(transactionID))
-			Expect(getResp.Postings).To(HaveLen(1))
-			Expect(getResp.Postings[0].Source).To(Equal("world"))
-			Expect(getResp.Postings[0].Destination).To(Equal("read-account"))
-			Expect(getResp.Postings[0].Asset).To(Equal("USD"))
-			Expect(getResp.Metadata.ToMap()["description"]).To(Equal("Test transaction"))
+			Expect(getResp.Transaction.Id).To(Equal(transactionID))
+			Expect(getResp.Transaction.Postings).To(HaveLen(1))
+			Expect(getResp.Transaction.Postings[0].Source).To(Equal("world"))
+			Expect(getResp.Transaction.Postings[0].Destination).To(Equal("read-account"))
+			Expect(getResp.Transaction.Postings[0].Asset).To(Equal("USD"))
+			Expect(getResp.Transaction.Metadata.ToMap()["description"]).To(Equal("Test transaction"))
 		})
 
 		It("Should return error for non-existent transaction", func() {

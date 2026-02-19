@@ -1134,6 +1134,87 @@ ledgerctl periods archive 1
 
 ---
 
+### restore
+
+Backup restore operations. Requires the server to be started with `--restore`.
+
+#### restore upload
+
+Upload a backup tar archive to the restore staging area.
+
+```bash
+ledgerctl restore upload --input backup.tar
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--input`, `-i` | Yes | Input tar file path |
+| `--timeout` | No | Request timeout (default: 100s) |
+
+#### restore validate
+
+Run integrity checks on the staged backup data (hash chain, volumes, metadata).
+
+```bash
+ledgerctl restore validate
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 50s) |
+
+#### restore preview
+
+Display a summary of the staged backup data.
+
+```bash
+ledgerctl restore preview
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+#### restore finalize
+
+Commit the staged backup as live data and shut down the server.
+
+```bash
+# With confirmation prompt
+ledgerctl restore finalize
+
+# Skip confirmation
+ledgerctl restore finalize --yes
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--yes`, `-y` | No | Skip confirmation prompt |
+| `--timeout` | No | Request timeout (default: 10s) |
+
+---
+
+### Server `--restore` Flag
+
+Start the server in restore mode:
+
+```bash
+ledger-v3-poc run --node-id 1 --data-dir ./data --restore --grpc-port 8888
+```
+
+In restore mode:
+- Only the RestoreService gRPC endpoint and `/health` HTTP endpoint are available
+- No Raft, WAL, or other production services are started
+- Requires a fresh data directory (no `CURRENT_CHECKPOINT`)
+
+After finalizing, restart without `--restore`:
+
+```bash
+ledger-v3-poc run --node-id 1 --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
+```
+
+---
+
 ## Connection Examples
 
 ### Local Development

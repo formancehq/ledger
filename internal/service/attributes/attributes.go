@@ -542,3 +542,32 @@ func incrementBytes(b []byte) []byte {
 	}
 	return nil
 }
+
+// CompactToBase compacts all entries for this attribute type to a single base entry at targetIndex.
+// For each unique canonical key, it computes the final merged value, deletes all existing entries,
+// and writes a single base entry at targetIndex.
+func (a *Attribute[V]) CompactToBase(s *data.Store, batch *data.Batch, targetIndex uint64) error {
+	entries, err := a.List(s)
+	if err != nil {
+		return fmt.Errorf("listing attribute entries: %w", err)
+	}
+
+	for _, entry := range entries {
+		value, err := a.ComputeValue(s, ^uint64(0), entry.CanonicalKey)
+		if err != nil {
+			return fmt.Errorf("computing value for key %x: %w", entry.CanonicalKey, err)
+		}
+
+		if err := a.Delete(batch, entry.CanonicalKey); err != nil {
+			return fmt.Errorf("deleting entries for key %x: %w", entry.CanonicalKey, err)
+		}
+
+		if (any)(value) != nil && !proto.Equal(value, a.newValue()) {
+			if err := a.SetBase(batch, targetIndex, entry.CanonicalKey, value); err != nil {
+				return fmt.Errorf("setting base for key %x: %w", entry.CanonicalKey, err)
+			}
+		}
+	}
+
+	return nil
+}

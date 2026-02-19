@@ -9,6 +9,7 @@ type NodeConfig struct {
 	NodeID               uint64 // Numeric rawNode ID
 	Peers                []Peer // Format: "<id>/<raftAddress>/<serviceAddress>" (e.g., "1/node-1:7777/node-1:8888")
 	WalDir               string
+	DataDir              string        // Data directory (for detecting RESTORED marker)
 	SnapshotThreshold    uint64        // Number of logs before triggering a snapshot
 	SnapshotInterval     time.Duration // Minimum interval between snapshots
 	RotationThreshold    uint64        // Number of entries before rotating generations (default: 1000)

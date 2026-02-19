@@ -39,6 +39,7 @@ type Config struct {
 	ReceiptSigningKey string
 	ColdStorageConfig coldstorage.Config
 	TLSConfig         TLSConfig
+	Restore           bool
 }
 
 func (c Config) Validate() error {

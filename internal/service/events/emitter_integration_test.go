@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -50,11 +51,11 @@ type directProposer struct {
 	store *data.Store
 }
 
-func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future, error) {
+func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	cmd := &raftcmdpb.Proposal{}
 	if err := cmd.UnmarshalVT(proposal.Data()); err != nil {
-		f := futures.New()
-		f.Resolve(nil, err)
+		f := futures.New[state.ApplyResult]()
+		f.Resolve(state.ApplyResult{}, err)
 		return f, nil
 	}
 
@@ -64,16 +65,16 @@ func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future, erro
 		if update.Cursor > 0 {
 			if err := batch.SetSinkCursor(update.SinkName, update.Cursor); err != nil {
 				_ = batch.Cancel()
-				f := futures.New()
-				f.Resolve(nil, err)
+				f := futures.New[state.ApplyResult]()
+				f.Resolve(state.ApplyResult{}, err)
 				return f, nil
 			}
 		}
 		if update.ClearError {
 			if err := batch.ClearSinkStatus(update.SinkName); err != nil {
 				_ = batch.Cancel()
-				f := futures.New()
-				f.Resolve(nil, err)
+				f := futures.New[state.ApplyResult]()
+				f.Resolve(state.ApplyResult{}, err)
 				return f, nil
 			}
 		} else if update.Error != nil {
@@ -83,20 +84,20 @@ func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future, erro
 				Error:    update.Error,
 			}); err != nil {
 				_ = batch.Cancel()
-				f := futures.New()
-				f.Resolve(nil, err)
+				f := futures.New[state.ApplyResult]()
+				f.Resolve(state.ApplyResult{}, err)
 				return f, nil
 			}
 		}
 		if err := batch.Commit(); err != nil {
-			f := futures.New()
-			f.Resolve(nil, err)
+			f := futures.New[state.ApplyResult]()
+			f.Resolve(state.ApplyResult{}, err)
 			return f, nil
 		}
 	}
 
-	f := futures.New()
-	f.Resolve(nil, nil)
+	f := futures.New[state.ApplyResult]()
+	f.Resolve(state.ApplyResult{}, nil)
 	return f, nil
 }
 

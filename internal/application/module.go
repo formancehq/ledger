@@ -169,6 +169,7 @@ func Module() fx.Option {
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			func(cfg Config) node.NodeConfig {
+				cfg.RaftConfig.DataDir = cfg.DataDir
 				cfg.RaftConfig.SetDefaults()
 				return cfg.RaftConfig
 			},

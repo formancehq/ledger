@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -203,29 +203,42 @@ func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, strea
 }
 
 func (impl *ClusterServiceServerImpl) backupLocal(stream grpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
-	// Use a unique backup ID based on the current timestamp to avoid collisions
-	backupID := strconv.FormatInt(time.Now().UnixNano(), 10)
+	impl.logger.Infof("Creating backup checkpoint")
 
-	impl.logger.WithFields(map[string]any{
-		"backup_id": backupID,
-	}).Infof("Creating backup checkpoint")
-
-	backupPath, err := impl.store.CreateBackupCheckpoint(backupID)
+	// Propose a CreateCheckpoint through Raft consensus. All nodes enter maintenance
+	// mode; the leader creates the backup checkpoint and writes dirty boundaries into it.
+	backupPath, err := impl.node.ProposeBackupCheckpoint(stream.Context())
 	if err != nil {
 		return fmt.Errorf("creating backup checkpoint: %w", err)
 	}
 	defer func() {
-		if err := impl.store.RemoveBackupCheckpoint(backupID); err != nil {
+		if err := impl.store.RemoveTemporaryCheckpoint("checkpoint"); err != nil {
 			impl.logger.WithFields(map[string]any{
-				"backup_id": backupID,
-				"error":     err,
+				"error": err,
 			}).Errorf("Failed to remove backup checkpoint")
 		}
 	}()
 
-	impl.logger.WithFields(map[string]any{
-		"backup_id": backupID,
-	}).Infof("Streaming backup checkpoint")
+	// Compact attributes to index 0 and reset lastAppliedIndex in the backup.
+	// This ensures backups are self-contained and can be restored on a fresh cluster
+	// without raft index conflicts in the attribute storage.
+	impl.logger.Infof("Compacting backup checkpoint for restore compatibility")
+
+	compactStore, err := data.OpenDirect(backupPath, impl.logger)
+	if err != nil {
+		return fmt.Errorf("opening backup for compaction: %w", err)
+	}
+
+	if err := attributes.CompactAllForBackup(compactStore); err != nil {
+		_ = compactStore.Close()
+		return fmt.Errorf("compacting backup attributes: %w", err)
+	}
+
+	if err := compactStore.Close(); err != nil {
+		return fmt.Errorf("closing compacted backup: %w", err)
+	}
+
+	impl.logger.Infof("Streaming backup checkpoint")
 
 	return StreamDirAsTar(backupPath, 0, func(chunk TarStreamChunk) error {
 		return stream.Send(&clusterpb.BackupResponse{

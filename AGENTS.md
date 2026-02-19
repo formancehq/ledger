@@ -178,6 +178,13 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`events_add_sink.go`** : `events add-sink` command to add or upsert a sink config via gRPC
 - **`events_remove_sink.go`** : `events remove-sink` command to remove a sink config via gRPC
 
+**Restore commands:**
+- **`restore.go`** : Parent command for restore operations + `getRestoreClient` helper
+- **`restore_upload.go`** : `restore upload` command to upload a backup tar archive via gRPC streaming
+- **`restore_validate.go`** : `restore validate` command to run integrity checks on staged backup
+- **`restore_preview.go`** : `restore preview` command to display staged backup summary
+- **`restore_finalize.go`** : `restore finalize` command to commit staged backup and shut down server
+
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
@@ -291,6 +298,7 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 5. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
 6. **No type aliases** : Never use type aliases (e.g., `type X = Y`). Always use the original type directly. This improves code clarity and avoids confusion about which type is actually being used.
 7. **Never ignore errors** : Always handle errors explicitly. Use `_` to discard an error only when there is genuinely nothing to do with it, but never silently ignore errors.
+8. **Struct methods colocation** : All methods (receiver functions) for a given struct must be defined in the **same file** as the struct definition. Never split a struct's methods across multiple files. Standalone functions (constructors, helpers) may live in separate files within the same package.
 
    **Example**:
    ```go
@@ -396,6 +404,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
   - `misc/proto/signature.proto` - Request signature (RequestSignature: key_id, signature, signed_payload)
   - `misc/proto/events.proto` - Domain event types (Event, EventType)
+  - `misc/proto/restore.proto` - Restore service (RestoreService: UploadBackup, ValidateRestore, PreviewRestore, FinalizeRestore)
 - **Generated code**:
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
   - `internal/proto/commonpb/` - Common types (common.pb.go, common_vtproto.pb.go, etc.)
@@ -406,6 +415,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go, snapshot_vtproto.pb.go)
   - `internal/proto/auditpb/` - Audit log types (audit.pb.go, audit_vtproto.pb.go)
   - `internal/proto/eventspb/` - Domain event types (events.pb.go, events_vtproto.pb.go)
+  - `internal/proto/restorepb/` - Restore service (restore.pb.go, restore_grpc.pb.go, restore_vtproto.pb.go)
 
 ### Regenerating Code
 

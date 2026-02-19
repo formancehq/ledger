@@ -665,16 +665,16 @@ func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, 
 		return nil, fmt.Errorf("waiting for raft consensus: %w", err)
 	}
 
-	logs, err := fsmFuture.Wait()
+	result, err := fsmFuture.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("waiting for fsm result: %w", err)
 	}
 
-	if len(logs) == 0 {
+	if len(result.Logs) == 0 {
 		return nil, fmt.Errorf("fsm returned empty logs")
 	}
 
-	return logs, nil
+	return result.Logs, nil
 }
 
 // nowTimestamp returns the current time as a commonpb.Timestamp

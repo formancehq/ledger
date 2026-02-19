@@ -55,9 +55,9 @@ func newTestSealer(t *testing.T, store *data.Store) (*Sealer, *testSealerResult)
 func createSealCheckpoint(t *testing.T, store *data.Store) string {
 	t.Helper()
 
-	checkpointPath, err := store.CreateSealCheckpoint()
+	checkpointPath, err := store.CreateTemporaryCheckpoint("seal")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.RemoveSealCheckpoint() })
+	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint("seal") })
 
 	return checkpointPath
 }

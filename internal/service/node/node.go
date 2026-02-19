@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -87,7 +88,7 @@ type Node struct {
 	proposeCh               chan *Proposal
 	clusterCommandCh        chan *clusterCommand
 	confState               *raftpb.ConfState
-	futures                 SyncMap[uint64, *futures.Future]
+	futures                 SyncMap[uint64, *futures.Future[state.ApplyResult]]
 	lastSoftState           atomic.Pointer[raft.SoftState]
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 	observer                *Observer
@@ -147,41 +148,80 @@ func NewNode(
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
 
-		var (
-			voters   []uint64
-			learners []uint64
-		)
-
-		if cfg.Bootstrap {
-			// Bootstrap mode: this node + any known peers start as voters.
-			voters = make([]uint64, 0, len(cfg.Peers)+1)
-			voters = append(voters, cfg.NodeID)
-			for _, peerEntry := range cfg.Peers {
-				voters = append(voters, peerEntry.ID)
-			}
-		} else if len(cfg.Peers) > 0 {
-			// Join mode: existing peers are voters, self joins as learner.
-			// The leader will add us via ConfChange after we start.
-			voters = make([]uint64, 0, len(cfg.Peers))
-			for _, peerEntry := range cfg.Peers {
-				voters = append(voters, peerEntry.ID)
-			}
-			learners = []uint64{cfg.NodeID}
-		} else {
-			return nil, fmt.Errorf("first start requires --bootstrap or --join")
-		}
-
-		data, err := fsm.CreateSnapshot(context.Background())
+		// Check for RESTORED marker from a completed backup restore
+		marker, err := ReadRestoredMarker(cfg.DataDir)
 		if err != nil {
-			return nil, fmt.Errorf("creating initial snapshot data: %w", err)
+			return nil, fmt.Errorf("reading restored marker: %w", err)
 		}
 
-		initialConfState = raftpb.ConfState{
-			Voters:   voters,
-			Learners: learners,
-		}
-		if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
-			return nil, fmt.Errorf("creating initial snapshot: %w", err)
+		if marker != nil {
+			// Restore mode: bootstrap from restored data.
+			// The backup was compacted: all attribute indices are 0 and lastAppliedIndex is 0.
+			// We need to recover the FSM counters (nextLedgerID, nextSequenceID, etc.)
+			// from the Pebble data before creating the WAL snapshot.
+			logger.WithFields(map[string]any{
+				"lastAppliedIndex":     marker.LastAppliedIndex,
+				"lastAppliedTimestamp": marker.LastAppliedTimestamp,
+			}).Infof("Detected RESTORED marker, bootstrapping from restored data")
+
+			if err := fsm.RecoverState(); err != nil {
+				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
+			}
+
+			data, err := fsm.CreateSnapshot(context.Background())
+			if err != nil {
+				return nil, fmt.Errorf("creating restore snapshot data: %w", err)
+			}
+
+			initialConfState = raftpb.ConfState{
+				Voters: []uint64{cfg.NodeID},
+			}
+			if err := wal.CreateSnapshot(marker.LastAppliedIndex, &initialConfState, data); err != nil {
+				return nil, fmt.Errorf("creating restore snapshot: %w", err)
+			}
+
+			if err := RemoveRestoredMarker(cfg.DataDir); err != nil {
+				return nil, fmt.Errorf("removing restored marker: %w", err)
+			}
+
+			logger.Infof("Restored bootstrap complete, marker removed")
+		} else {
+			var (
+				voters   []uint64
+				learners []uint64
+			)
+
+			if cfg.Bootstrap {
+				// Bootstrap mode: this node + any known peers start as voters.
+				voters = make([]uint64, 0, len(cfg.Peers)+1)
+				voters = append(voters, cfg.NodeID)
+				for _, peerEntry := range cfg.Peers {
+					voters = append(voters, peerEntry.ID)
+				}
+			} else if len(cfg.Peers) > 0 {
+				// Join mode: existing peers are voters, self joins as learner.
+				// The leader will add us via ConfChange after we start.
+				voters = make([]uint64, 0, len(cfg.Peers))
+				for _, peerEntry := range cfg.Peers {
+					voters = append(voters, peerEntry.ID)
+				}
+				learners = []uint64{cfg.NodeID}
+			} else {
+				return nil, fmt.Errorf("first start requires --bootstrap or --join")
+			}
+
+			data, err := fsm.CreateSnapshot(context.Background())
+			if err != nil {
+				return nil, fmt.Errorf("creating initial snapshot data: %w", err)
+			}
+
+			initialConfState = raftpb.ConfState{
+				Voters:   voters,
+				Learners: learners,
+			}
+			if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
+				return nil, fmt.Errorf("creating initial snapshot: %w", err)
+			}
 		}
 	} else {
 		if snapshot.Metadata.Index > 0 {
@@ -412,9 +452,9 @@ func NewNode(
 		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
 		if period := fsm.ClosingPeriod(); period != nil {
-			if _, exists := store.SealCheckpointPath(); !exists {
+			if _, exists := store.TemporaryCheckpointPath("seal"); !exists {
 				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.Id)
-				checkpointPath, err := store.CreateSealCheckpoint()
+				checkpointPath, err := store.CreateTemporaryCheckpoint("seal")
 				if err != nil {
 					return nil, fmt.Errorf("creating recovery seal checkpoint: %w", err)
 				}
@@ -678,12 +718,19 @@ func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
-	for _, r := range result.Results {
+	// Resolve all proposal futures. When CheckpointRequired, the last result
+	// is the checkpoint-triggering entry — its future is resolved later by
+	// handleCheckpointRequired once the checkpoint path is known.
+	resolveCount := len(result.Results)
+	if result.CheckpointRequired && resolveCount > 0 {
+		resolveCount--
+	}
+	for _, r := range result.Results[:resolveCount] {
 		future, exists := node.futures.Load(r.ProposalID)
 		if !exists {
 			continue
 		}
-		future.Resolve(r.Logs, r.Error)
+		future.Resolve(r, r.Error)
 		node.futures.Delete(r.ProposalID)
 	}
 
@@ -697,9 +744,10 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		return err
 	}
 
-	// If Machine stopped at ClosePeriod, create seal checkpoint and enter snapshot mode
+	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateCheckpoint),
+	// enter maintenance mode and create the checkpoint off the Raft hot path.
 	if result.CheckpointRequired {
-		return node.handleClosePeriod(ctx, entries, result)
+		return node.handleCheckpointRequired(ctx, entries, result)
 	}
 
 	lastSnapshot, err := node.wal.Snapshot()
@@ -714,10 +762,11 @@ func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 	return nil
 }
 
-// handleClosePeriod enters maintenance mode to create the seal checkpoint off
-// the Raft hot path. While the checkpoint is being created, new committed
-// entries are spooled and replayed afterward.
-func (node *Node) handleClosePeriod(
+// handleCheckpointRequired enters maintenance mode to create a checkpoint off
+// the Raft hot path. Handles both ClosePeriod (seal checkpoint) and
+// CreateCheckpoint (backup checkpoint). While the checkpoint is being created,
+// new committed entries are spooled and replayed afterward.
+func (node *Node) handleCheckpointRequired(
 	ctx context.Context,
 	entries []raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
@@ -725,11 +774,11 @@ func (node *Node) handleClosePeriod(
 	// Spool remaining entries — they'll be replayed after the maintenance task
 	if len(applyResult.RemainingEntries) > 0 {
 		if err := node.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
-			return fmt.Errorf("spooling remaining entries after ClosePeriod: %w", err)
+			return fmt.Errorf("spooling remaining entries: %w", err)
 		}
 	}
 
-	// Last applied index: the ClosePeriod entry (before any remaining entries)
+	// Last applied index: the boundary entry (before any remaining entries)
 	var frozenAtIndex uint64
 	if len(applyResult.RemainingEntries) > 0 {
 		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
@@ -739,15 +788,35 @@ func (node *Node) handleClosePeriod(
 
 	node.status.Store(statusSnapshotting)
 
+	// Resolve the deferred future for the checkpoint-triggering proposal.
+	// The last result in applyResult.Results is the entry that set CheckpointRequired.
+	var deferredResult *state.ApplyResult
+	var deferredFuture *futures.Future[state.ApplyResult]
+	if len(applyResult.Results) > 0 {
+		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
+		if f, ok := node.futures.Load(deferredResult.ProposalID); ok {
+			deferredFuture = f
+			node.futures.Delete(deferredResult.ProposalID)
+		}
+	}
+
 	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		// Create seal checkpoint (captures exact Pebble state at ClosePeriod)
-		sealCheckpointPath, err := node.store.CreateSealCheckpoint()
+		path, err := node.store.CreateTemporaryCheckpoint("checkpoint")
 		if err != nil {
-			return 0, fmt.Errorf("creating seal checkpoint: %w", err)
+			if deferredFuture != nil {
+				deferredFuture.Resolve(state.ApplyResult{}, err)
+			}
+			return 0, fmt.Errorf("creating checkpoint: %w", err)
 		}
 
-		// Notify the FSM that the checkpoint is ready — it will forge and send the SealRequest
-		applyResult.OnCheckpointDone(sealCheckpointPath)
+		if applyResult.OnCheckpointDone != nil {
+			applyResult.OnCheckpointDone(path)
+		}
+
+		if deferredFuture != nil {
+			deferredResult.CheckpointPath = path
+			deferredFuture.Resolve(*deferredResult, nil)
+		}
 
 		return frozenAtIndex, nil
 	}, nil)
@@ -999,9 +1068,9 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 			batch = batch[:0]
 			lastEntry = &entry
 
-			// Handle ClosePeriod during replay
+			// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
 			if result.CheckpointRequired {
-				if err := node.handleClosePeriodDuringReplay(ctx, result); err != nil {
+				if err := node.handleCheckpointDuringReplay(ctx, result); err != nil {
 					return err
 				}
 			}
@@ -1018,9 +1087,9 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 		}
 		lastEntry = pointer.For(batch[len(batch)-1])
 
-		// Handle ClosePeriod during replay
+		// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
 		if result.CheckpointRequired {
-			if err := node.handleClosePeriodDuringReplay(ctx, result); err != nil {
+			if err := node.handleCheckpointDuringReplay(ctx, result); err != nil {
 				return err
 			}
 		}
@@ -1037,26 +1106,27 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 	return nil
 }
 
-// handleClosePeriodDuringReplay creates a seal checkpoint and calls the
-// FSM-provided callback when a ClosePeriod is encountered during spool replay.
-// Unlike handleClosePeriod, this does not enter maintenance mode — the
+// handleCheckpointDuringReplay creates a temporary checkpoint and calls the
+// FSM-provided callback when a checkpoint-requiring entry (ClosePeriod or
+// CreateCheckpoint) is encountered during spool replay.
+// Unlike handleCheckpointRequired, this does not enter maintenance mode — the
 // checkpoint is created synchronously (acceptable since we're already off
 // the hot path) and remaining entries are applied directly.
-func (node *Node) handleClosePeriodDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	// Create seal checkpoint
-	sealCheckpointPath, err := node.store.CreateSealCheckpoint()
+func (node *Node) handleCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
+	checkpointPath, err := node.store.CreateTemporaryCheckpoint("replay")
 	if err != nil {
-		return fmt.Errorf("creating seal checkpoint during replay: %w", err)
+		return fmt.Errorf("creating checkpoint during replay: %w", err)
 	}
 
-	// Notify the FSM that the checkpoint is ready
-	applyResult.OnCheckpointDone(sealCheckpointPath)
+	if applyResult.OnCheckpointDone != nil {
+		applyResult.OnCheckpointDone(checkpointPath)
+	}
 
 	// Apply remaining entries directly (no re-spool needed since we're replaying)
 	if len(applyResult.RemainingEntries) > 0 {
 		_, err := node.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
 		if err != nil {
-			return fmt.Errorf("applying remaining entries after ClosePeriod during replay: %w", err)
+			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
 		}
 	}
 
@@ -1123,6 +1193,40 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 	return nil
 }
 
+// ProposeBackupCheckpoint proposes a CreateCheckpoint command through Raft consensus.
+// The checkpoint is created during maintenance mode off the Raft hot path while no
+// new proposals are being applied, guaranteeing a consistent snapshot.
+// Dirty boundaries are written into the checkpoint copy (not the live DB).
+// Returns the filesystem path to the created checkpoint.
+func (node *Node) ProposeBackupCheckpoint(ctx context.Context) (string, error) {
+	cmd := commands.NewCommand()
+	cmd.CreateCheckpoint = true
+
+	cmdData, err := cmd.MarshalVT()
+	if err != nil {
+		return "", fmt.Errorf("marshaling checkpoint proposal: %w", err)
+	}
+
+	proposal := NewProposal(cmd.Id, cmdData)
+	fsmFuture, err := node.Propose(proposal)
+	if err != nil {
+		return "", fmt.Errorf("proposing checkpoint: %w", err)
+	}
+
+	// Wait for Raft consensus
+	if _, err := proposal.Wait(); err != nil {
+		return "", fmt.Errorf("waiting for checkpoint raft consensus: %w", err)
+	}
+
+	// Wait for checkpoint creation (resolved by handleCheckpointRequired)
+	result, err := fsmFuture.Wait()
+	if err != nil {
+		return "", fmt.Errorf("waiting for checkpoint creation: %w", err)
+	}
+
+	return result.CheckpointPath, nil
+}
+
 // TransferLeader initiates a leadership transfer to the given node.
 // It dispatches the request to the orchestrate loop (since rawNode is not thread-safe)
 // and then polls lastSoftState to confirm the leader has changed.
@@ -1166,11 +1270,11 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 }
 
 // Propose implements the Proposer interface.
-func (node *Node) Propose(proposal *Proposal) (*futures.Future, error) {
+func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
-	fsmFuture := futures.New()
+	fsmFuture := futures.New[state.ApplyResult]()
 	node.futures.Store(proposal.commandID, fsmFuture)
 
 	select {
@@ -1513,7 +1617,7 @@ func (node *Node) checkAndPromoteLearners() {
 }
 
 type Proposal struct {
-	*futures.Future
+	*futures.Future[any]
 	commandID uint64
 	data      []byte
 }
@@ -1522,7 +1626,7 @@ func NewProposal(commandID uint64, data []byte) *Proposal {
 	return &Proposal{
 		commandID: commandID,
 		data:      data,
-		Future:    futures.New(),
+		Future:    futures.New[any](),
 	}
 }
 

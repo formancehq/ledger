@@ -334,6 +334,10 @@ spec:
           # Generate ADVERTISE_ADDR from pod name (uses Raft transport port)
           ADVERTISE_ADDR="${POD_NAME}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${RAFT_PORT}"
 
+          {{- if .Values.config.restore }}
+          # Restore mode: no Raft bootstrap/join
+          CLUSTER_FLAG="--restore"
+          {{- else }}
           # Bootstrap/Join: pod-0 bootstraps, others join pod-0
           if [ "$POD_INDEX" = "0" ]; then
             CLUSTER_FLAG="--bootstrap"
@@ -341,6 +345,7 @@ spec:
             BOOTSTRAP_HOST="{{ include "ledger-v3-poc.fullname" . }}-0.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local"
             CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
           fi
+          {{- end }}
 
           OTEL_RESOURCE_ATTRIBUTES="service.node_id=$NODE_ID"
 

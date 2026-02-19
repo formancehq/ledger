@@ -282,6 +282,95 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 	return fsm, nil
 }
 
+// RecoverState recovers the FSM's in-memory counters from the Pebble data store.
+// This is called during restore bootstrap when the WAL snapshot doesn't carry
+// the FSM memory state (nextLedgerID, nextSequenceID, etc.).
+// After calling this method, CreateSnapshot will serialize the correct state.
+func (fsm *Machine) RecoverState() error {
+	// Recover nextLedgerID from max existing ledger ID
+	maxID, found, err := fsm.dataStore.GetMaxLedgerID()
+	if err != nil {
+		return fmt.Errorf("recovering max ledger ID: %w", err)
+	}
+	if found {
+		fsm.nextLedgerID = maxID + 1
+	}
+
+	// Recover nextSequenceID from last log sequence
+	lastSeq, err := fsm.dataStore.GetLastSequence()
+	if err != nil {
+		return fmt.Errorf("recovering last sequence: %w", err)
+	}
+	if lastSeq > 0 {
+		fsm.nextSequenceID = lastSeq + 1
+	}
+
+	// Recover lastLogHash from the last log entry
+	lastLog, err := fsm.dataStore.GetLastLog()
+	if err != nil {
+		return fmt.Errorf("recovering last log: %w", err)
+	}
+	if lastLog != nil {
+		fsm.lastLogHash = lastLog.Hash
+	}
+
+	// Recover nextAuditSequenceID from last audit entry
+	lastAuditSeq, err := fsm.dataStore.GetLastAuditSequence()
+	if err != nil {
+		return fmt.Errorf("recovering last audit sequence: %w", err)
+	}
+	if lastAuditSeq > 0 {
+		fsm.nextAuditSequenceID = lastAuditSeq + 1
+	}
+
+	fsm.logger.WithFields(map[string]any{
+		"nextLedgerID":        fsm.nextLedgerID,
+		"nextSequenceID":      fsm.nextSequenceID,
+		"nextAuditSequenceID": fsm.nextAuditSequenceID,
+		"hasLogHash":          len(fsm.lastLogHash) > 0,
+	}).Infof("Recovered FSM state from store")
+
+	return nil
+}
+
+// writeBoundariesToCheckpoint opens a checkpoint Pebble DB and writes all
+// dirty boundary keys into it so that backups contain up-to-date boundaries.
+// The dirty map is NOT cleared — boundaries stay dirty for the next generation rotation.
+func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
+	if len(fsm.dirtyBoundaryKeys) == 0 {
+		return nil
+	}
+
+	db, err := data.OpenDirect(checkpointPath, fsm.logger)
+	if err != nil {
+		return fmt.Errorf("opening checkpoint for boundary write: %w", err)
+	}
+
+	batch := db.NewBatch()
+	for keyStr, value := range fsm.dirtyBoundaryKeys {
+		canonicalKey := []byte(keyStr)
+		if err := fsm.Attrs.Boundary.SetBase(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
+			_ = batch.Cancel()
+			_ = db.Close()
+			return fmt.Errorf("setting boundary base: %w", err)
+		}
+		if err := fsm.Attrs.Boundary.DeleteOldest(batch, fsm.lastAppliedIndex, canonicalKey); err != nil {
+			_ = batch.Cancel()
+			_ = db.Close()
+			return fmt.Errorf("compacting old boundary: %w", err)
+		}
+	}
+	if err := batch.Commit(); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("committing boundaries to checkpoint: %w", err)
+	}
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("closing checkpoint after boundary write: %w", err)
+	}
+
+	return nil
+}
+
 func (fsm *Machine) LastPersistedIndex() (uint64, error) {
 	return fsm.lastPersistedIndex.Load(), nil
 }
@@ -355,6 +444,27 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			return nil, err
 		}
 
+		// CreateCheckpoint: enter maintenance mode to create a Pebble checkpoint.
+		// The OnCheckpointDone callback writes dirty boundaries into the checkpoint
+		// so that backups contain up-to-date data without polluting the live DB.
+		if cmd.CreateCheckpoint {
+			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.Id})
+
+			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, func(checkpointPath string) {
+				if err := fsm.writeBoundariesToCheckpoint(checkpointPath); err != nil {
+					fsm.logger.WithFields(map[string]any{
+						"error": err,
+					}).Errorf("Failed to write boundaries to checkpoint")
+				}
+			})
+		}
+
+		// Skip applyProposal for system-only proposals with no orders
+		if len(cmd.Orders) == 0 {
+			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.Id})
+			continue
+		}
+
 		result, configChanged, hasArchiveRequests, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
 			return nil, err
@@ -371,34 +481,13 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		// Commit the batch so the ClosePeriod state is persisted,
 		// then signal the caller to create a Pebble checkpoint.
 		if sealReqBase := fsm.checkClosePeriod(result); sealReqBase != nil {
-			if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
-				return nil, fmt.Errorf("setting applied index: %w", err)
-			}
-			if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
-				return nil, fmt.Errorf("setting last applied timestamp: %w", err)
-			}
-			if err := batch.Commit(); err != nil {
-				return nil, fmt.Errorf("committing batch at ClosePeriod: %w", err)
-			}
-			fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
-			if needsArchiveDispatch {
-				fsm.dispatchArchiveRequests()
-			}
-
-			ret.CheckpointRequired = true
-			if i+1 < len(entries) {
-				ret.RemainingEntries = make([]raftpb.Entry, len(entries[i+1:]))
-				copy(ret.RemainingEntries, entries[i+1:])
-			}
-			ret.OnCheckpointDone = func(checkpointPath string) {
+			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, func(checkpointPath string) {
 				sealReqBase.CheckpointPath = checkpointPath
 				select {
 				case fsm.sealRequestCh <- *sealReqBase:
 				default:
 				}
-			}
-
-			return ret, nil
+			})
 		}
 
 	}
@@ -425,6 +514,40 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	if eventsConfigChanged {
 		fsm.eventNotifier.NotifyConfigChanged()
 	}
+
+	return ret, nil
+}
+
+// commitAndRequestCheckpoint commits the current batch, stores remaining entries,
+// and returns with CheckpointRequired = true. This is shared by CreateCheckpoint
+// (backup checkpoint) and ClosePeriod (seal checkpoint).
+func (fsm *Machine) commitAndRequestCheckpoint(
+	batch *data.Batch,
+	ret *ApplyEntriesResult,
+	remaining []raftpb.Entry,
+	needsArchiveDispatch bool,
+	onCheckpointDone func(checkpointPath string),
+) (*ApplyEntriesResult, error) {
+	if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
+		return nil, fmt.Errorf("setting applied index: %w", err)
+	}
+	if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
+		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
+	}
+	if err := batch.Commit(); err != nil {
+		return nil, fmt.Errorf("committing batch for checkpoint: %w", err)
+	}
+	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+	if needsArchiveDispatch {
+		fsm.dispatchArchiveRequests()
+	}
+
+	ret.CheckpointRequired = true
+	if len(remaining) > 0 {
+		ret.RemainingEntries = make([]raftpb.Entry, len(remaining))
+		copy(ret.RemainingEntries, remaining)
+	}
+	ret.OnCheckpointDone = onCheckpointDone
 
 	return ret, nil
 }
@@ -1427,9 +1550,10 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 }
 
 type ApplyResult struct {
-	ProposalID uint64
-	Logs       []*commonpb.Log
-	Error      error
+	ProposalID     uint64
+	Logs           []*commonpb.Log
+	Error          error
+	CheckpointPath string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
 }
 
 // ApplyEntriesResult is the structured return value of ApplyEntries.

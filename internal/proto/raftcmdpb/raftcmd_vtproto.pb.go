@@ -557,6 +557,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.Id = m.Id
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
+	r.CreateCheckpoint = m.CreateCheckpoint
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -2183,6 +2184,9 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 				return false
 			}
 		}
+	}
+	if this.CreateCheckpoint != that.CreateCheckpoint {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -4544,6 +4548,16 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CreateCheckpoint {
+		i--
+		if m.CreateCheckpoint {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
 	if len(m.EventsSinkUpdates) > 0 {
 		for iNdEx := len(m.EventsSinkUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.EventsSinkUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -6871,6 +6885,9 @@ func (m *Proposal) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.CreateCheckpoint {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -10681,6 +10698,26 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateCheckpoint", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.CreateCheckpoint = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
