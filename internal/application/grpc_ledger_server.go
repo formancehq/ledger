@@ -252,6 +252,23 @@ func auditEntryMatchesLedger(entry *auditpb.AuditEntry, ledger string) bool {
 	return false
 }
 
+func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
+	sinks, err := impl.store.LoadAllSinkConfigs()
+	if err != nil {
+		return nil, fmt.Errorf("loading sink configs: %w", err)
+	}
+
+	statuses, err := impl.store.LoadAllSinkStatuses()
+	if err != nil {
+		return nil, fmt.Errorf("loading sink statuses: %w", err)
+	}
+
+	return &servicepb.GetEventsSinksResponse{
+		Sinks:        sinks,
+		SinkStatuses: statuses,
+	}, nil
+}
+
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {
 	servicepb.RegisterBucketServiceServer(server, ledgerServiceServer)
 }

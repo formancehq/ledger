@@ -288,6 +288,94 @@ func (b *Batch) DeleteAllSigningKeys() error {
 	)
 }
 
+// SaveSinkConfig stores a per-sink configuration in the batch.
+// Key: [0x0E][name] → SinkConfig protobuf.
+func (b *Batch) SaveSinkConfig(config *commonpb.SinkConfig) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	data, err := b.marshalProto(config)
+	if err != nil {
+		return fmt.Errorf("marshaling sink config: %w", err)
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixEventsConfig).
+		PutString(config.Name)
+
+	if err := b.batch.Set(b.KeyBuilder.Build(), data, pebble.NoSync); err != nil {
+		return fmt.Errorf("saving sink config: %w", err)
+	}
+	return nil
+}
+
+// DeleteSinkConfig removes a per-sink configuration from the batch.
+func (b *Batch) DeleteSinkConfig(name string) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixEventsConfig).
+		PutString(name)
+
+	if err := b.batch.Delete(b.KeyBuilder.Build(), pebble.NoSync); err != nil {
+		return fmt.Errorf("deleting sink config: %w", err)
+	}
+	return nil
+}
+
+// SetSinkCursor writes a per-sink events cursor to the batch (Raft-replicated).
+func (b *Batch) SetSinkCursor(sinkName string, sequence uint64) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixSinkCursor).
+		PutString(sinkName)
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], sequence)
+	if err := b.batch.Set(b.KeyBuilder.Build(), buf[:], pebble.NoSync); err != nil {
+		return fmt.Errorf("setting sink cursor: %w", err)
+	}
+	return nil
+}
+
+// SetSinkStatus writes a per-sink status to the batch (Raft-replicated).
+func (b *Batch) SetSinkStatus(status *commonpb.SinkStatus) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixSinkStatus).
+		PutString(status.SinkName)
+
+	data, err := b.marshalProto(status)
+	if err != nil {
+		return fmt.Errorf("marshaling sink status: %w", err)
+	}
+
+	if err := b.batch.Set(b.KeyBuilder.Build(), data, pebble.NoSync); err != nil {
+		return fmt.Errorf("setting sink status: %w", err)
+	}
+	return nil
+}
+
+// ClearSinkStatus removes a per-sink status from the batch.
+func (b *Batch) ClearSinkStatus(sinkName string) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	b.KeyBuilder.PutByte(keyPrefixSinkStatus).
+		PutString(sinkName)
+
+	if err := b.batch.Delete(b.KeyBuilder.Build(), pebble.NoSync); err != nil {
+		return fmt.Errorf("clearing sink status: %w", err)
+	}
+	return nil
+}
+
 // DeleteRange deletes all keys in the range [start, end).
 func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
 	return b.batch.DeleteRange(start, end, options)

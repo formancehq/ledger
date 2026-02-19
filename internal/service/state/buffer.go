@@ -38,10 +38,12 @@ type Buffered struct {
 	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
 	IdempotencyKeys     *attributes.DerivedKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
 	References          *attributes.DerivedKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	SinkConfigs         *attributes.DerivedKeyStore[data.SinkConfigKey, *commonpb.SinkConfig]
 	TransactionsUpdates        map[data.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs                []*commonpb.Log
 	pendingSigningKeyUpdates   []signingKeyUpdate
 	pendingSigningConfigUpdate *signingConfigUpdate
+	sinkConfigChanged          bool
 }
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
@@ -219,6 +221,21 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 
+	sinkUpdates, sinkDeletions, err := b.SinkConfigs.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge sink configs: %w", err)
+	}
+	for _, update := range sinkUpdates {
+		if err := batch.SaveSinkConfig(update.New); err != nil {
+			return fmt.Errorf("saving sink config %q: %w", update.Key.Name, err)
+		}
+	}
+	for _, deletion := range sinkDeletions {
+		if err := batch.DeleteSinkConfig(deletion.Key.Name); err != nil {
+			return fmt.Errorf("deleting sink config %q: %w", deletion.Key.Name, err)
+		}
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
@@ -243,6 +260,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
+		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
 	}
 }
@@ -343,6 +361,28 @@ func (b *Buffered) SetRequireSignatures(require bool) {
 	b.pendingSigningConfigUpdate = &signingConfigUpdate{
 		requireSignatures: require,
 	}
+}
+
+func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+	cfg, err := b.SinkConfigs.Get(data.SinkConfigKey{Name: name})
+	if err != nil {
+		return nil, nil
+	}
+	return cfg, nil
+}
+
+func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
+	b.SinkConfigs.Put(data.SinkConfigKey{Name: config.Name}, config)
+	b.sinkConfigChanged = true
+}
+
+func (b *Buffered) RemoveSinkConfig(name string) {
+	b.SinkConfigs.Delete(data.SinkConfigKey{Name: name})
+	b.sinkConfigChanged = true
+}
+
+func (b *Buffered) HasPendingSinkChanges() bool {
+	return b.sinkConfigChanged
 }
 
 func (b *Buffered) GetNextLedgerID() uint32 {

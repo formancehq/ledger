@@ -63,6 +63,9 @@ var (
 	keyPrefixAudit         byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
 	keyPrefixSigningKey    byte = 0x0B // [keyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
 	keyPrefixSigningConfig byte = 0x0C // [keyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
+	keyPrefixSinkCursor   byte = 0x0D // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
+	keyPrefixEventsConfig byte = 0x0E // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
+	keyPrefixSinkStatus   byte = 0x0F // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -730,6 +733,113 @@ func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEn
 	return newCursor[*auditpb.AuditEntry](iter), nil
 }
 
+// GetSinkCursor returns the last successfully emitted log sequence for a named sink.
+// Returns 0 if no cursor has been persisted yet.
+func (s *Store) GetSinkCursor(sinkName string) (uint64, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixSinkCursor).
+		PutString(sinkName)
+
+	get, closer, err := s.getDB().Get(kb.Build())
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("reading sink cursor: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	if len(get) < 8 {
+		return 0, nil
+	}
+
+	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+// GetSinkStatus returns the operational status for a named sink.
+// Returns nil (not error) if no status has been persisted yet.
+func (s *Store) GetSinkStatus(sinkName string) (*commonpb.SinkStatus, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixSinkStatus).
+		PutString(sinkName)
+
+	value, closer, err := s.getDB().Get(kb.Build())
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading sink status: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	status := &commonpb.SinkStatus{}
+	if err := proto.Unmarshal(value, status); err != nil {
+		return nil, fmt.Errorf("unmarshaling sink status: %w", err)
+	}
+	return status, nil
+}
+
+// LoadAllSinkStatuses returns all persisted sink statuses by scanning the [0x0F] prefix.
+func (s *Store) LoadAllSinkStatuses() ([]*commonpb.SinkStatus, error) {
+	lowerBound := []byte{keyPrefixSinkStatus}
+	upperBound := []byte{keyPrefixSinkStatus + 1}
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for sink statuses: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var statuses []*commonpb.SinkStatus
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading sink status value: %w", err)
+		}
+
+		status := &commonpb.SinkStatus{}
+		if err := proto.Unmarshal(value, status); err != nil {
+			return nil, fmt.Errorf("unmarshaling sink status: %w", err)
+		}
+		statuses = append(statuses, status)
+	}
+
+	return statuses, nil
+}
+
+// ListLogsSince returns a cursor over global log entries after the given sequence.
+// Pass afterSequence=0 to return all log entries.
+func (s *Store) ListLogsSince(afterSequence uint64) (Cursor[*commonpb.Log], error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixLog)
+	if afterSequence > 0 {
+		kb.PutUInt64(afterSequence + 1)
+	}
+	lowerBound := kb.Build()
+
+	kb2 := NewKeyBuilder()
+	kb2.PutByte(keyPrefixLog).
+		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	upperBound := kb2.Build()
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for logs: %w", err)
+	}
+
+	return newCursor[*commonpb.Log](iter), nil
+}
+
 // cursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
 type cursor[T proto.Message] struct {
 	iter    *pebble.Iterator
@@ -833,6 +943,60 @@ func (s *Store) LoadSigningConfig() (bool, error) {
 		return false, nil
 	}
 	return value[0] == 0x01, nil
+}
+
+// LoadSinkConfig loads a single sink configuration by name from Pebble.
+// Returns nil (not error) if the sink does not exist.
+func (s *Store) LoadSinkConfig(name string) (*commonpb.SinkConfig, error) {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixEventsConfig).
+		PutString(name)
+
+	value, closer, err := s.getDB().Get(kb.Build())
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("loading sink config %q: %w", name, err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	cfg := &commonpb.SinkConfig{}
+	if err := proto.Unmarshal(value, cfg); err != nil {
+		return nil, fmt.Errorf("unmarshaling sink config %q: %w", name, err)
+	}
+	return cfg, nil
+}
+
+// LoadAllSinkConfigs loads all sink configurations by scanning the [0x0E] prefix.
+func (s *Store) LoadAllSinkConfigs() ([]*commonpb.SinkConfig, error) {
+	lowerBound := []byte{keyPrefixEventsConfig}
+	upperBound := []byte{keyPrefixEventsConfig + 1}
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for sink configs: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var configs []*commonpb.SinkConfig
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading sink config value: %w", err)
+		}
+
+		cfg := &commonpb.SinkConfig{}
+		if err := proto.Unmarshal(value, cfg); err != nil {
+			return nil, fmt.Errorf("unmarshaling sink config: %w", err)
+		}
+		configs = append(configs, cfg)
+	}
+
+	return configs, nil
 }
 
 // ListLedgers returns a cursor over all registered ledgers.

@@ -93,9 +93,8 @@ func (a *AttributeCache[T]) Rotate() {
 	a.gen0.Store(newShardedMap[T]())
 }
 
-// reset clears all data in both generations.
-// Called only from Cache.Reset under Cache.mu.
-func (a *AttributeCache[T]) reset() {
+// Reset clears all data in both generations.
+func (a *AttributeCache[T]) Reset() {
 	a.gen0.Store(newShardedMap[T]())
 	a.gen1.Store(newShardedMap[T]())
 }
@@ -161,6 +160,7 @@ type Cache struct {
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
+	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
 
@@ -186,6 +186,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.References.Rotate()
 	c.Ledgers.Rotate()
 	c.Boundaries.Rotate()
+	c.SinkConfigs.Rotate()
 	c.BaseIndex.Rotate(index)
 	c.currentGeneration.Store(newGeneration)
 
@@ -199,14 +200,15 @@ func (c *Cache) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.Volumes.reset()
-	c.AccountMetadata.reset()
-	c.LedgerMetadata.reset()
-	c.Reversions.reset()
-	c.IdempotencyKeys.reset()
-	c.References.reset()
-	c.Ledgers.reset()
-	c.Boundaries.reset()
+	c.Volumes.Reset()
+	c.AccountMetadata.Reset()
+	c.LedgerMetadata.Reset()
+	c.Reversions.Reset()
+	c.IdempotencyKeys.Reset()
+	c.References.Reset()
+	c.Ledgers.Reset()
+	c.Boundaries.Reset()
+	c.SinkConfigs.Reset()
 	c.BaseIndex = newDualGen[uint64](0, 0)
 	c.currentGeneration.Store(0)
 }
@@ -280,6 +282,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "ledgers")))
 			o.ObserveInt64(sizeGauge, int64(c.Boundaries.Size()),
 				metric.WithAttributes(attribute.String("type", "boundaries")))
+			o.ObserveInt64(sizeGauge, int64(c.SinkConfigs.Size()),
+				metric.WithAttributes(attribute.String("type", "sink_configs")))
 			return nil
 		},
 		sizeGauge,
@@ -342,6 +346,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
+	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
 
 	if err := ret.initMetrics(m); err != nil {
 		return nil, fmt.Errorf("initializing cache metrics: %w", err)

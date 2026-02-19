@@ -166,6 +166,12 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`signing_revoke_key.go`** : `signing revoke-key` command to revoke a signing key via gRPC
 - **`signing_require.go`** : `signing require` command to enable/disable mandatory signatures via gRPC
 
+**Events commands:**
+- **`events.go`** : Parent command for event sink management
+- **`events_list.go`** : `events list` command to list all sink configs and statuses via gRPC
+- **`events_add_sink.go`** : `events add-sink` command to add or upsert a sink config via gRPC
+- **`events_remove_sink.go`** : `events remove-sink` command to remove a sink config via gRPC
+
 **Shared files:**
 - **`common.go`** : Shared functions (gRPC client creation, context management, formatting utilities)
 
@@ -383,6 +389,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `misc/proto/snapshot.proto` - Snapshot service definitions
   - `misc/proto/audit.proto` - Audit log messages (AuditEntry, AuditSuccess, AuditFailure)
   - `misc/proto/signature.proto` - Request signature (RequestSignature: key_id, signature, signed_payload)
+  - `misc/proto/events.proto` - Domain event types (Event, EventType)
 - **Generated code**:
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
   - `internal/proto/commonpb/` - Common types (common.pb.go, common_vtproto.pb.go, etc.)
@@ -392,6 +399,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
   - `internal/proto/signaturepb/` - Signature types (signature.pb.go, signature_vtproto.pb.go)
   - `internal/proto/snapshotpb/` - Snapshot service (snapshot.pb.go, snapshot_grpc.pb.go, snapshot_vtproto.pb.go)
   - `internal/proto/auditpb/` - Audit log types (audit.pb.go, audit_vtproto.pb.go)
+  - `internal/proto/eventspb/` - Domain event types (events.pb.go, events_vtproto.pb.go)
 
 ### Regenerating Code
 

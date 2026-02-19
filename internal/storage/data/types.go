@@ -210,6 +210,15 @@ func (lk *LedgerKey) Unmarshal(data []byte) error {
 
 var _ CanonicalBytes = (*LedgerKey)(nil)
 
+// SinkConfigKey uniquely identifies an event sink by name.
+type SinkConfigKey struct {
+	Name string
+}
+
+func (k SinkConfigKey) Bytes() []byte {
+	return []byte(k.Name)
+}
+
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte

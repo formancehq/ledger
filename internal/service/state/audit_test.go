@@ -36,7 +36,7 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *data.S
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, nil, auditEnabled)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, nil, auditEnabled, NoopEventNotifier{})
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs

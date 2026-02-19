@@ -11,6 +11,11 @@ type ConfChangeEvent struct {
 	Context    []byte
 }
 
+// LeadershipChangeEvent is emitted when the node's leadership status changes.
+type LeadershipChangeEvent struct {
+	IsLeader bool
+}
+
 // EventHandler is a callback invoked synchronously for each emitted event.
 // Consumers use a type switch on the event to handle concrete types.
 type EventHandler func(event any)

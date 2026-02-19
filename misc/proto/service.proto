@@ -34,6 +34,8 @@ service BucketService {
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
   // ListAuditEntries streams audit trail entries (success and failure)
   rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
+  // GetEventsSinks returns the current per-sink configurations and statuses
+  rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
 }
 
 // ============================================================================
@@ -103,8 +105,20 @@ message Request {
     RegisterSigningKeyRequest register_signing_key = 6;
     RevokeSigningKeyRequest revoke_signing_key = 7;
     SetSigningConfigRequest set_signing_config = 8;
+    AddEventsSinkRequest add_events_sink = 9;
+    RemoveEventsSinkRequest remove_events_sink = 10;
   }
   signature.RequestSignature signature = 5;
+}
+
+// AddEventsSinkRequest adds or updates a named sink configuration.
+message AddEventsSinkRequest {
+  common.SinkConfig config = 1;
+}
+
+// RemoveEventsSinkRequest removes a named sink configuration.
+message RemoveEventsSinkRequest {
+  string name = 1;
 }
 
 // ============================================================================
@@ -325,4 +339,15 @@ message ListAuditEntriesRequest {
   optional uint64 after_sequence = 1;
   string ledger = 2;
   bool failures_only = 3;
+}
+
+// ============================================================================
+// Events Sinks Messages
+// ============================================================================
+
+message GetEventsSinksRequest {}
+
+message GetEventsSinksResponse {
+  repeated common.SinkConfig sinks = 1;
+  repeated common.SinkStatus sink_statuses = 2;
 }

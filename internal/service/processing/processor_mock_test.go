@@ -54,6 +54,18 @@ func (mr *MockStoreMockRecorder) AddSigningKey(keyID, publicKey any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSigningKey", reflect.TypeOf((*MockStore)(nil).AddSigningKey), keyID, publicKey)
 }
 
+// AddSinkConfig mocks base method.
+func (m *MockStore) AddSinkConfig(config *commonpb.SinkConfig) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AddSinkConfig", config)
+}
+
+// AddSinkConfig indicates an expected call of AddSinkConfig.
+func (mr *MockStoreMockRecorder) AddSinkConfig(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSinkConfig", reflect.TypeOf((*MockStore)(nil).AddSinkConfig), config)
+}
+
 // AddTransactionUpdate mocks base method.
 func (m *MockStore) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
 	m.ctrl.T.Helper()
@@ -207,6 +219,21 @@ func (m *MockStore) GetReverted(key data.TransactionKey) (bool, error) {
 func (mr *MockStoreMockRecorder) GetReverted(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReverted", reflect.TypeOf((*MockStore)(nil).GetReverted), key)
+}
+
+// GetSinkConfig mocks base method.
+func (m *MockStore) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSinkConfig", name)
+	ret0, _ := ret[0].(*commonpb.SinkConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSinkConfig indicates an expected call of GetSinkConfig.
+func (mr *MockStoreMockRecorder) GetSinkConfig(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSinkConfig", reflect.TypeOf((*MockStore)(nil).GetSinkConfig), name)
 }
 
 // GetTransactionReference mocks base method.
@@ -373,6 +400,18 @@ func (m *MockStore) RemoveSigningKey(keyID string) {
 func (mr *MockStoreMockRecorder) RemoveSigningKey(keyID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSigningKey", reflect.TypeOf((*MockStore)(nil).RemoveSigningKey), keyID)
+}
+
+// RemoveSinkConfig mocks base method.
+func (m *MockStore) RemoveSinkConfig(name string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RemoveSinkConfig", name)
+}
+
+// RemoveSinkConfig indicates an expected call of RemoveSinkConfig.
+func (mr *MockStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockStore)(nil).RemoveSinkConfig), name)
 }
 
 // SetLastLogHash mocks base method.

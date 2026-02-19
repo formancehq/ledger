@@ -13,6 +13,7 @@ require (
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/holiman/uint256 v1.3.2
 	github.com/invopop/jsonschema v0.13.0
+	github.com/nats-io/nats.go v1.44.0
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.3
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
@@ -150,7 +151,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/nats-io/nats.go v1.44.0 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect

@@ -163,6 +163,8 @@ message LogPayload {
     RegisterSigningKeyLog register_signing_key = 4;
     RevokeSigningKeyLog revoke_signing_key = 5;
     SetSigningConfigLog set_signing_config = 6;
+    AddedEventsSinkLog added_events_sink = 7;
+    RemovedEventsSinkLog removed_events_sink = 8;
   }
 }
 
@@ -184,6 +186,46 @@ message RevokeSigningKeyLog {
 // SetSigningConfigLog records a signing configuration change.
 message SetSigningConfigLog {
   bool require_signatures = 1;
+}
+
+// AddedEventsSinkLog records the addition (or update) of a named sink config.
+message AddedEventsSinkLog {
+  SinkConfig config = 1;
+}
+
+// RemovedEventsSinkLog records the removal of a named sink config.
+message RemovedEventsSinkLog {
+  string name = 1;
+}
+
+// SinkConfig wraps a single sink configuration with per-sink settings.
+message SinkConfig {
+  string name = 1;  // Stable identifier for per-sink cursor and status keys
+  oneof type {
+    NatsSinkConfig nats = 2;
+  }
+  string format = 3;          // "json" or "protobuf" (default: "json")
+  int32 batch_size = 4;       // Max events per batch (default: 64)
+  int64 batch_delay_ms = 5;   // Max delay before flush in ms (default: 10)
+}
+
+// SinkStatus tracks per-sink operational state (replicated via Raft).
+message SinkStatus {
+  string sink_name = 1;
+  uint64 cursor = 2;         // Last published sequence
+  SinkError error = 3;       // Most recent error (nil = healthy)
+}
+
+// SinkError records a sink failure.
+message SinkError {
+  string message = 1;
+  Timestamp occurred_at = 2;
+}
+
+// NatsSinkConfig holds NATS JetStream sink configuration.
+message NatsSinkConfig {
+  string url = 1;
+  string topic = 2;
 }
 
 message CreateLedgerLog {

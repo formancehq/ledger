@@ -257,10 +257,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required idempotency keys, references, ledgers, and boundaries from orders (name-based)
+	// Step 1: Extract required idempotency keys, references, ledgers, boundaries, and sink configs from orders (name-based)
 	neededIdempotencyKeys := a.extractNeededIdempotencyKeys(orders)
 	neededLedgers := a.extractNeededLedgers(orders)
 	neededBoundaries := a.extractNeededBoundaries(orders)
+	neededSinkConfigs := a.extractNeededSinkConfigs(orders)
 	// References are extracted after ledger IDs are resolved (Phase 2.5)
 
 	// Step 2: Read nextIndex atomically (optimistic snapshot for preload boundary).
@@ -635,6 +636,60 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	// Phase 4: Preload sink configs for AddEventsSink/RemoveEventsSink
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededSinkConfigs)),
+		metric.WithAttributes(attribute.String("type", "sink_configs")))
+	for sinkKey := range neededSinkConfigs {
+		canonicalKey := sinkKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+
+		if !a.cache.SinkConfigs.IsGuaranteedInCache(nextIndex, id) {
+			preloadStart := time.Now()
+			result, err := a.loaders.SinkConfigs.LoadOrWait(id, boundary, func() (*commonpb.SinkConfig, error) {
+				return a.store.LoadSinkConfig(sinkKey.Name)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("loading sink config %q from store: %w", sinkKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.SinkConfigs = append(loadedKeys.SinkConfigs, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "sink_configs")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "sink_configs")))
+			}
+
+			// Only send preload if the sink config exists in the store
+			if result.Value != nil {
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"name":      sinkKey.Name,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading sink config from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_SinkConfig{
+						SinkConfig: &raftcmdpb.PreloadSinkConfig{
+							Id:     attrID,
+							Config: result.Value,
+						},
+					},
+				})
+			}
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "sink_configs")))
+		}
+	}
+
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
 	defer func() {
@@ -964,6 +1019,22 @@ func (a *Admission) extractNeededIdempotencyKeys(orders []*raftcmdpb.Order) map[
 	return neededKeys
 }
 
+// extractNeededSinkConfigs extracts all sink config keys that need to be checked.
+// AddEventsSink needs to detect if a sink with that name already exists.
+// RemoveEventsSink needs to verify the sink exists before removal.
+func (a *Admission) extractNeededSinkConfigs(orders []*raftcmdpb.Order) map[data.SinkConfigKey]struct{} {
+	needed := make(map[data.SinkConfigKey]struct{})
+	for _, order := range orders {
+		switch orderType := order.Type.(type) {
+		case *raftcmdpb.Order_AddEventsSink:
+			needed[data.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
+		case *raftcmdpb.Order_RemoveEventsSink:
+			needed[data.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+		}
+	}
+	return needed
+}
+
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order
 func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
@@ -1007,6 +1078,18 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		order.Type = &raftcmdpb.Order_SetSigningConfig{
 			SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
 				RequireSignatures: reqType.SetSigningConfig.RequireSignatures,
+			},
+		}
+	case *servicepb.Request_AddEventsSink:
+		order.Type = &raftcmdpb.Order_AddEventsSink{
+			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+				Config: reqType.AddEventsSink.Config,
+			},
+		}
+	case *servicepb.Request_RemoveEventsSink:
+		order.Type = &raftcmdpb.Order_RemoveEventsSink{
+			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+				Name: reqType.RemoveEventsSink.Name,
 			},
 		}
 	default:

@@ -25,6 +25,18 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// EventNotifier is notified by the FSM when logs are committed or events config changes.
+type EventNotifier interface {
+	NotifyLogsCommitted()
+	NotifyConfigChanged()
+}
+
+// NoopEventNotifier is a no-op implementation of EventNotifier for use in tests.
+type NoopEventNotifier struct{}
+
+func (NoopEventNotifier) NotifyLogsCommitted() {}
+func (NoopEventNotifier) NotifyConfigChanged() {}
+
 type Machine struct {
 	logger    logging.Logger
 	dataStore *data.Store
@@ -43,6 +55,7 @@ type Machine struct {
 	References      *attributes.KeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
 	Ledgers         *attributes.KeyStore[data.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries      *attributes.KeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs     *attributes.KeyStore[data.SinkConfigKey, *commonpb.SinkConfig]
 
 	nextLedgerID        uint32
 	nextSequenceID      uint64
@@ -78,9 +91,13 @@ type Machine struct {
 	rotationKeysCompacted     metric.Int64Counter
 	batchCommitHistogram      metric.Int64Histogram
 	lastPersistedIndex        atomic.Uint64
+
+	// eventNotifier is notified after new logs are committed and when events
+	// config changes. Used by the event Manager.
+	eventNotifier EventNotifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool, eventNotifier EventNotifier) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -167,6 +184,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		auditEnabled:                auditEnabled,
+		eventNotifier:               eventNotifier,
 		keyStore:                    ks,
 		Attrs:                       attrs,
 		Cache:                       cache,
@@ -201,6 +219,10 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		Boundaries: attributes.NewKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries](
 			attributes.DefaultSeeds,
 			cache.Boundaries,
+		),
+		SinkConfigs: attributes.NewKeyStore[data.SinkConfigKey, *commonpb.SinkConfig](
+			attributes.DefaultSeeds,
+			cache.SinkConfigs,
 		),
 		nextLedgerID:        1,
 		nextSequenceID:      1,
@@ -238,6 +260,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	cmd := &raftcmdpb.Proposal{}
 	ret := make([]ApplyResult, 0, len(entries))
+	eventsConfigChanged := false
 
 	for _, entry := range entries {
 		if entry.Index <= fsm.lastAppliedIndex {
@@ -285,9 +308,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			return nil, err
 		}
 
-		result, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
+		result, configChanged, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
 			return nil, err
+		}
+		if configChanged {
+			eventsConfigChanged = true
 		}
 		ret = append(ret, *result)
 	}
@@ -305,6 +331,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+
+	// Notify event Manager that new logs are available.
+	fsm.eventNotifier.NotifyLogsCommitted()
+	if eventsConfigChanged {
+		fsm.eventNotifier.NotifyConfigChanged()
+	}
 
 	return ret, nil
 }
@@ -574,6 +606,32 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	// Helper function to put a preloaded sink config into a cache generation
+	putInCacheSinkConfig := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.SinkConfig]],
+		attrID *raftcmdpb.AttributeID,
+		value *commonpb.SinkConfig,
+	) *commonpb.SinkConfig {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id":   id.Hex(),
+			"name": value.Name,
+		}).Debugf("Preload sink config")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[*commonpb.SinkConfig]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	// todo: handle metadata preload
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.Type.(type) {
@@ -635,6 +693,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 			} else {
 				putInCacheReferenceValue(fsm.Cache.References.Gen0(), preloadType.TransactionReference.Id, referenceValue)
 			}
+
+		case *raftcmdpb.Preload_SinkConfig:
+			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
+				value := putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
+				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, value)
+			} else {
+				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
+			}
 		}
 	}
 
@@ -656,9 +722,36 @@ func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Tim
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, error) {
+	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
+	for _, update := range proposal.EventsSinkUpdates {
+		if update.Cursor > 0 {
+			if err := batch.SetSinkCursor(update.SinkName, update.Cursor); err != nil {
+				return nil, false, fmt.Errorf("setting sink cursor: %w", err)
+			}
+		}
+		if update.ClearError {
+			if err := batch.ClearSinkStatus(update.SinkName); err != nil {
+				return nil, false, fmt.Errorf("clearing sink status: %w", err)
+			}
+		} else if update.Error != nil {
+			if err := batch.SetSinkStatus(&commonpb.SinkStatus{
+				SinkName: update.SinkName,
+				Cursor:   update.Cursor,
+				Error:    update.Error,
+			}); err != nil {
+				return nil, false, fmt.Errorf("setting sink status: %w", err)
+			}
+		}
+	}
+
+	// If this proposal only carries sink updates, skip order processing
+	if len(proposal.Orders) == 0 {
+		return &ApplyResult{ProposalID: proposal.Id}, false, nil
+	}
+
 	if err := fsm.Preload(proposal.Preload); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
@@ -683,14 +776,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 			fsm.nextAuditSequenceID++
 			if appendErr := batch.AppendAuditEntries(auditEntry); appendErr != nil {
-				return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+				return nil, false, fmt.Errorf("appending audit entry for failure: %w", appendErr)
 			}
 		}
 
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: err},
-		}, nil
+		}, false, nil
 	}
 
 	// Extract created logs and resolve reference sequences
@@ -709,7 +802,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			// Limit data store interface to only writes to prevent any error regarding this point
 			log, err := fsm.dataStore.GetLogBySequence(refSeq)
 			if err != nil {
-				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)
+				return nil, false, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)
 			}
 			responseLogs = append(responseLogs, log)
 		}
@@ -717,8 +810,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Add only created logs to buffer and merge
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
+	configChanged := buffer.HasPendingSinkChanges()
 	if err := buffer.Merge(raftIndex, batch); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// SUCCESS: write audit entry
@@ -736,7 +830,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 		fsm.nextAuditSequenceID++
 		if err := batch.AppendAuditEntries(auditEntry); err != nil {
-			return nil, fmt.Errorf("appending audit entry for success: %w", err)
+			return nil, false, fmt.Errorf("appending audit entry for success: %w", err)
 		}
 	}
 
@@ -745,7 +839,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	return &ApplyResult{
 		ProposalID: proposal.Id,
 		Logs:       responseLogs,
-	}, nil
+	}, configChanged, nil
 }
 
 // CreateSnapshot creates a snapshot of the Machine state
@@ -1071,6 +1165,9 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	if err := fsm.reloadSigningKeysFromStore(); err != nil {
 		return 0, fmt.Errorf("reloading signing keys after sync: %w", err)
 	}
+
+	// Sink configs are not reloaded at sync time — they live in the cache
+	// and will be preloaded on demand by the admission layer.
 
 	fsm.lastAppliedIndex = fsm.snapshotIndex
 

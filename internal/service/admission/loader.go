@@ -128,6 +128,7 @@ type Loaders struct {
 	References      *AttributeLoader[*commonpb.TransactionReferenceValue]
 	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
 	Boundaries      *AttributeLoader[*raftcmdpb.LedgerBoundaries]
+	SinkConfigs     *AttributeLoader[*commonpb.SinkConfig]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -139,6 +140,7 @@ func NewLoaders() *Loaders {
 		References:      NewAttributeLoader[*commonpb.TransactionReferenceValue](),
 		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
 		Boundaries:      NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
+		SinkConfigs:     NewAttributeLoader[*commonpb.SinkConfig](),
 	}
 }
 
@@ -151,6 +153,7 @@ type LoadedKeysTracker struct {
 	References      []attributes.U128
 	Ledgers         []attributes.U128
 	Boundaries      []attributes.U128
+	SinkConfigs     []attributes.U128
 }
 
 // NewLoadedKeysTracker creates a new empty tracker.
@@ -177,5 +180,8 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	}
 	for _, key := range t.Boundaries {
 		loaders.Boundaries.MarkApplied(key)
+	}
+	for _, key := range t.SinkConfigs {
+		loaders.SinkConfigs.MarkApplied(key)
 	}
 }

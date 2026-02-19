@@ -140,11 +140,12 @@ func NewNode(
 	attrs *attributes.Attributes,
 	ks *keystore.KeyStore,
 	auditEnabled bool,
+	eventNotifier state.EventNotifier,
 ) (*Node, error) {
 
 	cfg.SetDefaults()
 
-	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, ks, auditEnabled)
+	fsm, err := state.NewMachine(logger, store, meter, cache, attrs, cfg.RotationThreshold, ks, auditEnabled, eventNotifier)
 	if err != nil {
 		return nil, fmt.Errorf("creating Machine: %w", err)
 	}
@@ -554,10 +555,16 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 			// leadership loss
 			if actualNodeLastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
 				logger.Infof("Leadership lost")
+				if node.observer != nil {
+					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
+				}
 			}
 			// acquire leadership
 			if actualNodeLastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
 				node.logger.Infof("Leadership gained")
+				if node.observer != nil {
+					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
+				}
 			}
 		}
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
@@ -1304,6 +1311,7 @@ func (node *Node) SetObserver(obs *Observer) {
 	node.observer = obs
 }
 
+
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
@@ -1421,4 +1429,9 @@ func NewProposal(commandID uint64, data []byte) *Proposal {
 		data:      data,
 		Future:    futures.New(),
 	}
+}
+
+// Data returns the serialized proposal data.
+func (p *Proposal) Data() []byte {
+	return p.data
 }

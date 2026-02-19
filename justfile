@@ -50,8 +50,8 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
@@ -66,7 +66,8 @@ generate-proto:
         misc/proto/raftcmd.proto \
         misc/proto/snapshot.proto \
         misc/proto/audit.proto \
-        misc/proto/signature.proto
+        misc/proto/signature.proto \
+        misc/proto/events.proto
 
 # Docker builds are handled via Pulumi
 

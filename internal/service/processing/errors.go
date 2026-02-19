@@ -19,6 +19,8 @@ const (
 	ErrReasonNumscriptParseError          = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonValidation                   = "VALIDATION"
 	ErrReasonAuditDisabled                = "AUDIT_DISABLED"
+	ErrReasonSinkAlreadyExists            = "SINK_ALREADY_EXISTS"
+	ErrReasonSinkNotFound                 = "SINK_NOT_FOUND"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -133,6 +135,24 @@ type ErrBalanceNotPreloaded struct {
 
 func (e *ErrBalanceNotPreloaded) Error() string {
 	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+}
+
+// ErrSinkAlreadyExists is returned when adding a sink that already exists.
+type ErrSinkAlreadyExists struct {
+	Name string
+}
+
+func (e *ErrSinkAlreadyExists) Error() string {
+	return fmt.Sprintf("event sink already exists: %s", e.Name)
+}
+
+// ErrSinkNotFound is returned when removing a sink that does not exist.
+type ErrSinkNotFound struct {
+	Name string
+}
+
+func (e *ErrSinkNotFound) Error() string {
+	return fmt.Sprintf("event sink not found: %s", e.Name)
 }
 
 // ErrNumscriptParse is returned when a Numscript program has syntax errors.

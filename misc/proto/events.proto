@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package events;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/eventspb";
+
+import "common.proto";
+
+// ============================================================================
+// Event Types
+// ============================================================================
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  COMMITTED_TRANSACTION = 1;
+  REVERTED_TRANSACTION = 2;
+  SAVED_METADATA = 3;
+  DELETED_METADATA = 4;
+  CREATED_LEDGER = 5;
+  DELETED_LEDGER = 6;
+}
+
+// ============================================================================
+// Event
+// ============================================================================
+
+// Event represents a domain event derived from a committed global log entry.
+message Event {
+  EventType type = 1;
+  string ledger = 2;
+  common.Timestamp date = 3;
+  uint64 log_sequence = 4;
+  common.Log log = 5;
+}

@@ -33,6 +33,8 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		balanceNotFound              *processing.ErrBalanceNotFound
 		balanceNotPreloaded          *processing.ErrBalanceNotPreloaded
 		numscriptParse               *processing.ErrNumscriptParse
+		sinkAlreadyExists            *processing.ErrSinkAlreadyExists
+		sinkNotFound                 *processing.ErrSinkNotFound
 	)
 
 	switch {
@@ -103,6 +105,16 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		code = codes.InvalidArgument
 		reason = processing.ErrReasonNumscriptParseError
 		metadata = map[string]string{"details": numscriptParse.Details}
+
+	case errors.As(inner, &sinkAlreadyExists):
+		code = codes.AlreadyExists
+		reason = processing.ErrReasonSinkAlreadyExists
+		metadata = map[string]string{"name": sinkAlreadyExists.Name}
+
+	case errors.As(inner, &sinkNotFound):
+		code = codes.NotFound
+		reason = processing.ErrReasonSinkNotFound
+		metadata = map[string]string{"name": sinkNotFound.Name}
 
 	case errors.Is(inner, processing.ErrTargetRequired),
 		errors.Is(inner, processing.ErrMetadataKeyRequired),

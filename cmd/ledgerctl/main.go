@@ -41,6 +41,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newClusterCommand())
 	rootCmd.AddCommand(newAuditCommand())
 	rootCmd.AddCommand(newSigningCommand())
+	rootCmd.AddCommand(newEventsCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd

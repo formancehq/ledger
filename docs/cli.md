@@ -1179,3 +1179,65 @@ export SERVER=ledger.example.com:443
 export INSECURE=false
 ledgerctl ledgers list
 ```
+
+---
+
+## Event Sinks
+
+Manage event sinks (NATS, etc.) that receive domain events derived from the global log.
+
+### `events list`
+
+List all configured event sinks and their current status (cursor position, errors).
+
+```bash
+ledgerctl events list
+```
+
+**Aliases:** `ls`, `sinks`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+### `events add-sink`
+
+Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
+
+```bash
+# Add a NATS sink with default settings
+ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events
+
+# Add a sink with custom batch settings and protobuf format
+ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events \
+  --format protobuf --batch-size 128 --batch-delay-ms 50
+```
+
+**Aliases:** `add`, `upsert`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | *(required)* | Unique name for this sink |
+| `--nats-url` | *(required)* | NATS server URL |
+| `--nats-topic` | *(required)* | NATS topic/subject for events |
+| `--format` | `json` | Event serialization format (`json` or `protobuf`) |
+| `--batch-size` | `64` | Max events per batch |
+| `--batch-delay-ms` | `10` | Max delay before flush in ms |
+| `--timeout` | `10s` | Request timeout |
+
+### `events remove-sink`
+
+Remove a named event sink. If this is the last sink, event emission is implicitly disabled.
+
+```bash
+ledgerctl events remove-sink --name primary
+```
+
+**Aliases:** `rm`, `delete-sink`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | *(required)* | Name of the sink to remove |
+| `--timeout` | `10s` | Request timeout |
+
+See [Event System Architecture](architecture/events.md) for details on the event system design.

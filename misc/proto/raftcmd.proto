@@ -35,8 +35,18 @@ message Order {
     RegisterSigningKeyOrder register_signing_key = 6;
     RevokeSigningKeyOrder revoke_signing_key = 7;
     SetSigningConfigOrder set_signing_config = 8;
+    AddEventsSinkOrder add_events_sink = 9;
+    RemoveEventsSinkOrder remove_events_sink = 10;
   }
   signature.RequestSignature signature = 5;
+}
+
+message AddEventsSinkOrder {
+  common.SinkConfig config = 1;
+}
+
+message RemoveEventsSinkOrder {
+  string name = 1;
 }
 
 // Signing key management orders
@@ -111,6 +121,15 @@ message Proposal {
   repeated Order orders = 2;        // List of orders to execute atomically
   common.Timestamp date = 3;        // Creation date in UTC
   PreloadSet preload = 4;
+  repeated EventsSinkUpdate events_sink_updates = 5;  // Per-sink cursor and error updates (Raft-replicated)
+}
+
+// EventsSinkUpdate carries a per-sink cursor advance or error status change.
+message EventsSinkUpdate {
+  string sink_name = 1;
+  uint64 cursor = 2;              // New cursor position (0 = no change)
+  common.SinkError error = 3;     // Set error (nil = no change unless clear_error)
+  bool clear_error = 4;           // If true, clear any existing error
 }
 
 // ProposalResponse is the result of processing a proposal
@@ -178,6 +197,7 @@ message Preload {
      PreloadLedger ledger = 4;
      PreloadBoundary boundary = 5;
      PreloadTransactionReference transaction_reference = 6;
+     PreloadSinkConfig sink_config = 7;
   }
 }
 
@@ -211,6 +231,11 @@ message PreloadBoundary {
 message PreloadTransactionReference {
   AttributeID id = 1;
   uint64 transaction_id = 2;
+}
+
+message PreloadSinkConfig {
+  AttributeID id = 1;
+  common.SinkConfig config = 2;
 }
 
 // ============================================================================

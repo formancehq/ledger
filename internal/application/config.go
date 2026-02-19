@@ -17,15 +17,15 @@ type HealthConfig struct {
 }
 
 type Config struct {
-	RaftConfig        node.NodeConfig
-	Debug             bool
-	HTTPPort          int
-	GRPCPort          int
-	TransportConfig   node.TransportConfig
-	DataDir           string
-	PebbleConfig      data.Config
-	HealthConfig      HealthConfig
-	ClusterID         string
+	RaftConfig       node.NodeConfig
+	Debug            bool
+	HTTPPort         int
+	GRPCPort         int
+	TransportConfig  node.TransportConfig
+	DataDir          string
+	PebbleConfig     data.Config
+	HealthConfig     HealthConfig
+	ClusterID        string
 	AuditEnabled     bool
 	AdmissionMetrics bool
 }

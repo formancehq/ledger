@@ -23,6 +23,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
@@ -92,6 +93,10 @@ func Module() fx.Option {
 			func(transport *node.DefaultTransport) state.SnapshotFetcherProvider {
 				return ctrl.GRPCSnapshotFetcherProvider(transport)
 			},
+			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor)
+			func(n *node.Node) events.Proposer {
+				return n
+			},
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
@@ -110,6 +115,7 @@ func Module() fx.Option {
 					Cache                   *cache.Cache
 					Attrs                   *attributes.Attributes
 					KeyStore                *keystore.KeyStore
+					Notifications           *events.Notifications
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -132,6 +138,7 @@ func Module() fx.Option {
 					params.Attrs,
 					params.KeyStore,
 					params.Config.AuditEnabled,
+					params.Notifications,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
@@ -194,6 +201,8 @@ func Module() fx.Option {
 			func() *keystore.KeyStore {
 				return keystore.NewKeyStore()
 			},
+			events.NewNotifications,
+			events.NewManager,
 			httpcompat.NewServer,
 			httpcompat.NewHandler,
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
@@ -402,17 +411,20 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Wire Observer: handle ConfChange events synchronously to update transport and service pool
+			// Wire Observer: handle ConfChange and LeadershipChange events
 			func(
 				n *node.Node,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ServiceConnectionPool,
 				logger logging.Logger,
+				manager *events.Manager,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
 					case node.ConfChangeEvent:
 						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
+					case node.LeadershipChangeEvent:
+						handleLeadershipChangeEvent(e, manager, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -526,6 +538,19 @@ func Module() fx.Option {
 					},
 				})
 			},
+			// Start and stop the event Manager
+			func(lc fx.Lifecycle, manager *events.Manager) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						manager.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						manager.Stop()
+						return nil
+					},
+				})
+			},
 		),
 	)
 }
@@ -558,4 +583,18 @@ func handleConfChangeEvent(
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
 		}
 	}
+}
+
+// handleLeadershipChangeEvent notifies the event Manager of leadership changes.
+func handleLeadershipChangeEvent(
+	e node.LeadershipChangeEvent,
+	manager *events.Manager,
+	logger logging.Logger,
+) {
+	if e.IsLeader {
+		logger.Infof("Became leader — reconciling event emitter")
+	} else {
+		logger.Infof("Lost leadership — tearing down event emitter")
+	}
+	manager.OnLeadershipChange(e.IsLeader)
 }
