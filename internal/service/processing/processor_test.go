@@ -592,6 +592,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
@@ -729,6 +730,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(worldKey).Return(worldVolume, nil)
 	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())
@@ -824,6 +826,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	// Use flexible mocking for volume operations
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -883,6 +886,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -949,6 +953,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1015,6 +1020,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
 	setupNumscriptVolumeMocks(mockStore)
@@ -1115,6 +1121,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	// which creates an empty transaction. This test verifies that behavior.
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
@@ -1162,6 +1169,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1227,6 +1235,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1287,6 +1296,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1386,6 +1396,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 	// With force=true, balance check is skipped and output is updated
@@ -1466,6 +1477,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Source returns ErrNotFound (no volume)
 	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, data.ErrNotFound)
@@ -1529,6 +1541,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	// Account has 0 balance, but with force=true, Numscript should see unlimited balance
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Note: GetVolume might be called for volume updates but not for balance queries
 	// when force=true (store adapter returns unlimited balance)

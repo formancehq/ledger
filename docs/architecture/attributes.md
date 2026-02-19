@@ -193,7 +193,7 @@ All attributes use a unified key format in PebbleDB:
 
 | Component | Size | Description |
 |-----------|------|-------------|
-| `KeyPrefixAttributes` | 1 byte | Constant prefix (`0x09`) for all attributes |
+| `KeyPrefixAttributes` | 1 byte | Constant prefix (`0xF1`) for all attributes |
 | `attribute prefix` | 1 byte | Identifies attribute type (see table below) |
 | `canonical key bytes` | variable | Domain-specific key (e.g., ledgerID + account + asset for volumes) |
 | `raft index` | 8 bytes | Raft log index (big-endian) |
@@ -203,7 +203,7 @@ This layout groups all entries for the same canonical key together, enabling eff
 
 ### Attribute Prefixes
 
-All attributes are stored under the `KeyPrefixAttributes` (`0x09`) top-level prefix. Each attribute type uses an ASCII letter sub-prefix:
+All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level prefix. Each attribute type uses an ASCII letter sub-prefix:
 
 | Attribute | Prefix | ASCII |
 |-----------|--------|-------|

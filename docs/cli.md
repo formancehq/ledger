@@ -371,7 +371,7 @@ ledgerctl transactions list
 
 #### transactions get
 
-Get detailed information about a transaction.
+Get detailed information about a transaction. If the server has receipt signing configured, the response includes a JWT receipt.
 
 **Aliases:** `g`, `show`, `describe`
 
@@ -384,7 +384,7 @@ ledgerctl transactions get [transaction-id] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--json` | `false` | Output as JSON |
+| `--json` | `false` | Output as JSON (includes receipt) |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**
@@ -395,6 +395,9 @@ ledgerctl transactions get 42 --ledger my-ledger
 
 # Interactive mode
 ledgerctl transactions get
+
+# Get transaction with receipt (displayed if signing key is configured)
+ledgerctl transactions get 42 --ledger my-ledger --json
 ```
 
 #### transactions create
@@ -507,6 +510,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 | `--force` | `false` | Force revert even if funds have been spent |
 | `--at-effective-date` | `false` | Use the original transaction timestamp for the revert |
 | `--metadata` | | Metadata for the revert transaction (key=value) |
+| `--receipt` | | JWT receipt for the transaction (avoids server-side lookup) |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -516,6 +520,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 - By default, prompts for confirmation before reverting
 - Use `-y` or `--yes` to skip the confirmation prompt
 - Use `--force` to revert even if funds have already been spent from receiving accounts
+- Use `--receipt` to provide a JWT receipt (obtained from `transactions get` or the original create response); the server will extract the postings from the receipt instead of reading from storage
 
 **Example:**
 
@@ -528,6 +533,9 @@ ledgerctl transactions revert 42 --ledger my-ledger --force
 
 # Revert at the original transaction timestamp
 ledgerctl transactions revert 42 --ledger my-ledger --at-effective-date
+
+# Revert using a receipt (avoids server-side transaction lookup)
+ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 
 # Skip confirmation prompt
 ledgerctl transactions revert 42 --ledger my-ledger -y
@@ -1042,6 +1050,86 @@ ledgerctl signing require false --signing-key /path/to/seed
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 10s) |
+
+---
+
+### periods
+
+Manage accounting periods.
+
+**Aliases:** `period`, `pd`
+
+#### periods list
+
+List all periods with their status.
+
+```bash
+ledgerctl periods list
+```
+
+**Output columns:**
+
+| Column | Description |
+|--------|-------------|
+| ID | Period identifier |
+| Status | OPEN, CLOSING, CLOSED, or ARCHIVED |
+| Start | Period start timestamp |
+| End | Period end timestamp (set when closed) |
+| Close Seq | Log sequence at which the period was closed |
+
+**Example:**
+
+```bash
+# List all periods
+ledgerctl periods list
+
+# With remote server
+ledgerctl --server node1:8888 periods list
+```
+
+#### periods close
+
+Close the current open period and open a new one. A background seal process will compute the sealing hash.
+
+```bash
+ledgerctl periods close
+```
+
+**Example:**
+
+```bash
+# Close the current period
+ledgerctl periods close
+
+# Output:
+#  SUCCESS  Period 1 closed successfully
+#  INFO  New period 2 opened
+#  INFO  Background sealing process will compute the sealing hash
+```
+
+#### periods archive
+
+Archive a closed period to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
+
+```bash
+ledgerctl periods archive <period-id>
+```
+
+**Example:**
+
+```bash
+# Archive period 1 (must be in CLOSED state)
+ledgerctl periods archive 1
+
+# Output:
+#  SUCCESS  Period 1 archival initiated
+#  INFO  Background archiver will export data to cold storage and confirm
+```
+
+**Notes:**
+- The period must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` periods are rejected.
+- Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
+- Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
 
 ---
 

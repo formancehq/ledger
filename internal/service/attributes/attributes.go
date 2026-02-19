@@ -298,14 +298,14 @@ type ListEntry struct {
 }
 
 // List returns all unique canonical keys for this attribute type.
-// It iterates over all attributes (prefix 0x09) and filters by attrType.
-// Key layout: [0x09][canonicalKey][attrType][raftIndex(8)][entryType(1)]
+// It iterates over all attributes (prefix 0xF1) and filters by attrType.
+// Key layout: [0xF1][canonicalKey][attrType][raftIndex(8)][entryType(1)]
 // Note: Allocates its own buffer for concurrent safety.
 func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
-	// Scan the entire attribute range [0x09, 0x0A)
+	// Scan the entire attribute range [0xF1, 0xF2)
 	buf := make([]byte, 2)
 	buf[0] = data.KeyPrefixAttributes
-	buf[1] = data.KeyPrefixAttributes + 1 // 0x0A upper bound
+	buf[1] = data.KeyPrefixAttributes + 1 // upper bound
 
 	iter, err := s.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],
@@ -361,7 +361,7 @@ func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
 //
 //	[ledgerID(4)][account]\x00[asset]
 //
-// Full Pebble key: [0x09][ledgerID(4)][account]\x00[asset][V][raftIndex(8)][entryType(1)]
+// Full Pebble key: [0xF1][ledgerID(4)][account]\x00[asset][V][raftIndex(8)][entryType(1)]
 //
 // Accounts are naturally sorted by Pebble key order. The cursor deduplicates
 // by seeking past all entries for the current account after extracting it.
@@ -373,7 +373,7 @@ func (a *Attribute[V]) ListAccountAddresses(
 	afterAddress string,
 	prefix string,
 ) (data.Cursor[string], error) {
-	// Build lower bound: [0x09][ledgerID]...
+	// Build lower bound: [0xF1][ledgerID]...
 	// Base prefix length: 1 (KeyPrefixAttributes) + 4 (ledgerID) = 5
 	const basePrefixLen = 5
 
@@ -434,7 +434,7 @@ func (a *Attribute[V]) ListAccountAddresses(
 type volumeAccountCursor struct {
 	iter     *pebble.Iterator
 	attrType byte
-	seeked   bool   // true when the iterator is already positioned via SeekGE
+	seeked   bool // true when the iterator is already positioned via SeekGE
 	pageSize uint32
 	count    uint32
 	seekBuf  []byte // reusable buffer for SeekGE operations
@@ -461,7 +461,7 @@ func (c *volumeAccountCursor) Next() (string, error) {
 	}
 
 	for c.advance() {
-		// Key layout: [0x09][canonicalKey][attrType(1)][raftIndex(8)][entryType(1)]
+		// Key layout: [0xF1][canonicalKey][attrType(1)][raftIndex(8)][entryType(1)]
 		// Volume canonical key: [ledgerID(4)][account]\x00[asset]
 		iterKey := c.iter.Key()
 
@@ -486,13 +486,13 @@ func (c *volumeAccountCursor) Next() (string, error) {
 
 		c.count++
 
-		// Seek past all entries for this account: [0x09][ledgerID][account\x01]
+		// Seek past all entries for this account: [0xF1][ledgerID][account\x01]
 		// Since \x01 > \x00 (the account/asset separator), this skips all assets.
 		seekLen := 5 + len(account) + 1
 		if len(c.seekBuf) < seekLen {
 			c.seekBuf = make([]byte, seekLen+32)
 		}
-		c.seekBuf[0] = iterKey[0]         // 0x09
+		c.seekBuf[0] = iterKey[0]          // KeyPrefixAttributes
 		copy(c.seekBuf[1:5], iterKey[1:5]) // ledgerID
 		copy(c.seekBuf[5:], account)
 		c.seekBuf[5+len(account)] = 0x01

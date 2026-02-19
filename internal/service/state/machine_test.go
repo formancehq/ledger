@@ -196,12 +196,12 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Entry 1: create the ledger
 	// ---------------------------------------------------------------
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
 
 	// The ledger was assigned ID=1
 	const ledgerID = uint32(1)
@@ -210,7 +210,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// Entry 2 - Batch 1 (SUCCESS): seed funds + first sales
 	// All transactions use force=true (bypasses balance checks).
 	// ---------------------------------------------------------------
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "customer:carol", "EUR", 1000),
@@ -227,15 +227,15 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error, "batch 1 should succeed")
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error, "batch 1 should succeed")
 
 	// ---------------------------------------------------------------
 	// Entry 3 - Batch 2 (FAILURE): valid transactions + bad revert
 	// The first two orders succeed in the buffer but the revert of
 	// a non-existent transaction causes the entire proposal to fail.
 	// ---------------------------------------------------------------
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 3, makeProposal(3,
 			createTransactionOrder(ledgerName, true,
 				newPosting("customer:dave", "merchant:bob", "EUR", 300),
@@ -248,14 +248,14 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.Error(t, results[0].Error, "batch 2 should fail")
-	require.Contains(t, results[0].Error.Error(), "does not exist")
+	require.Len(t, result.Results, 1)
+	require.Error(t, result.Results[0].Error, "batch 2 should fail")
+	require.Contains(t, result.Results[0].Error.Error(), "does not exist")
 
 	// ---------------------------------------------------------------
 	// Entry 4 - Batch 3 (SUCCESS): Dave makes valid purchases
 	// ---------------------------------------------------------------
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 4, makeProposal(4,
 			createTransactionOrder(ledgerName, true,
 				newPosting("customer:dave", "merchant:bob", "EUR", 300),
@@ -266,8 +266,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error, "batch 3 should succeed")
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error, "batch 3 should succeed")
 
 	// ---------------------------------------------------------------
 	// Verify volumes in cache (Machine's KeyStores)
@@ -454,8 +454,8 @@ type attributeEntryInfo struct {
 func listRawAttributeEntries(t *testing.T, store *data.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
 	t.Helper()
 
-	// New key layout: [0x09][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
-	// Build lower bound: [0x09][CanonicalKey][AttrType]
+	// Key layout: [0xF1][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
+	// Build lower bound: [0xF1][CanonicalKey][AttrType]
 	kb := data.NewKeyBuilder()
 	kb.PutByte(data.KeyPrefixAttributes).
 		PutBytes(canonicalKey).
@@ -754,12 +754,12 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	const ledgerName = "integration-test"
 
 	// Index 1: create the ledger
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
 
 	const ledgerID = uint32(1)
 
@@ -787,10 +787,10 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 			ledgerInfo,
 		)
 
-		results, err = machine.ApplyEntries(ctx, makeEntry(t, i, proposal))
+		result, err = machine.ApplyEntries(ctx, makeEntry(t, i, proposal))
 		require.NoError(t, err)
-		require.Len(t, results, 1)
-		require.NoError(t, results[0].Error, "entry %d should succeed", i)
+		require.Len(t, result.Results, 1)
+		require.NoError(t, result.Results[0].Error, "entry %d should succeed", i)
 	}
 
 	// Verify the final computed value: 41 transactions * 100 = 4100

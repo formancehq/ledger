@@ -75,15 +75,15 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	const ledgerName = "audit-success"
 
 	// Create a ledger
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
 
 	// Create a successful transaction
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "bank", "USD", 1000),
@@ -91,8 +91,8 @@ func TestAuditLogOnSuccess(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.NoError(t, results[0].Error)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
 
 	// Verify audit entries exist in the store
 	entries := listAuditEntries(t, dataStore, 0)
@@ -125,14 +125,14 @@ func TestAuditLogOnFailure(t *testing.T) {
 	const ledgerName = "audit-failure"
 
 	// Create a ledger
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
 	// Try to create a transaction with insufficient funds (no force)
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, false,
 				newPosting("empty:account", "bank", "USD", 99999),
@@ -140,8 +140,8 @@ func TestAuditLogOnFailure(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.Error(t, results[0].Error, "should fail with insufficient funds")
+	require.Len(t, result.Results, 1)
+	require.Error(t, result.Results[0].Error, "should fail with insufficient funds")
 
 	// Verify audit entries
 	entries := listAuditEntries(t, dataStore, 0)
@@ -168,14 +168,14 @@ func TestAuditLogSequenceMonotonic(t *testing.T) {
 	const ledgerName = "audit-sequence"
 
 	// Create a ledger + several transactions
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
 	for i := uint64(2); i <= 5; i++ {
-		results, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, i, makeProposal(i,
 				createTransactionOrder(ledgerName, true,
 					newPosting("world", "bank", "USD", 100),
@@ -183,7 +183,7 @@ func TestAuditLogSequenceMonotonic(t *testing.T) {
 			)),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 	}
 
 	// Verify sequences are monotonically increasing (starting at 0)
@@ -203,14 +203,14 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 	const ledgerName = "audit-filter"
 
 	// Create a ledger + 3 transactions (= 4 audit entries)
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
 	for i := uint64(2); i <= 4; i++ {
-		results, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, i, makeProposal(i,
 				createTransactionOrder(ledgerName, true,
 					newPosting("world", "bank", "USD", 100),
@@ -218,7 +218,7 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 			)),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 	}
 
 	// All entries
@@ -247,13 +247,13 @@ func TestAuditLogDisabled(t *testing.T) {
 	const ledgerName = "audit-disabled"
 
 	// Create a ledger + transaction
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "bank", "USD", 1000),
@@ -261,7 +261,7 @@ func TestAuditLogDisabled(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
 	// Verify no audit entries were written
 	entries := listAuditEntries(t, dataStore, 0)
@@ -277,13 +277,13 @@ func TestAuditLogInSnapshot(t *testing.T) {
 	const ledgerName = "audit-snapshot"
 
 	// Create a ledger + transaction to increment audit sequence
-	results, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
-	results, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "bank", "USD", 1000),
@@ -291,7 +291,7 @@ func TestAuditLogInSnapshot(t *testing.T) {
 		)),
 	)
 	require.NoError(t, err)
-	require.NoError(t, results[0].Error)
+	require.NoError(t, result.Results[0].Error)
 
 	// Create snapshot and verify audit sequence is captured
 	snapshotBytes, err := machine.CreateSnapshot(ctx)

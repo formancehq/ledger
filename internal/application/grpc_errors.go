@@ -35,6 +35,9 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		numscriptParse               *processing.ErrNumscriptParse
 		sinkAlreadyExists            *processing.ErrSinkAlreadyExists
 		sinkNotFound                 *processing.ErrSinkNotFound
+		periodNotFound               *processing.ErrPeriodNotFound
+		periodNotClosing             *processing.ErrPeriodNotClosing
+		invalidReceipt               *processing.ErrInvalidReceipt
 	)
 
 	switch {
@@ -115,6 +118,35 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		code = codes.NotFound
 		reason = processing.ErrReasonSinkNotFound
 		metadata = map[string]string{"name": sinkNotFound.Name}
+
+	case errors.Is(inner, processing.ErrNoPeriodOpen):
+		code = codes.FailedPrecondition
+		reason = processing.ErrReasonNoPeriodOpen
+
+	case errors.Is(inner, processing.ErrPeriodAlreadyClosing):
+		code = codes.FailedPrecondition
+		reason = processing.ErrReasonPeriodAlreadyClosing
+
+	case errors.As(inner, &periodNotFound):
+		code = codes.NotFound
+		reason = processing.ErrReasonPeriodNotFound
+		metadata = map[string]string{
+			"periodId": fmt.Sprintf("%d", periodNotFound.PeriodID),
+		}
+
+	case errors.As(inner, &periodNotClosing):
+		code = codes.FailedPrecondition
+		reason = processing.ErrReasonPeriodNotClosing
+		metadata = map[string]string{
+			"periodId": fmt.Sprintf("%d", periodNotClosing.PeriodID),
+		}
+
+	case errors.As(inner, &invalidReceipt):
+		code = codes.InvalidArgument
+		reason = processing.ErrReasonInvalidReceipt
+		metadata = map[string]string{
+			"reason": invalidReceipt.Reason,
+		}
 
 	case errors.Is(inner, processing.ErrTargetRequired),
 		errors.Is(inner, processing.ErrMetadataKeyRequired),

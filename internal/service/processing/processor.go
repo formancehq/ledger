@@ -77,6 +77,21 @@ type Store interface {
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
 	GetDate() *commonpb.Timestamp
+
+	// Period operations
+	GetCurrentOpenPeriod() (*commonpb.Period, bool)
+	GetClosingPeriod() (*commonpb.Period, bool)
+	SetCurrentOpenPeriod(period *commonpb.Period)
+	SetClosingPeriod(period *commonpb.Period)
+	ClearClosingPeriod()
+	GetNextPeriodID() uint64
+	IncrementNextPeriodID() uint64
+
+	// Archive period operations
+	GetPeriodByID(periodID uint64) (*commonpb.Period, bool)
+	UpdatePeriod(period *commonpb.Period)
+	SetPurgeRange(periodID, startSequence, closeSequence uint64)
+	SetPendingArchive(periodID, startSequence, closeSequence uint64)
 }
 
 type RequestProcessor struct {
@@ -223,6 +238,14 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processAddEventsSink(orderType.AddEventsSink, s)
 	case *raftcmdpb.Order_RemoveEventsSink:
 		return p.processRemoveEventsSink(orderType.RemoveEventsSink, s)
+	case *raftcmdpb.Order_ClosePeriod:
+		return p.processClosePeriod(orderType.ClosePeriod, s)
+	case *raftcmdpb.Order_SealPeriod:
+		return p.processSealPeriod(orderType.SealPeriod, s)
+	case *raftcmdpb.Order_ArchivePeriod:
+		return p.processArchivePeriod(orderType.ArchivePeriod, s)
+	case *raftcmdpb.Order_ConfirmArchivePeriod:
+		return p.processConfirmArchivePeriod(orderType.ConfirmArchivePeriod, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}
@@ -582,6 +605,12 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 		timestamp = s.GetDate()
 	}
 
+	// Get the current open period ID for the receipt
+	var periodID uint64
+	if p, ok := s.GetCurrentOpenPeriod(); ok {
+		periodID = p.Id
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
@@ -595,6 +624,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 					UpdatedAt:  s.GetDate(),
 				},
 				AccountMetadata: accountMetadata,
+				PeriodId:        periodID,
 			},
 		},
 	}, nil

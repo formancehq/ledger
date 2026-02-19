@@ -300,11 +300,10 @@ Although all ledgers share the same Raft group and storage:
 
 ### Storage Organization
 
-All ledgers share a single Pebble key-value store with byte-prefixed keys:
-- **Logs**: prefix `0x01` + global sequence number
-- **Attributes**: prefix `0x09` + attribute type byte + U128 hash key (volumes, metadata, ledgers, boundaries, etc.)
-- **Audit entries**: prefix `0x0A` + audit sequence number
-- **Transaction updates**: prefix `0x08` + ledger ID + transaction ID + log sequence
+All ledgers share a single Pebble key-value store with byte-prefixed keys organized into three zones:
+- **Cold-storable** `[0x01, 0xF1)`: Logs (`0x01`), audit entries (`0x02`), transaction updates (`0x03`) — archived to cold storage then purged per period
+- **Attributes** `[0xF1, 0xF2)`: prefix `0xF1` + attribute type byte + canonical key (volumes, metadata, ledgers, boundaries, etc.) — derived data hashed during seal
+- **System** `[0xF2, 0xFF]`: last applied index (`0xF2`), HLC timestamp (`0xF3`), idempotency (`0xF4`), ledger info (`0xF5`), periods (`0xF7`), next period ID (`0xF8`) — metadata that lives forever
 
 ## Scalability
 

@@ -120,6 +120,17 @@ func NewRunCommand() *cobra.Command {
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
 
+	// Receipt signing key for JWT transaction receipts
+	runCmd.Flags().String("receipt-signing-key", "", "HMAC key for signing JWT transaction receipts (empty = disabled)")
+
+	// Cold storage configuration
+	runCmd.Flags().String("cold-storage-driver", "filesystem", "Cold storage driver for period archival (filesystem, s3)")
+	runCmd.Flags().String("cold-storage-path", "", "Base path for cold storage (default: <data-dir>/cold-storage)")
+	runCmd.Flags().String("cold-storage-bucket-id", "", "Shared namespace prefix for archives (default: cluster-id)")
+	runCmd.Flags().String("cold-storage-s3-bucket", "", "S3 bucket name (required when driver=s3)")
+	runCmd.Flags().String("cold-storage-s3-region", "", "AWS region for S3")
+	runCmd.Flags().String("cold-storage-s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
 
@@ -332,6 +343,17 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Admission metrics
 	cfg.AdmissionMetrics = getBool("admission-metrics", false)
+
+	// Receipt signing key
+	cfg.ReceiptSigningKey = getString("receipt-signing-key", "")
+
+	// Cold storage configuration
+	cfg.ColdStorageConfig.Driver = getString("cold-storage-driver", "filesystem")
+	cfg.ColdStorageConfig.BasePath = getString("cold-storage-path", "")
+	cfg.ColdStorageConfig.BucketID = getString("cold-storage-bucket-id", "")
+	cfg.ColdStorageConfig.S3Bucket = getString("cold-storage-s3-bucket", "")
+	cfg.ColdStorageConfig.S3Region = getString("cold-storage-s3-region", "")
+	cfg.ColdStorageConfig.S3Endpoint = getString("cold-storage-s3-endpoint", "")
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")

@@ -68,9 +68,9 @@ type ClusterNode struct {
 	SpoolInterceptor *spool.Interceptor
 
 	// Directory paths for restart capability
-	walDir   string
-	dataDir  string
-	spoolDir string
+	WalDir   string
+	DataDir  string
+	SpoolDir string
 }
 
 // Cluster represents a test cluster of Raft nodes
@@ -291,6 +291,14 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		nodeCache, err := cache.New(nodeConfig.RotationThreshold, nil)
 		require.NoError(t, err)
 
+		nodeAttrs := attributes.New()
+		fsm, err := state.NewMachine(
+			logger.WithFields(map[string]any{"node": nodeID}),
+			pebbleStore, meter, nodeCache, nodeAttrs,
+			nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{},
+		)
+		require.NoError(t, err)
+
 		node, err := NewNode(
 			nodeConfig,
 			transports[i],
@@ -300,11 +308,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			spoolInterceptor,
 			walInterceptor,
 			snapshotFetcherProvider,
-			nodeCache,
-			attributes.New(),
-			nil,  // keystore
-			true, // audit enabled
-			state.NoopEventNotifier{},
+			fsm,
 		)
 		require.NoError(t, err)
 
@@ -319,9 +323,9 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 			StoreInterceptor: storeInterceptor,
 			WALInterceptor:   walInterceptor,
 			SpoolInterceptor: spoolInterceptor,
-			walDir:           walDir,
-			dataDir:          dataDir,
-			spoolDir:         spoolDir,
+			WalDir:           walDir,
+			DataDir:          dataDir,
+			SpoolDir:         spoolDir,
 		}
 	}
 
@@ -536,19 +540,19 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	}
 
 	// Recreate resources from the same directories
-	w, err := wal.New(clusterNode.walDir, c.logger, noop.Meter{})
+	w, err := wal.New(clusterNode.WalDir, c.logger, noop.Meter{})
 	if err != nil {
 		return nil, fmt.Errorf("recreating DefaultWAL: %w", err)
 	}
 
 	defaultSpool, err := spool.NewDefault(spool.DefaultSpoolConfig{
-		Dir: clusterNode.spoolDir,
+		Dir: clusterNode.SpoolDir,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("recreating spool: %w", err)
 	}
 
-	newStore, err := data.NewStore(clusterNode.dataDir, c.logger, noop.Meter{}, data.DefaultConfig())
+	newStore, err := data.NewStore(clusterNode.DataDir, c.logger, noop.Meter{}, data.DefaultConfig())
 	if err != nil {
 		return nil, fmt.Errorf("recreating store: %w", err)
 	}
@@ -581,6 +585,16 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("creating cache: %w", err)
 	}
 
+	nodeAttrs := attributes.New()
+	fsm, err := state.NewMachine(
+		c.logger.WithFields(map[string]any{"node": nodeID}),
+		newStore, noop.Meter{}, nodeCache, nodeAttrs,
+		nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating machine: %w", err)
+	}
+
 	node, err := NewNode(
 		nodeConfig,
 		clusterNode.Transport,
@@ -590,11 +604,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		spoolInterceptor,
 		walInterceptor,
 		snapshotFetcherProvider,
-		nodeCache,
-		attributes.New(),
-		nil,  // keystore
-		true, // audit enabled
-		state.NoopEventNotifier{},
+		fsm,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating node: %w", err)
@@ -612,9 +622,9 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		StoreInterceptor: storeInterceptor,
 		WALInterceptor:   walInterceptor,
 		SpoolInterceptor: spoolInterceptor,
-		walDir:           clusterNode.walDir,
-		dataDir:          clusterNode.dataDir,
-		spoolDir:         clusterNode.spoolDir,
+		WalDir:           clusterNode.WalDir,
+		DataDir:          clusterNode.DataDir,
+		SpoolDir:         clusterNode.SpoolDir,
 	}
 
 	// Start the node and return error channel

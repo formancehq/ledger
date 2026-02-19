@@ -638,6 +638,86 @@ sequenceDiagram
 - **continueOnFailure**: Continue even if an operation fails (sequential mode only)
 - **atomic**: All operations or nothing - supported and enables cross-ledger atomicity
 
+## Period Close and Seal
+
+### Overview
+
+Closing a period is a two-step process. The first step (`ClosePeriod`) is a lightweight Raft command that transitions the period state. The second step (`SealPeriod`) runs in the background to compute a cryptographic hash and then proposes the result back into Raft.
+
+For full documentation on periods, see [Periods](./periods.md).
+
+### Complete Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as gRPC/HTTP Server
+    participant Ctrl as Routed Controller
+    participant Admission
+    participant FSM
+    participant Store as Pebble Store
+    participant Sealer as Background Sealer
+
+    Client->>API: Apply(ClosePeriod)
+    API->>Ctrl: Apply()
+    Ctrl->>Admission: Admit()
+
+    Note over Admission,FSM: Step 1: ClosePeriod (on Raft critical path)
+    Admission->>FSM: Propose ClosePeriod via Raft
+    FSM->>FSM: OPEN → CLOSING + create new OPEN period
+    FSM->>Store: Commit batch (period state update)
+    FSM->>Store: Maintenance task: CreateSealCheckpoint()
+    FSM-->>Sealer: SealRequest (via channel)
+    FSM-->>Admission: ClosePeriodLog
+
+    Ctrl-->>API: ApplyResponse
+    API-->>Client: Response (period is now CLOSING)
+
+    Note over Sealer: Step 2: SealPeriod (off critical path)
+    Sealer->>Store: Open seal checkpoint (read-only)
+    Sealer->>Sealer: Compute state_hash (iterate all attributes)
+    Sealer->>Sealer: Compute sealing_hash (BLAKE3)
+    Sealer->>Store: Remove seal checkpoint
+
+    Sealer->>Admission: Propose SealPeriod(period_id, sealing_hash)
+    Admission->>FSM: SealPeriod via Raft
+    FSM->>FSM: CLOSING → CLOSED + set sealing_hash
+    FSM->>Store: Commit batch (period state update)
+    FSM-->>Admission: SealPeriodLog
+```
+
+### Detailed Steps
+
+1. **ClosePeriod Request**
+   - The client sends `Apply(ClosePeriod)` via gRPC
+   - The routed controller forwards to the leader if needed
+
+2. **ClosePeriod FSM Application**
+   - The current `OPEN` period transitions to `CLOSING`
+   - `close_sequence`, `end` timestamp, and `last_log_hash` are recorded
+   - A new `OPEN` period is created (transactions continue immediately)
+   - A Pebble checkpoint is created in the `seal/` directory
+
+3. **Background Sealing**
+   - The Sealer opens the checkpoint as a read-only Pebble database
+   - Iterates all attribute entries in `[0x09, 0x0A)` to compute `state_hash`
+   - Computes `sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)`
+   - Removes the seal checkpoint from disk
+
+4. **SealPeriod Proposal**
+   - The Sealer proposes `SealPeriod` back into Raft
+   - The FSM transitions the period from `CLOSING` to `CLOSED`
+   - The sealing hash is persisted
+
+### Crash Recovery
+
+Two crash windows are handled automatically on restart:
+
+| Crash Window | Condition | Recovery |
+|-------------|-----------|----------|
+| After ClosePeriod commit, before checkpoint | `closingPeriod != nil && !checkpointExists` | `NewNode()` creates checkpoint from Pebble state |
+| After checkpoint, before SealPeriod | `closingPeriod != nil && checkpointExists` | `Sealer.Start()` re-sends SealRequest |
+
 ## Next Steps
 
 To deepen your understanding:
@@ -646,3 +726,4 @@ To deepen your understanding:
 2. [Storage and Persistence](./storage.md) - How data is persisted
 3. [API and Interfaces](./api.md) - API endpoint documentation
 4. [Spool](./spool.md) - Technical details of the Spool component
+5. [Periods](./periods.md) - Period lifecycle, sealing, and crash recovery

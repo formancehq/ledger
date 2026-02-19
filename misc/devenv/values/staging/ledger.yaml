@@ -6,7 +6,7 @@ config:
   debug: false
   httpPort: 9000
   audit:
-    enabled: false
+    enabled: true
   cache:
     rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
@@ -58,6 +58,8 @@ config:
       serverAddress: "http://pyroscope:4040"
       profileTypes: "cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
       uploadRate: "30s"
+  coldStorage:
+    driver: "s3"
   raft:
     electionTick: 10
     heartbeatTick: 1
@@ -111,7 +113,11 @@ persistence:
     accessMode: ReadWriteOnce
     size: 50Gi
 
-replicaCount: 1
+serviceAccount:
+  create: false
+  name: "aws-access"
+
+replicaCount: 3
 resources:
   limits:
     cpu: 8000m

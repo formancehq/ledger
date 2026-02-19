@@ -2,6 +2,7 @@ package admission
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -50,6 +52,7 @@ type Admission struct {
 	attrs         *attributes.Attributes
 	healthChecker health.Checker
 	keyStore      *keystore.KeyStore
+	receiptSigner *receipt.Signer
 
 	nextIndex atomic.Uint64
 
@@ -63,9 +66,9 @@ type Admission struct {
 	proposeQueueLoadHistogram metric.Int64Histogram
 	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
-	proposeDurationHistogram    metric.Int64Histogram
-	fsmFutureWaitHistogram      metric.Int64Histogram
-	preloadDurationHistogram    metric.Int64Histogram
+	proposeDurationHistogram  metric.Int64Histogram
+	fsmFutureWaitHistogram    metric.Int64Histogram
+	preloadDurationHistogram  metric.Int64Histogram
 	preloadCounter            metric.Int64Counter
 	preloadKeysNeededCounter  metric.Int64Counter
 	preloadCacheHitsCounter   metric.Int64Counter
@@ -77,6 +80,13 @@ type Admission struct {
 func WithMetrics() func(*Admission) {
 	return func(a *Admission) {
 		a.metricsEnabled = true
+	}
+}
+
+// WithReceiptSigner enables receipt-based revert by providing a receipt signer.
+func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
+	return func(a *Admission) {
+		a.receiptSigner = signer
 	}
 }
 
@@ -1092,6 +1102,29 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Name: reqType.RemoveEventsSink.Name,
 			},
 		}
+	case *servicepb.Request_ClosePeriod:
+		order.Type = &raftcmdpb.Order_ClosePeriod{
+			ClosePeriod: &raftcmdpb.ClosePeriodOrder{},
+		}
+	case *servicepb.Request_SealPeriod:
+		order.Type = &raftcmdpb.Order_SealPeriod{
+			SealPeriod: &raftcmdpb.SealPeriodOrder{
+				PeriodId:    reqType.SealPeriod.PeriodId,
+				SealingHash: reqType.SealPeriod.SealingHash,
+			},
+		}
+	case *servicepb.Request_ArchivePeriod:
+		order.Type = &raftcmdpb.Order_ArchivePeriod{
+			ArchivePeriod: &raftcmdpb.ArchivePeriodOrder{
+				PeriodId: reqType.ArchivePeriod.PeriodId,
+			},
+		}
+	case *servicepb.Request_ConfirmArchivePeriod:
+		order.Type = &raftcmdpb.Order_ConfirmArchivePeriod{
+			ConfirmArchivePeriod: &raftcmdpb.ConfirmArchivePeriodOrder{
+				PeriodId: reqType.ConfirmArchivePeriod.PeriodId,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}
@@ -1142,10 +1175,27 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:
-		// Fetch original transaction postings from store
-		originalPostings, err := a.getTransactionPostings(apply.Ledger, data.RevertTransaction.TransactionId)
-		if err != nil {
-			return nil, fmt.Errorf("getting original transaction postings: %w", err)
+		var originalPostings []*commonpb.Posting
+		if data.RevertTransaction.Receipt != "" && a.receiptSigner != nil {
+			// Verify receipt and extract postings
+			claims, err := a.receiptSigner.Verify(data.RevertTransaction.Receipt)
+			if err != nil {
+				return nil, fmt.Errorf("invalid receipt: %w", err)
+			}
+			if claims.Ledger != apply.Ledger {
+				return nil, fmt.Errorf("receipt ledger %q does not match request ledger %q", claims.Ledger, apply.Ledger)
+			}
+			if claims.TxID != data.RevertTransaction.TransactionId {
+				return nil, fmt.Errorf("receipt txID %d does not match request txID %d", claims.TxID, data.RevertTransaction.TransactionId)
+			}
+			originalPostings = receipt.ClaimsToPostings(claims.Postings)
+		} else {
+			// Fall back to reading from Pebble
+			var err error
+			originalPostings, err = a.getTransactionPostings(apply.Ledger, data.RevertTransaction.TransactionId)
+			if err != nil {
+				return nil, fmt.Errorf("getting original transaction postings: %w", err)
+			}
 		}
 		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
@@ -1177,62 +1227,28 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 }
 
 // getTransactionPostings retrieves the postings of an original transaction from the store.
-// It looks up the transaction's creation log to extract the postings.
+// It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	// Resolve ledger name to ID for store queries
-	ledgerInfo, err := a.store.GetLedgerByName(ledgerName)
+	log, err := a.store.FindTransactionCreationLog(ledgerName, transactionID)
 	if err != nil {
-		return nil, fmt.Errorf("resolving ledger ID for %s: %w", ledgerName, err)
-	}
-
-	// Get all updates for this transaction to find the creation log sequence
-	updates, err := a.store.GetTransactionUpdates(ledgerInfo.Id, transactionID)
-	if err != nil {
-		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
-	}
-
-	// Find the sequence (from TransactionInit)
-	var sequence uint64
-	for _, update := range updates {
-		for _, updateType := range update.Updates {
-			if updateType.GetTransactionInit() != nil {
-				sequence = update.ByLog
-				break
-			}
+		if errors.Is(err, data.ErrNotFound) {
+			return nil, &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: transactionID}}
 		}
-		if sequence != 0 {
-			break
-		}
+		return nil, fmt.Errorf("finding transaction creation log: %w", err)
 	}
 
-	if sequence == 0 {
-		return nil, &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: transactionID}}
-	}
-
-	// Get the system log containing the transaction
-	log, err := a.store.GetLogBySequence(sequence)
-	if err != nil {
-		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
-	}
-	if log == nil {
-		return nil, fmt.Errorf("transaction %d not found (log %d missing)", transactionID, sequence)
-	}
-
-	// Extract the ledger log from the log
 	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
-		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
+		return nil, fmt.Errorf("log does not contain an apply log")
 	}
-	ledgerLog := applyLog.Apply.Log
 
-	// Extract the postings from the CreatedTransaction payload
-	switch payload := ledgerLog.Data.Payload.(type) {
+	switch payload := applyLog.Apply.Log.Data.Payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
 			return nil, fmt.Errorf("invalid log payload: missing transaction")
 		}
 		return payload.CreatedTransaction.Transaction.Postings, nil
 	default:
-		return nil, fmt.Errorf("ledger log %d does not contain a created transaction", ledgerLog.Id)
+		return nil, fmt.Errorf("log does not contain a created transaction")
 	}
 }

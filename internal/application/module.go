@@ -22,9 +22,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -101,9 +103,30 @@ func Module() fx.Option {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
 			func(
+				cfg Config,
+				logger logging.Logger,
+				store *data.Store,
+				meterProvider metric.MeterProvider,
+				c *cache.Cache,
+				attrs *attributes.Attributes,
+				ks *keystore.KeyStore,
+				notifications *events.Notifications,
+			) (*state.Machine, error) {
+				return state.NewMachine(
+					logger,
+					store,
+					meterProvider.Meter("raft.node"),
+					c,
+					attrs,
+					cfg.RaftConfig.RotationThreshold,
+					ks,
+					cfg.AuditEnabled,
+					notifications,
+				)
+			},
+			func(
 				params struct {
 					fx.In
-					Config                  Config
 					NodeConfig              node.NodeConfig
 					Logger                  logging.Logger
 					Transport               *node.DefaultTransport
@@ -112,10 +135,7 @@ func Module() fx.Option {
 					WAL                     *wal.DefaultWAL
 					Spool                   *spool.Default
 					SnapshotFetcherProvider state.SnapshotFetcherProvider
-					Cache                   *cache.Cache
-					Attrs                   *attributes.Attributes
-					KeyStore                *keystore.KeyStore
-					Notifications           *events.Notifications
+					Machine                 *state.Machine
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -134,16 +154,18 @@ func Module() fx.Option {
 					params.Spool,
 					params.WAL,
 					params.SnapshotFetcherProvider,
-					params.Cache,
-					params.Attrs,
-					params.KeyStore,
-					params.Config.AuditEnabled,
-					params.Notifications,
+					params.Machine,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
 				}
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
+			},
+			func(cfg Config) *receipt.Signer {
+				if cfg.ReceiptSigningKey == "" {
+					return nil
+				}
+				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.SetDefaults()
@@ -169,8 +191,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger) *ServiceServer {
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
 			},
-			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes) servicepb.BucketServiceServer {
-				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled)
+			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, signer *receipt.Signer) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer)
 			},
 			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)
@@ -218,10 +240,14 @@ func Module() fx.Option {
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
+				receiptSigner *receipt.Signer,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
+				}
+				if receiptSigner != nil {
+					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
 				return admission.NewAdmission(
 					cache,
@@ -236,13 +262,97 @@ func Module() fx.Option {
 				)
 			},
 			func(
+				logger logging.Logger,
+				store *data.Store,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.Sealer {
+				return state.NewSealer(logger, store, machine.SealRequestCh(), func(periodID uint64, sealingHash []byte) {
+					_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+						Type: &servicepb.Request_SealPeriod{
+							SealPeriod: &servicepb.SealPeriodRequest{
+								PeriodId:    periodID,
+								SealingHash: sealingHash,
+							},
+						},
+					})
+				}, raftNode.IsLeader, func(periodID uint64) bool {
+					cp := machine.ClosingPeriod()
+					return cp != nil && cp.Id == periodID
+				})
+			},
+			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
+				switch cfg.ColdStorageConfig.Driver {
+				case "s3":
+					if cfg.ColdStorageConfig.S3Bucket == "" {
+						return nil, fmt.Errorf("--cold-storage-s3-bucket is required when driver=s3")
+					}
+					s3Client, err := coldstorage.NewS3Client(
+						cfg.ColdStorageConfig.S3Region,
+						cfg.ColdStorageConfig.S3Endpoint,
+					)
+					if err != nil {
+						return nil, fmt.Errorf("creating S3 client: %w", err)
+					}
+					logger.WithFields(map[string]any{
+						"bucket":   cfg.ColdStorageConfig.S3Bucket,
+						"region":   cfg.ColdStorageConfig.S3Region,
+						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
+					}).Infof("Using S3 cold storage")
+					return coldstorage.NewS3Storage(s3Client, cfg.ColdStorageConfig.S3Bucket), nil
+				case "filesystem", "":
+					basePath := cfg.ColdStorageConfig.BasePath
+					if basePath == "" {
+						basePath = filepath.Join(cfg.DataDir, "cold-storage")
+					}
+					return coldstorage.NewFilesystemStorage(basePath), nil
+				default:
+					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
+				}
+			},
+			func(
+				cfg Config,
+				logger logging.Logger,
+				store *data.Store,
+				cold coldstorage.ColdStorage,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.Archiver {
+				bucketID := cfg.ColdStorageConfig.BucketID
+				if bucketID == "" {
+					bucketID = cfg.ClusterID
+				}
+				if bucketID == "" {
+					bucketID = store.DataDir()
+				}
+				return state.NewArchiver(
+					logger,
+					store,
+					cold,
+					machine.ArchiveRequestCh(),
+					func(periodID uint64) {
+						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+							Type: &servicepb.Request_ConfirmArchivePeriod{
+								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
+									PeriodId: periodID,
+								},
+							},
+						})
+					},
+					raftNode.IsLeader,
+					bucketID,
+				)
+			},
+			func(
 				raftNode *node.Node,
 				servicePool *transport.ServiceConnectionPool,
 				admission ctrl.Admission,
 				store *data.Store,
 				logger logging.Logger,
 				attrs *attributes.Attributes,
-			) ctrl.Controller {
+				) ctrl.Controller {
 				return NewRoutedController(
 					ctrl.NewDefaultController(admission, store, logger, attrs),
 					raftNode,
@@ -547,6 +657,30 @@ func Module() fx.Option {
 					},
 					OnStop: func(_ context.Context) error {
 						manager.Stop()
+						return nil
+					},
+				})
+			},
+			func(lc fx.Lifecycle, sealer *state.Sealer, machine *state.Machine) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						sealer.Start(machine.ClosingPeriod())
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						sealer.Stop()
+						return nil
+					},
+				})
+			},
+			func(lc fx.Lifecycle, archiver *state.Archiver) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						archiver.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						archiver.Stop()
 						return nil
 					},
 				})

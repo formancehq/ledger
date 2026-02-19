@@ -132,6 +132,35 @@ spec:
         {{- end }}
         - name: ADMISSION_METRICS
           value: {{ .Values.config.admissionMetrics | toString | default "false" | quote }}
+        # Cold storage configuration
+        {{- if .Values.config.coldStorage }}
+        {{- if .Values.config.coldStorage.driver }}
+        - name: COLD_STORAGE_DRIVER
+          value: {{ .Values.config.coldStorage.driver | quote }}
+        {{- end }}
+        {{- if .Values.config.coldStorage.path }}
+        - name: COLD_STORAGE_PATH
+          value: {{ .Values.config.coldStorage.path | quote }}
+        {{- end }}
+        {{- if .Values.config.coldStorage.bucketId }}
+        - name: COLD_STORAGE_BUCKET_ID
+          value: {{ .Values.config.coldStorage.bucketId | quote }}
+        {{- end }}
+        {{- if .Values.config.coldStorage.s3 }}
+        {{- if .Values.config.coldStorage.s3.bucket }}
+        - name: COLD_STORAGE_S3_BUCKET
+          value: {{ .Values.config.coldStorage.s3.bucket | quote }}
+        {{- end }}
+        {{- if .Values.config.coldStorage.s3.region }}
+        - name: COLD_STORAGE_S3_REGION
+          value: {{ .Values.config.coldStorage.s3.region | quote }}
+        {{- end }}
+        {{- if .Values.config.coldStorage.s3.endpoint }}
+        - name: COLD_STORAGE_S3_ENDPOINT
+          value: {{ .Values.config.coldStorage.s3.endpoint | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
         # Health check configuration
         {{- if .Values.config.health }}
         {{- if .Values.config.health.interval }}

@@ -60,6 +60,14 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| **Periods** |
+| Close period | ✅ | ❌ | Two-step close: ClosePeriod → SealPeriod |
+| Seal period (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
+| List periods | ✅ | ❌ | gRPC streaming |
+| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with period ID; available on GetTransaction |
+| Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
+| Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
+| Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
 | **Volumes (responses)** |
 | postCommitVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -161,6 +169,36 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 **CLI command:**
 ```bash
 ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
+```
+
+### 7. Periods
+
+Periods partition a ledger's transaction history into discrete, sealed segments. See [Periods Architecture](./architecture/periods.md) for full documentation.
+
+**gRPC Methods:**
+- `Apply(ClosePeriodRequest)` - Close the current open period (write, leader-only)
+- `Apply(ArchivePeriodRequest)` - Archive a closed period to cold storage (write, leader-only)
+- `ListPeriods(ListPeriodsRequest)` - Stream all periods (read, any node)
+
+**Features:**
+- ✅ Close current period (OPEN → CLOSING → CLOSED lifecycle)
+- ✅ Background sealing with BLAKE3 hash (off Raft critical path)
+- ✅ Automatic crash recovery for both crash windows
+- ✅ Transaction receipts (HMAC-SHA256 JWT with period ID)
+- ✅ List all periods with status, timestamps, and sealing hashes
+- ✅ Archive period (CLOSED → ARCHIVED with cold storage export and hot purge)
+- ❌ Scheduled period close (Phase 3)
+
+**CLI commands:**
+```bash
+# Close the current open period
+ledgerctl periods close
+
+# Archive a closed period to cold storage
+ledgerctl periods archive 1
+
+# List all periods
+ledgerctl periods list
 ```
 
 ---
@@ -363,6 +401,8 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetTransaction` | Get transaction by ID | ✅ |
 | `StreamLogs` | Stream logs from a ledger | ✅ |
 | `Apply` | Apply a ledger action (write operations) | ✅ |
+| `Apply(ClosePeriod)` | Close the current open period | ✅ |
+| `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 
 ### Apply Method

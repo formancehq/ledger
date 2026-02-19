@@ -317,3 +317,4 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, int64(0), result.InputKnown.ToBigInt().Int64())
 }
+

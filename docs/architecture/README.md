@@ -49,6 +49,9 @@ gRPC connection mechanics, reconnection strategies, and optimizations for rollin
 ### [Idempotency](./idempotency.md)
 Idempotency key mechanism for safe request retries, hash-based conflict detection, and storage architecture.
 
+### [Periods](./periods.md)
+Period lifecycle (OPEN → CLOSING → CLOSED), two-step close process with background sealing, BLAKE3 sealing hash computation, crash recovery, and JWT transaction receipts.
+
 ### [Disk Space Limiting](./disk-space-limiting.md)
 Cluster-wide disk space monitoring with per-volume thresholds that automatically reject write operations when storage usage is too high.
 

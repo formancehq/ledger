@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -135,24 +138,39 @@ func (s *ServiceServer) Stop() error {
 	return nil
 }
 
-// recoveryInterceptor catches panics
-func recoveryInterceptor() grpc.UnaryServerInterceptor {
+// handlePanic records a panic with its stack trace on the current OTel span
+// and logs it server-side.
+func handlePanic(ctx context.Context, logger logging.Logger, r any, stack []byte) error {
+	logger.Errorf("gRPC handler panicked: %v\n%s", r, stack)
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("panic.value", fmt.Sprintf("%v", r)),
+		attribute.String("panic.stack", string(stack)),
+	)
+	grpcErr := status.Errorf(codes.Internal, "panic: %v\n%s", r, stack)
+	span.RecordError(grpcErr)
+	return grpcErr
+}
+
+// recoveryInterceptor catches panics and records stack traces on the OTel span.
+func recoveryInterceptor(logger logging.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = status.Errorf(codes.Unavailable, "server shutting down: %v", r)
+				err = handlePanic(ctx, logger, r, debug.Stack())
 			}
 		}()
 		return handler(ctx, req)
 	}
 }
 
-// recoveryStreamInterceptor catches panics in streaming RPCs during shutdown.
-func recoveryStreamInterceptor() grpc.StreamServerInterceptor {
+// recoveryStreamInterceptor catches panics in streaming RPCs and records stack traces on the OTel span.
+func recoveryStreamInterceptor(logger logging.Logger) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = status.Errorf(codes.Unavailable, "server shutting down: %v", r)
+				err = handlePanic(ss.Context(), logger, r, debug.Stack())
 			}
 		}()
 		return handler(srv, ss)
@@ -223,6 +241,34 @@ func convertToGRPCError(err error) error {
 		return st.Err()
 	}
 
+	// Convert ErrPeriodNotClosed to FailedPrecondition with ErrorInfo
+	var periodNotClosedErr *processing.ErrPeriodNotClosed
+	if errors.As(err, &periodNotClosedErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: processing.ErrReasonPeriodNotClosed,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
+	}
+
+	// Convert ErrPeriodNotArchiving to FailedPrecondition with ErrorInfo
+	var periodNotArchivingErr *processing.ErrPeriodNotArchiving
+	if errors.As(err, &periodNotArchivingErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: processing.ErrReasonPeriodNotArchiving,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
+	}
+
 	// Convert BusinessError to proper gRPC status with ErrorInfo details
 	var bizErr *processing.BusinessError
 	if errors.As(err, &bizErr) {
@@ -263,11 +309,11 @@ func NewRaftServer(port int, logger logging.Logger) *RaftServer {
 func NewServiceServer(port int, logger logging.Logger, debug bool) *ServiceServer {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		recoveryInterceptor(),
+		recoveryInterceptor(logger),
 		errorConversionInterceptor(),
 	}
 	streamInterceptors := []grpc.StreamServerInterceptor{
-		recoveryStreamInterceptor(),
+		recoveryStreamInterceptor(logger),
 		errorConversionStreamInterceptor(),
 	}
 

@@ -53,6 +53,9 @@ type testEngine struct {
 	reverted       map[string]bool
 	idempotency    map[string]*commonpb.IdempotencyKeyValue
 	references     map[string]*commonpb.TransactionReferenceValue
+	currentOpenPeriod *commonpb.Period
+	closingPeriod    *commonpb.Period
+	nextPeriodID     uint64
 	hasher         *blake3.Hasher
 	raftIndex      uint64
 }
@@ -85,6 +88,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		reverted:       make(map[string]bool),
 		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
 		references:     make(map[string]*commonpb.TransactionReferenceValue),
+		nextPeriodID:   1,
 		hasher:         blake3.New(),
 		raftIndex:      1,
 	}
@@ -364,6 +368,52 @@ func (s *inMemoryStore) IncrementNextSequenceID() uint64 {
 func (s *inMemoryStore) GetDate() *commonpb.Timestamp {
 	return s.date
 }
+
+func (s *inMemoryStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+	if s.engine.currentOpenPeriod != nil {
+		return s.engine.currentOpenPeriod, true
+	}
+	return nil, false
+}
+
+func (s *inMemoryStore) GetClosingPeriod() (*commonpb.Period, bool) {
+	if s.engine.closingPeriod != nil {
+		return s.engine.closingPeriod, true
+	}
+	return nil, false
+}
+
+func (s *inMemoryStore) SetCurrentOpenPeriod(period *commonpb.Period) {
+	s.engine.currentOpenPeriod = period
+}
+
+func (s *inMemoryStore) SetClosingPeriod(period *commonpb.Period) {
+	s.engine.closingPeriod = period
+}
+
+func (s *inMemoryStore) ClearClosingPeriod() {
+	s.engine.closingPeriod = nil
+}
+
+func (s *inMemoryStore) GetNextPeriodID() uint64 {
+	return s.engine.nextPeriodID
+}
+
+func (s *inMemoryStore) IncrementNextPeriodID() uint64 {
+	id := s.engine.nextPeriodID
+	s.engine.nextPeriodID++
+	return id
+}
+
+func (s *inMemoryStore) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
+	return nil, false
+}
+
+func (s *inMemoryStore) UpdatePeriod(_ *commonpb.Period) {}
+
+func (s *inMemoryStore) SetPurgeRange(_, _, _ uint64) {}
+
+func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
 
 // Helper functions for building orders
 

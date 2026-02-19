@@ -32,6 +32,7 @@ const (
 	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
 	BucketService_ListAuditEntries_FullMethodName  = "/ledger.BucketService/ListAuditEntries"
 	BucketService_GetEventsSinks_FullMethodName    = "/ledger.BucketService/GetEventsSinks"
+	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -47,7 +48,7 @@ type BucketServiceClient interface {
 	// GetAccount retrieves an account by address
 	GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
-	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error)
+	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error)
 	// ListAccounts streams all accounts for a ledger (alphabetical order)
@@ -62,6 +63,8 @@ type BucketServiceClient interface {
 	ListAuditEntries(ctx context.Context, in *ListAuditEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error)
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
+	// ListPeriods streams all periods
+	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
 }
 
 type bucketServiceClient struct {
@@ -111,9 +114,9 @@ func (c *bucketServiceClient) GetAccount(ctx context.Context, in *GetAccountRequ
 	return out, nil
 }
 
-func (c *bucketServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*commonpb.Transaction, error) {
+func (c *bucketServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(commonpb.Transaction)
+	out := new(GetTransactionResponse)
 	err := c.cc.Invoke(ctx, BucketService_GetTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -227,6 +230,25 @@ func (c *bucketServiceClient) GetEventsSinks(ctx context.Context, in *GetEventsS
 	return out, nil
 }
 
+func (c *bucketServiceClient) ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[5], BucketService_ListPeriods_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListPeriodsRequest, commonpb.Period]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListPeriodsClient = grpc.ServerStreamingClient[commonpb.Period]
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -240,7 +262,7 @@ type BucketServiceServer interface {
 	// GetAccount retrieves an account by address
 	GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
-	GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error)
+	GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error)
 	// ListTransactions streams all transactions for a ledger (newest first)
 	ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error
 	// ListAccounts streams all accounts for a ledger (alphabetical order)
@@ -255,6 +277,8 @@ type BucketServiceServer interface {
 	ListAuditEntries(*ListAuditEntriesRequest, grpc.ServerStreamingServer[auditpb.AuditEntry]) error
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
+	// ListPeriods streams all periods
+	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -274,7 +298,7 @@ func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerReq
 func (UnimplementedBucketServiceServer) GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAccount not implemented")
 }
-func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*commonpb.Transaction, error) {
+func (UnimplementedBucketServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransaction not implemented")
 }
 func (UnimplementedBucketServiceServer) ListTransactions(*ListTransactionsRequest, grpc.ServerStreamingServer[commonpb.Transaction]) error {
@@ -297,6 +321,9 @@ func (UnimplementedBucketServiceServer) ListAuditEntries(*ListAuditEntriesReques
 }
 func (UnimplementedBucketServiceServer) GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEventsSinks not implemented")
+}
+func (UnimplementedBucketServiceServer) ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error {
+	return status.Errorf(codes.Unimplemented, "method ListPeriods not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -482,6 +509,17 @@ func _BucketService_GetEventsSinks_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_ListPeriods_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListPeriodsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListPeriods(m, &grpc.GenericServerStream[ListPeriodsRequest, commonpb.Period]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListPeriodsServer = grpc.ServerStreamingServer[commonpb.Period]
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -538,6 +576,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListAuditEntries",
 			Handler:       _BucketService_ListAuditEntries_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListPeriods",
+			Handler:       _BucketService_ListPeriods_Handler,
 			ServerStreams: true,
 		},
 	},

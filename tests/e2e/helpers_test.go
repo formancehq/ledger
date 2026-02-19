@@ -538,7 +538,8 @@ func stopServers(ctx context.Context, servers []*serviceWithClient) {
 // setupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
 // This simplifies test setup and speeds up test execution.
 // Returns the context, client, and cleanup function.
-func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+// Optional extraInstruments can be provided to customize the server (e.g., WithReceiptSigningKey).
+func setupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
 	ctx := logging.TestingContext()
 
 	walTmpDir := GinkgoT().TempDir()
@@ -551,23 +552,26 @@ func setupSingleNode(httpPort, grpcPort int) (context.Context, servicepb.BucketS
 	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
 	raftPort := grpcPort - 1000
 
+	instruments := []testservice.Instrumentation{
+		testservice.DebugInstrumentation(debug),
+		testservice.OutputInstrumentation(GinkgoWriter),
+		testserver.WithNodeID(1),
+		testserver.WithHTTPPort(httpPort),
+		testserver.WithWalDir(walTmpDir),
+		testserver.WithDataDir(dataTmpDir),
+		testserver.WithRaftPort(raftPort), // Internal Raft transport
+		testserver.WithGRPCPort(grpcPort), // External service API
+		testserver.WithSnapshotThreshold(10),
+		testserver.WithDebug(os.Getenv("DEBUG") == "true"),
+		testserver.WithRaftTickInterval(10*time.Millisecond),
+		testserver.WithRaftHeartbeatTick(1),
+		testserver.WithRaftElectionTick(10),
+		testserver.WithBootstrap(),
+	}
+	instruments = append(instruments, extraInstruments...)
+
 	server := testservice.New(cmdserver.NewRunCommand,
-		testservice.WithInstruments(
-			testservice.DebugInstrumentation(debug),
-			testservice.OutputInstrumentation(GinkgoWriter),
-			testserver.WithNodeID(1),
-			testserver.WithHTTPPort(httpPort),
-			testserver.WithWalDir(walTmpDir),
-			testserver.WithDataDir(dataTmpDir),
-			testserver.WithRaftPort(raftPort), // Internal Raft transport
-			testserver.WithGRPCPort(grpcPort), // External service API
-			testserver.WithSnapshotThreshold(10),
-			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-			testserver.WithRaftTickInterval(10*time.Millisecond),
-			testserver.WithRaftHeartbeatTick(1),
-			testserver.WithRaftElectionTick(10),
-			testserver.WithBootstrap(),
-		),
+		testservice.WithInstruments(instruments...),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
 

@@ -153,6 +153,7 @@ message Log {
   Idempotency idempotency = 3;
   bytes hash = 4;
   signature.RequestSignature signature = 5;
+  string receipt = 6;
 }
 
 message LogPayload {
@@ -165,6 +166,10 @@ message LogPayload {
     SetSigningConfigLog set_signing_config = 6;
     AddedEventsSinkLog added_events_sink = 7;
     RemovedEventsSinkLog removed_events_sink = 8;
+    ClosePeriodLog close_period = 9;
+    SealPeriodLog seal_period = 10;
+    ArchivePeriodLog archive_period = 11;
+    ConfirmArchivePeriodLog confirm_archive_period = 12;
   }
 }
 
@@ -284,6 +289,7 @@ message LedgerLogPayload {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataSet> account_metadata = 2;
+  uint64 period_id = 3;  // Period that was OPEN when this transaction was created
 }
 
 message RevertedTransaction {
@@ -299,6 +305,46 @@ message SavedMetadata {
 message DeletedMetadata {
   Target target = 1;
   string key = 2;                           // Metadata key to delete
+}
+
+// ============================================================================
+// Period
+// ============================================================================
+
+enum PeriodStatus {
+  PERIOD_OPEN = 0;
+  PERIOD_CLOSING = 1;
+  PERIOD_CLOSED = 2;
+  PERIOD_ARCHIVED = 3;
+  PERIOD_ARCHIVING = 4;
+}
+
+message Period {
+  uint64 id = 1;
+  Timestamp start = 2;
+  Timestamp end = 3;
+  PeriodStatus status = 4;
+  uint64 close_sequence = 5;
+  bytes sealing_hash = 6;
+  bytes last_log_hash = 7;   // Log chain hash at the time the period was closed (for crash recovery)
+  uint64 start_sequence = 8; // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+}
+
+message ClosePeriodLog {
+  Period closed_period = 1;
+  Period new_period = 2;
+}
+
+message SealPeriodLog {
+  Period period = 1;
+}
+
+message ArchivePeriodLog {
+  Period period = 1;  // The period being archived (still CLOSED at this point)
+}
+
+message ConfirmArchivePeriodLog {
+  Period period = 1;  // Period now in ARCHIVED status
 }
 
 // ============================================================================

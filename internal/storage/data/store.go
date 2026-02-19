@@ -28,6 +28,7 @@ const (
 	currentCheckpointFile = "CURRENT_CHECKPOINT"
 	checkpointsDir        = "checkpoints"
 	backupsDir            = "backups"
+	sealDir               = "seal"
 )
 
 // Store is a Pebble implementation of data.Store
@@ -51,21 +52,43 @@ func (s *Store) getDB() *pebble.DB {
 	return db
 }
 
-// Key prefixes for Pebble storage
+// Key prefixes for Pebble storage, organized into three zones:
+//
+//   Cold-storable zone [0x01, 0xF1) — archived to cold storage then purged per period.
+//   Attributes zone    [0xF1, 0xF2) — derived data hashed during seal, stays in hot storage.
+//   System zone        [0xF2, 0xFF] — metadata that lives forever.
 var (
-	keyPrefixLastAppliedIndex     byte = 0x00 // [keyPrefixLastAppliedIndex] -> uint64
-	keyPrefixLog                  byte = 0x01 // [keyPrefixLog][sequence] -> Log
-	keyPrefixIdempotency          byte = 0x02 // [keyPrefixIdempotency][key] -> sequence
-	keyPrefixLedgerInfo           byte = 0x03 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
-	keyPrefixLastAppliedTimestamp byte = 0x04 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
-	keyPrefixTransactionUpdate    byte = 0x08 // [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
-	KeyPrefixAttributes byte = 0x09
-	keyPrefixAudit         byte = 0x0A // [keyPrefixAudit][sequence] -> AuditEntry
-	keyPrefixSigningKey    byte = 0x0B // [keyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
-	keyPrefixSigningConfig byte = 0x0C // [keyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
-	keyPrefixSinkCursor   byte = 0x0D // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
-	keyPrefixEventsConfig byte = 0x0E // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
-	keyPrefixSinkStatus   byte = 0x0F // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
+	// Cold-storable zone [0x01, 0xF1)
+	//
+	// Sequence-keyed prefixes: [prefix][sequence] -- support efficient range scan/delete.
+	keyPrefixLog   byte = 0x01 // [keyPrefixLog][sequence] -> Log
+	keyPrefixAudit byte = 0x02 // [keyPrefixAudit][sequence] -> AuditEntry
+
+	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
+	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
+	ColdSequencePrefixes = []byte{keyPrefixLog, keyPrefixAudit}
+
+	// Composite-keyed cold prefix: [prefix][ledgerID][txID][byLog] -- requires filtered iteration.
+	keyPrefixTransactionUpdate byte = 0x03 // [keyPrefixTransactionUpdate][ledgerID][txID][byLog] -> TransactionUpdate
+
+	// txUpdateKeyLen is the fixed key length for transaction update entries.
+	txUpdateKeyLen = 1 + 4 + 8 + 8 // prefix(1) + ledgerID(4) + txID(8) + byLog(8)
+
+	// Attributes zone [0xF1, 0xF2) -- seal hash domain
+	KeyPrefixAttributes byte = 0xF1
+
+	// System zone [0xF2, 0xFF]
+	keyPrefixLastAppliedIndex     byte = 0xF2 // [keyPrefixLastAppliedIndex] -> uint64
+	keyPrefixLastAppliedTimestamp byte = 0xF3 // [keyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
+	keyPrefixIdempotency          byte = 0xF4 // [keyPrefixIdempotency][key] -> sequence
+	keyPrefixLedgerInfo           byte = 0xF5 // [keyPrefixLedgerInfo][ledgerID] -> LedgerInfo
+	keyPrefixSigningKey           byte = 0xF6 // [keyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
+	keyPrefixPeriods              byte = 0xF7 // [keyPrefixPeriods][periodID] -> Period
+	keyPrefixNextPeriodID         byte = 0xF8 // [keyPrefixNextPeriodID] -> uint64 (next period ID)
+	keyPrefixSigningConfig        byte = 0xF9 // [keyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
+	keyPrefixSinkCursor           byte = 0xFA // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
+	keyPrefixEventsConfig         byte = 0xFB // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
+	keyPrefixSinkStatus           byte = 0xFC // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -201,6 +224,11 @@ func NewStore(
 	return store, nil
 }
 
+// DataDir returns the base data directory path for this store.
+func (s *Store) DataDir() string {
+	return s.dataDir
+}
+
 // Close closes the Pebble database
 func (s *Store) Close() error {
 	s.dbMu.Lock()
@@ -265,13 +293,13 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 // pageSize limits the number of results (0 = no limit).
 func (s *Store) ListTransactionIDs(ledgerID uint32, pageSize uint32, afterTxID uint64) (Cursor[uint64], error) {
 	kb := NewKeyBuilder()
-	kb.PutLedgerPrefix(ledgerID).
-		PutByte(keyPrefixTransactionUpdate)
+	kb.PutByte(keyPrefixTransactionUpdate).
+		PutLedgerPrefix(ledgerID)
 	lowerBound := kb.Snapshot()
 
 	// Calculate the offset where transaction ID starts in the key
-	// Key format: [ledgerID (4 bytes)][keyPrefixTransactionUpdate (1 byte)][transactionID (8 bytes)][byLog (8 bytes)]
-	txIDOffset := 4 + 1 // ledgerID (4 bytes) + 1 byte for keyPrefixTransactionUpdate
+	// Key format: [keyPrefixTransactionUpdate (1 byte)][ledgerID (4 bytes)][transactionID (8 bytes)][byLog (8 bytes)]
+	txIDOffset := 1 + 4 // 1 byte for keyPrefixTransactionUpdate + ledgerID (4 bytes)
 
 	// Upper bound: if afterTxID is specified, start from afterTxID - 1
 	// Otherwise, start from the maximum possible transaction ID
@@ -362,8 +390,8 @@ func (c *transactionIDCursor) Close() error {
 // GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
 func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
 	kb := NewKeyBuilder()
-	kb.PutLedgerPrefix(ledgerID).
-		PutByte(keyPrefixTransactionUpdate).
+	kb.PutByte(keyPrefixTransactionUpdate).
+		PutLedgerPrefix(ledgerID).
 		PutUInt64(transactionID)
 	lowerBound := kb.Snapshot()
 
@@ -399,6 +427,46 @@ func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]
 	return updates, nil
 }
 
+// FindTransactionCreationLog returns the system log that created a transaction.
+// It resolves the ledger name to an ID, finds the TransactionInit update, and retrieves the log.
+func (s *Store) FindTransactionCreationLog(ledgerName string, txID uint64) (*commonpb.Log, error) {
+	ledgerInfo, err := s.GetLedgerByName(ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ledger ID for %s: %w", ledgerName, err)
+	}
+
+	updates, err := s.GetTransactionUpdates(ledgerInfo.Id, txID)
+	if err != nil {
+		return nil, fmt.Errorf("getting transaction updates for %d: %w", txID, err)
+	}
+
+	var sequence uint64
+	for _, update := range updates {
+		for _, ut := range update.Updates {
+			if ut.GetTransactionInit() != nil {
+				sequence = update.ByLog
+				break
+			}
+		}
+		if sequence != 0 {
+			break
+		}
+	}
+	if sequence == 0 {
+		return nil, ErrNotFound
+	}
+
+	log, err := s.GetLogBySequence(sequence)
+	if err != nil {
+		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
+	}
+	if log == nil {
+		return nil, ErrNotFound
+	}
+
+	return log, nil
+}
+
 // CreateSnapshot creates a new checkpoint of the database and returns the checkpoint ID.
 func (s *Store) CreateSnapshot() (uint64, error) {
 	s.logger.Infof("Creating snapshot")
@@ -409,7 +477,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
-	if err := s.getDB().Checkpoint(checkpointDir); err != nil {
+	if err := s.getDB().Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
@@ -528,6 +596,42 @@ func (s *Store) RemoveBackupCheckpoint(backupID string) error {
 		return fmt.Errorf("removing backup checkpoint: %w", err)
 	}
 	return nil
+}
+
+// CreateSealCheckpoint creates a Pebble checkpoint in a separate seal/ directory
+// for computing a deterministic seal hash during period closing.
+// Unlike CreateSnapshot, this does not modify currentCheckPoint or CURRENT_CHECKPOINT.
+// The caller must call RemoveSealCheckpoint after the SealPeriod order is applied.
+func (s *Store) CreateSealCheckpoint() (string, error) {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+
+	if err := os.RemoveAll(sealPath); err != nil {
+		return "", fmt.Errorf("removing existing seal directory: %w", err)
+	}
+
+	if err := s.getDB().Checkpoint(sealPath, pebble.WithFlushedWAL()); err != nil {
+		return "", fmt.Errorf("creating seal checkpoint: %w", err)
+	}
+
+	return sealPath, nil
+}
+
+// RemoveSealCheckpoint removes the seal checkpoint created by CreateSealCheckpoint.
+func (s *Store) RemoveSealCheckpoint() error {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+	if err := os.RemoveAll(sealPath); err != nil {
+		return fmt.Errorf("removing seal checkpoint: %w", err)
+	}
+	return nil
+}
+
+// SealCheckpointPath returns the path to the seal checkpoint directory and whether it exists.
+func (s *Store) SealCheckpointPath() (string, bool) {
+	sealPath := filepath.Join(s.dataDir, sealDir)
+	if _, err := os.Stat(sealPath); err != nil {
+		return "", false
+	}
+	return sealPath, true
 }
 
 // cleanupOrphanedBackups removes the entire backups/ directory on startup.
@@ -662,6 +766,197 @@ func (s *Store) GetLastAppliedTimestamp() (uint64, error) {
 	}
 
 	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+// GetPeriods returns all periods stored in Pebble, ordered by period ID.
+// Returns nil if no periods have been persisted yet.
+func (s *Store) GetPeriods() ([]*commonpb.Period, error) {
+	lowerBound := []byte{keyPrefixPeriods}
+	upperBound := []byte{keyPrefixPeriods, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for periods: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var periods []*commonpb.Period
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading period value: %w", err)
+		}
+		period := &commonpb.Period{}
+		if err := proto.Unmarshal(value, period); err != nil {
+			return nil, fmt.Errorf("unmarshaling period: %w", err)
+		}
+		periods = append(periods, period)
+	}
+
+	return periods, nil
+}
+
+// GetNextPeriodID returns the next period ID stored in Pebble.
+// Returns 1 if not found (default starting value).
+func (s *Store) GetNextPeriodID() (uint64, error) {
+	value, closer, err := s.getDB().Get([]byte{keyPrefixNextPeriodID})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 1, nil
+		}
+		return 0, fmt.Errorf("getting next period ID: %w", err)
+	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
+	return binary.BigEndian.Uint64(value[:8]), nil
+}
+
+// IterateLogRange iterates over logs in the sequence range [startSeq, endSeq].
+// The callback is called for each log in ascending sequence order.
+func (s *Store) IterateLogRange(startSeq, endSeq uint64, fn func(*commonpb.Log) error) error {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixLog).PutUInt64(startSeq)
+	lowerBound := kb.Snapshot()
+
+	kb.PutByte(keyPrefixLog).PutUInt64(endSeq + 1)
+	upperBound := kb.Build()
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return fmt.Errorf("creating log range iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading log value: %w", err)
+		}
+		log := &commonpb.Log{}
+		if err := proto.Unmarshal(value, log); err != nil {
+			return fmt.Errorf("unmarshaling log: %w", err)
+		}
+		if err := fn(log); err != nil {
+			return err
+		}
+	}
+	return iter.Error()
+}
+
+// IterateAuditRange iterates over audit entries in the sequence range [startSeq, endSeq].
+// The callback is called for each entry in ascending sequence order.
+func (s *Store) IterateAuditRange(startSeq, endSeq uint64, fn func(*auditpb.AuditEntry) error) error {
+	kb := NewKeyBuilder()
+	kb.PutByte(keyPrefixAudit).PutUInt64(startSeq)
+	lowerBound := kb.Snapshot()
+
+	kb.PutByte(keyPrefixAudit).PutUInt64(endSeq + 1)
+	upperBound := kb.Build()
+
+	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return fmt.Errorf("creating audit range iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading audit value: %w", err)
+		}
+		entry := &auditpb.AuditEntry{}
+		if err := proto.Unmarshal(value, entry); err != nil {
+			return fmt.Errorf("unmarshaling audit entry: %w", err)
+		}
+		if err := fn(entry); err != nil {
+			return err
+		}
+	}
+	return iter.Error()
+}
+
+// IterateColdKVPairs iterates all cold-storable KV pairs whose sequence (or byLog)
+// falls in [startSeq, closeSeq] and calls fn for each raw key+value.
+// This covers sequence-keyed prefixes (logs, audit) via range scan,
+// and transaction updates via filtered iteration on byLog.
+func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value []byte) error) error {
+	db := s.getDB()
+
+	// 1. Sequence-keyed prefixes: efficient range scan.
+	for _, prefix := range ColdSequencePrefixes {
+		kb := NewKeyBuilder()
+		kb.PutByte(prefix).PutUInt64(startSeq)
+		lowerBound := kb.Snapshot()
+		kb.PutByte(prefix).PutUInt64(closeSeq + 1)
+		upperBound := kb.Build()
+
+		if err := iterateRawRange(db, lowerBound, upperBound, fn); err != nil {
+			return fmt.Errorf("iterating prefix 0x%02x: %w", prefix, err)
+		}
+	}
+
+	// 2. Transaction updates: full prefix scan, filter by byLog.
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{keyPrefixTransactionUpdate},
+		UpperBound: []byte{keyPrefixTransactionUpdate + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating iterator for transaction updates: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < txUpdateKeyLen {
+			continue
+		}
+		byLog := binary.BigEndian.Uint64(key[len(key)-8:])
+		if byLog < startSeq || byLog > closeSeq {
+			continue
+		}
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading transaction update value: %w", err)
+		}
+		if err := fn(key, value); err != nil {
+			return err
+		}
+	}
+	return iter.Error()
+}
+
+// iterateRawRange iterates all keys in [lowerBound, upperBound) and calls fn for each.
+func iterateRawRange(db *pebble.DB, lowerBound, upperBound []byte, fn func(key, value []byte) error) error {
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading value: %w", err)
+		}
+		if err := fn(iter.Key(), value); err != nil {
+			return err
+		}
+	}
+	return iter.Error()
 }
 
 // GetLastSequence returns the last sequence number for system logs.
@@ -1077,6 +1372,12 @@ func (s *Store) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, error) {
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
 	return s.getDB().NewIter(p)
+}
+
+// NewSnapshot returns a point-in-time Pebble snapshot.
+// The caller must call Close() on the returned snapshot when done.
+func (s *Store) NewSnapshot() *pebble.Snapshot {
+	return s.getDB().NewSnapshot()
 }
 
 func HardLink(srcDir, dstDir string) error {

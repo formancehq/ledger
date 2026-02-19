@@ -89,6 +89,15 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	return ctrl.ListTransactions(ctx, ledgerName, pageSize, afterTxID)
 }
 
+func (b *RoutedController) ListPeriods(ctx context.Context) ([]*commonpb.Period, error) {
+	// Period state is in-memory on the leader — route to leader
+	ctrl, err := b.getCtrl()
+	if err != nil {
+		return nil, err
+	}
+	return ctrl.ListPeriods(ctx)
+}
+
 func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// Read from local store - data is replicated via Raft
 	return b.localController.GetAccount(ctx, ledgerName, address)

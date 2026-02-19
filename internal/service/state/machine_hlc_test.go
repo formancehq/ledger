@@ -91,7 +91,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-test"
 
 		// Create ledger with a high timestamp
-		results, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -99,12 +99,12 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.Len(t, results, 1)
-		require.NoError(t, results[0].Error)
+		require.Len(t, result.Results, 1)
+		require.NoError(t, result.Results[0].Error)
 		require.Equal(t, uint64(1000000), machine.lastAppliedTimestamp)
 
 		// Create a transaction with a lower timestamp (clock regression)
-		results, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id: 2,
 				Orders: []*raftcmdpb.Order{
@@ -116,8 +116,8 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.Len(t, results, 1)
-		require.NoError(t, results[0].Error)
+		require.Len(t, result.Results, 1)
+		require.NoError(t, result.Results[0].Error)
 
 		// The effective timestamp should be 1000001 (last + 1), not 500000
 		require.Equal(t, uint64(1000001), machine.lastAppliedTimestamp,
@@ -138,7 +138,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-ahead-test"
 
 		// Create ledger with timestamp 1000
-		results, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -146,10 +146,10 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 
 		// Create transaction with a higher timestamp
-		results, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id: 2,
 				Orders: []*raftcmdpb.Order{
@@ -161,7 +161,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 
 		require.Equal(t, uint64(5000), machine.lastAppliedTimestamp,
 			"HLC should use proposal date when it is ahead")
@@ -180,7 +180,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-snapshot-test"
 
 		// Apply an entry to advance the HLC
-		results, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -188,7 +188,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 
 		// Create snapshot
 		snapshotData, err := machine.CreateSnapshot(ctx)
@@ -210,7 +210,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-mono-test"
 
 		// Create ledger
-		results, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -218,7 +218,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}),
 		)
 		require.NoError(t, err)
-		require.NoError(t, results[0].Error)
+		require.NoError(t, result.Results[0].Error)
 
 		// Apply entries with regressing timestamps
 		timestamps := make([]uint64, 0, 5)
@@ -226,7 +226,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 
 		proposalDates := []uint64{900, 800, 700, 2000, 1500}
 		for i, date := range proposalDates {
-			results, err := machine.ApplyEntries(ctx,
+			result, err := machine.ApplyEntries(ctx,
 				makeEntry(t, uint64(i+2), &raftcmdpb.Proposal{
 					Id: uint64(i + 2),
 					Orders: []*raftcmdpb.Order{
@@ -238,7 +238,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				}),
 			)
 			require.NoError(t, err)
-			require.NoError(t, results[0].Error)
+			require.NoError(t, result.Results[0].Error)
 			timestamps = append(timestamps, machine.lastAppliedTimestamp)
 		}
 

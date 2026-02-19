@@ -320,19 +320,34 @@ For detailed information on available storage backends and their configuration, 
 
 ### What the Store Persists
 
-- **Transaction logs** (`0x01` prefix) - Immutable record of all ledger operations (global sequence)
-- **Attributes** (`0x09` prefix) - Generation-based attribute data:
+Key prefixes are organized into three zones:
+
+**Cold-storable zone `[0x01, 0xF1)` — archived to cold storage then purged per period:**
+
+- `0x01` **Transaction logs** - Immutable record of all ledger operations (global sequence)
+- `0x02` **Audit entries** - Audit trail of proposals (success/failure)
+- `0x03` **Transaction updates** - Track modifications per transaction (metadata, reverts)
+
+**Attributes zone `[0xF1, 0xF2)` — derived data hashed during seal, stays in hot storage:**
+
+- `0xF1` **Attributes** - Generation-based attribute data:
   - Input/output volumes per account/asset
   - Account and ledger metadata
   - Ledger info entries
   - Ledger boundaries (next IDs per ledger)
-  - Idempotency keys (system-wide)
   - Transaction references
   - Reversion status
-- **Transaction updates** (`0x08` prefix) - Track modifications per transaction (metadata, reverts)
-- **Audit entries** (`0x0A` prefix) - Audit trail of proposals (success/failure)
-- **Last applied Raft index** (`0x00` prefix) - For recovery after restart
-- **Last applied HLC timestamp** (`0x04` prefix) - Hybrid logical clock state
+
+**System zone `[0xF2, 0xFF]` — metadata that lives forever:**
+
+- `0xF2` **Last applied Raft index** - For recovery after restart
+- `0xF3` **Last applied HLC timestamp** - Hybrid logical clock state
+- `0xF4` **Idempotency keys** - Deduplication keys (system-wide)
+- `0xF5` **Ledger info** - Ledger metadata entries
+- `0xF6` **Signing keys** - Ed25519 public keys (32 bytes per key)
+- `0xF7` **Periods state** - Period lifecycle, sealing hashes (one entry per period)
+- `0xF8` **Next period ID** - Counter for period ID generation
+- `0xF9` **Signing config** - Whether mandatory signatures are enabled (1 byte)
 
 ### Attribute Loading Coordination
 
@@ -363,11 +378,14 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
+├── seal/                          # Temporary seal checkpoint (period closing)
 └── runtime/                       # All ledgers data (Pebble)
     ├── live/                      # Active database
     ├── checkpoints/               # Checkpoint directories for snapshots
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
+
+The `seal/` directory contains a temporary Pebble checkpoint created when a period is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Periods](./periods.md) for details on the sealing process.
 
 ## Durability and Guarantees
 

@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
@@ -17,17 +18,19 @@ type HealthConfig struct {
 }
 
 type Config struct {
-	RaftConfig       node.NodeConfig
-	Debug            bool
-	HTTPPort         int
-	GRPCPort         int
-	TransportConfig  node.TransportConfig
-	DataDir          string
-	PebbleConfig     data.Config
-	HealthConfig     HealthConfig
-	ClusterID        string
-	AuditEnabled     bool
-	AdmissionMetrics bool
+	RaftConfig        node.NodeConfig
+	Debug             bool
+	HTTPPort          int
+	GRPCPort          int
+	TransportConfig   node.TransportConfig
+	DataDir           string
+	PebbleConfig      data.Config
+	HealthConfig      HealthConfig
+	ClusterID         string
+	AuditEnabled      bool
+	AdmissionMetrics  bool
+	ReceiptSigningKey string
+	ColdStorageConfig coldstorage.Config
 }
 
 func (c Config) Validate() error {
