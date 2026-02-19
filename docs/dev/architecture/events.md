@@ -48,79 +48,46 @@ Every event shares a common envelope:
 
 ```protobuf
 message Event {
-  string type = 1;                    // Event type (e.g. "COMMITTED_TRANSACTION")
-  uint64 sequence = 2;               // Global log sequence (monotonic, unique)
+  EventType type = 1;                // Event type enum
+  string ledger = 2;                 // Ledger name (empty for system events like CREATED_LEDGER)
   common.Timestamp date = 3;         // Event timestamp (HLC)
-  string ledger = 4;                 // Ledger name (empty for system events like CREATED_LEDGER)
-  oneof payload {
-    CommittedTransactionPayload committed_transaction = 5;
-    RevertedTransactionPayload reverted_transaction = 6;
-    SavedMetadataPayload saved_metadata = 7;
-    DeletedMetadataPayload deleted_metadata = 8;
-    CreatedLedgerPayload created_ledger = 9;
-    DeletedLedgerPayload deleted_ledger = 10;
-  }
+  uint64 log_sequence = 4;           // Global log sequence (monotonic, unique)
+  common.Log log = 5;                // Full log entry with payload
 }
 ```
 
-### Payload Definitions
-
-```protobuf
-message CommittedTransactionPayload {
-  common.Transaction transaction = 1;
-  map<string, common.MetadataSet> account_metadata = 2;
-}
-
-message RevertedTransactionPayload {
-  uint64 reverted_transaction_id = 1;
-  common.Transaction revert_transaction = 2;
-}
-
-message SavedMetadataPayload {
-  common.Target target = 1;
-  common.MetadataSet metadata = 2;
-}
-
-message DeletedMetadataPayload {
-  common.Target target = 1;
-  string key = 2;
-}
-
-message CreatedLedgerPayload {
-  common.LedgerInfo info = 1;
-}
-
-message DeletedLedgerPayload {
-  common.LedgerInfo info = 1;
-}
-```
+The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
 
 ### JSON Format
 
-When `format=json` in the events config, the event is serialized as JSON. Property names follow the project's camelCase convention:
+When `format=json` in the events config, the event is serialized as JSON using `protojson`. Property names follow protobuf JSON mapping conventions (camelCase):
 
 ```json
 {
   "type": "COMMITTED_TRANSACTION",
-  "sequence": 42,
-  "date": "2026-02-18T10:30:00.000Z",
   "ledger": "orders",
-  "payload": {
-    "transaction": {
-      "id": 7,
-      "postings": [
-        {
-          "source": "world",
-          "destination": "user:123",
-          "amount": "1000",
-          "asset": "USD/2"
+  "date": "2026-02-18T10:30:00.000Z",
+  "logSequence": "42",
+  "log": {
+    "data": {
+      "createdTransaction": {
+        "transaction": {
+          "id": "7",
+          "postings": [
+            {
+              "source": "world",
+              "destination": "user:123",
+              "amount": { "lo": "1000" },
+              "asset": "USD/2"
+            }
+          ],
+          "metadata": {},
+          "timestamp": "2026-02-18T10:30:00.000Z",
+          "reference": "order-456"
         }
-      ],
-      "metadata": {},
-      "timestamp": "2026-02-18T10:30:00.000Z",
-      "reference": "order-456"
+      }
     },
-    "accountMetadata": {}
+    "date": "2026-02-18T10:30:00.000Z"
   }
 }
 ```
@@ -165,7 +132,7 @@ The event system consists of two main components in `internal/service/events/`:
 │              └──────┬───────┘  └──────┬───────┘                        │
 │                     ▼                 ▼                                 │
 │              ┌────────────┐    ┌────────────┐                          │
-│              │ NATS "a"   │    │ NATS "b"   │                          │
+│              │ NATS "a"   │    │ Kafka "b"  │                          │
 │              └────────────┘    └────────────┘                          │
 │                                                                        │
 └───────────────────────────────────────────────────────────────────────┘
@@ -258,21 +225,25 @@ The emitter batches events for efficiency:
 
 The cursor is advanced only after the entire batch is successfully published to the sink.
 
-### Initial Sink Implementations
+### Sink Implementations
 
 | Sink | Config Value | Description |
 |---|---|---|
-| **NATS JetStream** | `sink_type: "nats"` | Publishes to NATS JetStream for durable consumption. |
+| **NATS JetStream** | `nats` | Publishes to NATS JetStream for durable consumption. Requires `url` and `topic`. |
+| **ClickHouse** | `clickhouse` | Inserts events into a ClickHouse table for analytics. Requires `dsn`. Optional `table` (default: `ledger_events`). Uses experimental JSON type with Variant support. Always uses ClickHouse-native JSON format (ignores `format` setting). |
+| **Kafka** | `kafka` | Publishes to Apache Kafka topics. Requires `brokers` and `topic`. Optional TLS and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512). Uses synchronous producer for delivery guarantees. |
+| **HTTP Webhooks** | `http` | Sends individual HTTP POST requests per event. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
 
-Additional sinks (Kafka, HTTP webhooks) can be added later by implementing the `Sink` interface.
+New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
 
 ### Topic/Subject Mapping
 
-Events are published to a configurable topic/subject. Default: `ledger-events`.
+Events are published to a configurable topic/subject per sink type:
 
-The topic can include the event type as a suffix for filtering: `ledger-events.COMMITTED_TRANSACTION`.
-
-Configurable via the `topic` field in `SinkConfig`.
+- **NATS**: Configurable via `topic` field in `NatsSinkConfig`.
+- **Kafka**: Configurable via `topic` field in `KafkaSinkConfig`.
+- **HTTP**: Events are sent to the configured `endpoint` URL.
+- **ClickHouse**: Events are inserted into the configured `table`.
 
 ## Configuration
 
@@ -289,22 +260,44 @@ The event system is configured at runtime via gRPC RPCs that go through Raft con
 
 ```protobuf
 message SinkConfig {
-  string name = 1;               // Stable identifier for per-sink cursor/status keys
+  string name = 1;                       // Stable identifier for per-sink cursor/status keys
   oneof type {
-    NatsSinkConfig nats = 2;     // NATS JetStream sink
+    NatsSinkConfig nats = 2;             // NATS JetStream sink
+    ClickHouseSinkConfig clickhouse = 6; // ClickHouse analytics sink
+    KafkaSinkConfig kafka = 7;           // Apache Kafka sink
+    HttpSinkConfig http = 8;             // HTTP webhook sink
   }
-  string format = 3;            // "json" or "protobuf" (default: "json")
-  int32 batch_size = 4;         // Max events per batch (default: 64)
-  int64 batch_delay_ms = 5;     // Max delay before flush in ms (default: 10)
+  string format = 3;                     // "json" or "protobuf" (default: "json")
+  int32 batch_size = 4;                  // Max events per batch (default: 64)
+  int64 batch_delay_ms = 5;              // Max delay before flush in ms (default: 10)
 }
 
 message NatsSinkConfig {
   string url = 1;                // NATS server URL
   string topic = 2;              // Topic/subject for events
 }
+
+message ClickHouseSinkConfig {
+  string dsn = 1;                // e.g. "clickhouse://user:pass@host:9000/db"
+  string table = 2;              // Table name (default: "ledger_events")
+}
+
+message KafkaSinkConfig {
+  repeated string brokers = 1;   // e.g. ["localhost:9092"]
+  string topic = 2;              // Kafka topic name
+  bool tls = 3;                  // Enable TLS
+  string sasl_mechanism = 4;     // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
+  string sasl_username = 5;
+  string sasl_password = 6;
+}
+
+message HttpSinkConfig {
+  string endpoint = 1;           // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string secret = 2;             // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+}
 ```
 
-Each `SinkConfig` carries its own `format`, `batch_size`, and `batch_delay_ms` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x0D][name]`) and status (`[0x0F][name]`). Sinks progress independently — a failing sink does not block others. New sink types (Kafka, HTTP webhooks, etc.) can be added as additional variants in the `SinkConfig.oneof type`.
+Each `SinkConfig` carries its own `format`, `batch_size`, and `batch_delay_ms` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x0D][name]`) and status (`[0x0F][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
 
 #### Adding and Removing Sinks
 
@@ -314,13 +307,31 @@ Use `AddEventsSink` and `RemoveEventsSink` via the `Apply` RPC:
 # Add a NATS sink with default settings
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events
 
-# Add a second sink with custom settings (each with its own cursor and error status)
-ledgerctl events add-sink --name secondary --format protobuf \
-  --nats-url nats://secondary:4222 --nats-topic ledger.events \
-  --batch-size 128 --batch-delay-ms 50
+# Add a NATS sink with custom batch settings and protobuf format
+ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events \
+  --format protobuf --batch-size 128 --batch-delay-ms 50
+
+# Add a ClickHouse sink for analytics
+ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db
+
+# Add a ClickHouse sink with custom table name
+ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table my_events
+
+# Add a Kafka sink
+ledgerctl events add-sink --name streaming --kafka-brokers localhost:9092 --kafka-topic ledger-events
+
+# Add a Kafka sink with SASL authentication
+ledgerctl events add-sink --name streaming --kafka-brokers broker1:9092,broker2:9092 --kafka-topic ledger-events \
+  --kafka-tls --kafka-sasl-mechanism SCRAM-SHA-256 --kafka-sasl-username user --kafka-sasl-password pass
+
+# Add an HTTP webhook sink
+ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger
+
+# Add an HTTP webhook sink with HMAC signature verification
+ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 
 # Remove a sink (events implicitly disabled when all sinks removed)
-ledgerctl events remove-sink --name secondary
+ledgerctl events remove-sink --name streaming
 ```
 
 #### Reading Sink Configuration
@@ -373,7 +384,7 @@ Client → gRPC Apply(RemoveEventsSinkRequest) → Admission → Raft consensus
                            └─────────┬──────────┘
                                      │
                                      ▼
-                              Sink (NATS, etc.)
+                              Sink (NATS/Kafka/HTTP/ClickHouse)
 ```
 
 1. **Normal operation**: Emitter tails the log, publishes events, advances cursor via Raft.
@@ -433,20 +444,27 @@ The `Notifications` struct is created independently to break the fx circular dep
 
 ```
 internal/service/events/
-  manager.go                   # Manager: one emitter per named sink, lifecycle, smart reconcile
-  emitter.go                   # Emitter: tails log, converts, publishes, per-sink cursor
-  signal.go                    # Signal type: non-blocking coalescing notification
-  sink.go                      # Sink interface definition
-  sink_noop.go                 # Noop sink (default when no sinks configured)
-  sink_nats.go                 # NATS JetStream sink
-  event.go                     # Event type, conversion from Log, serialization
-  manager_test.go              # Manager lifecycle and config change tests
-  emitter_test.go              # Emitter lifecycle tests
-  emitter_integration_test.go  # Emitter integration tests with PebbleDB
-  event_test.go                # LogToEvent + serialization tests
+  manager.go                            # Manager: one emitter per named sink, lifecycle, smart reconcile
+  emitter.go                            # Emitter: tails log, converts, publishes, per-sink cursor
+  signal.go                             # Signal type: non-blocking coalescing notification
+  sink.go                               # Sink interface definition
+  sink_noop.go                          # Noop sink (default when no sinks configured)
+  sink_nats.go                          # NATS JetStream sink
+  sink_clickhouse.go                    # ClickHouse analytics sink
+  sink_kafka.go                         # Apache Kafka sink
+  sink_http.go                          # HTTP webhook sink
+  event.go                              # Event type, conversion from Log, serialization
+  manager_test.go                       # Manager lifecycle and config change tests
+  emitter_test.go                       # Emitter lifecycle tests
+  emitter_integration_test.go           # Emitter integration tests with PebbleDB
+  event_test.go                         # LogToEvent + serialization tests
+  sink_nats_integration_test.go         # NATS sink integration tests
+  sink_clickhouse_integration_test.go   # ClickHouse sink integration tests
+  sink_kafka_integration_test.go        # Kafka sink integration tests
+  sink_http_integration_test.go         # HTTP sink integration tests
 
-misc/proto/events.proto          # Event protobuf definition
-internal/proto/eventspb/         # Generated protobuf code
+misc/proto/events.proto                 # Event protobuf definition
+internal/proto/eventspb/                # Generated protobuf code
 ```
 
 ## Observability
@@ -478,7 +496,7 @@ sequenceDiagram
     participant FSM
     participant PebbleDB
     participant Emitter as EventEmitter
-    participant Sink as Sink (NATS)
+    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse)
 
     Client->>API: CreateTransaction
     API->>Admission: Admit()
@@ -506,7 +524,7 @@ sequenceDiagram
 sequenceDiagram
     participant PebbleDB
     participant Emitter as EventEmitter
-    participant Sink as Sink (NATS)
+    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse)
 
     Note over Emitter: Node restarts, becomes leader
     Emitter->>PebbleDB: Read cursor
@@ -530,3 +548,19 @@ sequenceDiagram
 - **Event filtering**: Allow consumers to subscribe to specific event types or ledgers.
 - **Event replay API**: A gRPC endpoint to replay events from a given sequence (useful for bootstrapping new consumers).
 - **Backpressure**: If the sink is slow, the emitter should apply backpressure (bounded buffer) rather than consuming unbounded memory.
+
+### HTTP Webhook Details
+
+The HTTP sink sends each event as an individual HTTP POST request with the following headers:
+
+| Header | Description |
+|---|---|
+| `Content-Type` | `application/json` or `application/protobuf` depending on format setting |
+| `X-Event-Type` | Event type (e.g. `committed_transaction`) |
+| `X-Ledger` | Ledger name |
+| `X-Log-Sequence` | Global log sequence number |
+| `X-Webhook-Signature` | `sha256=<hex>` HMAC-SHA256 signature (only when `secret` is configured) |
+
+### ClickHouse Sink Details
+
+The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
