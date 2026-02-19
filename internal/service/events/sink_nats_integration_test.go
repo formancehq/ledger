@@ -1,0 +1,422 @@
+package events_test
+
+import (
+	"context"
+	"fmt"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/events"
+	"github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+)
+
+// startTestNATSServer starts an embedded NATS server with JetStream enabled.
+// It returns the server instance; cleanup is handled via t.Cleanup.
+func startTestNATSServer(t *testing.T) *server.Server {
+	t.Helper()
+
+	opts := &server.Options{
+		Host:               "127.0.0.1",
+		Port:               -1, // random port
+		JetStream:          true,
+		StoreDir:           t.TempDir(),
+		JetStreamMaxMemory: 64 * 1024 * 1024,  // 64 MB
+		JetStreamMaxStore:  128 * 1024 * 1024, // 128 MB
+	}
+
+	ns, err := server.NewServer(opts)
+	require.NoError(t, err)
+
+	ns.Start()
+	require.True(t, ns.ReadyForConnections(5*time.Second), "NATS server failed to become ready")
+
+	t.Cleanup(func() {
+		ns.Shutdown()
+		ns.WaitForShutdown()
+	})
+
+	return ns
+}
+
+// createTestStream creates a JetStream stream that captures all subjects under the given topic prefix.
+func createTestStream(t *testing.T, js jetstream.JetStream, streamName, topicPrefix string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name:     streamName,
+		Subjects: []string{topicPrefix + ".>"},
+	})
+	require.NoError(t, err)
+}
+
+// consumeEvents reads up to expectedCount events from a JetStream consumer within a timeout.
+func consumeEvents(t *testing.T, cons jetstream.Consumer, expectedCount int, timeout time.Duration) []jetstream.Msg {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var msgs []jetstream.Msg
+	for len(msgs) < expectedCount {
+		batch, err := cons.Fetch(expectedCount-len(msgs), jetstream.FetchMaxWait(500*time.Millisecond))
+		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
+		for msg := range batch.Messages() {
+			msgs = append(msgs, msg)
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+
+	require.Len(t, msgs, expectedCount, "expected %d events from NATS", expectedCount)
+	return msgs
+}
+
+func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
+	t.Parallel()
+
+	ns := startTestNATSServer(t)
+
+	// Connect a consumer to verify events arrive
+	conn, err := nats.Connect(ns.ClientURL())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	js, err := jetstream.New(conn)
+	require.NoError(t, err)
+
+	const topic = "ledger-events"
+	createTestStream(t, js, "EVENTS", topic)
+
+	cons, err := js.CreateConsumer(context.Background(), "EVENTS", jetstream.ConsumerConfig{
+		Name:          "test-consumer",
+		FilterSubject: topic + ".>",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	require.NoError(t, err)
+
+	// Set up emitter with real NATSSink
+	store := newTestStore(t)
+	proposer := &directProposer{store: store}
+	logger := logging.Testing()
+
+	registerLedger(t, store, "orders", 1)
+	now := libtime.Now()
+
+	appendTestLogs(t, store,
+		&commonpb.Log{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerLog{
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+					},
+				},
+			},
+		},
+		&commonpb.Log{
+			Sequence: 2,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "orders",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
+										WithID(1).WithTimestamp(now),
+								},
+							},
+						}).WithID(1).WithDate(now),
+					},
+				},
+			},
+		},
+	)
+
+	sink, err := events.NewNATSSink(events.NATSSinkConfig{
+		URL:    ns.ClientURL(),
+		Topic:  topic,
+		Format: events.FormatJSON,
+	})
+	require.NoError(t, err)
+	defer func() { _ = sink.Close() }()
+
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 10
+	emitter := events.NewEmitter(store, sink, "nats-sink", proposer, logger, cfg)
+	emitter.Start()
+
+	// Wait for cursor to advance
+	require.Eventually(t, func() bool {
+		cursor, err := store.GetSinkCursor("nats-sink")
+		return err == nil && cursor >= 2
+	}, 5*time.Second, 10*time.Millisecond, "emitter should process all logs")
+
+	emitter.Stop()
+
+	// Consume and verify events from NATS
+	msgs := consumeEvents(t, cons, 2, 5*time.Second)
+
+	// Verify CREATED_LEDGER event (JSON)
+	var evt1 eventspb.Event
+	require.NoError(t, protojson.Unmarshal(msgs[0].Data(), &evt1))
+	require.Equal(t, eventspb.EventType_CREATED_LEDGER, evt1.Type)
+	require.Equal(t, "orders", evt1.Ledger)
+	require.Equal(t, uint64(1), evt1.LogSequence)
+
+	// Verify COMMITTED_TRANSACTION event (JSON)
+	var evt2 eventspb.Event
+	require.NoError(t, protojson.Unmarshal(msgs[1].Data(), &evt2))
+	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt2.Type)
+	require.Equal(t, "orders", evt2.Ledger)
+	require.Equal(t, uint64(2), evt2.LogSequence)
+
+	// Verify NATS subject routing
+	require.Equal(t, fmt.Sprintf("%s.orders.created_ledger", topic), msgs[0].Subject())
+	require.Equal(t, fmt.Sprintf("%s.orders.committed_transaction", topic), msgs[1].Subject())
+}
+
+func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
+	t.Parallel()
+
+	ns := startTestNATSServer(t)
+
+	conn, err := nats.Connect(ns.ClientURL())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	js, err := jetstream.New(conn)
+	require.NoError(t, err)
+
+	const topic = "ledger-proto"
+	createTestStream(t, js, "PROTO", topic)
+
+	cons, err := js.CreateConsumer(context.Background(), "PROTO", jetstream.ConsumerConfig{
+		Name:          "proto-consumer",
+		FilterSubject: topic + ".>",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	require.NoError(t, err)
+
+	store := newTestStore(t)
+	proposer := &directProposer{store: store}
+	logger := logging.Testing()
+
+	registerLedger(t, store, "payments", 1)
+	now := libtime.Now()
+
+	appendTestLogs(t, store,
+		&commonpb.Log{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "payments",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
+										WithID(1).WithTimestamp(now),
+								},
+							},
+						}).WithID(1).WithDate(now),
+					},
+				},
+			},
+		},
+	)
+
+	sink, err := events.NewNATSSink(events.NATSSinkConfig{
+		URL:    ns.ClientURL(),
+		Topic:  topic,
+		Format: events.FormatProto,
+	})
+	require.NoError(t, err)
+	defer func() { _ = sink.Close() }()
+
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 10
+	emitter := events.NewEmitter(store, sink, "proto-sink", proposer, logger, cfg)
+	emitter.Start()
+
+	require.Eventually(t, func() bool {
+		cursor, err := store.GetSinkCursor("proto-sink")
+		return err == nil && cursor >= 1
+	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
+
+	emitter.Stop()
+
+	msgs := consumeEvents(t, cons, 1, 5*time.Second)
+
+	// Deserialize protobuf and verify
+	var evt eventspb.Event
+	require.NoError(t, evt.UnmarshalVT(msgs[0].Data()))
+	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt.Type)
+	require.Equal(t, "payments", evt.Ledger)
+	require.Equal(t, uint64(1), evt.LogSequence)
+	require.NotNil(t, evt.Log, "event should carry the full Log")
+}
+
+func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
+	t.Parallel()
+
+	ns := startTestNATSServer(t)
+
+	conn, err := nats.Connect(ns.ClientURL())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	js, err := jetstream.New(conn)
+	require.NoError(t, err)
+
+	const topic = "ledger-routing"
+	createTestStream(t, js, "ROUTING", topic)
+
+	// Create two filtered consumers: one for "orders", one for "payments"
+	ordersConsumer, err := js.CreateConsumer(context.Background(), "ROUTING", jetstream.ConsumerConfig{
+		Name:          "orders-consumer",
+		FilterSubject: topic + ".orders.>",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	require.NoError(t, err)
+
+	paymentsConsumer, err := js.CreateConsumer(context.Background(), "ROUTING", jetstream.ConsumerConfig{
+		Name:          "payments-consumer",
+		FilterSubject: topic + ".payments.>",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	require.NoError(t, err)
+
+	store := newTestStore(t)
+	proposer := &directProposer{store: store}
+	logger := logging.Testing()
+
+	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "payments", 2)
+	now := libtime.Now()
+
+	appendTestLogs(t, store,
+		// Log 1: Create "orders" ledger
+		&commonpb.Log{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerLog{
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+					},
+				},
+			},
+		},
+		// Log 2: Create "payments" ledger
+		&commonpb.Log{
+			Sequence: 2,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerLog{
+						Info: &commonpb.LedgerInfo{Name: "payments", CreatedAt: commonpb.NewTimestamp(now), Id: 2},
+					},
+				},
+			},
+		},
+		// Log 3: Transaction on "orders"
+		&commonpb.Log{
+			Sequence: 3,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "orders",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "shop", "USD", big.NewInt(100))).
+										WithID(1).WithTimestamp(now),
+								},
+							},
+						}).WithID(1).WithDate(now),
+					},
+				},
+			},
+		},
+		// Log 4: Transaction on "payments"
+		&commonpb.Log{
+			Sequence: 4,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "payments",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(200))).
+										WithID(1).WithTimestamp(now),
+								},
+							},
+						}).WithID(1).WithDate(now),
+					},
+				},
+			},
+		},
+	)
+
+	sink, err := events.NewNATSSink(events.NATSSinkConfig{
+		URL:    ns.ClientURL(),
+		Topic:  topic,
+		Format: events.FormatJSON,
+	})
+	require.NoError(t, err)
+	defer func() { _ = sink.Close() }()
+
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 10
+	emitter := events.NewEmitter(store, sink, "routing-sink", proposer, logger, cfg)
+	emitter.Start()
+
+	require.Eventually(t, func() bool {
+		cursor, err := store.GetSinkCursor("routing-sink")
+		return err == nil && cursor >= 4
+	}, 5*time.Second, 10*time.Millisecond, "emitter should process all 4 logs")
+
+	emitter.Stop()
+
+	// Verify "orders" consumer gets exactly 2 events (CREATED_LEDGER + COMMITTED_TRANSACTION)
+	ordersMsgs := consumeEvents(t, ordersConsumer, 2, 5*time.Second)
+
+	var ordEvt1, ordEvt2 eventspb.Event
+	require.NoError(t, protojson.Unmarshal(ordersMsgs[0].Data(), &ordEvt1))
+	require.NoError(t, protojson.Unmarshal(ordersMsgs[1].Data(), &ordEvt2))
+
+	require.Equal(t, eventspb.EventType_CREATED_LEDGER, ordEvt1.Type)
+	require.Equal(t, "orders", ordEvt1.Ledger)
+	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, ordEvt2.Type)
+	require.Equal(t, "orders", ordEvt2.Ledger)
+
+	// Verify "payments" consumer gets exactly 2 events
+	paymentsMsgs := consumeEvents(t, paymentsConsumer, 2, 5*time.Second)
+
+	var payEvt1, payEvt2 eventspb.Event
+	require.NoError(t, protojson.Unmarshal(paymentsMsgs[0].Data(), &payEvt1))
+	require.NoError(t, protojson.Unmarshal(paymentsMsgs[1].Data(), &payEvt2))
+
+	require.Equal(t, eventspb.EventType_CREATED_LEDGER, payEvt1.Type)
+	require.Equal(t, "payments", payEvt1.Ledger)
+	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, payEvt2.Type)
+	require.Equal(t, "payments", payEvt2.Ledger)
+}
