@@ -581,14 +581,21 @@ Key log messages for debugging connection issues:
 | `Peer connection broken, reconnect` | Stream EOF detected |
 | `Send channel full, dropping message` | Queue overflow (indicates sustained connection issues) |
 
+## TLS Support
+
+Both gRPC servers and all connection pools support opt-in TLS. When the server is started with `--tls-cert-file` and `--tls-key-file`, both the Raft server and Service server require TLS. Inter-node connections (Raft and Service pools) also use TLS automatically.
+
+If `--tls-ca-cert-file` is provided, the server enables optional client certificate verification (`tls.VerifyClientCertIfGiven`), supporting mTLS.
+
+On the client side (`ledgerctl`), the `--tls-ca-cert` flag specifies a custom CA for server verification. Without any TLS flags, the client uses the system CA pool. Use `--insecure` to disable TLS entirely.
+
 ## Future Improvements
 
 Potential enhancements under consideration:
 
 1. **Configurable timeouts**: Expose backoff parameters as command-line flags
-2. **TLS support**: Add mTLS for secure inter-node communication
-3. **Connection compression**: Enable gzip compression for large messages (currently commented out)
-4. **Graceful shutdown**: Implement proper GOAWAY handling for planned pod terminations
+2. **Connection compression**: Enable gzip compression for large messages (currently commented out)
+3. **Graceful shutdown**: Implement proper GOAWAY handling for planned pod terminations
 
 ## Related Documentation
 

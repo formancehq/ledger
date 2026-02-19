@@ -28,6 +28,7 @@ func newRootCommand() *cobra.Command {
 	// Add persistent flags for server connection
 	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address")
 	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS)")
+	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification")
 
 	// Add persistent flags for request signing
 	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded)")

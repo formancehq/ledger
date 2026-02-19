@@ -23,7 +23,6 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v3"
 )
 
@@ -130,6 +129,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("cold-storage-s3-bucket", "", "S3 bucket name (required when driver=s3)")
 	runCmd.Flags().String("cold-storage-s3-region", "", "AWS region for S3")
 	runCmd.Flags().String("cold-storage-s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+
+	// TLS configuration flags
+	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM)")
+	runCmd.Flags().String("tls-key-file", "", "Path to TLS private key file (PEM)")
+	runCmd.Flags().String("tls-ca-cert-file", "", "Path to CA certificate file (PEM) for client verification")
 
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
@@ -355,6 +359,20 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.ColdStorageConfig.S3Region = getString("cold-storage-s3-region", "")
 	cfg.ColdStorageConfig.S3Endpoint = getString("cold-storage-s3-endpoint", "")
 
+	// TLS configuration
+	tlsCert := getString("tls-cert-file", "")
+	tlsKey := getString("tls-key-file", "")
+	tlsCA := getString("tls-ca-cert-file", "")
+	if (tlsCert == "") != (tlsKey == "") {
+		return nil, fmt.Errorf("--tls-cert-file and --tls-key-file must be provided together")
+	}
+	cfg.TLSConfig = application.TLSConfig{
+		Enabled:  tlsCert != "" && tlsKey != "",
+		CertFile: tlsCert,
+		KeyFile:  tlsKey,
+		CAFile:   tlsCA,
+	}
+
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")
 	if joinAddr != "" {
@@ -362,7 +380,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 			return nil, fmt.Errorf("--join and --bootstrap are mutually exclusive")
 		}
 
-		peers, err := discoverPeersFromClusterWithRetry(joinAddr)
+		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
@@ -375,7 +393,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 // discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
 // for up to 60 seconds, allowing the bootstrap node time to start.
-func discoverPeersFromClusterWithRetry(serviceAddr string) ([]node.Peer, error) {
+func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg application.TLSConfig) ([]node.Peer, error) {
 	var (
 		lastErr  error
 		delay    = 500 * time.Millisecond
@@ -383,7 +401,7 @@ func discoverPeersFromClusterWithRetry(serviceAddr string) ([]node.Peer, error) 
 	)
 
 	for {
-		peers, err := discoverPeersFromCluster(serviceAddr)
+		peers, err := discoverPeersFromCluster(serviceAddr, tlsCfg)
 		if err == nil {
 			return peers, nil
 		}
@@ -402,9 +420,14 @@ func discoverPeersFromClusterWithRetry(serviceAddr string) ([]node.Peer, error) 
 
 // discoverPeersFromCluster connects to an existing cluster member and discovers
 // all voter nodes and their addresses via GetClusterState.
-func discoverPeersFromCluster(serviceAddr string) ([]node.Peer, error) {
+func discoverPeersFromCluster(serviceAddr string, tlsCfg application.TLSConfig) ([]node.Peer, error) {
+	creds, err := application.ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS credentials for peer discovery: %w", err)
+	}
+
 	conn, err := grpc.NewClient(serviceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)

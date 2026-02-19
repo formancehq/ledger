@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"google.golang.org/grpc/credentials"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
@@ -174,6 +175,9 @@ func Module() fx.Option {
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
+			func(cfg Config) (credentials.TransportCredentials, error) {
+				return ClientTransportCredentials(cfg.TLSConfig)
+			},
 			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
 			func(cfg Config, logger logging.Logger) (*RaftServer, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
@@ -185,11 +189,21 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid port in bind address: %w", err)
 				}
 
-				return NewRaftServer(port, logger), nil
+				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS credentials for raft server: %w", err)
+				}
+
+				return NewRaftServer(port, logger, tlsOpt), nil
 			},
 			// ServiceServer for external client-facing API
-			func(cfg Config, logger logging.Logger) *ServiceServer {
-				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
+			func(cfg Config, logger logging.Logger) (*ServiceServer, error) {
+				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS credentials for service server: %w", err)
+				}
+
+				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
 			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, signer *receipt.Signer) servicepb.BucketServiceServer {
 				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer)

@@ -310,6 +310,17 @@ spec:
         - name: TRACE_SAMPLING_SUCCESS_RATIO
           value: {{ .Values.config.monitoring.traces.sampling.successRatio | default 0.1 | toString | quote }}
         {{- end }}
+        # TLS configuration
+        {{- if .Values.config.tls.enabled }}
+        - name: TLS_CERT_FILE
+          value: "/tls/tls.crt"
+        - name: TLS_KEY_FILE
+          value: "/tls/tls.key"
+        {{- if .Values.config.tls.caSecretKey }}
+        - name: TLS_CA_CERT_FILE
+          value: "/tls/{{ .Values.config.tls.caSecretKey }}"
+        {{- end }}
+        {{- end }}
         command:
         - /bin/sh
         - -c
@@ -346,6 +357,11 @@ spec:
           mountPath: {{ .Values.config.walDir }}
         - name: data
           mountPath: {{ .Values.config.dataDir }}
+        {{- if .Values.config.tls.enabled }}
+        - name: tls-certs
+          mountPath: /tls
+          readOnly: true
+        {{- end }}
         {{- with .Values.livenessProbe }}
         livenessProbe:
           {{- toYaml . | nindent 10 }}
@@ -387,6 +403,12 @@ spec:
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.config.tls.enabled }}
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: {{ .Values.config.tls.secretName }}
       {{- end }}
   volumeClaimTemplates:
   - metadata:

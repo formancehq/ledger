@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 // ServiceConnectionPool manages gRPC connections to service ports on peer nodes
@@ -16,13 +16,15 @@ type ServiceConnectionPool struct {
 	mu          sync.Mutex
 	peers       map[uint64]string // peer ID -> service address
 	connections map[uint64]*grpc.ClientConn
+	creds       credentials.TransportCredentials
 }
 
 // NewServiceConnectionPool creates a new service connection pool
-func NewServiceConnectionPool() *ServiceConnectionPool {
+func NewServiceConnectionPool(creds credentials.TransportCredentials) *ServiceConnectionPool {
 	return &ServiceConnectionPool{
 		peers:       make(map[uint64]string),
 		connections: make(map[uint64]*grpc.ClientConn),
+		creds:       creds,
 	}
 }
 
@@ -49,7 +51,7 @@ func (p *ServiceConnectionPool) AddPeer(id uint64, serviceAddr string) error {
 
 func (p *ServiceConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
 	return grpc.NewClient("dns:///"+addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(p.creds),
 		grpc.WithConnectParams(grpc.ConnectParams{
 			Backoff: backoff.Config{
 				BaseDelay:  100 * time.Millisecond,

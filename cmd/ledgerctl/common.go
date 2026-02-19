@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -107,26 +108,41 @@ func sortStrings(s []string) {
 	}
 }
 
+// getClientTransportCredentials returns the transport credentials based on CLI flags.
+// If --insecure is set, returns insecure credentials.
+// Otherwise, returns TLS credentials, optionally using a custom CA from --tls-ca-cert.
+func getClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCredentials, error) {
+	insecureMode, _ := cmd.Flags().GetBool("insecure")
+	if insecureMode {
+		return insecure.NewCredentials(), nil
+	}
+
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
+	if caCertPath != "" {
+		caPEM, err := os.ReadFile(caCertPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading CA cert: %w", err)
+		}
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", caCertPath)
+		}
+		tlsConfig.RootCAs = certPool
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
 // getClient creates a gRPC client connection and returns the client.
 // The caller is responsible for closing the connection.
 func getClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
-	insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-	var creds credentials.TransportCredentials
-	if insecureMode {
-		creds = insecure.NewCredentials()
-	} else {
-		// Use TLS by default (for port 443 or any secure endpoint)
-		creds = credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12,
-		})
-	}
-
-	// If connecting to port 443, ensure we don't include the port in the address
-	// as some gRPC implementations may have issues with explicit :443
-	if strings.HasSuffix(serverAddr, ":443") {
-		serverAddr = strings.TrimSuffix(serverAddr, ":443") + ":443"
+	creds, err := getClientTransportCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn, err := grpc.NewClient(serverAddr,

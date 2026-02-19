@@ -156,6 +156,43 @@ The chart uses the `core` chart's monitoring helpers. Configuration can be set a
 | `config.monitoring.logs.level` | Log level | `info` |
 | `config.monitoring.logs.format` | Log format | `json` |
 
+### TLS Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `config.tls.enabled` | Enable TLS for gRPC servers (both service and Raft transport) | `false` |
+| `config.tls.secretName` | Name of the Kubernetes TLS secret (`kubernetes.io/tls` type) containing `tls.crt` and `tls.key` | `""` |
+| `config.tls.caSecretKey` | Key name within the secret for the CA certificate (e.g., `ca.crt`), enables mTLS client verification | `""` |
+
+#### Enabling TLS
+
+1. Create a TLS secret:
+```bash
+kubectl create secret tls ledger-tls \
+  --cert=server-cert.pem \
+  --key=server-key.pem
+```
+
+2. (Optional) If you need mTLS with a CA certificate, create an opaque secret instead:
+```bash
+kubectl create secret generic ledger-tls \
+  --from-file=tls.crt=server-cert.pem \
+  --from-file=tls.key=server-key.pem \
+  --from-file=ca.crt=ca-cert.pem
+```
+
+3. Enable TLS in your values:
+```yaml
+config:
+  tls:
+    enabled: true
+    secretName: ledger-tls
+    # Optional: enable mTLS by specifying the CA cert key in the secret
+    caSecretKey: "ca.crt"
+```
+
+**Note**: When TLS is enabled, all gRPC connections (external client API and internal Raft transport) use TLS. Clients must trust the server's CA certificate to connect.
+
 ### Service Configuration
 
 | Parameter | Description | Default |

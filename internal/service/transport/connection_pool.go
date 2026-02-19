@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 // ConnectionPool manages raw gRPC connections for peers
@@ -15,13 +15,15 @@ type ConnectionPool struct {
 	mu          sync.Mutex
 	peers       map[uint64]string // peer ID -> address
 	connections map[uint64]*grpc.ClientConn
+	creds       credentials.TransportCredentials
 }
 
 // NewConnectionPool creates a new gRPC connection pool
-func NewConnectionPool() *ConnectionPool {
+func NewConnectionPool(creds credentials.TransportCredentials) *ConnectionPool {
 	return &ConnectionPool{
 		peers:       make(map[uint64]string),
 		connections: make(map[uint64]*grpc.ClientConn),
+		creds:       creds,
 	}
 }
 
@@ -39,7 +41,7 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 
 func (p *ConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
 	return grpc.NewClient("dns:///"+addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(p.creds),
 		// TODO: Make that configuration
 		// TOneverDO: Configure a MaxDelay greater than the election timeout
 		grpc.WithConnectParams(grpc.ConnectParams{

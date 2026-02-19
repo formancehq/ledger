@@ -24,6 +24,7 @@ These flags are available for all commands:
 |------|---------|-------------|
 | `--server` | `localhost:8888` | gRPC server address |
 | `--insecure` | `false` | Use insecure connection (no TLS) |
+| `--tls-ca-cert` | | Path to CA certificate file (PEM) for server verification |
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 
@@ -1148,8 +1149,11 @@ ledgerctl --server localhost:8888 --insecure ledgers list
 ### Remote Server with TLS
 
 ```bash
-# Connect to remote server with TLS (default)
+# Connect to remote server with TLS (default, uses system CA pool)
 ledgerctl --server ledger.example.com:443 ledgers list
+
+# Connect with a custom CA certificate (e.g., self-signed or internal CA)
+ledgerctl --server ledger.example.com:8888 --tls-ca-cert /path/to/ca.pem ledgers list
 ```
 
 ### Remote Server without TLS
@@ -1261,10 +1265,12 @@ Global flags can be set via environment variables:
 |---------------------|------|
 | `SERVER` | `--server` |
 | `INSECURE` | `--insecure` |
+| `TLS_CA_CERT` | `--tls-ca-cert` |
 
 ```bash
 export SERVER=ledger.example.com:443
 export INSECURE=false
+export TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 

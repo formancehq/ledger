@@ -10,6 +10,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
+type TLSConfig struct {
+	Enabled  bool
+	CertFile string
+	KeyFile  string
+	CAFile   string
+}
+
 type HealthConfig struct {
 	Interval           time.Duration
 	WALThreshold       float64
@@ -31,6 +38,7 @@ type Config struct {
 	AdmissionMetrics  bool
 	ReceiptSigningKey string
 	ColdStorageConfig coldstorage.Config
+	TLSConfig         TLSConfig
 }
 
 func (c Config) Validate() error {

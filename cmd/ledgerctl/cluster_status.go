@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"sort"
 
@@ -10,8 +9,6 @@ import (
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // newClusterStatusCommand creates the cluster status command.
@@ -62,15 +59,10 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 // getClusterClient creates a gRPC client connection for cluster operations.
 func getClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
-	insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-	var creds credentials.TransportCredentials
-	if insecureMode {
-		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12,
-		})
+	creds, err := getClientTransportCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn, err := grpc.NewClient(serverAddr,

@@ -177,3 +177,24 @@ func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithTLSCertFile(path string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--tls-cert-file", path)
+		return nil
+	}
+}
+
+func WithTLSKeyFile(path string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--tls-key-file", path)
+		return nil
+	}
+}
+
+func WithTLSCACertFile(path string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--tls-ca-cert-file", path)
+		return nil
+	}
+}
+

@@ -142,6 +142,17 @@ config:
       region: ""        # AWS region (e.g., eu-west-1)
       endpoint: ""      # Custom S3 endpoint (for MinIO)
 
+  # TLS configuration for gRPC connections (both servers and inter-node communication)
+  tls:
+    # Enable TLS for gRPC servers
+    enabled: false
+    # Kubernetes secret containing TLS certificate and key
+    # The secret must contain tls.crt and tls.key (standard kubernetes.io/tls secret)
+    secretName: ""
+    # Path to CA certificate file inside the secret (optional, for mTLS client verification)
+    # If the secret also contains a ca.crt key, set this to enable CA verification
+    caSecretKey: ""
+
   # Debug logging
   debug: false
   

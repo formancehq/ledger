@@ -20,7 +20,6 @@
 * Holds/pending transfers
 * Events system
 * ACL system
-* Built in tls
 * LICENCE of dependencies
 * Add nightly build
 * Mode not atomic

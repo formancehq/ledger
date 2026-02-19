@@ -281,8 +281,9 @@ func convertToGRPCError(err error) error {
 
 // NewRaftServer creates a new gRPC server for Raft transport (internal)
 // This server is optimized for high-throughput inter-node communication
-// and does not include OpenTelemetry instrumentation to minimize overhead
-func NewRaftServer(port int, logger logging.Logger) *RaftServer {
+// and does not include OpenTelemetry instrumentation to minimize overhead.
+// If tlsOpt is non-nil, it is appended to the server options to enable TLS.
+func NewRaftServer(port int, logger logging.Logger, tlsOpt grpc.ServerOption) *RaftServer {
 	opts := []grpc.ServerOption{
 		grpc.InitialWindowSize(16 * 1024 * 1024),
 		grpc.InitialConnWindowSize(64 * 1024 * 1024),
@@ -290,6 +291,10 @@ func NewRaftServer(port int, logger logging.Logger) *RaftServer {
 		grpc.WriteBufferSize(1 * 1024 * 1024),
 		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
 		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+	}
+
+	if tlsOpt != nil {
+		opts = append(opts, tlsOpt)
 	}
 
 	server := grpc.NewServer(opts...)
@@ -305,8 +310,9 @@ func NewRaftServer(port int, logger logging.Logger) *RaftServer {
 }
 
 // NewServiceServer creates a new gRPC server for service API (external)
-// This server includes OpenTelemetry instrumentation and error conversion
-func NewServiceServer(port int, logger logging.Logger, debug bool) *ServiceServer {
+// This server includes OpenTelemetry instrumentation and error conversion.
+// If tlsOpt is non-nil, it is appended to the server options to enable TLS.
+func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt grpc.ServerOption) *ServiceServer {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
@@ -346,6 +352,10 @@ func NewServiceServer(port int, logger logging.Logger, debug bool) *ServiceServe
 		grpc.MaxSendMsgSize(64 * 1024 * 1024),
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	if tlsOpt != nil {
+		opts = append(opts, tlsOpt)
 	}
 
 	server := grpc.NewServer(opts...)
