@@ -317,4 +317,4 @@ This sequence is assigned at apply time, ensuring strict ordering.
 - [Architecture](./architecture.md) - Overall system architecture
 - [Data Flows](./data-flows.md) - Detailed data flow diagrams
 - [Raft Consensus](./raft-consensus.md) - How Raft ensures consistency
-- [v2 Problems Solved](../drafts/v2-problems-solved.md) - Other improvements over v2
+- [v2 Problems Solved](../../sales/v2-vs-v3.md) - Other improvements over v2

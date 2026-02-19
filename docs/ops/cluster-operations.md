@@ -389,8 +389,8 @@ Cluster fully operational with 3 voters.
 
 ## Related Documentation
 
-- [Raft Consensus](./raft-consensus.md) - Raft protocol details, elections, replication
-- [Data Flows](./data-flows.md) - Spool mechanics, entry processing
-- [Spool](./spool.md) - Spool technical implementation
-- [Deployment](../deployment.md) - Helm chart configuration, CLI flags
-- [CLI Reference](../cli.md) - `cluster add-learner`, `cluster promote-learner` commands
+- [Raft Consensus](../dev/architecture/raft-consensus.md) - Raft protocol details, elections, replication
+- [Data Flows](../dev/architecture/data-flows.md) - Spool mechanics, entry processing
+- [Spool](../dev/architecture/spool.md) - Spool technical implementation
+- [Deployment](./deployment.md) - Helm chart configuration, CLI flags
+- [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands

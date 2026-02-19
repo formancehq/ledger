@@ -258,18 +258,18 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 
 ## References
 
-- [AGENTS.md](../AGENTS.md): Project structure and conventions
+- [AGENTS.md](../../CLAUDE.md): Project structure and conventions
 - [Architecture](./architecture/architecture.md): General architecture
 - [Raft Consensus](./architecture/raft-consensus.md): Raft details
 - [API](./architecture/api.md): API documentation
-- [CLI Reference](./cli.md): CLI client documentation
-- [Numscript Examples](../numscript/examples/README.md): Example Numscript files
+- [CLI Reference](../ops/cli.md): CLI client documentation
+- [Numscript Examples](../../misc/numscript/examples/README.md): Example Numscript files
 
 ## Next Steps
 
 To contribute effectively:
 
-1. Read [AGENTS.md](../AGENTS.md) for conventions
+1. Read [AGENTS.md](../../CLAUDE.md) for conventions
 2. Explore existing code to understand patterns
 3. Write tests for your feature
 4. Document important changes

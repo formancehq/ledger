@@ -191,13 +191,13 @@ The `lastAppliedTimestamp` is maintained as volatile state in the `Machine` (FSM
 - **Included in Raft snapshots** via the `last_applied_timestamp` field in `MemorySnapshot`
 - **Restored** when a node installs a snapshot from the leader
 
-See [Hybrid Logical Clock Architecture](./architecture/hybrid-logical-clock.md) for a detailed technical description.
+See [Hybrid Logical Clock Architecture](../dev/architecture/hybrid-logical-clock.md) for a detailed technical description.
 
 ### Clock Skew Check
 
 As a complementary safety mechanism, the `HealthChecker` periodically queries each peer's physical clock via the `GetNodeTime` gRPC RPC. If the absolute skew between any two nodes exceeds the configured threshold (`--health-clock-skew-threshold`, default 500ms), the cluster is marked unhealthy and the admission layer rejects new write operations. This ensures operators are alerted to NTP issues before the HLC has to compensate excessively, which would degrade timestamp quality.
 
-See [Clock Skew Check](./architecture/hybrid-logical-clock.md#clock-skew-check) for details.
+See [Clock Skew Check](../dev/architecture/hybrid-logical-clock.md#clock-skew-check) for details.
 
 ## Integrity Guarantees
 

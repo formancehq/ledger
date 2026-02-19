@@ -1,6 +1,6 @@
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
-* Roll up of existing ledgers
+* Ledger derivation?
 * Chart of account pattern recognition
 * Mirror mode
 * Extract HTTP layer into a compat service?
@@ -11,7 +11,6 @@
 * Convert K6 tests to GRPC
 * Eventual consistency (read your writes)
 * Flow control
-* refactor doc (dev, user)
 * Automated periods
 * Add hash consistency tests
 * --bootstrap-from-backup

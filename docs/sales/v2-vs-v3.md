@@ -532,7 +532,7 @@ Some v2 features are still being implemented in v3:
 | Force parameter on transaction creation | Not implemented |
 | Ledger metadata update | Not implemented |
 
-See [API Comparison](./api-comparison.md) for detailed feature comparison.
+See [API Comparison](../dev/api-comparison.md) for detailed feature comparison.
 
 ---
 
@@ -628,7 +628,7 @@ Content-Type: application/json
 - **Simplified error handling**: No need to handle partial failures across ledgers
 - **Audit trail**: Single global sequence for all operations
 
-See [Global Log Architecture](./global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
+See [Global Log Architecture](../dev/architecture/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
 
 ---
 

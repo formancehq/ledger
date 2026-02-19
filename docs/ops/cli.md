@@ -4,7 +4,7 @@
 
 ## Getting Started
 
-![Getting Started](../misc/demo/demo_getting_started.gif)
+![Getting Started](../../misc/demo/demo_getting_started.gif)
 
 ## Installation
 
@@ -168,7 +168,7 @@ ledgerctl ledgers delete
 
 ### accounts
 
-![Metadata Demo](../misc/demo/demo_metadata.gif)
+![Metadata Demo](../../misc/demo/demo_metadata.gif)
 
 Manage accounts in a ledger.
 
@@ -320,7 +320,7 @@ ledgerctl accounts delete-metadata
 
 ### transactions
 
-![Transactions Demo](../misc/demo/demo_transactions.gif)
+![Transactions Demo](../../misc/demo/demo_transactions.gif)
 
 Manage transactions in a ledger.
 
@@ -617,7 +617,7 @@ ledgerctl transactions delete-metadata
 
 ### store
 
-![Operations Demo](../misc/demo/demo_operations.gif)
+![Operations Demo](../../misc/demo/demo_operations.gif)
 
 Storage operations.
 
@@ -992,7 +992,7 @@ ledgerctl cluster maintenance enable --signing-key /path/to/seed
 
 ### signing
 
-![Signing Demo](../misc/demo/demo_signing.gif)
+![Signing Demo](../../misc/demo/demo_signing.gif)
 
 Manage Ed25519 signing keys and signature configuration.
 
@@ -1324,13 +1324,13 @@ ledgerctl --server ledger.example.com:8888 --insecure ledgers list
 
 ## Numscript Support
 
-![Numscript Demo](../misc/demo/demo_numscript.gif)
+![Numscript Demo](../../misc/demo/demo_numscript.gif)
 
 The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
 
 For complete documentation, see:
-- [Numscript Guide](./numscript.md) - Complete guide with all features
-- [Numscript Examples](../numscript/examples/README.md) - Ready-to-use scripts
+- [Numscript Guide](../dev/numscript.md) - Complete guide with all features
+- [Numscript Examples](../../misc/numscript/examples/README.md) - Ready-to-use scripts
 
 ### Enabled Features
 
@@ -1531,4 +1531,4 @@ ledgerctl events remove-sink --name primary
 | `--name` | *(required)* | Name of the sink to remove |
 | `--timeout` | `10s` | Request timeout |
 
-See [Event System Architecture](architecture/events.md) for details on the event system design.
+See [Event System Architecture](../dev/architecture/events.md) for details on the event system design.

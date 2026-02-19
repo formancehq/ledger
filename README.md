@@ -8,15 +8,14 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 |---------|-------------|
 | **Distributed Consensus** | Uses etcd/raft for strong consistency across cluster nodes |
 | **Single Raft Architecture** | All ledgers managed by one Raft group for atomic operations |
-| **Pebble Storage** | High-performance LSM-tree storage engine from CockroachDB |
+| **Pebble Storage** | High-performance LSM-tree storage engine (CockroachDB), pure Go |
 | **Numscript Support** | Full support for Numscript transaction scripting |
 | **Idempotency** | Built-in idempotency key support for safe retries |
 | **Bulk Operations** | Process multiple transactions in a single request |
-| **OpenTelemetry** | Comprehensive observability with traces, metrics, and logs |
-| **Continuous Profiling** | Pyroscope integration for CPU, memory, and goroutine profiling |
-| **Pure Go** | Pebble requires no CGO, enabling easy cross-compilation |
+| **Observability** | OpenTelemetry (traces, metrics, logs) + Pyroscope profiling |
+| **Request Signing** | Ed25519 request signing for authenticity and integrity |
 
-## Architecture Overview
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -42,192 +41,39 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
-### Storage Backend
+## Quick Start
 
-The system uses **Pebble** (github.com/cockroachdb/pebble) as its storage engine - a high-performance LSM-tree based key-value store from CockroachDB. Pebble requires no CGO, enabling easy cross-compilation and minimal Docker images.
-
-## Documentation
-
-For detailed technical documentation, architecture overview, API reference, and development guides, see the [Technical Documentation](./docs/README.md).
-
-For a summary of problems from Ledger v2 that have been solved in this version, see [Problems Solved from v2](./docs/drafts/v2-problems-solved.md).
-
-For a comparison of the write API between this POC and the original ledger (`github.com/formancehq/ledger`), including missing and intentionally removed features, see the [API Comparison](./docs/api-comparison.md).
-
-
-## Prerequisites
-
-- Go 1.25 or higher (provided by Nix)
-- Just (command runner) - [Installation](https://github.com/casey/just)
-- Nix with Flakes enabled (required)
-
-## Installation
-
-### With Nix
-
-This project uses Nix flakes for a reproducible development environment. We recommend using `direnv` to automatically load the environment when entering the project directory.
-
-**Prerequisites:**
-- Install [direnv](https://direnv.net/) and [hook it into your shell](https://direnv.net/docs/hook.html)
-- Install Nix with Flakes enabled
-
-**Setup:**
+**Prerequisites:** Go 1.25+, [Just](https://github.com/casey/just), Nix with Flakes enabled.
 
 ```bash
-# Generate flake.lock file (first time only)
-nix flake update
+# Setup (first time only)
+nix flake update && direnv allow
 
-# Allow direnv to load the environment (first time only)
-direnv allow
-```
-
-After setup, `direnv` will automatically load the Nix development environment whenever you `cd` into the project directory. All dependencies (Go, Just, etc.) will be available in your shell.
-
-**Note:** The `flake.lock` file will be automatically generated on first use and should be committed to ensure build reproducibility.
-
-## Usage
-
-### Local mode (single node)
-
-```bash
-# Start a single node with default settings
+# Start a single node
 just run
-
-# Or manually
-go run . run \
-  --node-id 1 \
-  --bind-addr 127.0.0.1:8888 \
-  --data-dir ./data/node-1 \
-  --http-port 9000
 ```
 
-### Development Environment with Pulumi
-
-Deploy a complete development environment on Kubernetes using Pulumi, including the Ledger v3 POC application and the full observability stack (Grafana, VictoriaMetrics, Loki, Tempo, Pyroscope, OpenTelemetry Collector, and k6-operator).
-
-**Available Stacks** (managed under the `formance` organization on Pulumi Cloud):
-
-| Stack | Description |
-|-------|-------------|
-| `devenv-ledger-exp` | Development environment on Waays (Tailscale) |
-| `staging` | Staging environment on AWS (formance.cloud) |
-
-**Prerequisites:**
-- [Pulumi CLI](https://www.pulumi.com/docs/get-started/install/) installed
-- Access to the target Kubernetes cluster with `kubectl` configured
-- Go 1.21 or higher
-
-**Quick Start:**
-
-```bash
-# Navigate to the Pulumi application directory
-cd misc/devenv
-
-# Install Go dependencies
-go mod download
-
-# Login to Pulumi (if not already done)
-pulumi login
-
-# Select an existing stack
-pulumi stack select formance/ledger-exp-devenv/devenv-ledger-exp
-# or
-pulumi stack select formance/ledger-exp-devenv/staging
-
-# Preview the deployment
-pulumi preview
-
-# Deploy the stack
-pulumi up
-```
-
-**Configuration:**
-
-The deployment configuration is stored in `Pulumi.<stack>.yaml` (e.g., `Pulumi.staging.yaml`). You can customize:
-- Kubernetes context and namespace
-- Docker registry settings
-- Optional components (k6-operator, benchmark-operator)
-- Helm values for each service (VictoriaMetrics, Grafana, Loki, Tempo, OTLP, Ledger)
-- Grafana dashboards and datasources
-
-**Accessing Services:**
-
-After deployment, services are available on the **ledger-exp** cluster:
-
-**Public URLs (via Ingress):**
-- **Grafana**: https://grafana-ledger-exp.v2.formance.dev
-- **Ledger API**: https://ledger-exp.v2.formance.dev
-
-**Internal Services (via kubectl port-forward):**
-- **Ledger API**: `kubectl port-forward -n monitoring svc/ledger-v3-poc 9000:9000` then http://localhost:9000
-- **VictoriaMetrics**: `kubectl port-forward -n monitoring svc/vm-victoria-metrics-single-server 8428:8428` then http://localhost:8428
-- **Loki**: `kubectl port-forward -n monitoring svc/loki 3100:3100` then http://localhost:3100
-- **Tempo**: `kubectl port-forward -n monitoring svc/tempo 3200:3200` then http://localhost:3200
-
-**Destroying the Environment:**
-
-```bash
-# Remove all resources
-pulumi destroy
-```
-
-**Creating a new environment:**
-
-See the [Pulumi Development Environment README](misc/devenv/README.md) for detailed instructions on creating a new environment.
-
-For other deployment options and Kubernetes configuration, see the [Deployment Guide](./docs/deployment.md).
-
-## API Quick Reference
-
-### Ledger Operations
-
-```bash
-# Create a ledger
-curl -X POST http://localhost:9000/my-ledger \
-  -H "Content-Type: application/json" \
-  -d '{"metadata": {"description": "My ledger"}}'
-
-# Create a transaction
-curl -X POST http://localhost:9000/my-ledger/transactions \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: unique-key-123" \
-  -d '{
-    "postings": [
-      {"source": "world", "destination": "bank", "amount": 100, "asset": "USD"}
-    ]
-  }'
-
-# Check cluster state
-curl http://localhost:9000/cluster/state
-```
-
-### API Versioning
-
-All endpoints support an optional `/v2` prefix for future versioning:
-- `GET /` and `GET /v2/` are equivalent
-- `POST /{ledger}/transactions` and `POST /v2/{ledger}/transactions` are equivalent
-
-For complete API documentation, see the [API Reference](./docs/api.md).
+For cluster deployment and Kubernetes, see the [Deployment Guide](./docs/ops/deployment.md).
 
 ## Development
 
 ```bash
-# Build the application
-just build
-
-# Run tests
-just test
-
-# Run end-to-end tests
-just test-e2e
-
-# Generate protobuf code
-just generate-proto
-
-# Clean build artifacts
-just clean
+just build           # Build the application
+just test            # Run tests
+just test-e2e        # Run end-to-end tests
+just generate-proto  # Generate protobuf code
+just pre-commit      # Run all checks (generate, tidy, lint)
 ```
 
-**Note:** With `direnv` configured, the development environment is automatically loaded when you enter the project directory. All dependencies (Go, Just, etc.) are available in your shell.
+For more details, see the [Developer Guide](./docs/dev/).
 
-For more information about development, see the [Development Guide](./docs/development.md).
+## Documentation
+
+| Guide | Audience |
+|-------|----------|
+| [Operations](./docs/ops/) | Deploy, monitor, backup, CLI reference |
+| [Development](./docs/dev/) | Architecture, conventions, testing |
+| [Product Overview](./docs/sales/) | Features, benchmarks, v2 vs v3 |
+| [Drafts & RFCs](./docs/drafts/) | Experimental designs |
+
+See [docs/README.md](./docs/README.md) for full navigation.

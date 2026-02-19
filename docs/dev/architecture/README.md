@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-This directory contains the core architecture and design documentation for Ledger v3 POC.
+Core architecture and design documentation for Ledger v3 POC.
 
 ## Documents
 
@@ -19,11 +19,14 @@ Technical documentation on the deterministic Finite State Machine design with ge
 ### [Attributes](./attributes.md)
 System attributes (volumes, metadata, reversions, idempotency keys), their storage format, computation rules, and caching.
 
+### [Attribute Key Hashing](./attribute-key-hashing.md)
+U128 hashing scheme for attribute keys and collision detection.
+
 ### [Ledgers](./buckets-ledgers.md)
 Explanation of the ledger system, transaction management, and data organization.
 
 ### [Global Log Architecture](./global-log.md)
-Explanation of the two-level log architecture (global log vs ledger log) and how it enables system-level atomic bulk operations.
+Two-level log architecture (global log vs ledger log) and how it enables system-level atomic bulk operations.
 
 ### [Spool](./spool.md)
 Technical documentation for the Spool component (committed entry buffer during FSM synchronization).
@@ -50,13 +53,21 @@ gRPC connection mechanics, reconnection strategies, and optimizations for rollin
 Idempotency key mechanism for safe request retries, hash-based conflict detection, and storage architecture.
 
 ### [Periods](./periods.md)
-Period lifecycle (OPEN → CLOSING → CLOSED), two-step close process with background sealing, BLAKE3 sealing hash computation, crash recovery, and JWT transaction receipts.
+Period lifecycle (OPEN -> CLOSING -> CLOSED), two-step close process with background sealing, BLAKE3 sealing hash computation, crash recovery, and JWT transaction receipts.
 
-### [Disk Space Limiting](./disk-space-limiting.md)
-Cluster-wide disk space monitoring with per-volume thresholds that automatically reject write operations when storage usage is too high.
+### [Events](./events.md)
+Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP).
 
 ### [Hybrid Logical Clock](./hybrid-logical-clock.md)
 Monotonic timestamp generation using a Hybrid Logical Clock (HLC) in the FSM to guarantee strictly increasing timestamps across leader changes and clock skew.
 
-### [Backup and Restore](./backup-restore.md)
-Complete backup and restore pipeline: point-in-time Pebble snapshots via Raft consensus, attribute compaction, tar streaming with SHA256 verification, four-step restore workflow (upload → validate → preview → finalize), and post-restore bootstrap.
+### [Uint256 Wire Format](./uint256-wire-format.md)
+Why monetary amounts use fixed-size Uint256 instead of BigInt.
+
+## Operations-Related Architecture
+
+These documents have been moved to the [Operations Guide](../../ops/) for better discoverability by sysadmins:
+
+- [Backup and Restore](../../ops/backup-restore.md) - Backup pipeline and restore workflow
+- [Cluster Operations](../../ops/cluster-operations.md) - Bootstrap, join, synchronization, and learner promotion
+- [Disk Space Limiting](../../ops/disk-space.md) - Cluster-wide disk space monitoring and write rejection

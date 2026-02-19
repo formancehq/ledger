@@ -375,7 +375,7 @@ Periods partition the ledger's history into sealed segments. Each period covers 
 - **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of period archival.
 - To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived periods).
 
-See [Periods](./periods.md) for the full period lifecycle and cold storage documentation.
+See [Periods](../dev/architecture/periods.md) for the full period lifecycle and cold storage documentation.
 
 ---
 

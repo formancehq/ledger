@@ -445,7 +445,7 @@ Pebble performs automatic LSM-tree compaction:
 
 - **L0 → L1 compaction**: Triggered when L0 files exceed threshold
 - **Background compaction**: Runs concurrently with writes
-- **Write stalls**: May occur if compaction falls behind (see [Metrics](./metrics.md#write-stall-metrics))
+- **Write stalls**: May occur if compaction falls behind (see [Metrics](../../ops/monitoring.md#write-stall-metrics))
 
 ### Indexing
 
@@ -460,4 +460,4 @@ To deepen your understanding:
 1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on the Pebble storage driver
 2. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
 3. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
-4. [Deployment](./deployment.md) - Storage configuration in production
+4. [Deployment](../../ops/deployment.md) - Storage configuration in production

@@ -601,5 +601,5 @@ Potential enhancements under consideration:
 
 - [Architecture](./architecture.md) - Overall system architecture
 - [Raft Consensus](./raft-consensus.md) - Raft protocol details
-- [Deployment](./deployment.md) - Kubernetes deployment configuration
-- [Metrics](./metrics.md) - Observability and monitoring
+- [Deployment](../../ops/deployment.md) - Kubernetes deployment configuration
+- [Metrics](../../ops/monitoring.md) - Observability and monitoring

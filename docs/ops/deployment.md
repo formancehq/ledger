@@ -304,7 +304,7 @@ Once a learner has caught up with the leader's log (within the threshold configu
 
 ### Disk Space Limiting
 
-The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./architecture/disk-space-limiting.md) for detailed architecture documentation.
+The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./disk-space.md) for detailed architecture documentation.
 
 ```yaml
 config:
@@ -568,6 +568,28 @@ config:
 > - 5000 tx/s → `snapshotThreshold: 10000`
 >
 > Setting the threshold too low will cause constant snapshotting, impacting performance. Setting it too high will increase recovery time after a restart.
+
+### Configuration Safety Checks at Startup
+
+The server persists critical configuration parameters in Pebble (key prefix `0xFE`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing `node-id`, `cluster-id`, or `data-dir` between restarts.
+
+#### Persisted Parameters
+
+| Parameter | Risk if changed | Behavior on mismatch |
+|-----------|----------------|---------------------|
+| `node-id` | Cluster confusion — node becomes invisible | **Fatal error** |
+| `cluster-id` | Breaks inter-node communication | **Fatal error** |
+| `audit-enabled` | Compliance gap if disabled | **Warning** (non-fatal) |
+
+#### Edge Cases
+
+- **First boot**: No persisted config exists — current config is saved (no error)
+- **Restore flow**: Validation is skipped in restore mode (`--restore`)
+- **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
+
+#### Override
+
+Use `--unsafe-skip-config-validation` to bypass safety checks and overwrite the persisted config. **Use only for intentional migrations.** See [CLI Reference](./cli.md) for flag documentation.
 
 ## Scaling
 
@@ -880,7 +902,7 @@ pulumi destroy
 
 To deepen your understanding:
 
-1. [General Architecture](./architecture.md) - Understand the architecture
-2. [Consensus Raft](./raft-consensus.md) - Optimize Raft parameters
-3. [Storage and Persistence](./storage.md) - Configure storage
-4. [Metrics](./metrics.md) - Available application metrics
+1. [General Architecture](../dev/architecture/architecture.md) - Understand the architecture
+2. [Consensus Raft](../dev/architecture/raft-consensus.md) - Optimize Raft parameters
+3. [Storage and Persistence](../dev/architecture/storage.md) - Configure storage
+4. [Metrics](./monitoring.md) - Available application metrics

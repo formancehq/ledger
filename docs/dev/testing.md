@@ -426,7 +426,7 @@ The development environment also includes a **benchmark-operator** that watches 
 - Creates Markdown reports with test results
 - Stores artifacts for later analysis
 
-See [Deployment - Development Environment](./deployment.md#development-environment-pulumi) for more details on the available tools.
+See [Deployment - Development Environment](../ops/deployment.md#development-environment-pulumi) for more details on the available tools.
 
 ### Go Benchmarks (for unit tests)
 
@@ -513,5 +513,5 @@ jobs:
 To learn more:
 
 1. [Development](./development.md) - How to write testable code
-2. [Architecture](./architecture.md) - Understand the system to test
-3. [Data Flows](./data-flows.md) - Understand the flows to test
+2. [Architecture](./architecture/architecture.md) - Understand the system to test
+3. [Data Flows](./architecture/data-flows.md) - Understand the flows to test

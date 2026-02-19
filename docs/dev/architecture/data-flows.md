@@ -198,7 +198,7 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 
 ### Node Synchronization State Machine
 
-The **Node** manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](./cluster-lifecycle.md).
+The **Node** manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](../../ops/cluster-operations.md).
 
 | Status | Value | Description |
 |--------|-------|-------------|

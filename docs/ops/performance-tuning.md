@@ -2,7 +2,7 @@
 
 This document provides best practices for maximizing throughput and minimizing latency when using the Ledger v3 API. It covers data modeling (Numscript scripts, account addresses), operational tuning, and explains the internal design choices that make these recommendations effective.
 
-> **Reference benchmark:** 106K tx/s sustained, p99 < 75 ms, 3-node Raft cluster (8 cores / 4 GiB per node). See [benchmarks/2026-01-29-staging.md](./benchmarks/2026-01-29-staging.md) for full details.
+> **Reference benchmark:** 106K tx/s sustained, p99 < 75 ms, 3-node Raft cluster (8 cores / 4 GiB per node). See [benchmarks](../sales/benchmarks.md) for full details.
 
 ---
 
@@ -342,12 +342,12 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 
 ## Related Documentation
 
-- [Benchmark Results](./benchmarks/2026-01-29-staging.md) - 106K tx/s benchmark details
-- [Numscript Reference](./numscript.md) - Full Numscript language documentation
-- [Deterministic FSM Cache](./architecture/deterministic-fsm.md) - Cache and preload architecture
-- [Uint256 Wire Format](./architecture/uint256-wire-format.md) - Zero-allocation monetary amounts
-- [Attribute Key Hashing](./architecture/attribute-key-hashing.md) - XXH3 vs BLAKE3 performance
-- [Storage Drivers](./architecture/storage-drivers.md) - Pebble configuration details
-- [Metrics Reference](./metrics.md) - Complete metrics catalog and alerting rules
+- [Benchmark Results](../sales/benchmarks.md) - 106K tx/s benchmark details
+- [Numscript Reference](../dev/numscript.md) - Full Numscript language documentation
+- [Deterministic FSM Cache](../dev/architecture/deterministic-fsm.md) - Cache and preload architecture
+- [Uint256 Wire Format](../dev/architecture/uint256-wire-format.md) - Zero-allocation monetary amounts
+- [Attribute Key Hashing](../dev/architecture/attribute-key-hashing.md) - XXH3 vs BLAKE3 performance
+- [Storage Drivers](../dev/architecture/storage-drivers.md) - Pebble configuration details
+- [Metrics Reference](./monitoring.md) - Complete metrics catalog and alerting rules
 - [Deployment Guide](./deployment.md) - Production deployment recommendations
-- [V2 Problems Solved](./drafts/v2-problems-solved.md) - Hot account contention eliminated
+- [V2 Problems Solved](../sales/v2-vs-v3.md) - Hot account contention eliminated

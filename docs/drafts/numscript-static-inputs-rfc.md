@@ -11,7 +11,7 @@
 
 ## 0. Current Interim Solution
 
-> **Note:** Until this RFC is implemented, the ledger uses a **Numscript emulation** approach for volume discovery. The admission layer runs the script once with a "discovery store" that returns infinite balances (`2^256`) to discover which accounts/assets are queried. See `internal/service/processing/numscript_emulate.go` and the [Numscript documentation](../numscript.md#volume-preloading-numscript-emulation) for details. This approach has known limitations (e.g., `oneof` may not discover all sources) and will be replaced by the static analysis described in this RFC.
+> **Note:** Until this RFC is implemented, the ledger uses a **Numscript emulation** approach for volume discovery. The admission layer runs the script once with a "discovery store" that returns infinite balances (`2^256`) to discover which accounts/assets are queried. See `internal/service/processing/numscript_emulate.go` and the [Numscript documentation](../dev/numscript.md#volume-preloading-numscript-emulation) for details. This approach has known limitations (e.g., `oneof` may not discover all sources) and will be replaced by the static analysis described in this RFC.
 
 ## 1. Motivation
 

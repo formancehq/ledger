@@ -142,7 +142,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ `continueOnFailure` - Continue even on error
 - ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](./global-log.md).
+> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](./architecture/global-log.md).
 
 ### 5. Ledger Management
 
@@ -385,7 +385,7 @@ This architecture impacts certain implementation decisions:
 - Import must respect log sequence
 - Export can be done from any node (local read)
 
-See [Global Log Architecture](./global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
+See [Global Log Architecture](./architecture/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
 ---
 

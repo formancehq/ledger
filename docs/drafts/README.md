@@ -4,10 +4,10 @@ This directory contains draft documents, RFCs (Request for Comments), and explor
 
 ## Documents
 
-### [Problems Solved from v2](./v2-problems-solved.md)
+### [Problems Solved from v2](../sales/v2-vs-v3.md)
 Summary of key problems and limitations from Ledger v2 that have been addressed in this v3 POC.
 
-### [System Limitations](./limitations.md)
+### [System Limitations](../sales/limitations.md)
 Current system limitations based on ID types: maximum ledgers, transactions, and logs.
 
 ### [Numscript Static Inputs RFC](./numscript-static-inputs-rfc.md)
