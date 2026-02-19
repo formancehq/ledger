@@ -867,12 +867,12 @@ func (s *Store) IterateAuditRange(startSeq, endSeq uint64, fn func(*auditpb.Audi
 
 // IterateColdKVPairs iterates all cold-storable KV pairs whose sequence (or byLog)
 // falls in [startSeq, closeSeq] and calls fn for each raw key+value.
-// This covers sequence-keyed prefixes (logs, audit) via range scan,
-// and transaction updates via filtered iteration on byLog.
+// IterateColdKVPairs iterates sequence-keyed prefixes (logs, audit) via efficient range scan.
+// Transaction updates are not archived: they are redundant with log entries which already
+// contain all creation, revert, and metadata information.
 func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value []byte) error) error {
 	db := s.getDB()
 
-	// 1. Sequence-keyed prefixes: efficient range scan.
 	for _, prefix := range ColdSequencePrefixes {
 		kb := NewKeyBuilder()
 		kb.PutByte(prefix).PutUInt64(startSeq)
@@ -885,34 +885,7 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 		}
 	}
 
-	// 2. Transaction updates: full prefix scan, filter by byLog.
-	iter, err := db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{keyPrefixTransactionUpdate},
-		UpperBound: []byte{keyPrefixTransactionUpdate + 1},
-	})
-	if err != nil {
-		return fmt.Errorf("creating iterator for transaction updates: %w", err)
-	}
-	defer func() { _ = iter.Close() }()
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) < txUpdateKeyLen {
-			continue
-		}
-		byLog := binary.BigEndian.Uint64(key[len(key)-8:])
-		if byLog < startSeq || byLog > closeSeq {
-			continue
-		}
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return fmt.Errorf("reading transaction update value: %w", err)
-		}
-		if err := fn(key, value); err != nil {
-			return err
-		}
-	}
-	return iter.Error()
+	return nil
 }
 
 // iterateRawRange iterates all keys in [lowerBound, upperBound) and calls fn for each.
