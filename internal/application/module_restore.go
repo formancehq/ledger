@@ -22,7 +22,7 @@ func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			func(cfg Config, logger logging.Logger) *ServiceServer {
-				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug)
+				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, nil)
 			},
 			func(cfg Config, logger logging.Logger) *RestoreServiceServerImpl {
 				return NewRestoreServiceServer(cfg.DataDir, logger)
