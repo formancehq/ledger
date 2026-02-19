@@ -207,6 +207,12 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 			return nil, fmt.Errorf("loading signing config from store: %w", err)
 		}
 		ks.SetRequireSignatures(requireSig)
+
+		maintenanceMode, err := dataStore.LoadMaintenanceMode()
+		if err != nil {
+			return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
+		}
+		ks.SetMaintenanceMode(maintenanceMode)
 	}
 
 	fsm := &Machine{
@@ -931,6 +937,16 @@ func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Tim
 	return &commonpb.Timestamp{Data: fsm.lastAppliedTimestamp}
 }
 
+// allOrdersAreMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
+func allOrdersAreMaintenanceMode(orders []*raftcmdpb.Order) bool {
+	for _, order := range orders {
+		if _, ok := order.Type.(*raftcmdpb.Order_SetMaintenanceMode); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, bool, error) {
@@ -959,6 +975,16 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// If this proposal only carries sink updates, skip order processing
 	if len(proposal.Orders) == 0 {
 		return &ApplyResult{ProposalID: proposal.Id}, false, false, nil
+	}
+
+	// FSM-level maintenance mode check: reject proposals containing non-maintenance
+	// orders that were admitted before maintenance mode was enabled but batched into
+	// a Raft entry applied after the maintenance mode flag was set.
+	if fsm.keyStore.MaintenanceMode() && !allOrdersAreMaintenanceMode(proposal.Orders) {
+		return &ApplyResult{
+			ProposalID: proposal.Id,
+			Error:      &processing.BusinessError{Err: processing.ErrMaintenanceMode},
+		}, false, false, nil
 	}
 
 	if err := fsm.Preload(proposal.Preload); err != nil {
@@ -1308,6 +1334,12 @@ func (fsm *Machine) reloadSigningKeysFromStore() error {
 		return fmt.Errorf("loading signing config: %w", err)
 	}
 	fsm.keyStore.SetRequireSignatures(requireSig)
+
+	maintenanceMode, err := fsm.dataStore.LoadMaintenanceMode()
+	if err != nil {
+		return fmt.Errorf("loading maintenance mode: %w", err)
+	}
+	fsm.keyStore.SetMaintenanceMode(maintenanceMode)
 
 	return nil
 }

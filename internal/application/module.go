@@ -219,8 +219,8 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, logger,
+			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, ks *keystore.KeyStore, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ks, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)

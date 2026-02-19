@@ -535,6 +535,18 @@ func (mr *MockStoreMockRecorder) SetLastLogHash(hash any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastLogHash", reflect.TypeOf((*MockStore)(nil).SetLastLogHash), hash)
 }
 
+// SetMaintenanceMode mocks base method.
+func (m *MockStore) SetMaintenanceMode(enabled bool) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetMaintenanceMode", enabled)
+}
+
+// SetMaintenanceMode indicates an expected call of SetMaintenanceMode.
+func (mr *MockStoreMockRecorder) SetMaintenanceMode(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetMaintenanceMode", reflect.TypeOf((*MockStore)(nil).SetMaintenanceMode), enabled)
+}
+
 // SetPendingArchive mocks base method.
 func (m *MockStore) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
 	m.ctrl.T.Helper()

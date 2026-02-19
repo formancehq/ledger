@@ -119,6 +119,7 @@ message Request {
     SealPeriodRequest seal_period = 12;
     ArchivePeriodRequest archive_period = 13;
     ConfirmArchivePeriodRequest confirm_archive_period = 14;
+    SetMaintenanceModeRequest set_maintenance_mode = 15;
   }
   signature.RequestSignature signature = 5;
 }
@@ -173,6 +174,13 @@ message ConfirmArchivePeriodRequest {
 }
 
 message ListPeriodsRequest {}
+
+// SetMaintenanceModeRequest enables or disables maintenance mode.
+// When enabled, all write operations are blocked except maintenance mode toggle.
+message SetMaintenanceModeRequest {
+  bool enabled = 1;   // Whether maintenance mode is active
+}
+
 
 // ============================================================================
 // Ledger Actions (used by Apply RPC)

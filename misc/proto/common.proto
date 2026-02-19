@@ -170,6 +170,7 @@ message LogPayload {
     SealPeriodLog seal_period = 10;
     ArchivePeriodLog archive_period = 11;
     ConfirmArchivePeriodLog confirm_archive_period = 12;
+    SetMaintenanceModeLog set_maintenance_mode = 13;
   }
 }
 
@@ -201,6 +202,11 @@ message AddedEventsSinkLog {
 // RemovedEventsSinkLog records the removal of a named sink config.
 message RemovedEventsSinkLog {
   string name = 1;
+}
+
+// SetMaintenanceModeLog records a maintenance mode change.
+message SetMaintenanceModeLog {
+  bool enabled = 1;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.

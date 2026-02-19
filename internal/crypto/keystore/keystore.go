@@ -12,6 +12,7 @@ type KeyStore struct {
 	mu                sync.RWMutex
 	publicKeys        map[string]ed25519.PublicKey
 	requireSignatures bool
+	maintenanceMode   bool
 }
 
 // NewKeyStore creates a new empty KeyStore.
@@ -56,6 +57,20 @@ func (ks *KeyStore) SetRequireSignatures(require bool) {
 	ks.requireSignatures = require
 }
 
+// MaintenanceMode returns whether maintenance mode is active.
+func (ks *KeyStore) MaintenanceMode() bool {
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	return ks.maintenanceMode
+}
+
+// SetMaintenanceMode sets whether maintenance mode is active.
+func (ks *KeyStore) SetMaintenanceMode(enabled bool) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+	ks.maintenanceMode = enabled
+}
+
 // HasKeys returns true if at least one public key is registered.
 func (ks *KeyStore) HasKeys() bool {
 	ks.mu.RLock()
@@ -81,4 +96,5 @@ func (ks *KeyStore) Reset() {
 	defer ks.mu.Unlock()
 	ks.publicKeys = make(map[string]ed25519.PublicKey)
 	ks.requireSignatures = false
+	ks.maintenanceMode = false
 }

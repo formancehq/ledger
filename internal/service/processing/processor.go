@@ -62,6 +62,9 @@ type Store interface {
 	RemoveSigningKey(keyID string)
 	SetRequireSignatures(require bool)
 
+	// Maintenance mode operations
+	SetMaintenanceMode(enabled bool)
+
 	// Events sink operations
 	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
 	AddSinkConfig(config *commonpb.SinkConfig)
@@ -234,6 +237,8 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processRevokeSigningKey(orderType.RevokeSigningKey, s)
 	case *raftcmdpb.Order_SetSigningConfig:
 		return p.processSetSigningConfig(orderType.SetSigningConfig, s)
+	case *raftcmdpb.Order_SetMaintenanceMode:
+		return p.processSetMaintenanceMode(orderType.SetMaintenanceMode, s)
 	case *raftcmdpb.Order_AddEventsSink:
 		return p.processAddEventsSink(orderType.AddEventsSink, s)
 	case *raftcmdpb.Order_RemoveEventsSink:
@@ -280,6 +285,17 @@ func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningCo
 		Type: &commonpb.LogPayload_SetSigningConfig{
 			SetSigningConfig: &commonpb.SetSigningConfigLog{
 				RequireSignatures: order.RequireSignatures,
+			},
+		},
+	}, nil
+}
+
+func (p *RequestProcessor) processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, s Store) (*commonpb.LogPayload, error) {
+	s.SetMaintenanceMode(order.Enabled)
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetMaintenanceMode{
+			SetMaintenanceMode: &commonpb.SetMaintenanceModeLog{
+				Enabled: order.Enabled,
 			},
 		},
 	}, nil

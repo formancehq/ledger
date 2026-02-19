@@ -16,6 +16,8 @@ Ledger v3 POC is a distributed ledger system using the Raft consensus protocol t
 - **Bulk Operations**: Process multiple transactions in a single request
 - **OpenTelemetry**: Comprehensive observability with traces, metrics, and logs
 - **Continuous Profiling**: Pyroscope integration for CPU, memory, and goroutine profiling
+- **Request Signing**: Ed25519 request signing for authenticity, integrity, and non-repudiation
+- **Maintenance Mode**: Cluster-wide write blocking for planned maintenance with dual enforcement (admission + FSM)
 - **Pure Go**: Pebble requires no CGO, enabling easy cross-compilation and minimal Docker images
 
 ## Documentation Structure
@@ -60,6 +62,7 @@ Draft documents, RFCs, and exploratory designs.
 | [Testing](./testing.md) | Testing strategy and guidelines |
 | [Metrics](./metrics.md) | Application metrics reference |
 | [Correctness](./correctness.md) | Log integrity, hash chaining, and store verification |
+| [Request Signing](./signing.md) | Ed25519 request signing and key management |
 
 ### Numscript
 

@@ -956,6 +956,40 @@ ledgerctl cluster du --json
 - **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
 - **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
 
+#### cluster maintenance
+
+Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+
+```bash
+ledgerctl cluster maintenance <true|false|enable|disable> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Blocks all write operations when enabled (transactions, metadata changes, ledger creation/deletion, etc.)
+- Allows the `SetMaintenanceMode` request itself to pass through (to disable maintenance mode)
+- Read operations (list ledgers, get accounts, etc.) continue to work normally
+- The maintenance mode flag is replicated through Raft consensus
+- Visible in `cluster status` output
+
+**Example:**
+
+```bash
+# Enable maintenance mode
+ledgerctl cluster maintenance enable
+
+# Disable maintenance mode
+ledgerctl cluster maintenance disable
+
+# With request signing
+ledgerctl cluster maintenance enable --signing-key /path/to/seed
+```
+
 ### signing
 
 ![Signing Demo](../misc/demo/demo_signing.gif)

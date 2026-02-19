@@ -154,6 +154,10 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		code = codes.InvalidArgument
 		reason = processing.ErrReasonValidation
 
+	case errors.Is(inner, processing.ErrMaintenanceMode):
+		code = codes.Unavailable
+		reason = processing.ErrReasonMaintenanceMode
+
 	default:
 		// Unknown business error — fall back to Internal
 		return status.New(codes.Internal, inner.Error())

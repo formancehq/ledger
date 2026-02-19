@@ -88,6 +88,7 @@ var (
 	keyPrefixSinkCursor           byte = 0xFA // [keyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
 	keyPrefixEventsConfig         byte = 0xFB // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
 	keyPrefixSinkStatus           byte = 0xFC // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
+	keyPrefixMaintenanceMode      byte = 0xFD // [keyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -1311,6 +1312,24 @@ func (s *Store) LoadSigningConfig() (bool, error) {
 			return false, nil
 		}
 		return false, fmt.Errorf("loading signing config: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	if len(value) == 0 {
+		return false, nil
+	}
+	return value[0] == 0x01, nil
+}
+
+// LoadMaintenanceMode loads the maintenance mode flag from Pebble.
+// Returns false if the config key does not exist.
+func (s *Store) LoadMaintenanceMode() (bool, error) {
+	value, closer, err := s.getDB().Get([]byte{keyPrefixMaintenanceMode})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("loading maintenance mode: %w", err)
 	}
 	defer func() { _ = closer.Close() }()
 

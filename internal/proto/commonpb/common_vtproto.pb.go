@@ -585,6 +585,15 @@ func (m *LogPayload_ConfirmArchivePeriod) CloneVT() isLogPayload_Type {
 	return r
 }
 
+func (m *LogPayload_SetMaintenanceMode) CloneVT() isLogPayload_Type {
+	if m == nil {
+		return (*LogPayload_SetMaintenanceMode)(nil)
+	}
+	r := new(LogPayload_SetMaintenanceMode)
+	r.SetMaintenanceMode = m.SetMaintenanceMode.CloneVT()
+	return r
+}
+
 func (m *RegisterSigningKeyLog) CloneVT() *RegisterSigningKeyLog {
 	if m == nil {
 		return (*RegisterSigningKeyLog)(nil)
@@ -672,6 +681,23 @@ func (m *RemovedEventsSinkLog) CloneVT() *RemovedEventsSinkLog {
 }
 
 func (m *RemovedEventsSinkLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SetMaintenanceModeLog) CloneVT() *SetMaintenanceModeLog {
+	if m == nil {
+		return (*SetMaintenanceModeLog)(nil)
+	}
+	r := new(SetMaintenanceModeLog)
+	r.Enabled = m.Enabled
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetMaintenanceModeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2369,6 +2395,31 @@ func (this *LogPayload_ConfirmArchivePeriod) EqualVT(thatIface isLogPayload_Type
 	return true
 }
 
+func (this *LogPayload_SetMaintenanceMode) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_SetMaintenanceMode)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetMaintenanceMode, that.SetMaintenanceMode; p != q {
+		if p == nil {
+			p = &SetMaintenanceModeLog{}
+		}
+		if q == nil {
+			q = &SetMaintenanceModeLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *RegisterSigningKeyLog) EqualVT(that *RegisterSigningKeyLog) bool {
 	if this == that {
 		return true
@@ -2462,6 +2513,25 @@ func (this *RemovedEventsSinkLog) EqualVT(that *RemovedEventsSinkLog) bool {
 
 func (this *RemovedEventsSinkLog) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*RemovedEventsSinkLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SetMaintenanceModeLog) EqualVT(that *SetMaintenanceModeLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Enabled != that.Enabled {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetMaintenanceModeLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetMaintenanceModeLog)
 	if !ok {
 		return false
 	}
@@ -5006,6 +5076,25 @@ func (m *LogPayload_ConfirmArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (i
 	}
 	return len(dAtA) - i, nil
 }
+func (m *LogPayload_SetMaintenanceMode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LogPayload_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetMaintenanceMode != nil {
+		size, err := m.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *RegisterSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5215,6 +5304,49 @@ func (m *RemovedEventsSinkLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetMaintenanceModeLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetMaintenanceModeLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetMaintenanceModeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Enabled {
+		i--
+		if m.Enabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -7722,6 +7854,18 @@ func (m *LogPayload_ConfirmArchivePeriod) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LogPayload_SetMaintenanceMode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetMaintenanceMode != nil {
+		l = m.SetMaintenanceMode.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *RegisterSigningKeyLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7790,6 +7934,19 @@ func (m *RemovedEventsSinkLog) SizeVT() (n int) {
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SetMaintenanceModeLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Enabled {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -12114,6 +12271,47 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &LogPayload_ConfirmArchivePeriod{ConfirmArchivePeriod: v}
 			}
 			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetMaintenanceMode", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*LogPayload_SetMaintenanceMode); ok {
+				if err := oneof.SetMaintenanceMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetMaintenanceModeLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &LogPayload_SetMaintenanceMode{SetMaintenanceMode: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -12555,6 +12753,77 @@ func (m *RemovedEventsSinkLog) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetMaintenanceModeLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetMaintenanceModeLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetMaintenanceModeLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Enabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Enabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

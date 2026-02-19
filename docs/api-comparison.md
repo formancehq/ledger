@@ -56,6 +56,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Request signing (Ed25519) | ✅ | ❌ | Envelope pattern with signed_payload |
 | Dynamic key management | ✅ | ❌ | Register/revoke keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
+| **Maintenance** |
+| Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |

@@ -85,11 +85,17 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 	// Cluster overview
 	pterm.DefaultSection.Println("Cluster Overview")
 
+	maintenanceDisplay := pterm.Green("Off")
+	if state.MaintenanceMode {
+		maintenanceDisplay = pterm.Red("On")
+	}
+
 	overviewData := [][]string{
 		{pterm.LightCyan("State:"), getStateColor(state.State)},
 		{pterm.LightCyan("Local Node ID:"), fmt.Sprintf("%d", state.LocalNode)},
 		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.Leader)},
 		{pterm.LightCyan("Total Nodes:"), fmt.Sprintf("%d", len(state.Nodes))},
+		{pterm.LightCyan("Maintenance:"), maintenanceDisplay},
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Render()

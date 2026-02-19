@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -24,6 +25,7 @@ type ClusterServiceServerImpl struct {
 	servicePool       *transport.ServiceConnectionPool
 	collector         *diskusage.Collector
 	store             *data.Store
+	keyStore          *keystore.KeyStore
 	logger            logging.Logger
 	localRaftAddr     string // This node's own Raft advertise address
 	localServiceAddr  string // This node's own gRPC service address
@@ -35,6 +37,7 @@ func NewClusterServiceServer(
 	servicePool *transport.ServiceConnectionPool,
 	collector *diskusage.Collector,
 	store *data.Store,
+	ks *keystore.KeyStore,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -45,6 +48,7 @@ func NewClusterServiceServer(
 		servicePool:      servicePool,
 		collector:        collector,
 		store:            store,
+		keyStore:         ks,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -92,6 +96,11 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	state, err := impl.node.GetClusterState(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Populate maintenance mode from in-memory KeyStore
+	if impl.keyStore != nil {
+		state.MaintenanceMode = impl.keyStore.MaintenanceMode()
 	}
 
 	// Populate peer addresses from transport and service pool

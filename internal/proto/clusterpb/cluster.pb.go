@@ -347,14 +347,15 @@ func (x *RaftStatus) GetProgress() map[uint64]*ProgressInfo {
 
 // ClusterState represents the state of the Raft cluster
 type ClusterState struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	State         string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                             // Leader, Follower, Candidate, Shutdown
-	Leader        uint32                 `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                          // ID of the current leader (0 if no leader)
-	Nodes         []*NodeInfo            `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`                             // List of all nodes in the cluster
-	LocalNode     uint32                 `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`   // ID of the local node
-	RaftStatus    *RaftStatus            `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"` // Complete Raft status information
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	State           string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                             // Leader, Follower, Candidate, Shutdown
+	Leader          uint32                 `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                                          // ID of the current leader (0 if no leader)
+	Nodes           []*NodeInfo            `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`                                             // List of all nodes in the cluster
+	LocalNode       uint32                 `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
+	RaftStatus      *RaftStatus            `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"`                 // Complete Raft status information
+	MaintenanceMode bool                   `protobuf:"varint,6,opt,name=maintenance_mode,json=maintenanceMode,proto3" json:"maintenance_mode,omitempty"` // Whether maintenance mode is active
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ClusterState) Reset() {
@@ -420,6 +421,13 @@ func (x *ClusterState) GetRaftStatus() *RaftStatus {
 		return x.RaftStatus
 	}
 	return nil
+}
+
+func (x *ClusterState) GetMaintenanceMode() bool {
+	if x != nil {
+		return x.MaintenanceMode
+	}
+	return false
 }
 
 type TransferLeadershipRequest struct {
@@ -1045,7 +1053,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xba\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xe5\x01\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\rR\x06leader\x12'\n" +
@@ -1053,7 +1061,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"local_node\x18\x04 \x01(\rR\tlocalNode\x124\n" +
 	"\vraft_status\x18\x05 \x01(\v2\x13.cluster.RaftStatusR\n" +
-	"raftStatus\";\n" +
+	"raftStatus\x12)\n" +
+	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
 	"transferee\x18\x01 \x01(\rR\n" +

@@ -120,6 +120,7 @@ func (m *ClusterState) CloneVT() *ClusterState {
 	r.Leader = m.Leader
 	r.LocalNode = m.LocalNode
 	r.RaftStatus = m.RaftStatus.CloneVT()
+	r.MaintenanceMode = m.MaintenanceMode
 	if rhs := m.Nodes; rhs != nil {
 		tmpContainer := make([]*NodeInfo, len(rhs))
 		for k, v := range rhs {
@@ -533,6 +534,9 @@ func (this *ClusterState) EqualVT(that *ClusterState) bool {
 		return false
 	}
 	if !this.RaftStatus.EqualVT(that.RaftStatus) {
+		return false
+	}
+	if this.MaintenanceMode != that.MaintenanceMode {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1115,6 +1119,16 @@ func (m *ClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MaintenanceMode {
+		i--
+		if m.MaintenanceMode {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
 	}
 	if m.RaftStatus != nil {
 		size, err := m.RaftStatus.MarshalToSizedBufferVT(dAtA[:i])
@@ -1809,6 +1823,9 @@ func (m *ClusterState) SizeVT() (n int) {
 	if m.RaftStatus != nil {
 		l = m.RaftStatus.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.MaintenanceMode {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -2968,6 +2985,26 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaintenanceMode", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.MaintenanceMode = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

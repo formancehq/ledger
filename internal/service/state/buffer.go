@@ -24,6 +24,11 @@ type signingConfigUpdate struct {
 	requireSignatures bool
 }
 
+// maintenanceModeUpdate represents a pending maintenance mode change.
+type maintenanceModeUpdate struct {
+	enabled bool
+}
+
 type Buffered struct {
 	fsm                 *Machine
 	attrs               *attributes.Attributes
@@ -42,16 +47,17 @@ type Buffered struct {
 	SinkConfigs         *attributes.DerivedKeyStore[data.SinkConfigKey, *commonpb.SinkConfig]
 	TransactionsUpdates        map[data.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs                []*commonpb.Log
-	pendingSigningKeyUpdates   []signingKeyUpdate
-	pendingSigningConfigUpdate *signingConfigUpdate
-	sinkConfigChanged          bool
-	allPeriods                 map[uint64]*commonpb.Period
-	currentOpenPeriod          *commonpb.Period
-	closingPeriod              *commonpb.Period
-	changedPeriods             []*commonpb.Period
-	NextPeriodID               uint64
-	purgeRanges                []purgeRange
-	pendingArchives            []ArchiveRequest
+	pendingSigningKeyUpdates     []signingKeyUpdate
+	pendingSigningConfigUpdate   *signingConfigUpdate
+	pendingMaintenanceModeUpdate *maintenanceModeUpdate
+	sinkConfigChanged            bool
+	allPeriods                   map[uint64]*commonpb.Period
+	currentOpenPeriod            *commonpb.Period
+	closingPeriod                *commonpb.Period
+	changedPeriods               []*commonpb.Period
+	NextPeriodID                 uint64
+	purgeRanges                  []purgeRange
+	pendingArchives              []ArchiveRequest
 }
 
 // purgeRange identifies a period's sequence range to delete from Pebble during Merge().
@@ -233,6 +239,14 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 		if b.fsm.keyStore != nil {
 			b.fsm.keyStore.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
+		}
+	}
+	if b.pendingMaintenanceModeUpdate != nil {
+		if err := batch.SaveMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled); err != nil {
+			return fmt.Errorf("saving maintenance mode: %w", err)
+		}
+		if b.fsm.keyStore != nil {
+			b.fsm.keyStore.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 		}
 	}
 
@@ -423,6 +437,12 @@ func (b *Buffered) RemoveSigningKey(keyID string) {
 func (b *Buffered) SetRequireSignatures(require bool) {
 	b.pendingSigningConfigUpdate = &signingConfigUpdate{
 		requireSignatures: require,
+	}
+}
+
+func (b *Buffered) SetMaintenanceMode(enabled bool) {
+	b.pendingMaintenanceModeUpdate = &maintenanceModeUpdate{
+		enabled: enabled,
 	}
 }
 

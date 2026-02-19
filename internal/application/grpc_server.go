@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -215,6 +216,11 @@ func convertToGRPCError(err error) error {
 	}
 	if errors.Is(err, signing.ErrUnknownKeyID) {
 		return status.Error(codes.PermissionDenied, err.Error())
+	}
+
+	// Convert maintenance mode error to Unavailable (client should retry later)
+	if errors.Is(err, admission.ErrMaintenanceMode) {
+		return status.Error(codes.Unavailable, err.Error())
 	}
 
 	// Convert ErrNoLeader to Unavailable (client should retry)

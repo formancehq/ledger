@@ -164,6 +164,7 @@ The client CLI (`ledgerctl`) uses gRPC to communicate with the server.
 - **`cluster_transfer_leader.go`** : `cluster transfer-leader` command to transfer Raft leadership via gRPC
 - **`cluster_add_learner.go`** : `cluster add-learner` command to add a non-voting learner node via gRPC
 - **`cluster_promote_learner.go`** : `cluster promote-learner` command to promote a learner to voter via gRPC
+- **`cluster_maintenance.go`** : `cluster maintenance` command to enable/disable maintenance mode via gRPC
 
 **Signing commands:**
 - **`signing.go`** : Parent command for signing key management
@@ -643,6 +644,67 @@ ledgerctl signing revoke-key --key-id ops --signing-key /path/to/seed
 # Enable mandatory signatures (signed)
 ledgerctl signing require true --signing-key /path/to/seed
 ```
+
+## Maintenance Mode
+
+The ledger supports a **cluster-wide maintenance mode** that blocks all write operations while allowing reads to continue. This is useful for planned maintenance, upgrades, or emergency situations.
+
+### Architecture
+
+- **Persistence**: Maintenance mode flag is stored in Pebble (key prefix `0x10`) and cached in-memory in `KeyStore`
+- **Replication**: The flag is replicated through Raft consensus (same path as signing config)
+- **Dual enforcement**: Write operations are rejected at **both** the Admission layer and the FSM level
+
+### Dual Check Design
+
+Maintenance mode is enforced at two levels:
+
+1. **Admission layer** (`internal/service/admission/admission.go`): Rejects write requests before they enter the Raft pipeline. This is the primary gate.
+
+2. **FSM level** (`internal/service/state/machine.go`): Rejects proposals containing non-maintenance orders during `applyProposal()`. This catches the Raft batching race condition where entries admitted before maintenance mode was enabled can be batched into a Raft entry applied after the maintenance mode flag is set by a preceding entry in the same batch.
+
+### Data Flow
+
+```
+Client → gRPC Apply() → Admission (check maintenance mode) → Proposal → Raft consensus
+  → FSM Apply (check maintenance mode again) → Buffered.Merge() → Pebble + KeyStore
+```
+
+### Allowed Operations in Maintenance Mode
+
+- **Blocked**: All write operations (create ledger, create transaction, save metadata, delete ledger, etc.)
+- **Allowed**: `SetMaintenanceMode` requests (to disable maintenance mode)
+- **Allowed**: All read operations (get ledger, list accounts, get transaction, cluster status, etc.)
+
+### Error Handling
+
+- Admission-level rejection: `admission.ErrMaintenanceMode` → gRPC `codes.Unavailable`
+- FSM-level rejection: `processing.ErrMaintenanceMode` → wrapped in `BusinessError` → gRPC `codes.Unavailable`
+
+### CLI Commands
+
+```bash
+# Enable maintenance mode
+ledgerctl cluster maintenance enable
+
+# Disable maintenance mode
+ledgerctl cluster maintenance disable
+
+# With request signing
+ledgerctl cluster maintenance enable --signing-key /path/to/seed
+```
+
+### Key Files
+
+- `internal/crypto/keystore/keystore.go` — In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`)
+- `internal/storage/data/store.go` — Pebble persistence (`LoadMaintenanceMode()`)
+- `internal/storage/data/batch.go` — Pebble write (`SaveMaintenanceMode()`)
+- `internal/service/admission/admission.go` — Admission-level check
+- `internal/service/state/machine.go` — FSM-level check (`allOrdersAreMaintenanceMode`)
+- `internal/service/state/buffer.go` — Atomic merge (persist + update KeyStore)
+- `internal/service/processing/processor.go` — `processSetMaintenanceMode()`
+- `internal/service/processing/errors.go` — `ErrMaintenanceMode` sentinel error
+- `cmd/ledgerctl/cluster_maintenance.go` — CLI command
 
 ## Finite State Machine (FSM) Design Principles
 

@@ -276,6 +276,23 @@ func (b *Batch) SaveSigningConfig(requireSignatures bool) error {
 	return nil
 }
 
+// SaveMaintenanceMode stores the maintenance mode flag in the batch.
+func (b *Batch) SaveMaintenanceMode(enabled bool) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	value := []byte{0x00}
+	if enabled {
+		value[0] = 0x01
+	}
+
+	if err := b.batch.Set([]byte{keyPrefixMaintenanceMode}, value, pebble.NoSync); err != nil {
+		return fmt.Errorf("saving maintenance mode: %w", err)
+	}
+	return nil
+}
+
 // DeleteAllSigningKeys removes all signing keys from the batch using a range delete.
 func (b *Batch) DeleteAllSigningKeys() error {
 	if b.committed {

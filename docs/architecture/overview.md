@@ -90,9 +90,10 @@ sequenceDiagram
     C->>API: Apply Request
     API->>Ctrl: Apply()
     Ctrl->>Adm: Admit()
-    
+
+    Note over Adm: Check maintenance mode + signatures
     Note over Adm: Preload volumes from cache/store
-    
+
     Adm->>Node: Propose()
     Node->>Node: Replicate via Raft
     

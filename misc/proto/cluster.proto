@@ -84,6 +84,7 @@ message ClusterState {
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
   uint32 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
+  bool maintenance_mode = 6;    // Whether maintenance mode is active
 }
 
 // ============================================================================

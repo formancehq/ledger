@@ -28,6 +28,7 @@ const (
 	ErrReasonPeriodNotClosed              = "PERIOD_NOT_CLOSED"
 	ErrReasonPeriodNotArchiving           = "PERIOD_NOT_ARCHIVING"
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
+	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -51,6 +52,7 @@ var (
 	ErrMetadataKeyRequired = errors.New("key is required")
 	ErrScriptRequired      = errors.New("numscript: script is required")
 	ErrAuditDisabled       = errors.New("audit log is disabled on this server")
+	ErrMaintenanceMode     = errors.New("cluster is in maintenance mode: write operations are blocked")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.

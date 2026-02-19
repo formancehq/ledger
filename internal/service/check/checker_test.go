@@ -333,6 +333,7 @@ func (s *inMemoryStore) AddTransactionUpdate(_ data.TransactionKey, _ *commonpb.
 func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)           {}
 func (s *inMemoryStore) RemoveSigningKey(_ string)                  {}
 func (s *inMemoryStore) SetRequireSignatures(_ bool)                {}
+func (s *inMemoryStore) SetMaintenanceMode(_ bool)                  {}
 func (s *inMemoryStore) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
 func (s *inMemoryStore) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
 func (s *inMemoryStore) RemoveSinkConfig(_ string)                            {}

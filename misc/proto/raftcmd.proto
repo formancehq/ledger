@@ -41,6 +41,7 @@ message Order {
     SealPeriodOrder seal_period = 12;
     ArchivePeriodOrder archive_period = 13;
     ConfirmArchivePeriodOrder confirm_archive_period = 14;
+    SetMaintenanceModeOrder set_maintenance_mode = 15;
   }
   signature.RequestSignature signature = 5;
 }
@@ -80,6 +81,10 @@ message ArchivePeriodOrder {
 
 message ConfirmArchivePeriodOrder {
   uint64 period_id = 1;
+}
+
+message SetMaintenanceModeOrder {
+  bool enabled = 1;
 }
 
 message CreateLedgerOrder {

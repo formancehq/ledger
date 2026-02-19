@@ -606,6 +606,25 @@ resources:
 
 ## Maintenance
 
+### Maintenance Mode
+
+Use maintenance mode to block all write operations cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations continue to work normally.
+
+```bash
+# Enable maintenance mode (blocks all writes)
+ledgerctl cluster maintenance enable
+
+# Verify maintenance mode is active
+ledgerctl cluster status
+
+# Perform maintenance tasks...
+
+# Disable maintenance mode (resumes writes)
+ledgerctl cluster maintenance disable
+```
+
+The maintenance mode flag is replicated through Raft consensus and enforced at both the admission layer and the FSM level. Clients receive gRPC `UNAVAILABLE` errors during maintenance.
+
 ### Cluster State Verification
 
 ```bash

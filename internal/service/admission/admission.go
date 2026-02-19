@@ -256,6 +256,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, health.ErrUnhealthy
 	}
 
+	// Check maintenance mode: block all requests except SetMaintenanceMode
+	if a.keyStore.MaintenanceMode() && !allRequestsAreMaintenanceMode(requests) {
+		return nil, ErrMaintenanceMode
+	}
+
 	// Verify signatures and resolve signed payloads
 	requests, err := a.verifyAndResolveSignatures(requests)
 	if err != nil {
@@ -844,6 +849,19 @@ func isRegisterSigningKeyRequest(req *servicepb.Request) bool {
 	return ok
 }
 
+// ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
+var ErrMaintenanceMode = fmt.Errorf("cluster is in maintenance mode: write operations are blocked")
+
+// allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
+func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
+	for _, req := range requests {
+		if _, ok := req.Type.(*servicepb.Request_SetMaintenanceMode); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // extractNeededVolumes extracts all volume keys that are needed for the given orders.
 // Both sources and destinations need preloading:
 // - Sources need balance checks (Input + Output to compute balance)
@@ -1124,6 +1142,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		order.Type = &raftcmdpb.Order_ConfirmArchivePeriod{
 			ConfirmArchivePeriod: &raftcmdpb.ConfirmArchivePeriodOrder{
 				PeriodId: reqType.ConfirmArchivePeriod.PeriodId,
+			},
+		}
+	case *servicepb.Request_SetMaintenanceMode:
+		order.Type = &raftcmdpb.Order_SetMaintenanceMode{
+			SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
+				Enabled: reqType.SetMaintenanceMode.Enabled,
 			},
 		}
 	default:
