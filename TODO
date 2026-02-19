@@ -30,3 +30,6 @@
 * Eventual consistency (read your writes)
 * Flow control
 * Ajoute un checkpoint a l'extinction
+* Maintenance rpc command (block admission)
+* Wishlist Numscript
+* refactor doc (dev, user)
