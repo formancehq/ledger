@@ -22,3 +22,4 @@
 ** Sign responses too to avoid MITM
 * Test Parquet
 * Node removal
+* Cold storage logs only
