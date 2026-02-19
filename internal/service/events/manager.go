@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -223,6 +224,12 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 		return NewNATSSink(NATSSinkConfig{
 			URL:    s.Nats.Url,
 			Topic:  s.Nats.Topic,
+			Format: format,
+		})
+	case *commonpb.SinkConfig_Clickhouse:
+		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
+			DSN:    s.Clickhouse.Dsn,
+			Table:  s.Clickhouse.Table,
 			Format: format,
 		})
 	default:

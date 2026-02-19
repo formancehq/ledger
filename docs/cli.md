@@ -1184,7 +1184,7 @@ ledgerctl ledgers list
 
 ## Event Sinks
 
-Manage event sinks (NATS, etc.) that receive domain events derived from the global log.
+Manage event sinks (NATS, ClickHouse) that receive domain events derived from the global log.
 
 ### `events list`
 
@@ -1204,13 +1204,21 @@ ledgerctl events list
 
 Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
 
+Currently supported sink types: **NATS JetStream**, **ClickHouse**.
+
 ```bash
 # Add a NATS sink with default settings
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events
 
-# Add a sink with custom batch settings and protobuf format
+# Add a NATS sink with custom batch settings and protobuf format
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events \
   --format protobuf --batch-size 128 --batch-delay-ms 50
+
+# Add a ClickHouse sink for analytics
+ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db
+
+# Add a ClickHouse sink with custom table name
+ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table my_events
 ```
 
 **Aliases:** `add`, `upsert`
@@ -1218,12 +1226,16 @@ ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name` | *(required)* | Unique name for this sink |
-| `--nats-url` | *(required)* | NATS server URL |
-| `--nats-topic` | *(required)* | NATS topic/subject for events |
+| `--nats-url` | | NATS server URL (required for NATS sinks) |
+| `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
+| `--ch-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
+| `--ch-table` | `ledger_events` | ClickHouse table name |
 | `--format` | `json` | Event serialization format (`json` or `protobuf`) |
 | `--batch-size` | `64` | Max events per batch |
 | `--batch-delay-ms` | `10` | Max delay before flush in ms |
 | `--timeout` | `10s` | Request timeout |
+
+You must specify either NATS flags (`--nats-url` + `--nats-topic`) or ClickHouse flags (`--ch-dsn`), not both.
 
 ### `events remove-sink`
 

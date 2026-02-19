@@ -99,6 +99,12 @@ func runEventsList(cmd *cobra.Command, _ []string) error {
 				[]string{"URL", s.Nats.Url},
 				[]string{"Topic", s.Nats.Topic},
 			)
+		case *commonpb.SinkConfig_Clickhouse:
+			data = append(data,
+				[]string{"Type", "ClickHouse"},
+				[]string{"DSN", s.Clickhouse.Dsn},
+				[]string{"Table", s.Clickhouse.Table},
+			)
 		default:
 			data = append(data, []string{"Type", fmt.Sprintf("unknown (%T)", s)})
 		}

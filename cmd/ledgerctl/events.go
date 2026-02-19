@@ -10,7 +10,7 @@ func newEventsCommand() *cobra.Command {
 		Use:     "events",
 		Aliases: []string{"sinks"},
 		Short:   "Manage event sinks",
-		Long:    "Commands for managing event sinks (NATS, etc.) via gRPC",
+		Long:    "Commands for managing event sinks (NATS, ClickHouse) via gRPC",
 	}
 
 	cmd.AddCommand(newEventsListCommand())

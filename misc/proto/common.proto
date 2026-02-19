@@ -203,6 +203,7 @@ message SinkConfig {
   string name = 1;  // Stable identifier for per-sink cursor and status keys
   oneof type {
     NatsSinkConfig nats = 2;
+    ClickHouseSinkConfig clickhouse = 6;
   }
   string format = 3;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 4;       // Max events per batch (default: 64)
@@ -226,6 +227,12 @@ message SinkError {
 message NatsSinkConfig {
   string url = 1;
   string topic = 2;
+}
+
+// ClickHouseSinkConfig holds ClickHouse sink configuration.
+message ClickHouseSinkConfig {
+  string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
+  string table = 2;  // Table name (default: "ledger_events")
 }
 
 message CreateLedgerLog {
