@@ -50,6 +50,12 @@ Draft documents, RFCs, and exploratory designs.
 - [Limitations](./drafts/limitations.md) - Current system limitations
 - [Numscript Static Inputs RFC](./drafts/numscript-static-inputs-rfc.md) - RFC for static inputs
 
+### Performance
+
+| Document | Description |
+|----------|-------------|
+| [Performance Guidelines](./performance-guidelines.md) | Best practices for throughput and latency optimization |
+
 ### Operations & Development
 
 | Document | Description |
