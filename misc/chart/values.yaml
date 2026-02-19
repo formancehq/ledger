@@ -128,6 +128,20 @@ config:
   # Admission metrics (histograms/counters in the admission hot path).
   admissionMetrics: true
 
+  # Cold storage configuration for period archival
+  coldStorage:
+    # Storage driver: "filesystem" (default, dev/test) or "s3" (production)
+    driver: "filesystem"
+    # Base path for filesystem driver (default: <data-dir>/cold-storage)
+    path: ""
+    # Shared namespace prefix for archives (default: cluster-id)
+    bucketId: ""
+    # S3-specific configuration (required when driver=s3)
+    s3:
+      bucket: ""        # S3 bucket name
+      region: ""        # AWS region (e.g., eu-west-1)
+      endpoint: ""      # Custom S3 endpoint (for MinIO)
+
   # Debug logging
   debug: false
   

@@ -15,6 +15,7 @@ func newPeriodsCommand() *cobra.Command {
 
 	cmd.AddCommand(newPeriodsListCommand())
 	cmd.AddCommand(newPeriodsCloseCommand())
+	cmd.AddCommand(newPeriodsArchiveCommand())
 
 	return cmd
 }

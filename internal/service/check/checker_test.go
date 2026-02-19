@@ -405,6 +405,16 @@ func (s *inMemoryStore) IncrementNextPeriodID() uint64 {
 	return id
 }
 
+func (s *inMemoryStore) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
+	return nil, false
+}
+
+func (s *inMemoryStore) UpdatePeriod(_ *commonpb.Period) {}
+
+func (s *inMemoryStore) SetPurgeRange(_, _, _ uint64) {}
+
+func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
+
 // Helper functions for building orders
 
 func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {

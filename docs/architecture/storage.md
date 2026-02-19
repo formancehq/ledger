@@ -321,7 +321,9 @@ For detailed information on available storage backends and their configuration, 
 ### What the Store Persists
 
 - **Transaction logs** (`0x01` prefix) - Immutable record of all ledger operations (global sequence)
-- **Attributes** (`0x09` prefix) - Generation-based attribute data:
+- **Audit entries** (`0x02` prefix) - Audit trail of proposals (success/failure)
+- **Transaction updates** (`0x03` prefix) - Track modifications per transaction (metadata, reverts)
+- **Attributes** (`0xF1` prefix) - Generation-based attribute data:
   - Input/output volumes per account/asset
   - Account and ledger metadata
   - Ledger info entries
@@ -329,12 +331,10 @@ For detailed information on available storage backends and their configuration, 
   - Idempotency keys (system-wide)
   - Transaction references
   - Reversion status
-- **Transaction updates** (`0x08` prefix) - Track modifications per transaction (metadata, reverts)
-- **Audit entries** (`0x0A` prefix) - Audit trail of proposals (success/failure)
-- **Periods state** (`0x0B` prefix) - All periods as a single protobuf blob (lifecycle, sealing hashes)
-- **Next period ID** (`0x0C` prefix) - Counter for period ID generation
-- **Last applied Raft index** (`0x00` prefix) - For recovery after restart
-- **Last applied HLC timestamp** (`0x04` prefix) - Hybrid logical clock state
+- **Periods state** (`0xF7` prefix) - Period lifecycle, sealing hashes (one entry per period)
+- **Next period ID** (`0xF8` prefix) - Counter for period ID generation
+- **Last applied Raft index** (`0xF2` prefix) - For recovery after restart
+- **Last applied HLC timestamp** (`0xF3` prefix) - Hybrid logical clock state
 
 ### Attribute Loading Coordination
 

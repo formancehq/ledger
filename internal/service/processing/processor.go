@@ -86,6 +86,12 @@ type Store interface {
 	ClearClosingPeriod()
 	GetNextPeriodID() uint64
 	IncrementNextPeriodID() uint64
+
+	// Archive period operations
+	GetPeriodByID(periodID uint64) (*commonpb.Period, bool)
+	UpdatePeriod(period *commonpb.Period)
+	SetPurgeRange(periodID, startSequence, closeSequence uint64)
+	SetPendingArchive(periodID, startSequence, closeSequence uint64)
 }
 
 type RequestProcessor struct {
@@ -236,6 +242,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processClosePeriod(orderType.ClosePeriod, s)
 	case *raftcmdpb.Order_SealPeriod:
 		return p.processSealPeriod(orderType.SealPeriod, s)
+	case *raftcmdpb.Order_ArchivePeriod:
+		return p.processArchivePeriod(orderType.ArchivePeriod, s)
+	case *raftcmdpb.Order_ConfirmArchivePeriod:
+		return p.processConfirmArchivePeriod(orderType.ConfirmArchivePeriod, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}

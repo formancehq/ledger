@@ -45,10 +45,20 @@ type Buffered struct {
 	pendingSigningKeyUpdates   []signingKeyUpdate
 	pendingSigningConfigUpdate *signingConfigUpdate
 	sinkConfigChanged          bool
+	allPeriods                 map[uint64]*commonpb.Period
 	currentOpenPeriod          *commonpb.Period
 	closingPeriod              *commonpb.Period
 	changedPeriods             []*commonpb.Period
 	NextPeriodID               uint64
+	purgeRanges                []purgeRange
+	pendingArchives            []ArchiveRequest
+}
+
+// purgeRange identifies a period's sequence range to delete from Pebble during Merge().
+type purgeRange struct {
+	periodID      uint64
+	startSequence uint64
+	closeSequence uint64
 }
 
 func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
@@ -250,10 +260,28 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("storing next period ID: %w", err)
 	}
 
+	// Purge archived period data (logs + audit entries) if requested
+	for i := range b.purgeRanges {
+		if err := b.executePurge(batch, &b.purgeRanges[i]); err != nil {
+			return fmt.Errorf("purging archived period %d data: %w", b.purgeRanges[i].periodID, err)
+		}
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.lastLogHash = b.LastLogHash
+
+	// Apply changed periods to Machine's allPeriods
+	for _, p := range b.changedPeriods {
+		b.fsm.allPeriods[p.Id] = p
+	}
+
+	// Remove purged periods from memory
+	for _, pr := range b.purgeRanges {
+		delete(b.fsm.allPeriods, pr.periodID)
+	}
+
 	b.fsm.currentOpenPeriod = b.currentOpenPeriod
 	b.fsm.closingPeriod = b.closingPeriod
 	b.fsm.nextPeriodID = b.NextPeriodID
@@ -262,12 +290,18 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 }
 
 func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
+	// Clone allPeriods from Machine; currentOpenPeriod/closingPeriod point into the cloned map.
+	clonedAll := make(map[uint64]*commonpb.Period, len(fsm.allPeriods))
+	for id, p := range fsm.allPeriods {
+		clonedAll[id] = proto.CloneOf(p)
+	}
+
 	var clonedOpen, clonedClosing *commonpb.Period
 	if fsm.currentOpenPeriod != nil {
-		clonedOpen = proto.CloneOf(fsm.currentOpenPeriod)
+		clonedOpen = clonedAll[fsm.currentOpenPeriod.Id]
 	}
 	if fsm.closingPeriod != nil {
-		clonedClosing = proto.CloneOf(fsm.closingPeriod)
+		clonedClosing = clonedAll[fsm.closingPeriod.Id]
 	}
 
 	return &Buffered{
@@ -287,6 +321,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
 		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
 		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
+		allPeriods:          clonedAll,
 		currentOpenPeriod:   clonedOpen,
 		closingPeriod:       clonedClosing,
 		NextPeriodID:        fsm.nextPeriodID,
@@ -561,6 +596,66 @@ func (b *Buffered) IncrementNextPeriodID() uint64 {
 	id := b.NextPeriodID
 	b.NextPeriodID++
 	return id
+}
+
+// GetPeriodByID looks up a period by ID from in-memory state only.
+// It checks changedPeriods first (most recent modifications), then the allPeriods map.
+func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+	// Check changedPeriods (most recently changed first)
+	for i := len(b.changedPeriods) - 1; i >= 0; i-- {
+		if b.changedPeriods[i].Id == periodID {
+			return b.changedPeriods[i], true
+		}
+	}
+
+	p, ok := b.allPeriods[periodID]
+	return p, ok
+}
+
+// UpdatePeriod records a period modification to be persisted in Merge().
+func (b *Buffered) UpdatePeriod(period *commonpb.Period) {
+	b.changedPeriods = append(b.changedPeriods, period)
+}
+
+// SetPurgeRange records a sequence range to be purged (logs + audit entries) during Merge().
+// periodID identifies the archived period to remove from the in-memory map.
+// Can be called multiple times to purge multiple periods in the same batch.
+func (b *Buffered) SetPurgeRange(periodID, startSequence, closeSequence uint64) {
+	b.purgeRanges = append(b.purgeRanges, purgeRange{
+		periodID:      periodID,
+		startSequence: startSequence,
+		closeSequence: closeSequence,
+	})
+}
+
+// SetPendingArchive records a period that needs archiving after the batch is committed.
+// The Machine reads this after Merge() to construct and send the ArchiveRequest.
+// Can be called multiple times to archive multiple periods in the same batch.
+func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
+	b.pendingArchives = append(b.pendingArchives, ArchiveRequest{
+		PeriodID:      periodID,
+		StartSequence: startSequence,
+		CloseSequence: closeSequence,
+	})
+}
+
+// executePurge deletes cold-storable data for a single purge range.
+func (b *Buffered) executePurge(batch *data.Batch, pr *purgeRange) error {
+	// Sequence-keyed prefixes (logs, audit): efficient range delete.
+	for _, prefix := range data.ColdSequencePrefixes {
+		start := data.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.startSequence).Build()
+		end := data.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.closeSequence + 1).Build()
+		if err := batch.DeleteRange(start, end, nil); err != nil {
+			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
+		}
+	}
+
+	// Transaction updates: iterate and point-delete by byLog range.
+	if err := batch.PurgeTransactionUpdates(pr.startSequence, pr.closeSequence); err != nil {
+		return fmt.Errorf("purging transaction updates [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
+	}
+
+	return nil
 }
 
 // Ensure Buffered implements Store

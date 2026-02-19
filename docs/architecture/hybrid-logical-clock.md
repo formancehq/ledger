@@ -108,7 +108,7 @@ Logs and state persisted with monotonic timestamps
 
 The `lastAppliedTimestamp` is persisted through three mechanisms:
 
-1. **Per-batch persistence**: Written to PebbleDB in the same atomic batch as the applied index. Key prefix: `0x04`. This ensures the timestamp survives node restarts.
+1. **Per-batch persistence**: Written to PebbleDB in the same atomic batch as the applied index. Key prefix: `0xF3`. This ensures the timestamp survives node restarts.
 
 2. **Snapshot inclusion**: Included in the `MemorySnapshot` protobuf (field `last_applied_timestamp = 8`). This ensures the timestamp is correctly transferred during Raft snapshot installation.
 

@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
@@ -29,6 +30,7 @@ type Config struct {
 	AuditEnabled      bool
 	AdmissionMetrics  bool
 	ReceiptSigningKey string
+	ColdStorageConfig coldstorage.Config
 }
 
 func (c Config) Validate() error {

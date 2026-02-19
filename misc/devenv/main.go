@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -550,6 +552,47 @@ func main() {
 				}
 			}
 		}
+		// Cold storage: optionally create an S3 bucket and inject config into Helm values
+		ledgerDeps := []pulumi.Resource{namespace, otlp, dockerImage}
+		if getConfigBool("coldStorage-enabled", false) {
+			coldStorageRegion := cfg.Get("coldStorage-s3-region")
+			if coldStorageRegion == "" {
+				coldStorageRegion = "eu-west-1"
+			}
+
+			awsProvider, err := aws.NewProvider(ctx, "aws-cold-storage", &aws.ProviderArgs{
+				Region: pulumi.String(coldStorageRegion),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create AWS provider for cold storage: %w", err)
+			}
+
+			bucketName := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
+			coldBucket, err := s3.NewBucketV2(ctx, "cold-storage-bucket", &s3.BucketV2Args{
+				Bucket: pulumi.String(bucketName),
+			}, pulumi.Provider(awsProvider))
+			if err != nil {
+				return fmt.Errorf("failed to create cold storage S3 bucket: %w", err)
+			}
+
+			// Ensure the config.coldStorage section exists in ledger values
+			configMap, ok := ledgerValues["config"].(map[string]interface{})
+			if !ok {
+				configMap = make(map[string]interface{})
+				ledgerValues["config"] = configMap
+			}
+			configMap["coldStorage"] = map[string]interface{}{
+				"driver": "s3",
+				"s3": map[string]interface{}{
+					"bucket": coldBucket.Bucket,
+					"region": coldStorageRegion,
+				},
+			}
+
+			ledgerDeps = append(ledgerDeps, coldBucket)
+			ctx.Export("coldStorageBucket", coldBucket.Bucket)
+		}
+
 		// Get the chart path (relative to the devenv directory where Pulumi.yaml is)
 		// The chart is in ../chart relative to devenv
 		chartPath := filepath.Join("..", "chart")
@@ -561,11 +604,7 @@ func main() {
 			DependencyUpdate: pulumi.Bool(true),
 			ForceUpdate:      pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{
-				namespace,
-				otlp,
-				dockerImage,
-			}),
+			pulumi.DependsOn(ledgerDeps),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {

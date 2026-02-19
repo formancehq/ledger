@@ -25,6 +25,8 @@ const (
 	ErrReasonPeriodAlreadyClosing         = "PERIOD_ALREADY_CLOSING"
 	ErrReasonPeriodNotFound               = "PERIOD_NOT_FOUND"
 	ErrReasonPeriodNotClosing             = "PERIOD_NOT_CLOSING"
+	ErrReasonPeriodNotClosed              = "PERIOD_NOT_CLOSED"
+	ErrReasonPeriodNotArchiving           = "PERIOD_NOT_ARCHIVING"
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 )
 
@@ -202,6 +204,24 @@ type ErrPeriodNotClosing struct {
 
 func (e *ErrPeriodNotClosing) Error() string {
 	return fmt.Sprintf("period %d is not in CLOSING state", e.PeriodID)
+}
+
+// ErrPeriodNotClosed is returned when attempting to archive a period that is not in CLOSED state.
+type ErrPeriodNotClosed struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotClosed) Error() string {
+	return fmt.Sprintf("period %d is not in CLOSED state", e.PeriodID)
+}
+
+// ErrPeriodNotArchiving is returned when attempting to confirm archive of a period that is not in ARCHIVING state.
+type ErrPeriodNotArchiving struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotArchiving) Error() string {
+	return fmt.Sprintf("period %d is not in ARCHIVING state", e.PeriodID)
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.

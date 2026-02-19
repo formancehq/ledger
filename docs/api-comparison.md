@@ -67,7 +67,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with period ID; available on GetTransaction |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
-| Archive period | ❌ | ❌ | Phase 2: cold storage offloading |
+| Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
 | **Volumes (responses)** |
 | postCommitVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -177,6 +177,7 @@ Periods partition a ledger's transaction history into discrete, sealed segments.
 
 **gRPC Methods:**
 - `Apply(ClosePeriodRequest)` - Close the current open period (write, leader-only)
+- `Apply(ArchivePeriodRequest)` - Archive a closed period to cold storage (write, leader-only)
 - `ListPeriods(ListPeriodsRequest)` - Stream all periods (read, any node)
 
 **Features:**
@@ -185,13 +186,16 @@ Periods partition a ledger's transaction history into discrete, sealed segments.
 - ✅ Automatic crash recovery for both crash windows
 - ✅ Transaction receipts (HMAC-SHA256 JWT with period ID)
 - ✅ List all periods with status, timestamps, and sealing hashes
-- ❌ Archive period (Phase 2: cold storage offloading)
-- ❌ Scheduled period close (Phase 2)
+- ✅ Archive period (CLOSED → ARCHIVED with cold storage export and hot purge)
+- ❌ Scheduled period close (Phase 3)
 
 **CLI commands:**
 ```bash
 # Close the current open period
 ledgerctl periods close
+
+# Archive a closed period to cold storage
+ledgerctl periods archive 1
 
 # List all periods
 ledgerctl periods list

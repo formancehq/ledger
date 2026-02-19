@@ -262,7 +262,7 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 	return ledgerInfo, nil
 }
 
-// ListPeriods returns all periods from the Pebble data store.
+// ListPeriods returns all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(_ context.Context) ([]*commonpb.Period, error) {
 	return ctrl.store.GetPeriods()
 }

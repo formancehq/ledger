@@ -262,6 +262,21 @@ func (mr *MockStoreMockRecorder) GetNextSequenceID() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextSequenceID", reflect.TypeOf((*MockStore)(nil).GetNextSequenceID))
 }
 
+// GetPeriodByID mocks base method.
+func (m *MockStore) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPeriodByID", periodID)
+	ret0, _ := ret[0].(*commonpb.Period)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetPeriodByID indicates an expected call of GetPeriodByID.
+func (mr *MockStoreMockRecorder) GetPeriodByID(periodID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodByID", reflect.TypeOf((*MockStore)(nil).GetPeriodByID), periodID)
+}
+
 // GetReverted mocks base method.
 func (m *MockStore) GetReverted(key data.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()
@@ -520,6 +535,30 @@ func (mr *MockStoreMockRecorder) SetLastLogHash(hash any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastLogHash", reflect.TypeOf((*MockStore)(nil).SetLastLogHash), hash)
 }
 
+// SetPendingArchive mocks base method.
+func (m *MockStore) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetPendingArchive", periodID, startSequence, closeSequence)
+}
+
+// SetPendingArchive indicates an expected call of SetPendingArchive.
+func (mr *MockStoreMockRecorder) SetPendingArchive(periodID, startSequence, closeSequence any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPendingArchive", reflect.TypeOf((*MockStore)(nil).SetPendingArchive), periodID, startSequence, closeSequence)
+}
+
+// SetPurgeRange mocks base method.
+func (m *MockStore) SetPurgeRange(periodID, startSequence, closeSequence uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetPurgeRange", periodID, startSequence, closeSequence)
+}
+
+// SetPurgeRange indicates an expected call of SetPurgeRange.
+func (mr *MockStoreMockRecorder) SetPurgeRange(periodID, startSequence, closeSequence any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPurgeRange", reflect.TypeOf((*MockStore)(nil).SetPurgeRange), periodID, startSequence, closeSequence)
+}
+
 // SetRequireSignatures mocks base method.
 func (m *MockStore) SetRequireSignatures(require bool) {
 	m.ctrl.T.Helper()
@@ -530,6 +569,18 @@ func (m *MockStore) SetRequireSignatures(require bool) {
 func (mr *MockStoreMockRecorder) SetRequireSignatures(require any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRequireSignatures", reflect.TypeOf((*MockStore)(nil).SetRequireSignatures), require)
+}
+
+// UpdatePeriod mocks base method.
+func (m *MockStore) UpdatePeriod(period *commonpb.Period) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdatePeriod", period)
+}
+
+// UpdatePeriod indicates an expected call of UpdatePeriod.
+func (mr *MockStoreMockRecorder) UpdatePeriod(period any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePeriod", reflect.TypeOf((*MockStore)(nil).UpdatePeriod), period)
 }
 
 // MockpostingProducer is a mock of postingProducer interface.

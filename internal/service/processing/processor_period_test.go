@@ -1,7 +1,6 @@
 package processing
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -33,7 +32,8 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(openPeriod, true)
 	mockStore.EXPECT().GetClosingPeriod().Return(nil, false)
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
+	// GetNextSequenceID is called twice: once for CloseSequence, once for StartSequence
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
 	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(2))
@@ -45,6 +45,7 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	mockStore.EXPECT().SetCurrentOpenPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.Status)
 		require.Equal(t, uint64(2), period.Id)
+		require.Equal(t, uint64(43), period.StartSequence) // CloseSequence + 1
 	})
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
@@ -197,6 +198,168 @@ func TestProcessSealPeriod_PeriodNotClosing(t *testing.T) {
 	require.Equal(t, uint64(1), notFoundErr.PeriodID)
 }
 
+func TestProcessArchivePeriod_Success(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	closedPeriod := &commonpb.Period{
+		Id:            1,
+		Status:        commonpb.PeriodStatus_PERIOD_CLOSED,
+		StartSequence: 1,
+		CloseSequence: 42,
+		SealingHash:   []byte("seal-hash"),
+	}
+
+	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(closedPeriod, true)
+	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, period.Status)
+	})
+	mockStore.EXPECT().SetPendingArchive(uint64(1), uint64(1), uint64(42))
+
+	payload, err := processor.processArchivePeriod(&raftcmdpb.ArchivePeriodOrder{PeriodId: 1}, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, payload)
+
+	archiveLog := payload.GetArchivePeriod()
+	require.NotNil(t, archiveLog)
+	require.Equal(t, uint64(1), archiveLog.Period.Id)
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, archiveLog.Period.Status)
+}
+
+func TestProcessArchivePeriod_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	mockStore.EXPECT().GetPeriodByID(uint64(99)).Return(nil, false)
+
+	payload, err := processor.processArchivePeriod(&raftcmdpb.ArchivePeriodOrder{PeriodId: 99}, mockStore)
+	require.Error(t, err)
+	require.Nil(t, payload)
+
+	var notFoundErr *ErrPeriodNotFound
+	require.ErrorAs(t, err, &notFoundErr)
+	require.Equal(t, uint64(99), notFoundErr.PeriodID)
+}
+
+func TestProcessArchivePeriod_NotClosed(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	openPeriod := &commonpb.Period{
+		Id:     1,
+		Status: commonpb.PeriodStatus_PERIOD_OPEN,
+	}
+
+	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(openPeriod, true)
+
+	payload, err := processor.processArchivePeriod(&raftcmdpb.ArchivePeriodOrder{PeriodId: 1}, mockStore)
+	require.Error(t, err)
+	require.Nil(t, payload)
+
+	var notClosedErr *ErrPeriodNotClosed
+	require.ErrorAs(t, err, &notClosedErr)
+	require.Equal(t, uint64(1), notClosedErr.PeriodID)
+}
+
+func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	archivingPeriod := &commonpb.Period{
+		Id:            1,
+		Status:        commonpb.PeriodStatus_PERIOD_ARCHIVING,
+		StartSequence: 1,
+		CloseSequence: 42,
+		SealingHash:   []byte("seal-hash"),
+	}
+
+	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(archivingPeriod, true)
+	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, period.Status)
+	})
+	mockStore.EXPECT().SetPurgeRange(uint64(1), uint64(1), uint64(42))
+
+	payload, err := processor.processConfirmArchivePeriod(&raftcmdpb.ConfirmArchivePeriodOrder{PeriodId: 1}, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, payload)
+
+	confirmLog := payload.GetConfirmArchivePeriod()
+	require.NotNil(t, confirmLog)
+	require.Equal(t, uint64(1), confirmLog.Period.Id)
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, confirmLog.Period.Status)
+}
+
+func TestProcessConfirmArchivePeriod_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	mockStore.EXPECT().GetPeriodByID(uint64(99)).Return(nil, false)
+
+	payload, err := processor.processConfirmArchivePeriod(&raftcmdpb.ConfirmArchivePeriodOrder{PeriodId: 99}, mockStore)
+	require.Error(t, err)
+	require.Nil(t, payload)
+
+	var notFoundErr *ErrPeriodNotFound
+	require.ErrorAs(t, err, &notFoundErr)
+	require.Equal(t, uint64(99), notFoundErr.PeriodID)
+}
+
+func TestProcessConfirmArchivePeriod_NotArchiving(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil)
+	require.NoError(t, err)
+
+	archivedPeriod := &commonpb.Period{
+		Id:     1,
+		Status: commonpb.PeriodStatus_PERIOD_ARCHIVED,
+	}
+
+	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(archivedPeriod, true)
+
+	payload, err := processor.processConfirmArchivePeriod(&raftcmdpb.ConfirmArchivePeriodOrder{PeriodId: 1}, mockStore)
+	require.Error(t, err)
+	require.Nil(t, payload)
+
+	var notArchivingErr *ErrPeriodNotArchiving
+	require.ErrorAs(t, err, &notArchivingErr)
+	require.Equal(t, uint64(1), notArchivingErr.PeriodID)
+}
+
 func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	t.Parallel()
 
@@ -240,7 +403,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 							{
 								Source:      "world",
 								Destination: "users:alice",
-								Amount:      commonpb.NewBigInt(big.NewInt(100)),
+								Amount:      commonpb.NewUint256FromUint64(uint64(100)),
 								Asset:       "USD",
 							},
 						},
@@ -307,7 +470,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 							{
 								Source:      "world",
 								Destination: "users:bob",
-								Amount:      commonpb.NewBigInt(big.NewInt(50)),
+								Amount:      commonpb.NewUint256FromUint64(uint64(50)),
 								Asset:       "USD",
 							},
 						},

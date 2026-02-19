@@ -48,23 +48,22 @@ Financial ledgers naturally operate in **periods** (month, quarter, year). Once 
 ```
                     PERIOD LIFECYCLE
 
-  ┌─────────┐    close     ┌─────────┐   archive    ┌──────────┐
-  │  OPEN   │ ──────────►  │ CLOSED  │ ──────────►  │ ARCHIVED │
-  │         │              │         │              │          │
-  │ writes  │              │ read-   │              │ logs     │
-  │ allowed │              │ only    │              │ purged   │
-  └─────────┘              └─────────┘              └──────────┘
-       │                        │                        │
-       │ hot storage            │ hot storage             │ cold storage
-       │ (Pebble)               │ (Pebble)                │ (S3/GCS/FS)
-       │                        │                         │
-       │ full data              │ full data               │ logs + audit
-       │                        │ + sealing hash          │
-       │                        │                         │
-       │                        │                    hot storage:
-       │                        │                    attributes (volumes,
-       │                        │                      metadata, reverts)
-       │                        │                    + sealing hash
+  ┌─────────┐   close    ┌─────────┐   seal     ┌─────────┐   archive   ┌───────────┐   confirm   ┌──────────┐
+  │  OPEN   │ ────────►  │ CLOSING │ ────────►  │ CLOSED  │ ────────►  │ ARCHIVING │ ────────►  │ ARCHIVED │
+  │         │            │         │            │         │            │           │            │          │
+  │ writes  │            │ sealing │            │ sealed  │            │ exporting │            │ logs     │
+  │ allowed │            │ in prog │            │ ready   │            │ to cold   │            │ purged   │
+  └─────────┘            └─────────┘            └─────────┘            └───────────┘            └──────────┘
+       │                      │                      │                      │                        │
+       │ hot storage          │ hot storage           │ hot storage          │ hot storage             │ cold storage
+       │ (Pebble)             │ (Pebble)              │ (Pebble)             │ (Pebble)                │ (S3/FS)
+       │                      │                       │                      │                         │
+       │ full data            │ full data              │ full data            │ full data               │ logs + audit
+       │                      │ + checkpoint           │ + sealing hash       │ + sealing hash          │
+       │                      │                        │                      │                    hot storage:
+       │                      │                        │                      │                    attributes (volumes,
+       │                      │                        │                      │                      metadata, reverts)
+       │                      │                        │                      │                    + sealing hash
 ```
 
 **Key design decision**: attributes (volumes, metadata, reversion status) are **kept in hot storage** after archival. Only logs and transaction updates are purged. This avoids the need for a separate balance snapshot format — attributes ARE the compact, derived state. They grow with the number of unique accounts/assets, not with the number of transactions, so they remain small.
@@ -91,6 +90,7 @@ enum PeriodStatus {
   PERIOD_CLOSING = 1;              // Boundary marked, snapshot in progress
   PERIOD_CLOSED = 2;               // Snapshot complete, sealed
   PERIOD_ARCHIVED = 3;
+  PERIOD_ARCHIVING = 4;            // Archive export in progress (leader-only)
 }
 ```
 
@@ -371,10 +371,10 @@ ledgerctl periods archive <period-id>
 ```
 
 - Verifies the period is closed
-- Exports logs and audit entries to cold storage (gzip compressed tar archive)
+- Exports all cold-storable KV pairs (logs, audit entries, transaction updates) to cold storage as a raw binary tar.gz archive
 - Verifies the archive integrity (checksum validation via `Exists`)
 - Marks the period as archived
-- **Purges logs and transaction updates** from Pebble (range delete on log sequences)
+- **Purges cold-storable data** from Pebble (range delete for sequence-keyed prefixes, filtered delete for transaction updates)
 - **Keeps attributes** in hot storage (volumes, metadata, reversion status)
 
 Archival and purge are a single atomic operation from the operator's perspective. There is no manual confirmation step between archive and purge — the system verifies the archive exists in cold storage before purging.
@@ -421,7 +421,7 @@ message ArchivePeriodOrder {
 
 - **ClosePeriod** (Step 1): instant Raft command. Marks the boundary, opens new period. All nodes transition the period to `CLOSING`.
 - **SealPeriod** (Step 2): proposed by the leader after checkpoint-based hash computation. Contains the sealing hash. All nodes transition the period to `CLOSED`. Followers don't need to recompute — they trust the hash from the leader (verified by Raft consensus).
-- **Archive** (Phase 2): the leader exports logs and audit entries to cold storage, then proposes `ArchivePeriod`. All nodes purge logs and transaction updates upon applying the command (deterministic range delete on Pebble). Attributes (volumes, metadata, reversion status) are kept.
+- **ArchivePeriod** (Phase 2): transitions the period from CLOSED to ARCHIVING on all nodes. Only the **leader** dispatches the archive request to the background Archiver (avoiding N redundant uploads). The Archiver exports logs and audit entries to cold storage (S3 or filesystem), then proposes `ConfirmArchivePeriod`. All nodes purge logs and transaction updates upon applying the confirm command (deterministic range delete on Pebble). Attributes (volumes, metadata, reversion status) are kept. On leadership gain, the new leader scans for ARCHIVING periods and retries.
 
 ### 9.3 Snapshot Impact
 
@@ -493,13 +493,20 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 - CLI commands: `periods close`, `periods list`
 - CLI: `--receipt` flag on `transactions revert`, receipt display on `transactions get`
 
-### Phase 2 — Cold Storage
-- Cold storage interface
-- S3 implementation
+### Phase 2 — Cold Storage ✅ (implemented)
+- Cold storage interface (`ColdStorage` with `Archive` and `Exists` methods)
 - Filesystem implementation (dev/test)
-- Archive + auto-purge operations
-- CLI commands: `periods archive`
-- Scheduled auto-close (configurable cron)
+- S3 implementation (production, S3-compatible including MinIO)
+- `ARCHIVING` intermediate state for deterministic crash recovery
+- Leader-only archive dispatch (avoids N redundant uploads in N-node cluster)
+- Two-step archive: `ArchivePeriod` (CLOSED → ARCHIVING) → leader-only background export → `ConfirmArchivePeriod` (ARCHIVING → ARCHIVED)
+- Background Archiver (follows Sealer pattern: channel-based, exponential backoff retry)
+- Auto-purge of logs and audit entries via Pebble `DeleteRange` after verified archival
+- Attributes (volumes, metadata, reversion status) remain in hot storage
+- Crash recovery on leadership gain: scan for ARCHIVING periods and retry
+- CLI command: `periods archive <period-id>`
+- Server flags: `--cold-storage-driver`, `--cold-storage-path`, `--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`
+- Scheduled auto-close (deferred — configurable cron)
 
 ### Phase 3 — Read-Only Access (Future)
 - Transparent read-only queries on archived periods

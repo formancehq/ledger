@@ -117,6 +117,8 @@ message Request {
     RemoveEventsSinkRequest remove_events_sink = 10;
     ClosePeriodRequest close_period = 11;
     SealPeriodRequest seal_period = 12;
+    ArchivePeriodRequest archive_period = 13;
+    ConfirmArchivePeriodRequest confirm_archive_period = 14;
   }
   signature.RequestSignature signature = 5;
 }
@@ -160,6 +162,14 @@ message ClosePeriodRequest {}
 message SealPeriodRequest {
   uint64 period_id = 1;
   bytes sealing_hash = 2;
+}
+
+message ArchivePeriodRequest {
+  uint64 period_id = 1;
+}
+
+message ConfirmArchivePeriodRequest {
+  uint64 period_id = 1;
 }
 
 message ListPeriodsRequest {}

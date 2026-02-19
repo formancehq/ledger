@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
@@ -276,6 +277,69 @@ func Module() fx.Option {
 						},
 					})
 				})
+			},
+			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
+				switch cfg.ColdStorageConfig.Driver {
+				case "s3":
+					if cfg.ColdStorageConfig.S3Bucket == "" {
+						return nil, fmt.Errorf("--cold-storage-s3-bucket is required when driver=s3")
+					}
+					s3Client, err := coldstorage.NewS3Client(
+						cfg.ColdStorageConfig.S3Region,
+						cfg.ColdStorageConfig.S3Endpoint,
+					)
+					if err != nil {
+						return nil, fmt.Errorf("creating S3 client: %w", err)
+					}
+					logger.WithFields(map[string]any{
+						"bucket":   cfg.ColdStorageConfig.S3Bucket,
+						"region":   cfg.ColdStorageConfig.S3Region,
+						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
+					}).Infof("Using S3 cold storage")
+					return coldstorage.NewS3Storage(s3Client, cfg.ColdStorageConfig.S3Bucket), nil
+				case "filesystem", "":
+					basePath := cfg.ColdStorageConfig.BasePath
+					if basePath == "" {
+						basePath = filepath.Join(cfg.DataDir, "cold-storage")
+					}
+					return coldstorage.NewFilesystemStorage(basePath), nil
+				default:
+					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
+				}
+			},
+			func(
+				cfg Config,
+				logger logging.Logger,
+				store *data.Store,
+				cold coldstorage.ColdStorage,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.Archiver {
+				bucketID := cfg.ColdStorageConfig.BucketID
+				if bucketID == "" {
+					bucketID = cfg.ClusterID
+				}
+				if bucketID == "" {
+					bucketID = store.DataDir()
+				}
+				return state.NewArchiver(
+					logger,
+					store,
+					cold,
+					machine.ArchiveRequestCh(),
+					func(periodID uint64) {
+						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+							Type: &servicepb.Request_ConfirmArchivePeriod{
+								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
+									PeriodId: periodID,
+								},
+							},
+						})
+					},
+					raftNode.IsLeader,
+					bucketID,
+				)
 			},
 			func(
 				raftNode *node.Node,
@@ -601,6 +665,18 @@ func Module() fx.Option {
 					},
 					OnStop: func(_ context.Context) error {
 						sealer.Stop()
+						return nil
+					},
+				})
+			},
+			func(lc fx.Lifecycle, archiver *state.Archiver) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						archiver.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						archiver.Stop()
 						return nil
 					},
 				})

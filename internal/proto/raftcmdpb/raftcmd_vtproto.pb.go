@@ -178,6 +178,24 @@ func (m *Order_SealPeriod) CloneVT() isOrder_Type {
 	return r
 }
 
+func (m *Order_ArchivePeriod) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_ArchivePeriod)(nil)
+	}
+	r := new(Order_ArchivePeriod)
+	r.ArchivePeriod = m.ArchivePeriod.CloneVT()
+	return r
+}
+
+func (m *Order_ConfirmArchivePeriod) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_ConfirmArchivePeriod)(nil)
+	}
+	r := new(Order_ConfirmArchivePeriod)
+	r.ConfirmArchivePeriod = m.ConfirmArchivePeriod.CloneVT()
+	return r
+}
+
 func (m *AddEventsSinkOrder) CloneVT() *AddEventsSinkOrder {
 	if m == nil {
 		return (*AddEventsSinkOrder)(nil)
@@ -303,6 +321,40 @@ func (m *SealPeriodOrder) CloneVT() *SealPeriodOrder {
 }
 
 func (m *SealPeriodOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *ArchivePeriodOrder) CloneVT() *ArchivePeriodOrder {
+	if m == nil {
+		return (*ArchivePeriodOrder)(nil)
+	}
+	r := new(ArchivePeriodOrder)
+	r.PeriodId = m.PeriodId
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ArchivePeriodOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *ConfirmArchivePeriodOrder) CloneVT() *ConfirmArchivePeriodOrder {
+	if m == nil {
+		return (*ConfirmArchivePeriodOrder)(nil)
+	}
+	r := new(ConfirmArchivePeriodOrder)
+	r.PeriodId = m.PeriodId
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ConfirmArchivePeriodOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -986,6 +1038,13 @@ func (m *MemorySnapshot) CloneVT() *MemorySnapshot {
 		copy(tmpBytes, rhs)
 		r.LastLogHash = tmpBytes
 	}
+	if rhs := m.ClosedPeriods; rhs != nil {
+		tmpContainer := make([]*commonpb.Period, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.ClosedPeriods = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1523,6 +1582,56 @@ func (this *Order_SealPeriod) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
+func (this *Order_ArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_ArchivePeriod)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ArchivePeriod, that.ArchivePeriod; p != q {
+		if p == nil {
+			p = &ArchivePeriodOrder{}
+		}
+		if q == nil {
+			q = &ArchivePeriodOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Order_ConfirmArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_ConfirmArchivePeriod)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ConfirmArchivePeriod, that.ConfirmArchivePeriod; p != q {
+		if p == nil {
+			p = &ConfirmArchivePeriodOrder{}
+		}
+		if q == nil {
+			q = &ConfirmArchivePeriodOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AddEventsSinkOrder) EqualVT(that *AddEventsSinkOrder) bool {
 	if this == that {
 		return true
@@ -1654,6 +1763,44 @@ func (this *SealPeriodOrder) EqualVT(that *SealPeriodOrder) bool {
 
 func (this *SealPeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*SealPeriodOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *ArchivePeriodOrder) EqualVT(that *ArchivePeriodOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.PeriodId != that.PeriodId {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ArchivePeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ArchivePeriodOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *ConfirmArchivePeriodOrder) EqualVT(that *ConfirmArchivePeriodOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.PeriodId != that.PeriodId {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ConfirmArchivePeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfirmArchivePeriodOrder)
 	if !ok {
 		return false
 	}
@@ -2788,6 +2935,23 @@ func (this *MemorySnapshot) EqualVT(that *MemorySnapshot) bool {
 	if this.NextPeriodId != that.NextPeriodId {
 		return false
 	}
+	if len(this.ClosedPeriods) != len(that.ClosedPeriods) {
+		return false
+	}
+	for i, vx := range this.ClosedPeriods {
+		vy := that.ClosedPeriods[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &commonpb.Period{}
+			}
+			if q == nil {
+				q = &commonpb.Period{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3433,6 +3597,44 @@ func (m *Order_SealPeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Order_ArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_ArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.ArchivePeriod != nil {
+		size, err := m.ArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Order_ConfirmArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_ConfirmArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.ConfirmArchivePeriod != nil {
+		size, err := m.ConfirmArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AddEventsSinkOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -3715,6 +3917,82 @@ func (m *SealPeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
 		i--
 		dAtA[i] = 0x12
+	}
+	if m.PeriodId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ArchivePeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PeriodId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ConfirmArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConfirmArchivePeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConfirmArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.PeriodId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
@@ -5464,6 +5742,18 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.ClosedPeriods) > 0 {
+		for iNdEx := len(m.ClosedPeriods) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.ClosedPeriods[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x6a
+		}
+	}
 	if m.NextPeriodId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextPeriodId))
 		i--
@@ -6193,6 +6483,30 @@ func (m *Order_SealPeriod) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Order_ArchivePeriod) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ArchivePeriod != nil {
+		l = m.ArchivePeriod.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Order_ConfirmArchivePeriod) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ConfirmArchivePeriod != nil {
+		l = m.ConfirmArchivePeriod.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AddEventsSinkOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -6288,6 +6602,32 @@ func (m *SealPeriodOrder) SizeVT() (n int) {
 	l = len(m.SealingHash)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ArchivePeriodOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PeriodId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ConfirmArchivePeriodOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PeriodId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7030,6 +7370,12 @@ func (m *MemorySnapshot) SizeVT() (n int) {
 	}
 	if m.NextPeriodId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextPeriodId))
+	}
+	if len(m.ClosedPeriods) > 0 {
+		for _, e := range m.ClosedPeriods {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n
@@ -8062,6 +8408,88 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Order_SealPeriod{SealPeriod: v}
 			}
 			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ArchivePeriod", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_ArchivePeriod); ok {
+				if err := oneof.ArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ArchivePeriodOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_ArchivePeriod{ArchivePeriod: v}
+			}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchivePeriod", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_ConfirmArchivePeriod); ok {
+				if err := oneof.ConfirmArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ConfirmArchivePeriodOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_ConfirmArchivePeriod{ConfirmArchivePeriod: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -8658,6 +9086,146 @@ func (m *SealPeriodOrder) UnmarshalVT(dAtA []byte) error {
 				m.SealingHash = []byte{}
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ArchivePeriodOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ArchivePeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+			}
+			m.PeriodId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PeriodId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ConfirmArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConfirmArchivePeriodOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConfirmArchivePeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+			}
+			m.PeriodId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PeriodId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -13097,6 +13665,40 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosedPeriods", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClosedPeriods = append(m.ClosedPeriods, &commonpb.Period{})
+			if err := m.ClosedPeriods[len(m.ClosedPeriods)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

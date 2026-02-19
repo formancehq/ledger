@@ -168,6 +168,8 @@ message LogPayload {
     RemovedEventsSinkLog removed_events_sink = 8;
     ClosePeriodLog close_period = 9;
     SealPeriodLog seal_period = 10;
+    ArchivePeriodLog archive_period = 11;
+    ConfirmArchivePeriodLog confirm_archive_period = 12;
   }
 }
 
@@ -314,6 +316,7 @@ enum PeriodStatus {
   PERIOD_CLOSING = 1;
   PERIOD_CLOSED = 2;
   PERIOD_ARCHIVED = 3;
+  PERIOD_ARCHIVING = 4;
 }
 
 message Period {
@@ -324,6 +327,7 @@ message Period {
   uint64 close_sequence = 5;
   bytes sealing_hash = 6;
   bytes last_log_hash = 7;   // Log chain hash at the time the period was closed (for crash recovery)
+  uint64 start_sequence = 8; // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
 }
 
 message ClosePeriodLog {
@@ -333,6 +337,14 @@ message ClosePeriodLog {
 
 message SealPeriodLog {
   Period period = 1;
+}
+
+message ArchivePeriodLog {
+  Period period = 1;  // The period being archived (still CLOSED at this point)
+}
+
+message ConfirmArchivePeriodLog {
+  Period period = 1;  // Period now in ARCHIVED status
 }
 
 // ============================================================================

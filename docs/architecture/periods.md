@@ -8,18 +8,19 @@ This is the foundation for future data retention and cold storage features (Phas
 
 ## Period Lifecycle
 
-A period transitions through three states (Phase 1):
+A period transitions through five states:
 
 ```
-OPEN  ──ClosePeriod──►  CLOSING  ──SealPeriod──►  CLOSED
+OPEN  ──ClosePeriod──►  CLOSING  ──SealPeriod──►  CLOSED  ──ArchivePeriod──►  ARCHIVING  ──ConfirmArchivePeriod──►  ARCHIVED
 ```
 
 | Status | Description |
 |--------|-------------|
 | `PERIOD_OPEN` | Actively accepting transactions. Exactly one open period exists at any time. |
 | `PERIOD_CLOSING` | No longer accepts transactions; a background Sealer is computing the sealing hash. |
-| `PERIOD_CLOSED` | Sealed with a cryptographic hash. Immutable. |
-| `PERIOD_ARCHIVED` | *(Phase 2)* Data offloaded to cold storage. |
+| `PERIOD_CLOSED` | Sealed with a cryptographic hash. Immutable. Eligible for archival. |
+| `PERIOD_ARCHIVING` | Archive in progress. The leader is exporting data to cold storage. Provides deterministic crash recovery: on leadership gain, the new leader scans for ARCHIVING periods and retries. |
+| `PERIOD_ARCHIVED` | Logs and audit entries exported to cold storage and purged from hot storage. Attributes (volumes, metadata) remain in Pebble. |
 
 ### Invariants
 
@@ -35,6 +36,7 @@ enum PeriodStatus {
   PERIOD_CLOSING = 1;
   PERIOD_CLOSED = 2;
   PERIOD_ARCHIVED = 3;
+  PERIOD_ARCHIVING = 4;
 }
 
 message Period {
@@ -191,6 +193,7 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 | Method | Description |
 |--------|-------------|
 | `Apply(ClosePeriodRequest)` | Close the current open period (write, leader-only) |
+| `Apply(ArchivePeriodRequest)` | Archive a closed period to cold storage (write, leader-only) |
 | `ListPeriods(ListPeriodsRequest)` | Stream all periods (read, any node) |
 
 ### CLI Commands
@@ -198,6 +201,9 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 ```bash
 # Close the current open period
 ledgerctl periods close
+
+# Archive a closed period to cold storage
+ledgerctl periods archive <period-id>
 
 # List all periods
 ledgerctl periods list
@@ -209,8 +215,8 @@ Periods are persisted in Pebble using two key prefixes:
 
 | Prefix | Key | Value |
 |--------|-----|-------|
-| `0x0B` | `[keyPrefixPeriods]` | All periods as a single protobuf blob |
-| `0x0C` | `[keyPrefixNextPeriodID]` | `uint64` — next period ID counter |
+| `0xF7` | `[keyPrefixPeriods][periodID]` | Period protobuf blob |
+| `0xF8` | `[keyPrefixNextPeriodID]` | `uint64` — next period ID counter |
 
 The seal checkpoint is stored in a `seal/` subdirectory under the data directory. It is removed after the sealing hash is computed.
 
@@ -222,6 +228,15 @@ data/
     └── ...           # Read-only Pebble checkpoint
 ```
 
+## In-Memory Period Management
+
+All non-purged periods are kept in memory in the FSM's `allPeriods` map, eliminating Pebble reads for period lookups. The `currentOpenPeriod` and `closingPeriod` fields are convenience pointers into this map for fast access on the hot path.
+
+- `Buffered.GetPeriodByID()` reads from the in-memory map (no Pebble fallback).
+- `DefaultController.ListPeriods()` reads from `Machine.AllPeriods()` via the `PeriodProvider` interface.
+- When a period is archived and purged, it is removed from the in-memory map.
+- Periods are still persisted to Pebble (for crash recovery and startup), but never read from Pebble during normal operation after startup.
+
 ## FSM Snapshot
 
 The period state is included in Raft snapshots:
@@ -229,11 +244,145 @@ The period state is included in Raft snapshots:
 ```protobuf
 message MemorySnapshot {
   // ... other fields ...
-  common.Period open_period = 10;      // Current open period
-  common.Period closing_period = 11;   // Period being sealed (nil when idle)
+  common.Period open_period = 10;               // Current open period
+  common.Period closing_period = 11;            // Period being sealed (nil when idle)
   uint64 next_period_id = 12;
+  repeated common.Period closed_periods = 13;   // CLOSED + ARCHIVED periods (non-purged)
 }
 ```
+
+## Archival (CLOSED → ARCHIVED)
+
+Once a period is sealed (CLOSED), it can be archived to cold storage. Archival exports logs and audit entries to an external storage backend and purges them from Pebble, reducing hot storage size and compaction pressure. Attributes (volumes, metadata, reversion status) remain in Pebble to serve read queries.
+
+### Two-Step Archive Process
+
+Like the seal process, archival uses two Raft commands to avoid blocking consensus with slow I/O.
+
+#### Step 1: ArchivePeriod (validation, state transition to ARCHIVING)
+
+The `ArchivePeriod` order validates that the period is CLOSED and transitions it to `ARCHIVING`. This state change is deterministic across all nodes via Raft. Only the **leader** dispatches the actual archive request to the background Archiver — followers apply the state transition but do not perform the S3 upload. This avoids N redundant exports in an N-node cluster.
+
+**File**: `internal/service/processing/processor_period.go`
+
+#### Step 2: ConfirmArchivePeriod (deterministic purge on all nodes)
+
+After the Archiver exports data to cold storage and verifies the upload, it proposes a `ConfirmArchivePeriod` order back into Raft. The FSM:
+
+1. Validates the period is in `ARCHIVING` state (not CLOSED — the intermediate state provides crash recovery).
+2. Transitions the period from ARCHIVING to ARCHIVED.
+3. Signals a purge of logs and audit entries for the period's sequence range `[start_sequence, close_sequence]`.
+4. The purge is executed as `DeleteRange` operations in the Pebble batch during `Merge()`.
+
+**File**: `internal/service/state/archiver.go`
+
+### Archive Contents
+
+The archive is a tar.gz file containing:
+
+| File | Format | Description |
+|------|--------|-------------|
+| `metadata.json` | JSON | Period ID, start/close sequence, archive timestamp |
+| `data.bin` | Raw binary KV dump | All cold-storable Pebble KV pairs for the period |
+
+The `data.bin` file contains length-prefixed key+value pairs: `[keyLen:4][key][valueLen:4][value]` repeated for each entry. This includes logs, audit entries, and transaction updates — dumped directly from Pebble without deserialization, enabling fast archival and exact restoration.
+
+### Cold Storage Interface
+
+```go
+type ColdStorage interface {
+    Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error
+    Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error)
+}
+```
+
+**Implementations:**
+- `FilesystemStorage` — writes to `{basePath}/{bucketID}/periods/{periodID}/archive.tar.gz` (development/testing)
+- `S3Storage` — writes to `s3://{s3-bucket}/{bucketID}/periods/{periodID}/archive.tar.gz` (production, S3-compatible including MinIO)
+
+**Configuration:**
+
+```bash
+--cold-storage-driver filesystem        # Storage driver: "filesystem" (default) or "s3"
+--cold-storage-path /path/to/cold       # Base path for filesystem driver (default: <data-dir>/cold-storage)
+--cold-storage-bucket-id my-cluster     # Shared namespace prefix for archives (default: cluster-id)
+--cold-storage-s3-bucket my-bucket      # S3 bucket name (required when driver=s3)
+--cold-storage-s3-region eu-west-1      # AWS region for S3
+--cold-storage-s3-endpoint http://minio:9000  # Custom S3 endpoint (for MinIO)
+```
+
+### Leader-Only Archival
+
+Archive dispatch is **leader-only**: when the FSM applies an `ArchivePeriod` log and transitions the period to `ARCHIVING`, only the Raft leader sends the `ArchiveRequest` to the background Archiver. Followers apply the state transition but do not perform the upload. This ensures a single S3 upload per archive operation regardless of cluster size.
+
+### Crash Recovery
+
+Crash recovery is deterministic via the `ARCHIVING` state. On leadership gain, the new leader scans all periods and retries any that are in `ARCHIVING` state by re-sending `ArchiveRequest` to the Archiver channel. The export is idempotent (same data, same key in cold storage), so re-exporting is safe. This handles:
+- Leader crash during S3 upload
+- Leadership transfer while archiving is in progress
+- Network partition that causes a leader change
+
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Leader as Raft Leader
+    participant FSM
+    participant Archiver as Background Archiver
+    participant Cold as Cold Storage
+
+    Client->>Leader: Apply(ArchivePeriod{period_id})
+    Leader->>FSM: ArchivePeriod order
+    FSM->>FSM: Validate period is CLOSED → ARCHIVING
+    FSM-->>Leader: ArchivePeriodLog
+
+    Note over Leader: Leader-only: dispatch archive request
+    Leader-->>Archiver: ArchiveRequest (via channel, leader only)
+
+    Note over Archiver: Background (off critical path)
+    Archiver->>Archiver: Build tar.gz (logs + audit + metadata)
+    Archiver->>Cold: Upload archive
+    Archiver->>Cold: Verify archive exists
+    Archiver->>Leader: Propose ConfirmArchivePeriod(period_id)
+
+    Leader->>FSM: ConfirmArchivePeriod order
+    FSM->>FSM: ARCHIVING → ARCHIVED
+    FSM->>FSM: Purge logs + audit entries (DeleteRange)
+    FSM-->>Leader: ConfirmArchivePeriodLog
+```
+
+## Deployment Configuration
+
+### Helm Chart
+
+Cold storage is configured via `config.coldStorage` in the Helm `values.yaml`:
+
+```yaml
+config:
+  coldStorage:
+    driver: "s3"           # "filesystem" (default) or "s3"
+    path: ""               # Base path for filesystem driver
+    bucketId: ""           # Shared namespace prefix (default: cluster-id)
+    s3:
+      bucket: "my-bucket"  # S3 bucket name (required when driver=s3)
+      region: "eu-west-1"  # AWS region
+      endpoint: ""         # Custom endpoint (for MinIO)
+```
+
+These values are emitted as `COLD_STORAGE_*` environment variables in the StatefulSet.
+
+### Pulumi (devenv)
+
+The Pulumi deployment can optionally create an S3 bucket for cold storage:
+
+```yaml
+# Pulumi config
+ledger-exp-devenv:coldStorage-enabled: true
+ledger-exp-devenv:coldStorage-s3-region: eu-west-1
+```
+
+When enabled, Pulumi creates an S3 bucket (`ledger-exp-cold-storage-{stack}`) and injects the `config.coldStorage` values into the Helm release automatically. AWS credentials are auto-injected via the service account.
 
 ## Related Documentation
 

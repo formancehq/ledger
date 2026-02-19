@@ -1107,6 +1107,30 @@ ledgerctl periods close
 #  INFO  Background sealing process will compute the sealing hash
 ```
 
+#### periods archive
+
+Archive a closed period to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
+
+```bash
+ledgerctl periods archive <period-id>
+```
+
+**Example:**
+
+```bash
+# Archive period 1 (must be in CLOSED state)
+ledgerctl periods archive 1
+
+# Output:
+#  SUCCESS  Period 1 archival initiated
+#  INFO  Background archiver will export data to cold storage and confirm
+```
+
+**Notes:**
+- The period must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` periods are rejected.
+- Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
+- Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
+
 ---
 
 ## Connection Examples

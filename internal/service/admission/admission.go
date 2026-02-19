@@ -1113,6 +1113,18 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				SealingHash: reqType.SealPeriod.SealingHash,
 			},
 		}
+	case *servicepb.Request_ArchivePeriod:
+		order.Type = &raftcmdpb.Order_ArchivePeriod{
+			ArchivePeriod: &raftcmdpb.ArchivePeriodOrder{
+				PeriodId: reqType.ArchivePeriod.PeriodId,
+			},
+		}
+	case *servicepb.Request_ConfirmArchivePeriod:
+		order.Type = &raftcmdpb.Order_ConfirmArchivePeriod{
+			ConfirmArchivePeriod: &raftcmdpb.ConfirmArchivePeriodOrder{
+				PeriodId: reqType.ConfirmArchivePeriod.PeriodId,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}

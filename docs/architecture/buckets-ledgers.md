@@ -22,8 +22,8 @@ graph TB
     
     subgraph "Shared Store (Pebble KV)"
         Logs[Logs<br/>prefix: 0x01 + sequence]
-        Attributes[Attributes<br/>prefix: 0x09 + type + key]
-        Audit[Audit<br/>prefix: 0x0A + sequence]
+        Attributes[Attributes<br/>prefix: 0xF1 + type + key]
+        Audit[Audit<br/>prefix: 0x02 + sequence]
     end
     
     N1 -.Raft.-> N2

@@ -14,6 +14,10 @@ config:
   ledger-exp-devenv:benchmarkOperator-enabled: true
   ledger-exp-devenv:pyroscope-enabled: true
 
+  # Cold storage (S3)
+  ledger-exp-devenv:coldStorage-enabled: true
+  ledger-exp-devenv:coldStorage-s3-region: eu-west-1
+
   ledger-exp-devenv:grafana:
     file: values/staging/grafana.yaml
   ledger-exp-devenv:benchmarkOperator:

@@ -572,6 +572,7 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 				}
+				node.fsm.OnLeadershipAcquired()
 			}
 		}
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))

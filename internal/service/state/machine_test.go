@@ -454,8 +454,8 @@ type attributeEntryInfo struct {
 func listRawAttributeEntries(t *testing.T, store *data.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
 	t.Helper()
 
-	// New key layout: [0x09][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
-	// Build lower bound: [0x09][CanonicalKey][AttrType]
+	// Key layout: [0xF1][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
+	// Build lower bound: [0xF1][CanonicalKey][AttrType]
 	kb := data.NewKeyBuilder()
 	kb.PutByte(data.KeyPrefixAttributes).
 		PutBytes(canonicalKey).

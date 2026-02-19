@@ -63,8 +63,9 @@ type Machine struct {
 	lastLogHash         []byte
 	lastCheckpointID    uint64
 
-	// Period state: only the current open and optionally closing period are kept in memory.
-	// Historical (CLOSED/ARCHIVED) periods are in Pebble only, read via data.Store.GetPeriods().
+	// All non-purged periods are kept in memory. currentOpenPeriod and closingPeriod
+	// are convenience pointers into allPeriods for fast access on the hot path.
+	allPeriods        map[uint64]*commonpb.Period
 	currentOpenPeriod *commonpb.Period
 	closingPeriod     *commonpb.Period
 	nextPeriodID      uint64
@@ -94,6 +95,10 @@ type Machine struct {
 	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
 	// The Sealer reads from this channel to perform background sealing.
 	sealRequestCh chan SealRequest
+
+	// archiveRequestCh receives archive requests when an ArchivePeriod order is applied.
+	// The Archiver reads from this channel to perform background archival to cold storage.
+	archiveRequestCh chan ArchiveRequest
 
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
@@ -160,13 +165,15 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
-	allPeriods, err := dataStore.GetPeriods()
+	periodsFromStore, err := dataStore.GetPeriods()
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
 
+	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
 	var currentOpenPeriod, closingPeriod *commonpb.Period
-	for _, p := range allPeriods {
+	for _, p := range periodsFromStore {
+		allPeriods[p.Id] = p
 		switch p.Status {
 		case commonpb.PeriodStatus_PERIOD_OPEN:
 			currentOpenPeriod = p
@@ -258,6 +265,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		nextSequenceID: 1,
 		// todo: should be 1 to be coherent with other ids
 		nextAuditSequenceID: 0,
+		allPeriods:          allPeriods,
 		currentOpenPeriod:   currentOpenPeriod,
 		closingPeriod:       closingPeriod,
 		nextPeriodID:        nextPeriodID,
@@ -268,6 +276,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		},
 		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
 		sealRequestCh:     make(chan SealRequest, 1),
+		archiveRequestCh:  make(chan ArchiveRequest, 1),
 	}
 
 	return fsm, nil
@@ -298,6 +307,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		Results: make([]ApplyResult, 0, len(entries)),
 	}
 	eventsConfigChanged := false
+	needsArchiveDispatch := false
 
 	for i, entry := range entries {
 		if entry.Index <= fsm.lastAppliedIndex {
@@ -345,7 +355,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			return nil, err
 		}
 
-		result, configChanged, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
+		result, configChanged, hasArchiveRequests, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
 			return nil, err
 		}
@@ -353,6 +363,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			eventsConfigChanged = true
 		}
 		ret.Results = append(ret.Results, *result)
+		if hasArchiveRequests {
+			needsArchiveDispatch = true
+		}
 
 		// If ClosePeriod was detected, stop processing immediately.
 		// Commit the batch so the ClosePeriod state is persisted,
@@ -368,6 +381,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				return nil, fmt.Errorf("committing batch at ClosePeriod: %w", err)
 			}
 			fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+			if needsArchiveDispatch {
+				fsm.dispatchArchiveRequests()
+			}
 
 			ret.CheckpointRequired = true
 			if i+1 < len(entries) {
@@ -400,6 +416,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+	if needsArchiveDispatch {
+		fsm.dispatchArchiveRequests()
+	}
 
 	// Notify event Manager that new logs are available.
 	fsm.eventNotifier.NotifyLogsCommitted()
@@ -791,17 +810,17 @@ func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Tim
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, error) {
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, bool, error) {
 	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
 	for _, update := range proposal.EventsSinkUpdates {
 		if update.Cursor > 0 {
 			if err := batch.SetSinkCursor(update.SinkName, update.Cursor); err != nil {
-				return nil, false, fmt.Errorf("setting sink cursor: %w", err)
+				return nil, false, false, fmt.Errorf("setting sink cursor: %w", err)
 			}
 		}
 		if update.ClearError {
 			if err := batch.ClearSinkStatus(update.SinkName); err != nil {
-				return nil, false, fmt.Errorf("clearing sink status: %w", err)
+				return nil, false, false, fmt.Errorf("clearing sink status: %w", err)
 			}
 		} else if update.Error != nil {
 			if err := batch.SetSinkStatus(&commonpb.SinkStatus{
@@ -809,18 +828,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				Cursor:   update.Cursor,
 				Error:    update.Error,
 			}); err != nil {
-				return nil, false, fmt.Errorf("setting sink status: %w", err)
+				return nil, false, false, fmt.Errorf("setting sink status: %w", err)
 			}
 		}
 	}
 
 	// If this proposal only carries sink updates, skip order processing
 	if len(proposal.Orders) == 0 {
-		return &ApplyResult{ProposalID: proposal.Id}, false, nil
+		return &ApplyResult{ProposalID: proposal.Id}, false, false, nil
 	}
 
 	if err := fsm.Preload(proposal.Preload); err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
@@ -829,10 +848,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Auto-bootstrap first period deterministically at first proposal
 	if fsm.currentOpenPeriod == nil {
 		fsm.currentOpenPeriod = &commonpb.Period{
-			Id:     1,
-			Start:  effectiveDate,
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Id:            1,
+			Start:         effectiveDate,
+			Status:        commonpb.PeriodStatus_PERIOD_OPEN,
+			StartSequence: 1,
 		}
+		fsm.allPeriods[fsm.currentOpenPeriod.Id] = fsm.currentOpenPeriod
 		fsm.nextPeriodID = 2
 	}
 
@@ -855,14 +876,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 			fsm.nextAuditSequenceID++
 			if appendErr := batch.AppendAuditEntries(auditEntry); appendErr != nil {
-				return nil, false, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+				return nil, false, false, fmt.Errorf("appending audit entry for failure: %w", appendErr)
 			}
 		}
 
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: err},
-		}, false, nil
+		}, false, false, nil
 	}
 
 	// Extract created logs and resolve reference sequences
@@ -881,7 +902,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			// Limit data store interface to only writes to prevent any error regarding this point
 			log, err := fsm.dataStore.GetLogBySequence(refSeq)
 			if err != nil {
-				return nil, false, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)
+				return nil, false, false, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)
 			}
 			responseLogs = append(responseLogs, log)
 		}
@@ -891,7 +912,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
 	if err := buffer.Merge(raftIndex, batch); err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 
 	// SUCCESS: write audit entry
@@ -909,7 +930,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 		fsm.nextAuditSequenceID++
 		if err := batch.AppendAuditEntries(auditEntry); err != nil {
-			return nil, false, fmt.Errorf("appending audit entry for success: %w", err)
+			return nil, false, false, fmt.Errorf("appending audit entry for success: %w", err)
 		}
 	}
 
@@ -918,7 +939,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	return &ApplyResult{
 		ProposalID: proposal.Id,
 		Logs:       responseLogs,
-	}, configChanged, nil
+	}, configChanged, len(buffer.pendingArchives) > 0, nil
 }
 
 // CreateSnapshot creates a snapshot of the Machine state
@@ -926,6 +947,14 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
+	}
+
+	// Collect CLOSED/ARCHIVED periods (OPEN and CLOSING are stored separately)
+	closedPeriods := make([]*commonpb.Period, 0)
+	for _, p := range fsm.allPeriods {
+		if p.Status != commonpb.PeriodStatus_PERIOD_OPEN && p.Status != commonpb.PeriodStatus_PERIOD_CLOSING {
+			closedPeriods = append(closedPeriods, p)
+		}
 	}
 
 	snapshot := &raftcmdpb.MemorySnapshot{
@@ -941,6 +970,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		OpenPeriod:           fsm.currentOpenPeriod,
 		ClosingPeriod:        fsm.closingPeriod,
 		NextPeriodId:         fsm.nextPeriodID,
+		ClosedPeriods:        closedPeriods,
 	}
 
 	// todo: use a reusable buffer as the snapshot can be big
@@ -1086,6 +1116,17 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.lastLogHash = memSnapshot.LastLogHash
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 	fsm.lastAppliedTimestamp = memSnapshot.LastAppliedTimestamp
+	// Rebuild allPeriods from all three sources in the snapshot
+	fsm.allPeriods = make(map[uint64]*commonpb.Period)
+	if memSnapshot.OpenPeriod != nil {
+		fsm.allPeriods[memSnapshot.OpenPeriod.Id] = memSnapshot.OpenPeriod
+	}
+	if memSnapshot.ClosingPeriod != nil {
+		fsm.allPeriods[memSnapshot.ClosingPeriod.Id] = memSnapshot.ClosingPeriod
+	}
+	for _, p := range memSnapshot.ClosedPeriods {
+		fsm.allPeriods[p.Id] = p
+	}
 	fsm.currentOpenPeriod = memSnapshot.OpenPeriod
 	fsm.closingPeriod = memSnapshot.ClosingPeriod
 	fsm.nextPeriodID = memSnapshot.NextPeriodId
@@ -1307,6 +1348,46 @@ func (fsm *Machine) IsStoreUpToDate(ctx context.Context) (bool, error) {
 // Both sides need send access (Machine for normal flow, Sealer/Node for recovery).
 func (fsm *Machine) SealRequestCh() chan SealRequest {
 	return fsm.sealRequestCh
+}
+
+// ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
+func (fsm *Machine) ArchiveRequestCh() chan ArchiveRequest {
+	return fsm.archiveRequestCh
+}
+
+// dispatchArchiveRequests sends archive requests for all ARCHIVING periods
+// to the archiver channel. Called internally after batch commit on all nodes.
+// The Archiver itself skips execution when the node is not the leader.
+func (fsm *Machine) dispatchArchiveRequests() {
+	for _, p := range fsm.allPeriods {
+		if p.Status == commonpb.PeriodStatus_PERIOD_ARCHIVING {
+			select {
+			case fsm.archiveRequestCh <- ArchiveRequest{
+				PeriodID:      p.Id,
+				StartSequence: p.StartSequence,
+				CloseSequence: p.CloseSequence,
+			}:
+			default:
+			}
+		}
+	}
+}
+
+// OnLeadershipAcquired is called when this node becomes the Raft leader.
+// It performs recovery actions that only the leader should handle.
+func (fsm *Machine) OnLeadershipAcquired() {
+	// Recover periods stuck in ARCHIVING state: if the previous leader crashed
+	// mid-archive, the new leader retries automatically.
+	fsm.dispatchArchiveRequests()
+}
+
+// AllPeriods returns all non-purged periods kept in memory.
+func (fsm *Machine) AllPeriods() []*commonpb.Period {
+	periods := make([]*commonpb.Period, 0, len(fsm.allPeriods))
+	for _, p := range fsm.allPeriods {
+		periods = append(periods, p)
+	}
+	return periods
 }
 
 // ClosingPeriod returns the period currently in CLOSING state, or nil.

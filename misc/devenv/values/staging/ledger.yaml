@@ -58,6 +58,8 @@ config:
       serverAddress: "http://pyroscope:4040"
       profileTypes: "cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration"
       uploadRate: "30s"
+  coldStorage:
+    driver: "s3"
   raft:
     electionTick: 10
     heartbeatTick: 1
@@ -110,6 +112,10 @@ persistence:
     storageClass: ""
     accessMode: ReadWriteOnce
     size: 50Gi
+
+serviceAccount:
+  create: false
+  name: "aws-access"
 
 replicaCount: 1
 resources:

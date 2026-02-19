@@ -182,7 +182,7 @@ type iteratorSource interface {
 	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
 }
 
-// computeStateHash iterates all raw attribute entries in [0x09, 0x0A)
+// computeStateHash iterates all raw attribute entries in [0xF1, 0xF2)
 // and hashes every key+value pair.
 //
 // The checkpoint is frozen at the exact ClosePeriod point, so all entries

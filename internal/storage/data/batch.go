@@ -148,15 +148,15 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
-// Key: [ledger][keyPrefixTransactionUpdate][transactionID][byLog] -> TransactionUpdate
+// Key: [keyPrefixTransactionUpdate][ledgerID][transactionID][byLog] -> TransactionUpdate
 func (b *Batch) StoreTransactionUpdate(key TransactionKey, update *commonpb.TransactionUpdate) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
 	b.KeyBuilder.
-		PutLedgerPrefix(key.LedgerID).
 		PutByte(keyPrefixTransactionUpdate).
+		PutLedgerPrefix(key.LedgerID).
 		PutUInt64(key.ID).
 		PutUInt64(update.ByLog)
 
@@ -414,4 +414,38 @@ func (b *Batch) StoreNextPeriodID(id uint64) error {
 // DeleteRange deletes all keys in the range [start, end).
 func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
 	return b.batch.DeleteRange(start, end, options)
+}
+
+// PurgeTransactionUpdates deletes all transaction update entries whose byLog
+// field falls in [startSeq, closeSeq]. The key format is
+// [prefix(1)][ledgerID(4)][txID(8)][byLog(8)], so byLog is the last 8 bytes.
+func (b *Batch) PurgeTransactionUpdates(startSeq, closeSeq uint64) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	iter, err := b.store.getDB().NewIter(&pebble.IterOptions{
+		LowerBound: []byte{keyPrefixTransactionUpdate},
+		UpperBound: []byte{keyPrefixTransactionUpdate + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating iterator for transaction update purge: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < txUpdateKeyLen {
+			continue
+		}
+		byLog := binary.BigEndian.Uint64(key[len(key)-8:])
+		if byLog < startSeq || byLog > closeSeq {
+			continue
+		}
+		if err := b.batch.Delete(key, pebble.NoSync); err != nil {
+			return fmt.Errorf("deleting transaction update: %w", err)
+		}
+	}
+
+	return iter.Error()
 }

@@ -223,6 +223,34 @@ func convertToGRPCError(err error) error {
 		return st.Err()
 	}
 
+	// Convert ErrPeriodNotClosed to FailedPrecondition with ErrorInfo
+	var periodNotClosedErr *processing.ErrPeriodNotClosed
+	if errors.As(err, &periodNotClosedErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: processing.ErrReasonPeriodNotClosed,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
+	}
+
+	// Convert ErrPeriodNotArchiving to FailedPrecondition with ErrorInfo
+	var periodNotArchivingErr *processing.ErrPeriodNotArchiving
+	if errors.As(err, &periodNotArchivingErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: processing.ErrReasonPeriodNotArchiving,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
+	}
+
 	// Convert BusinessError to proper gRPC status with ErrorInfo details
 	var bizErr *processing.BusinessError
 	if errors.As(err, &bizErr) {
