@@ -15,14 +15,20 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+
+
 // RestoreModule returns a minimal fx module for restore mode.
 // It only starts a gRPC server with the RestoreService and a health endpoint.
 // No Raft, WAL, transport, or other production services are started.
 func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			func(cfg Config, logger logging.Logger) *ServiceServer {
-				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, nil)
+			func(cfg Config, logger logging.Logger) (*ServiceServer, error) {
+				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS credentials for restore server: %w", err)
+				}
+				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
 			func(cfg Config, logger logging.Logger) *RestoreServiceServerImpl {
 				return NewRestoreServiceServer(cfg.DataDir, logger)

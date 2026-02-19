@@ -160,27 +160,6 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *data.Store) {
 		require.Nil(t, log)
 	})
 
-	t.Run("GetSequenceForIdempotencyKey", func(t *testing.T) {
-		t.Parallel()
-		s := createStore(t)
-
-		registerLedger(t, s, testLedgerName, testLedgerID)
-		testLogs := createTestLogs(testLedgerName)
-		appendLogs(t, s, 0, testLogs...)
-
-		sequence, err := s.GetSequenceForIdempotencyKey("idempotency-key-1")
-		require.NoError(t, err)
-		require.Equal(t, uint64(1), sequence)
-
-		sequence, err = s.GetSequenceForIdempotencyKey("non-existing-key")
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), sequence)
-
-		sequence, err = s.GetSequenceForIdempotencyKey("")
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), sequence)
-	})
-
 	t.Run("AppendLogsEmpty", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)

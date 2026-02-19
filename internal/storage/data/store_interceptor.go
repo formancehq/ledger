@@ -16,8 +16,7 @@ type StoreInterceptor struct {
 
 	// Store interceptors
 	OnListLedgers                  func(delegate *Store) (Cursor[*commonpb.LedgerInfo], error)
-	OnGetSequenceForIdempotencyKey func(delegate *Store, idempotencyKey string) (uint64, error)
-	OnNewBatch                     func(delegate *Store) *Batch
+	OnNewBatch func(delegate *Store) *Batch
 	OnCreateSnapshot               func(delegate *Store) (uint64, error)
 	OnGetLastAppliedIndex          func(delegate *Store) (uint64, error)
 	OnGetLastSequence              func(delegate *Store) (uint64, error)
@@ -54,16 +53,6 @@ func (s *StoreInterceptor) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 		return interceptor(s.delegate)
 	}
 	return s.delegate.ListLedgers()
-}
-
-func (s *StoreInterceptor) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, error) {
-	s.mu.RLock()
-	interceptor := s.OnGetSequenceForIdempotencyKey
-	s.mu.RUnlock()
-	if interceptor != nil {
-		return interceptor(s.delegate, idempotencyKey)
-	}
-	return s.delegate.GetSequenceForIdempotencyKey(idempotencyKey)
 }
 
 func (s *StoreInterceptor) NewBatch() *Batch {
@@ -174,7 +163,6 @@ func (s *StoreInterceptor) ClearInterceptors() {
 	s.mu.Lock()
 	s.OnGetLogBySequence = nil
 	s.OnListLedgers = nil
-	s.OnGetSequenceForIdempotencyKey = nil
 	s.OnNewBatch = nil
 	s.OnCreateSnapshot = nil
 	s.OnGetLastAppliedIndex = nil

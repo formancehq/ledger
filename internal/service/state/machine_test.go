@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -36,7 +37,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, generationThreshold, nil, true, NoopEventNotifier{}, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, generationThreshold, keystore.NewKeyStore(), true, NoopEventNotifier{}, 0)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs

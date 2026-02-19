@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -36,7 +37,7 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *data.S
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, nil, auditEnabled, NoopEventNotifier{}, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, keystore.NewKeyStore(), auditEnabled, NoopEventNotifier{}, 0)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs
