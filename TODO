@@ -1,7 +1,5 @@
-* Short circuit log ingestion
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
-* Flat buffer for the hot path
 * Prevent configuration changes
 * Doc performance (ulid, ordered keys, locality)
 * Roll up of existing ledgers
@@ -10,8 +8,7 @@
 * Extract HTTP layer into a compat service?
 * Checker add transactions
 * Logs export CLI (filtrage par date/ledger)
-* Sign logs hash with private key
-* ACL system
+* ACL system / authentication
 * Mode not atomic
 * Convert K6 tests to GRPC
 * Eventual consistency (read your writes)
