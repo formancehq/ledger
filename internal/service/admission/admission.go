@@ -66,9 +66,9 @@ type Admission struct {
 	proposeQueueLoadHistogram metric.Int64Histogram
 	proposeQueueInflight      atomic.Int32
 	proposeQueueFullCounter   metric.Float64Counter
-	proposeDurationHistogram    metric.Int64Histogram
-	fsmFutureWaitHistogram      metric.Int64Histogram
-	preloadDurationHistogram    metric.Int64Histogram
+	proposeDurationHistogram  metric.Int64Histogram
+	fsmFutureWaitHistogram    metric.Int64Histogram
+	preloadDurationHistogram  metric.Int64Histogram
 	preloadCounter            metric.Int64Counter
 	preloadKeysNeededCounter  metric.Int64Counter
 	preloadCacheHitsCounter   metric.Int64Counter
