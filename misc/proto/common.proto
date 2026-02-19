@@ -204,6 +204,8 @@ message SinkConfig {
   oneof type {
     NatsSinkConfig nats = 2;
     ClickHouseSinkConfig clickhouse = 6;
+    KafkaSinkConfig kafka = 7;
+    HttpSinkConfig http = 8;
   }
   string format = 3;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 4;       // Max events per batch (default: 64)
@@ -233,6 +235,22 @@ message NatsSinkConfig {
 message ClickHouseSinkConfig {
   string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
   string table = 2;  // Table name (default: "ledger_events")
+}
+
+// KafkaSinkConfig holds Apache Kafka sink configuration.
+message KafkaSinkConfig {
+  repeated string brokers = 1;  // e.g. ["localhost:9092"]
+  string topic = 2;             // Kafka topic name
+  bool tls = 3;                 // Enable TLS
+  string sasl_mechanism = 4;    // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
+  string sasl_username = 5;
+  string sasl_password = 6;
+}
+
+// HttpSinkConfig holds HTTP webhook sink configuration.
+message HttpSinkConfig {
+  string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
 
 message CreateLedgerLog {

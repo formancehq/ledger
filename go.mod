@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/ClickHouse/clickhouse-go/v2 v2.43.0
+	github.com/IBM/sarama v1.45.2
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/formancehq/go-libs/v3 v3.6.0
@@ -25,6 +26,8 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0
+	github.com/xdg-go/scram v1.1.2
 	github.com/zeebo/blake3 v0.2.4
 	github.com/zeebo/xxh3 v1.1.0
 	go.etcd.io/etcd/client/pkg/v3 v3.5.25
@@ -59,7 +62,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.71.0 // indirect
 	github.com/DataDog/zstd v1.4.5 // indirect
-	github.com/IBM/sarama v1.45.2 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ThreeDotsLabs/watermill v1.5.1 // indirect
@@ -219,7 +221,6 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240816141633-0a40785b4f41 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xo/dburl v0.23.8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -244,6 +245,7 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
+	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect

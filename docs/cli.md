@@ -1184,7 +1184,7 @@ ledgerctl ledgers list
 
 ## Event Sinks
 
-Manage event sinks (NATS, ClickHouse) that receive domain events derived from the global log.
+Manage event sinks (NATS, ClickHouse, Kafka, HTTP) that receive domain events derived from the global log.
 
 ### `events list`
 
@@ -1204,7 +1204,7 @@ ledgerctl events list
 
 Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
 
-Currently supported sink types: **NATS JetStream**, **ClickHouse**.
+Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**.
 
 ```bash
 # Add a NATS sink with default settings
@@ -1219,6 +1219,19 @@ ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@local
 
 # Add a ClickHouse sink with custom table name
 ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table my_events
+
+# Add a Kafka sink
+ledgerctl events add-sink --name streaming --kafka-brokers localhost:9092 --kafka-topic ledger-events
+
+# Add a Kafka sink with SASL authentication
+ledgerctl events add-sink --name streaming --kafka-brokers broker1:9092,broker2:9092 --kafka-topic ledger-events \
+  --kafka-tls --kafka-sasl-mechanism SCRAM-SHA-256 --kafka-sasl-username user --kafka-sasl-password pass
+
+# Add an HTTP webhook sink
+ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger
+
+# Add an HTTP webhook sink with HMAC signature verification
+ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 ```
 
 **Aliases:** `add`, `upsert`
@@ -1230,12 +1243,27 @@ ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@local
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
 | `--ch-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
 | `--ch-table` | `ledger_events` | ClickHouse table name |
+| `--kafka-brokers` | | Kafka broker addresses (comma-separated, required for Kafka sinks) |
+| `--kafka-topic` | | Kafka topic name (required for Kafka sinks) |
+| `--kafka-tls` | `false` | Enable TLS for Kafka connection |
+| `--kafka-sasl-mechanism` | | Kafka SASL mechanism (`PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`) |
+| `--kafka-sasl-username` | | Kafka SASL username |
+| `--kafka-sasl-password` | | Kafka SASL password |
+| `--http-endpoint` | | HTTP webhook endpoint URL (required for HTTP sinks) |
+| `--http-secret` | | HMAC-SHA256 secret for `X-Webhook-Signature` header |
 | `--format` | `json` | Event serialization format (`json` or `protobuf`) |
 | `--batch-size` | `64` | Max events per batch |
 | `--batch-delay-ms` | `10` | Max delay before flush in ms |
 | `--timeout` | `10s` | Request timeout |
 
-You must specify either NATS flags (`--nats-url` + `--nats-topic`) or ClickHouse flags (`--ch-dsn`), not both.
+You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), or HTTP (`--http-endpoint`).
+
+The HTTP sink sends each event as an individual POST request with headers:
+- `Content-Type`: `application/json` or `application/protobuf`
+- `X-Event-Type`: event type (e.g. `committed_transaction`)
+- `X-Ledger`: ledger name
+- `X-Log-Sequence`: global log sequence number
+- `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
 
 ### `events remove-sink`
 

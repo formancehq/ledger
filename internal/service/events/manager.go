@@ -231,6 +231,22 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 			DSN:   s.Clickhouse.Dsn,
 			Table: s.Clickhouse.Table,
 		})
+	case *commonpb.SinkConfig_Kafka:
+		return NewKafkaSink(KafkaSinkConfig{
+			Brokers:       s.Kafka.Brokers,
+			Topic:         s.Kafka.Topic,
+			TLS:           s.Kafka.Tls,
+			SASLMechanism: s.Kafka.SaslMechanism,
+			SASLUsername:   s.Kafka.SaslUsername,
+			SASLPassword:  s.Kafka.SaslPassword,
+			Format:        format,
+		})
+	case *commonpb.SinkConfig_Http:
+		return NewHTTPSink(HTTPSinkConfig{
+			Endpoint: s.Http.Endpoint,
+			Secret:   s.Http.Secret,
+			Format:   format,
+		})
 	default:
 		return nil, fmt.Errorf("unsupported events sink type: %T", s)
 	}
