@@ -19,6 +19,7 @@
 * refactor doc (dev, user)
 * Automated periods
 * Add hash consistency tests
+* --bootstrap-from-backup
 * Signing :
 ** when outputting the actions that were signed by a key, also output the key-id that validated the request
 ** have a list of keys
