@@ -18,7 +18,7 @@ func TestProcessProposal_WithIdempotencyKey_NewRequest(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -82,7 +82,7 @@ func TestProcessProposal_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
@@ -132,7 +132,7 @@ func TestProcessProposal_WithIdempotencyKey_Conflict(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
@@ -175,7 +175,7 @@ func TestProcessProposal_WithoutIdempotencyKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -223,7 +223,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -272,7 +272,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
@@ -299,7 +299,7 @@ func TestProcessCreateLedger_WithMetadata(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -339,7 +339,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -374,7 +374,7 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
@@ -400,7 +400,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -458,7 +458,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -512,7 +512,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -563,7 +563,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -651,7 +651,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
@@ -703,7 +703,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -771,7 +771,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetBoundaries("nonexistent").Return(nil, false)
@@ -817,7 +817,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -878,7 +878,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -945,7 +945,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1012,7 +1012,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1071,7 +1071,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
@@ -1111,7 +1111,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1161,7 +1161,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1227,7 +1227,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1288,7 +1288,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1369,7 +1369,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1457,7 +1457,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1532,7 +1532,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1595,7 +1595,7 @@ func TestProcessProposal_HashChaining(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1664,7 +1664,7 @@ func TestProcessProposal_HashChaining(t *testing.T) {
 	require.NotEqual(t, hash1, hash3, "non-consecutive log hashes should differ")
 
 	// Verify determinism: same inputs produce same hashes
-	processor2, err := NewRequestProcessor(nil)
+	processor2, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore2 := NewMockStore(ctrl)
@@ -1718,7 +1718,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
@@ -1769,7 +1769,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}

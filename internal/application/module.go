@@ -123,6 +123,7 @@ func Module() fx.Option {
 					ks,
 					cfg.AuditEnabled,
 					notifications,
+					cfg.NumscriptCacheSize,
 				)
 			},
 			func(

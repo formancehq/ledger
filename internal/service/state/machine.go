@@ -112,7 +112,7 @@ type Machine struct {
 	eventNotifier EventNotifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool, eventNotifier EventNotifier) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
 
-	processor, err := processing.NewRequestProcessor(meter)
+	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}
