@@ -228,9 +228,8 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 		})
 	case *commonpb.SinkConfig_Clickhouse:
 		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
-			DSN:    s.Clickhouse.Dsn,
-			Table:  s.Clickhouse.Table,
-			Format: format,
+			DSN:   s.Clickhouse.Dsn,
+			Table: s.Clickhouse.Table,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported events sink type: %T", s)

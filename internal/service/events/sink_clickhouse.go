@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -13,25 +12,46 @@ import (
 
 const defaultClickHouseTable = "ledger_events"
 
+// clickhouseRequiredSettings are connection-level settings required for the
+// structured JSON column, following the ledger v2 reference implementation.
+// Uses "allow_experimental_*" names for ClickHouse 24.x compatibility;
+// ClickHouse 25.x+ accepts both the experimental and non-experimental names.
+var clickhouseRequiredSettings = clickhouse.Settings{
+	"date_time_input_format":                  "best_effort",
+	"allow_experimental_json_type":            true,
+	"allow_experimental_variant_type":         true,
+	"output_format_json_quote_64bit_integers": false,
+}
+
 // ClickHouseSinkConfig holds configuration for the ClickHouse sink.
 type ClickHouseSinkConfig struct {
-	DSN    string
-	Table  string
-	Format Format
+	DSN   string
+	Table string
 }
 
-// ClickHouseSink publishes events to a ClickHouse table.
+// ClickHouseSink publishes events to a ClickHouse table with a fully-typed
+// JSON column. Events are always serialized as ClickHouse-friendly JSON
+// (encoding/json with native Go types) — the Format field from SinkConfig
+// is irrelevant for ClickHouse.
 type ClickHouseSink struct {
-	conn   driver.Conn
-	table  string
-	format Format
+	conn  driver.Conn
+	table string
 }
 
-// NewClickHouseSink creates a new ClickHouse sink, connects, and auto-creates the target table.
+// NewClickHouseSink creates a new ClickHouse sink, connects, and auto-creates
+// the target table with a structured JSON column.
 func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHouseSink, error) {
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ClickHouse DSN: %w", err)
+	}
+
+	// Merge required settings (don't override user-provided DSN settings)
+	if opts.Settings == nil {
+		opts.Settings = make(clickhouse.Settings)
+	}
+	for k, v := range clickhouseRequiredSettings {
+		opts.Settings[k] = v
 	}
 
 	conn, err := clickhouse.Open(opts)
@@ -48,23 +68,13 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 		table = defaultClickHouseTable
 	}
 
-	ddl := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-    log_sequence UInt64,
-    type         LowCardinality(String),
-    ledger       LowCardinality(String),
-    date         DateTime64(6, 'UTC'),
-    data         String
-) ENGINE = MergeTree()
-ORDER BY (ledger, log_sequence)`, table)
-
-	if err := conn.Exec(ctx, ddl); err != nil {
+	if err := conn.Exec(ctx, ClickHouseCreateTableDDL(table)); err != nil {
 		return nil, fmt.Errorf("creating ClickHouse table %s: %w", table, err)
 	}
 
 	return &ClickHouseSink{
-		conn:   conn,
-		table:  table,
-		format: cfg.Format,
+		conn:  conn,
+		table: table,
 	}, nil
 }
 
@@ -75,15 +85,9 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	}
 
 	for _, event := range events {
-		raw, err := SerializeEvent(event, s.format)
+		data, err := eventToClickHouseJSON(event)
 		if err != nil {
 			return fmt.Errorf("serializing event seq=%d: %w", event.LogSequence, err)
-		}
-
-		// Store protobuf as hex-encoded string for safe text storage
-		data := string(raw)
-		if s.format == FormatProto {
-			data = hex.EncodeToString(raw)
 		}
 
 		eventType := strings.ToLower(event.Type.String())
@@ -94,7 +98,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 			eventType,
 			event.Ledger,
 			eventDate,
-			data,
+			string(data),
 		); err != nil {
 			return fmt.Errorf("appending event seq=%d to batch: %w", event.LogSequence, err)
 		}

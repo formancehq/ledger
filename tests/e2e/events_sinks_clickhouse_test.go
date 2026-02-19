@@ -52,7 +52,6 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 			Requests: []*servicepb.Request{
 				addEventsSinkAction(&commonpb.SinkConfig{
 					Name:         "ch-e2e",
-					Format:       "json",
 					BatchSize:    10,
 					BatchDelayMs: 50,
 					Type: &commonpb.SinkConfig_Clickhouse{
@@ -91,6 +90,13 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		opts, chErr := clickhouse.ParseDSN(chDSN)
 		Expect(chErr).To(Succeed())
 
+		if opts.Settings == nil {
+			opts.Settings = make(clickhouse.Settings)
+		}
+		opts.Settings["allow_experimental_json_type"] = true
+		opts.Settings["allow_experimental_variant_type"] = true
+		opts.Settings["output_format_json_quote_64bit_integers"] = false
+
 		conn, chErr := clickhouse.Open(opts)
 		Expect(chErr).To(Succeed())
 		defer func() { _ = conn.Close() }()
@@ -106,7 +112,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		var rows []eventRow
 		Eventually(func(g Gomega) {
 			result, err := conn.Query(context.Background(),
-				fmt.Sprintf("SELECT log_sequence, type, ledger, date, data FROM %s WHERE ledger = 'ch-test' ORDER BY log_sequence", table))
+				fmt.Sprintf("SELECT log_sequence, type, ledger, date, toJSONString(data) FROM %s WHERE ledger = 'ch-test' ORDER BY log_sequence", table))
 			g.Expect(err).To(Succeed())
 			defer result.Close()
 
