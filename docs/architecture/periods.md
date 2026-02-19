@@ -285,7 +285,17 @@ The archive is a tar.gz file containing:
 | `metadata.json` | JSON | Period ID, start/close sequence, archive timestamp |
 | `data.bin` | Raw binary KV dump | All cold-storable Pebble KV pairs for the period |
 
-The `data.bin` file contains length-prefixed key+value pairs: `[keyLen:4][key][valueLen:4][value]` repeated for each entry. This includes logs, audit entries, and transaction updates — dumped directly from Pebble without deserialization, enabling fast archival and exact restoration.
+The `data.bin` file contains length-prefixed key+value pairs: `[keyLen:4][key][valueLen:4][value]` repeated for each entry, dumped directly from Pebble without deserialization, enabling fast archival and exact restoration.
+
+**Purged key prefixes** (cold-storable zone `[0x01, 0xF1)`):
+
+| Prefix | Data | Purge method |
+|--------|------|-------------|
+| `0x01` | Transaction logs | `DeleteRange` by `[prefix][startSeq]..[prefix][closeSeq]` |
+| `0x02` | Audit entries | `DeleteRange` by `[prefix][startSeq]..[prefix][closeSeq]` |
+| `0x03` | Transaction updates | Filtered iteration: delete entries where `byLog` falls in `[startSeq, closeSeq]` |
+
+Attributes (`0xF1`) and system data (`0xF2+`) are never purged — they remain in hot storage permanently.
 
 ### Cold Storage Interface
 

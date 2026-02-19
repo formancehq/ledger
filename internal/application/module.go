@@ -266,6 +266,7 @@ func Module() fx.Option {
 				store *data.Store,
 				machine *state.Machine,
 				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
 			) *state.Sealer {
 				return state.NewSealer(logger, store, machine.SealRequestCh(), func(periodID uint64, sealingHash []byte) {
 					_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
@@ -276,6 +277,9 @@ func Module() fx.Option {
 							},
 						},
 					})
+				}, raftNode.IsLeader, func(periodID uint64) bool {
+					cp := machine.ClosingPeriod()
+					return cp != nil && cp.Id == periodID
 				})
 			},
 			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/iam"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
@@ -587,6 +588,92 @@ func main() {
 					"bucket": coldBucket.Bucket,
 					"region": coldStorageRegion,
 				},
+			}
+
+			// Create IAM role and ServiceAccount for IRSA (IAM Roles for Service Accounts)
+			oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
+			if oidcIssuer != "" {
+				// Strip https:// prefix if present
+				oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
+
+				// Get AWS account ID
+				callerIdentity, err := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to get AWS caller identity: %w", err)
+				}
+
+				// IAM role with OIDC trust policy scoped to this namespace/SA
+				oidcProviderARN := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", callerIdentity.AccountId, oidcIssuer)
+				trustPolicy, err := json.Marshal(map[string]any{
+					"Version": "2012-10-17",
+					"Statement": []map[string]any{{
+						"Effect":    "Allow",
+						"Principal": map[string]any{"Federated": oidcProviderARN},
+						"Action":    "sts:AssumeRoleWithWebIdentity",
+						"Condition": map[string]any{
+							"StringEquals": map[string]string{
+								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:aws-access", namespaceName),
+								oidcIssuer + ":aud": "sts.amazonaws.com",
+							},
+						},
+					}},
+				})
+				if err != nil {
+					return fmt.Errorf("failed to marshal trust policy: %w", err)
+				}
+
+				coldStorageRole, err := iam.NewRole(ctx, "cold-storage-role", &iam.RoleArgs{
+					Name:             pulumi.Sprintf("ledger-exp-%s-cold-storage", ctx.Stack()),
+					AssumeRolePolicy: pulumi.String(trustPolicy),
+				}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create cold storage IAM role: %w", err)
+				}
+
+				// Inline S3 policy scoped to the cold storage bucket
+				s3Policy, err := json.Marshal(map[string]any{
+					"Version": "2012-10-17",
+					"Statement": []map[string]any{{
+						"Effect": "Allow",
+						"Action": []string{
+							"s3:GetObject",
+							"s3:PutObject",
+							"s3:DeleteObject",
+							"s3:ListBucket",
+						},
+						"Resource": []string{
+							fmt.Sprintf("arn:aws:s3:::%s", bucketName),
+							fmt.Sprintf("arn:aws:s3:::%s/*", bucketName),
+						},
+					}},
+				})
+				if err != nil {
+					return fmt.Errorf("failed to marshal S3 policy: %w", err)
+				}
+
+				_, err = iam.NewRolePolicy(ctx, "cold-storage-s3-policy", &iam.RolePolicyArgs{
+					Role:   coldStorageRole.Name,
+					Policy: pulumi.String(s3Policy),
+				}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create cold storage S3 policy: %w", err)
+				}
+
+				// Create ServiceAccount annotated with the role ARN
+				sa, err := v1.NewServiceAccount(ctx, "aws-access", &v1.ServiceAccountArgs{
+					Metadata: &metav1.ObjectMetaArgs{
+						Name:      pulumi.String("aws-access"),
+						Namespace: namespace.Metadata.Name(),
+						Annotations: pulumi.StringMap{
+							"eks.amazonaws.com/role-arn": coldStorageRole.Arn,
+						},
+					},
+				}, pulumi.Provider(k8sProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create IRSA ServiceAccount: %w", err)
+				}
+				ledgerDeps = append(ledgerDeps, sa)
+				ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
 			}
 
 			ledgerDeps = append(ledgerDeps, coldBucket)

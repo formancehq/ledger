@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -97,53 +98,76 @@ func (a *Archiver) run() {
 
 // archiveWithRetry retries archive() with exponential backoff until it succeeds
 // or the archiver is stopped. The export is idempotent (same data, same key).
+// On follower nodes, the loop exits when the archive appears in cold storage
+// (pushed by the leader), without calling ArchiveProposer.
 func (a *Archiver) archiveWithRetry(req ArchiveRequest) {
 	backoff := 100 * time.Millisecond
 	const maxBackoff = 10 * time.Second
 
 	for {
-		if err := a.archive(req); err != nil {
-			a.logger.Errorf("Background archiving failed (will retry in %v): %v", backoff, err)
-			select {
-			case <-a.stopCh:
-				return
-			case <-time.After(backoff):
-			}
-			backoff = min(backoff*2, maxBackoff)
-			continue
+		err := a.archive(req)
+		if err == nil {
+			return
 		}
-		return
+
+		if errors.Is(err, errNotLeader) {
+			a.logger.WithFields(map[string]any{
+				"periodId": req.PeriodID,
+			}).Infof("Not leader, waiting %v before re-checking", backoff)
+		} else {
+			a.logger.Errorf("Background archiving failed (will retry in %v): %v", backoff, err)
+		}
+
+		select {
+		case <-a.stopCh:
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 }
 
 // archive exports period data to cold storage and proposes ConfirmArchivePeriod.
-// Returns errNotLeader if the current node is not the leader, so the retry loop
-// can wait and re-check leadership instead of performing unnecessary S3 uploads.
+//
+// The flow handles both leader and follower nodes:
+//   - First, check if the archive already exists in cold storage. If it does,
+//     the leader already pushed it — followers exit silently, and the leader
+//     proposes ConfirmArchivePeriod (crash-recovery idempotency).
+//   - If the archive does not exist yet and this node is not the leader,
+//     return errNotLeader so the retry loop waits and re-checks.
+//   - Only the leader builds, uploads, and proposes.
 func (a *Archiver) archive(req ArchiveRequest) error {
-	if !a.isLeader() {
-		return errNotLeader
-	}
-
-	a.logger.WithFields(map[string]any{
+	ctx := context.Background()
+	logFields := map[string]any{
 		"periodId":      req.PeriodID,
 		"startSequence": req.StartSequence,
 		"closeSequence": req.CloseSequence,
-	}).Infof("Starting period archival")
+	}
 
-	ctx := context.Background()
-
-	// Check if already archived (idempotent)
+	// Check if already archived — this lets followers detect that the leader
+	// completed the upload and exit the retry loop without proposing.
 	exists, err := a.coldStorage.Exists(ctx, a.bucketID, req.PeriodID)
 	if err != nil {
 		return fmt.Errorf("checking archive existence: %w", err)
 	}
 	if exists {
-		a.logger.WithFields(map[string]any{
-			"periodId": req.PeriodID,
-		}).Infof("Archive already exists, skipping export and proposing confirm")
-		a.proposeFn(req.PeriodID)
+		if a.isLeader() {
+			// Leader crash-recovery: we uploaded before crashing, propose confirm.
+			a.logger.WithFields(logFields).Infof("Archive already exists, proposing ConfirmArchivePeriod")
+			a.proposeFn(req.PeriodID)
+		} else {
+			// Follower: the leader pushed the archive, nothing left to do.
+			a.logger.WithFields(logFields).Infof("Archive already exists in cold storage, done")
+		}
 		return nil
 	}
+
+	// Archive doesn't exist yet — only the leader should upload.
+	if !a.isLeader() {
+		return errNotLeader
+	}
+
+	a.logger.WithFields(logFields).Infof("Starting period archival")
 
 	// Build the tar.gz archive in memory
 	archiveData, err := a.buildArchive(req)

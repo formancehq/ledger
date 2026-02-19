@@ -6,7 +6,7 @@ config:
   debug: false
   httpPort: 9000
   audit:
-    enabled: false
+    enabled: true
   cache:
     rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
@@ -117,7 +117,7 @@ serviceAccount:
   create: false
   name: "aws-access"
 
-replicaCount: 1
+replicaCount: 3
 resources:
   limits:
     cpu: 8000m

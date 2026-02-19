@@ -17,6 +17,7 @@ config:
   # Cold storage (S3)
   ledger-exp-devenv:coldStorage-enabled: true
   ledger-exp-devenv:coldStorage-s3-region: eu-west-1
+  ledger-exp-devenv:coldStorage-eks-oidc-issuer: "https://oidc.eks.eu-west-1.amazonaws.com/id/45E5BC35331522C015273F1FD2D14DC9"
 
   ledger-exp-devenv:grafana:
     file: values/staging/grafana.yaml

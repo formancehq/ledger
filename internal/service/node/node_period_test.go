@@ -117,6 +117,9 @@ func startClusterSealers(t *testing.T, cluster *Cluster) func() {
 				// Expected on followers (DisableProposalForwarding)
 				t.Logf("Sealer node %d: propose SealPeriod failed (expected on followers): %v", clusterNode.ID, err)
 			}
+		}, node.IsLeader, func(periodID uint64) bool {
+			cp := node.fsm.ClosingPeriod()
+			return cp != nil && cp.Id == periodID
 		})
 		sealers[i].Start(node.fsm.ClosingPeriod())
 	}

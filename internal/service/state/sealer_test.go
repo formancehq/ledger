@@ -45,7 +45,7 @@ func newTestSealer(t *testing.T, store *data.Store) (*Sealer, *testSealerResult)
 	sealer := NewSealer(logger, store, make(chan SealRequest, 1), func(periodID uint64, sealingHash []byte) {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
-	})
+	}, func() bool { return true }, func(uint64) bool { return true })
 
 	return sealer, result
 }
@@ -187,7 +187,7 @@ func TestSealerRetryOnFailure(t *testing.T) {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
 		proposeCalled.Add(1)
-	})
+	}, func() bool { return true }, func(uint64) bool { return true })
 
 	req := SealRequest{
 		PeriodID:       7,

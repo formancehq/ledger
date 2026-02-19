@@ -855,6 +855,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 		fsm.allPeriods[fsm.currentOpenPeriod.Id] = fsm.currentOpenPeriod
 		fsm.nextPeriodID = 2
+
+		// Persist the bootstrapped period so it survives restarts
+		if err := batch.StorePeriod(fsm.currentOpenPeriod); err != nil {
+			return nil, false, false, fmt.Errorf("storing bootstrapped period: %w", err)
+		}
+		if err := batch.StoreNextPeriodID(fsm.nextPeriodID); err != nil {
+			return nil, false, false, fmt.Errorf("storing next period ID: %w", err)
+		}
 	}
 
 	// Create buffer for this proposal
