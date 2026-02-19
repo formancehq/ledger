@@ -1265,6 +1265,32 @@ ledger-v3-poc run --node-id 1 --bootstrap --numscript-cache-size 4096 ...
 
 ---
 
+### Server `--unsafe-skip-config-validation` Flag
+
+Skips the startup configuration safety checks that prevent accidental changes to critical parameters (`node-id`, `cluster-id`) between restarts with existing data.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--unsafe-skip-config-validation` | `false` | Skip startup configuration safety checks (DANGEROUS) |
+
+On first boot, the server persists `node-id`, `cluster-id`, and `audit-enabled` into Pebble. On subsequent boots, the server compares these values against the current flags and refuses to start if `node-id` or `cluster-id` differ. This prevents silent data corruption from accidentally pointing a node at the wrong data directory or changing identity.
+
+**When to use this flag:**
+- After intentionally changing `node-id` or `cluster-id` (e.g., migrating data between clusters)
+- Never in normal operation
+
+```bash
+# Normal operation: server refuses to start if node-id changed
+ledger-v3-poc run --node-id 2 --data-dir ./data  # ERROR if data was created with --node-id 1
+
+# Override with explicit flag
+ledger-v3-poc run --node-id 2 --data-dir ./data --unsafe-skip-config-validation
+```
+
+**Note:** Changes to `audit-enabled` (true -> false) produce a warning but do not prevent startup, since disabling audit is a compliance decision, not a data corruption risk.
+
+---
+
 ## Connection Examples
 
 ### Local Development

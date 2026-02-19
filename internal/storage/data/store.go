@@ -89,6 +89,7 @@ var (
 	keyPrefixEventsConfig         byte = 0xFB // [keyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
 	keyPrefixSinkStatus           byte = 0xFC // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
 	keyPrefixMaintenanceMode      byte = 0xFD // [keyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
+	keyPrefixPersistedConfig      byte = 0xFE // [keyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')

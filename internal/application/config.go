@@ -39,8 +39,9 @@ type Config struct {
 	ReceiptSigningKey string
 	ColdStorageConfig coldstorage.Config
 	TLSConfig          TLSConfig
-	Restore            bool
-	NumscriptCacheSize int
+	Restore                       bool
+	NumscriptCacheSize            int
+	UnsafeSkipConfigValidation    bool
 }
 
 func (c Config) Validate() error {

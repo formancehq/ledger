@@ -1,7 +1,5 @@
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
-* Prevent configuration changes
-* Doc performance (ulid, ordered keys, locality)
 * Roll up of existing ledgers
 * Chart of account pattern recognition
 * Mirror mode

@@ -76,12 +76,24 @@ func Module() fx.Option {
 				)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*data.Store, error) {
-				return data.NewStore(
+				store, err := data.NewStore(
 					cfg.DataDir,
 					logger,
 					meterProvider.Meter("pebble.runtime_store"),
 					cfg.PebbleConfig,
 				)
+				if err != nil {
+					return nil, err
+				}
+
+				if !cfg.Restore {
+					if err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation); err != nil {
+						_ = store.Close()
+						return nil, fmt.Errorf("configuration safety check failed: %w", err)
+					}
+				}
+
+				return store, nil
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{

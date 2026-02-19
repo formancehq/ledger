@@ -240,6 +240,17 @@ func NewNode(
 		if err != nil {
 			return nil, err
 		}
+
+		// Safety check: verify that cfg.NodeID is present in the ConfState.
+		// If it's not, the node-id or wal-dir was likely changed between restarts,
+		// which would make this node invisible to the cluster.
+		if !confStateContainsNode(initialConfState, cfg.NodeID) {
+			return nil, fmt.Errorf(
+				"node-id %d not found in WAL ConfState (voters=%v, learners=%v); "+
+					"this usually means --node-id or --wal-dir was changed between restarts",
+				cfg.NodeID, initialConfState.Voters, initialConfState.Learners,
+			)
+		}
 	}
 
 	initialStatus := atomic.Int32{}
@@ -1614,6 +1625,22 @@ func (node *Node) checkAndPromoteLearners() {
 			}
 		}
 	}
+}
+
+// confStateContainsNode returns true if nodeID appears in the ConfState's
+// Voters or Learners list.
+func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
+	for _, id := range cs.Voters {
+		if id == nodeID {
+			return true
+		}
+	}
+	for _, id := range cs.Learners {
+		if id == nodeID {
+			return true
+		}
+	}
+	return false
 }
 
 type Proposal struct {

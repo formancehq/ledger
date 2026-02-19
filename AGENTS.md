@@ -706,6 +706,35 @@ ledgerctl cluster maintenance enable --signing-key /path/to/seed
 - `internal/service/processing/errors.go` — `ErrMaintenanceMode` sentinel error
 - `cmd/ledgerctl/cluster_maintenance.go` — CLI command
 
+## Configuration Safety Checks at Startup
+
+The server persists critical configuration parameters in Pebble (key prefix `0xFE`) on first boot and validates them on subsequent boots. This prevents silent data corruption from accidentally changing `node-id`, `cluster-id`, or `data-dir` between restarts.
+
+### Persisted Parameters
+
+| Parameter | Risk if changed | Behavior on mismatch |
+|-----------|----------------|---------------------|
+| `node-id` | Cluster confusion — node becomes invisible | **Fatal error** |
+| `cluster-id` | Breaks inter-node communication | **Fatal error** |
+| `audit-enabled` | Compliance gap if disabled | **Warning** (non-fatal) |
+
+### Key Files
+
+- `internal/storage/data/persisted_config.go` — `PersistedConfig` struct, `ConfigMismatchError`, `LoadPersistedConfig()`, `SavePersistedConfig()`
+- `internal/application/config_validation.go` — `ValidateOrPersistConfig()` logic
+- `internal/application/module.go` — Wired into Store provider (skipped in restore mode)
+- `internal/service/node/node.go` — WAL ConfState node-id check (`confStateContainsNode`)
+
+### Override Flag
+
+`--unsafe-skip-config-validation` bypasses the safety checks and overwrites the persisted config. Use only for intentional migrations.
+
+### Edge Cases
+
+- **First boot**: No `0xFE` key exists → persists current config (no error)
+- **Restore flow**: Validation is skipped in restore mode (`--restore`)
+- **Existing deployments upgrading**: Treated as first boot (no `0xFE` key yet)
+
 ## Finite State Machine (FSM) Design Principles
 
 ### Single Raft Architecture

@@ -142,6 +142,9 @@ func NewRunCommand() *cobra.Command {
 	// Restore mode: start in restore mode to accept backup upload
 	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
 
+	// Configuration safety
+	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
+
 	return runCmd
 }
 
@@ -388,6 +391,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Restore mode
 	cfg.Restore = getBool("restore", false)
+
+	// Configuration safety
+	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")
