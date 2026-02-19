@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"container/list"
 	"context"
 	"sync"
 
@@ -10,11 +11,13 @@ import (
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash.
-// This avoids re-parsing the same script multiple times.
+// It uses an LRU eviction policy bounded by maxSize to prevent unbounded memory growth.
+// The cache is safe for concurrent use via a mutex on the hasher;
+// all other state is accessed single-threaded from the FSM apply path.
 type NumscriptCache struct {
-	cache    sync.Map
-	size     int64
-	sizeMu   sync.Mutex
+	cache    map[[32]byte]*list.Element
+	order    *list.List
+	maxSize  int
 	hasher   *blake3.Hasher
 	hasherMu sync.Mutex
 	hashBuf  [32]byte // pre-allocated buffer for hash output
@@ -23,16 +26,29 @@ type NumscriptCache struct {
 	sizeGauge metric.Int64Gauge
 }
 
+// lruEntry holds the cache key and value for an LRU list element.
+type lruEntry struct {
+	hash   [32]byte
+	script parsedScript
+}
+
 // parsedScript wraps a parsed Numscript program with any parsing errors.
 type parsedScript struct {
 	program numscript.ParseResult
 	err     error
 }
 
-// newNumscriptCache creates a new NumscriptCache without metrics (for tests).
-func newNumscriptCache() *NumscriptCache {
+// newNumscriptCache creates a new NumscriptCache with the given maximum size.
+// If maxSize <= 0, it defaults to 1024.
+func newNumscriptCache(maxSize int) *NumscriptCache {
+	if maxSize <= 0 {
+		maxSize = 1024
+	}
 	return &NumscriptCache{
-		hasher: blake3.New(),
+		cache:   make(map[[32]byte]*list.Element, maxSize),
+		order:   list.New(),
+		maxSize: maxSize,
+		hasher:  blake3.New(),
 	}
 }
 
@@ -52,15 +68,17 @@ func (c *NumscriptCache) computeHash(script string) [32]byte {
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
-// The cache key is a blake3 hash of the script content.
+// On cache hit the entry is moved to the front (most recently used).
+// On cache miss the script is parsed, added to the front, and the least recently
+// used entry is evicted if the cache is at capacity.
 func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error) {
-	// Compute hash of the script content
 	hash := c.computeHash(script)
 
 	// Try to get from cache
-	if cached, ok := c.cache.Load(hash); ok {
-		ps := cached.(*parsedScript)
-		return ps.program, ps.err
+	if elem, ok := c.cache[hash]; ok {
+		c.order.MoveToFront(elem)
+		entry := elem.Value.(*lruEntry)
+		return entry.script.program, entry.script.err
 	}
 
 	// Parse the script
@@ -74,17 +92,27 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 		}
 	}
 
-	// Store in cache (even if there are errors, to avoid re-parsing invalid scripts)
-	c.cache.Store(hash, &parsedScript{
-		program: parsed,
-		err:     parseErr,
-	})
+	// Evict least recently used if at capacity
+	if c.order.Len() >= c.maxSize {
+		back := c.order.Back()
+		if back != nil {
+			evicted := c.order.Remove(back).(*lruEntry)
+			delete(c.cache, evicted.hash)
+		}
+	}
 
-	// Update size
-	c.sizeMu.Lock()
-	c.size++
-	c.recordSize(c.size)
-	c.sizeMu.Unlock()
+	// Add new entry to front
+	entry := &lruEntry{
+		hash: hash,
+		script: parsedScript{
+			program: parsed,
+			err:     parseErr,
+		},
+	}
+	elem := c.order.PushFront(entry)
+	c.cache[hash] = elem
+
+	c.recordSize(int64(c.order.Len()))
 
 	return parsed, parseErr
 }

@@ -18,7 +18,7 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1700000000}
@@ -67,7 +67,7 @@ func TestProcessClosePeriod_NoPeriodOpen(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
@@ -84,7 +84,7 @@ func TestProcessClosePeriod_AlreadyClosing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	openPeriod := &commonpb.Period{
@@ -111,7 +111,7 @@ func TestProcessSealPeriod_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	closingPeriod := &commonpb.Period{
@@ -146,7 +146,7 @@ func TestProcessSealPeriod_PeriodNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	// No closing period
@@ -173,7 +173,7 @@ func TestProcessSealPeriod_PeriodNotClosing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	// The closing period exists but has wrong ID
@@ -205,7 +205,7 @@ func TestProcessArchivePeriod_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	closedPeriod := &commonpb.Period{
@@ -239,7 +239,7 @@ func TestProcessArchivePeriod_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetPeriodByID(uint64(99)).Return(nil, false)
@@ -260,7 +260,7 @@ func TestProcessArchivePeriod_NotClosed(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	openPeriod := &commonpb.Period{
@@ -286,7 +286,7 @@ func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	archivingPeriod := &commonpb.Period{
@@ -320,7 +320,7 @@ func TestProcessConfirmArchivePeriod_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetPeriodByID(uint64(99)).Return(nil, false)
@@ -341,7 +341,7 @@ func TestProcessConfirmArchivePeriod_NotArchiving(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	archivedPeriod := &commonpb.Period{
@@ -367,7 +367,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -434,7 +434,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockStore(ctrl)
-	processor, err := NewRequestProcessor(nil)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}

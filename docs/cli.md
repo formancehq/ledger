@@ -1247,6 +1247,22 @@ After finalizing, restart without `--restore`:
 ledger-v3-poc run --node-id 1 --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
 ```
 
+### Server `--numscript-cache-size` Flag
+
+Controls the maximum number of parsed Numscript programs kept in an LRU cache. When the cache is full, the least recently used entry is evicted.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--numscript-cache-size` | `1024` | Maximum number of parsed Numscript programs to cache (LRU eviction) |
+
+```bash
+# Use default (1024 entries)
+ledger-v3-poc run --node-id 1 --bootstrap ...
+
+# Increase cache for workloads with many distinct scripts
+ledger-v3-poc run --node-id 1 --bootstrap --numscript-cache-size 4096 ...
+```
+
 ---
 
 ## Connection Examples

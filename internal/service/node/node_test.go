@@ -295,7 +295,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		fsm, err := state.NewMachine(
 			logger.WithFields(map[string]any{"node": nodeID}),
 			pebbleStore, meter, nodeCache, nodeAttrs,
-			nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{},
+			nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{}, 0,
 		)
 		require.NoError(t, err)
 
@@ -589,7 +589,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	fsm, err := state.NewMachine(
 		c.logger.WithFields(map[string]any{"node": nodeID}),
 		newStore, noop.Meter{}, nodeCache, nodeAttrs,
-		nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{},
+		nodeConfig.RotationThreshold, nil, true, state.NoopEventNotifier{}, 0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating machine: %w", err)

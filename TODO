@@ -1,7 +1,6 @@
 * Short circuit log ingestion
 * Test https://connectrpc.com/
 * Checkpoint + exposed api to read at PIT
-* Bounded numscript cache
 * Flat buffer for the hot path
 * Prevent configuration changes
 * Doc performance (ulid, ordered keys, locality)
@@ -12,16 +11,11 @@
 * Checker add transactions
 * Logs export CLI (filtrage par date/ledger)
 * Sign logs hash with private key
-* Holds/pending transfers
 * ACL system
-* LICENCE of dependencies
-* Add nightly build
 * Mode not atomic
 * Convert K6 tests to GRPC
 * Eventual consistency (read your writes)
 * Flow control
-* Maintenance rpc command (block admission)
-* Wishlist Numscript
 * refactor doc (dev, user)
 * Automated periods
 * Add hash consistency tests

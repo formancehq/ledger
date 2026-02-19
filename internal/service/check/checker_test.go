@@ -67,7 +67,7 @@ func newTestEngine(t *testing.T) *testEngine {
 	attrs := attributes.New()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	proc, err := processing.NewRequestProcessor(meter)
+	proc, err := processing.NewRequestProcessor(meter, 0)
 	require.NoError(t, err)
 
 	c, err := cache.New(1000, meter)

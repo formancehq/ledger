@@ -104,13 +104,14 @@ type RequestProcessor struct {
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
-// If meter is nil, a noop meter is used.
-func NewRequestProcessor(m metric.Meter) (*RequestProcessor, error) {
+// If meter is nil, a noop meter is used. numscriptCacheSize controls the
+// maximum number of parsed scripts kept in the LRU cache (0 = default 1024).
+func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProcessor, error) {
 	if m == nil {
 		m = noop.Meter{}
 	}
 
-	cache := newNumscriptCache()
+	cache := newNumscriptCache(numscriptCacheSize)
 	if err := cache.initCacheMetrics(m); err != nil {
 		return nil, fmt.Errorf("creating numscript cache metrics: %w", err)
 	}

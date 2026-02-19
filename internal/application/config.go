@@ -38,8 +38,9 @@ type Config struct {
 	AdmissionMetrics  bool
 	ReceiptSigningKey string
 	ColdStorageConfig coldstorage.Config
-	TLSConfig         TLSConfig
-	Restore           bool
+	TLSConfig          TLSConfig
+	Restore            bool
+	NumscriptCacheSize int
 }
 
 func (c Config) Validate() error {
