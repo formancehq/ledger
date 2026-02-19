@@ -477,7 +477,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
-	if err := s.getDB().Checkpoint(checkpointDir); err != nil {
+	if err := s.getDB().Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
