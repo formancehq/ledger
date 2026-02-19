@@ -22,3 +22,4 @@
 ** when revoking a key, potentially propose to revoke all keys that were registered using this key
 ** Sign responses too to avoid MITM
 * Test Parquet
+* Node removal
