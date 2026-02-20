@@ -53,6 +53,7 @@ type Admission struct {
 	attrs         *attributes.Attributes
 	healthChecker health.Checker
 	keyStore      *keystore.KeyStore
+	sharedState   *state.SharedState
 	receiptSigner *receipt.Signer
 
 	nextIndex atomic.Uint64
@@ -100,6 +101,7 @@ func NewAdmission(
 	meterProvider metric.MeterProvider,
 	healthChecker health.Checker,
 	keyStore *keystore.KeyStore,
+	sharedState *state.SharedState,
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
@@ -110,6 +112,7 @@ func NewAdmission(
 		attrs:         attrs,
 		healthChecker: healthChecker,
 		keyStore:      keyStore,
+		sharedState:   sharedState,
 		loaders:       NewLoaders(),
 	}
 	for _, opt := range opts {
@@ -257,7 +260,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode
-	if a.keyStore.MaintenanceMode() && !allRequestsAreMaintenanceMode(requests) {
+	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(requests) {
 		return nil, ErrMaintenanceMode
 	}
 
@@ -821,7 +824,7 @@ func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([
 				return nil, signing.ErrMissingSignature
 			}
 			// Regular request — check requireSignatures flag
-			if a.keyStore.RequireSignatures() {
+			if a.sharedState.RequireSignatures() {
 				return nil, signing.ErrMissingSignature
 			}
 			result[i] = req

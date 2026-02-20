@@ -84,6 +84,9 @@ type Machine struct {
 	// KeyStore holds registered signing keys (updated after proposal apply)
 	keyStore *keystore.KeyStore
 
+	// sharedState holds maintenance mode and require-signatures flags
+	sharedState *SharedState
+
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
@@ -117,7 +120,7 @@ type Machine struct {
 	eventNotifier EventNotifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
 	if err != nil {
 		return nil, err
@@ -211,19 +214,20 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		for keyID, pubKeyBytes := range signingKeys {
 			ks.AddPublicKey(keyID, pubKeyBytes)
 		}
-
-		requireSig, err := dataStore.LoadSigningConfig()
-		if err != nil {
-			return nil, fmt.Errorf("loading signing config from store: %w", err)
-		}
-		ks.SetRequireSignatures(requireSig)
-
-		maintenanceMode, err := dataStore.LoadMaintenanceMode()
-		if err != nil {
-			return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
-		}
-		ks.SetMaintenanceMode(maintenanceMode)
 	}
+
+	// Load shared runtime flags from Pebble on startup
+	requireSig, err := dataStore.LoadSigningConfig()
+	if err != nil {
+		return nil, fmt.Errorf("loading signing config from store: %w", err)
+	}
+	sharedState.SetRequireSignatures(requireSig)
+
+	maintenanceMode, err := dataStore.LoadMaintenanceMode()
+	if err != nil {
+		return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
+	}
+	sharedState.SetMaintenanceMode(maintenanceMode)
 
 	fsm := &Machine{
 		logger:                      logger,
@@ -239,6 +243,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		auditEnabled:                auditEnabled,
 		eventNotifier:               eventNotifier,
 		keyStore:                    ks,
+		sharedState:                 sharedState,
 		Attrs:                       attrs,
 		Cache:                       cache,
 		Volumes: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumePair](
@@ -992,7 +997,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance
 	// orders that were admitted before maintenance mode was enabled but batched into
 	// a Raft entry applied after the maintenance mode flag was set.
-	if fsm.keyStore.MaintenanceMode() && !allOrdersAreMaintenanceMode(proposal.Orders) {
+	if fsm.sharedState.MaintenanceMode() && !allOrdersAreMaintenanceMode(proposal.Orders) {
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: processing.ErrMaintenanceMode},
@@ -1324,34 +1329,34 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	return nil
 }
 
-// reloadSigningKeysFromStore reloads signing keys and config from Pebble into the in-memory KeyStore.
+// reloadStateFromStore reloads signing keys and shared runtime flags from Pebble.
 // Called after SynchronizeWithLeader restores the Pebble checkpoint from the leader.
-func (fsm *Machine) reloadSigningKeysFromStore() error {
-	if fsm.keyStore == nil {
-		return nil
+func (fsm *Machine) reloadStateFromStore() error {
+	if fsm.keyStore != nil {
+		fsm.keyStore.Reset()
+
+		signingKeys, err := fsm.dataStore.LoadSigningKeys()
+		if err != nil {
+			return fmt.Errorf("loading signing keys: %w", err)
+		}
+		for keyID, pubKeyBytes := range signingKeys {
+			fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(pubKeyBytes))
+		}
 	}
 
-	fsm.keyStore.Reset()
-
-	signingKeys, err := fsm.dataStore.LoadSigningKeys()
-	if err != nil {
-		return fmt.Errorf("loading signing keys: %w", err)
-	}
-	for keyID, pubKeyBytes := range signingKeys {
-		fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(pubKeyBytes))
-	}
+	fsm.sharedState.Reset()
 
 	requireSig, err := fsm.dataStore.LoadSigningConfig()
 	if err != nil {
 		return fmt.Errorf("loading signing config: %w", err)
 	}
-	fsm.keyStore.SetRequireSignatures(requireSig)
+	fsm.sharedState.SetRequireSignatures(requireSig)
 
 	maintenanceMode, err := fsm.dataStore.LoadMaintenanceMode()
 	if err != nil {
 		return fmt.Errorf("loading maintenance mode: %w", err)
 	}
-	fsm.keyStore.SetMaintenanceMode(maintenanceMode)
+	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
 
 	return nil
 }
@@ -1463,8 +1468,8 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	}
 
 	// Reload signing keys from Pebble (the checkpoint contains the leader's keys)
-	if err := fsm.reloadSigningKeysFromStore(); err != nil {
-		return 0, fmt.Errorf("reloading signing keys after sync: %w", err)
+	if err := fsm.reloadStateFromStore(); err != nil {
+		return 0, fmt.Errorf("reloading state after sync: %w", err)
 	}
 
 	// Sink configs are not reloaded at sync time — they live in the cache

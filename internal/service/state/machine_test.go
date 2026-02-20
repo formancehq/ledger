@@ -37,7 +37,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, generationThreshold, keystore.NewKeyStore(), true, NoopEventNotifier{}, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, generationThreshold, keystore.NewKeyStore(), NewSharedState(), true, NoopEventNotifier{}, 0)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs

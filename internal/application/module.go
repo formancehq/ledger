@@ -123,6 +123,7 @@ func Module() fx.Option {
 				c *cache.Cache,
 				attrs *attributes.Attributes,
 				ks *keystore.KeyStore,
+				ss *state.SharedState,
 				notifications *events.Notifications,
 			) (*state.Machine, error) {
 				return state.NewMachine(
@@ -133,6 +134,7 @@ func Module() fx.Option {
 					attrs,
 					cfg.RaftConfig.RotationThreshold,
 					ks,
+					ss,
 					cfg.AuditEnabled,
 					notifications,
 					cfg.NumscriptCacheSize,
@@ -232,8 +234,8 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, ks *keystore.KeyStore, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
-				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ks, logger,
+			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
@@ -251,6 +253,7 @@ func Module() fx.Option {
 			func() *keystore.KeyStore {
 				return keystore.NewKeyStore()
 			},
+			state.NewSharedState,
 			events.NewNotifications,
 			events.NewManager,
 			httpcompat.NewServer,
@@ -268,6 +271,7 @@ func Module() fx.Option {
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
+				ss *state.SharedState,
 				receiptSigner *receipt.Signer,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
@@ -286,6 +290,7 @@ func Module() fx.Option {
 					meterProvider,
 					hc,
 					ks,
+					ss,
 					opts...,
 				)
 			},

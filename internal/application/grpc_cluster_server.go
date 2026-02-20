@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
@@ -25,7 +25,7 @@ type ClusterServiceServerImpl struct {
 	servicePool       *transport.ServiceConnectionPool
 	collector         *diskusage.Collector
 	store             *data.Store
-	keyStore          *keystore.KeyStore
+	sharedState       *state.SharedState
 	logger            logging.Logger
 	localRaftAddr     string // This node's own Raft advertise address
 	localServiceAddr  string // This node's own gRPC service address
@@ -37,7 +37,7 @@ func NewClusterServiceServer(
 	servicePool *transport.ServiceConnectionPool,
 	collector *diskusage.Collector,
 	store *data.Store,
-	ks *keystore.KeyStore,
+	sharedState *state.SharedState,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -48,7 +48,7 @@ func NewClusterServiceServer(
 		servicePool:      servicePool,
 		collector:        collector,
 		store:            store,
-		keyStore:         ks,
+		sharedState:      sharedState,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -98,10 +98,8 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 		return nil, err
 	}
 
-	// Populate maintenance mode from in-memory KeyStore
-	if impl.keyStore != nil {
-		state.MaintenanceMode = impl.keyStore.MaintenanceMode()
-	}
+	// Populate maintenance mode from shared state
+	state.MaintenanceMode = impl.sharedState.MaintenanceMode()
 
 	// Populate peer addresses from transport and service pool
 	localNodeID := impl.node.GetNodeID()

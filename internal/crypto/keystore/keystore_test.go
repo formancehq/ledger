@@ -13,7 +13,6 @@ func TestNewKeyStoreEmpty(t *testing.T) {
 
 	ks := NewKeyStore()
 	require.False(t, ks.HasKeys())
-	require.False(t, ks.RequireSignatures())
 	require.Nil(t, ks.GetPublicKey("nonexistent"))
 }
 
@@ -46,19 +45,6 @@ func TestRemovePublicKey(t *testing.T) {
 	require.Nil(t, ks.GetPublicKey("key-1"))
 }
 
-func TestSetRequireSignatures(t *testing.T) {
-	t.Parallel()
-
-	ks := NewKeyStore()
-	require.False(t, ks.RequireSignatures())
-
-	ks.SetRequireSignatures(true)
-	require.True(t, ks.RequireSignatures())
-
-	ks.SetRequireSignatures(false)
-	require.False(t, ks.RequireSignatures())
-}
-
 func TestReset(t *testing.T) {
 	t.Parallel()
 
@@ -67,15 +53,12 @@ func TestReset(t *testing.T) {
 
 	ks := NewKeyStore()
 	ks.AddPublicKey("key-1", pub)
-	ks.SetRequireSignatures(true)
 
 	require.True(t, ks.HasKeys())
-	require.True(t, ks.RequireSignatures())
 
 	ks.Reset()
 
 	require.False(t, ks.HasKeys())
-	require.False(t, ks.RequireSignatures())
 	require.Nil(t, ks.GetPublicKey("key-1"))
 }
 

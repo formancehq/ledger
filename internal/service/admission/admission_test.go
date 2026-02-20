@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -97,12 +98,14 @@ func createTestAdmission(t *testing.T, store *data.Store) *Admission {
 	preloadCounter, _ := meter.Int64Counter("test_preload_counter")
 
 	ks := keystore.NewKeyStore()
+	ss := state.NewSharedState()
 
 	a := &Admission{
 		cache:                     testCache,
 		store:                     store,
 		logger:                    logger,
 		keyStore:                  ks,
+		sharedState:               ss,
 		loaders:                   NewLoaders(),
 		commandDurationHistogram:  commandDuration,
 		proposeQueueLoadHistogram: proposeQueueLoad,
@@ -1149,7 +1152,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		store := createTestStore(t)
 		adm := createTestAdmission(t, store)
 
-		adm.keyStore.SetRequireSignatures(true)
+		adm.sharedState.SetRequireSignatures(true)
 
 		requests := []*servicepb.Request{
 			{
@@ -1172,7 +1175,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		pubKey, privKey := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey)
-		adm.keyStore.SetRequireSignatures(true)
+		adm.sharedState.SetRequireSignatures(true)
 
 		req := &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{

@@ -238,17 +238,13 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		if err := batch.SaveSigningConfig(b.pendingSigningConfigUpdate.requireSignatures); err != nil {
 			return fmt.Errorf("saving signing config: %w", err)
 		}
-		if b.fsm.keyStore != nil {
-			b.fsm.keyStore.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
-		}
+		b.fsm.sharedState.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
 	}
 	if b.pendingMaintenanceModeUpdate != nil {
 		if err := batch.SaveMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled); err != nil {
 			return fmt.Errorf("saving maintenance mode: %w", err)
 		}
-		if b.fsm.keyStore != nil {
-			b.fsm.keyStore.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
-		}
+		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 	if b.pendingPeriodScheduleUpdate != nil {
 		if *b.pendingPeriodScheduleUpdate == "" {
