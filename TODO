@@ -9,8 +9,6 @@ Business:
 * Mode not atomic
 * Chart of account
 * Mirror mode
-* Sanity checks
-** Checker add transactions
 * Numscript
 ** Add typed variables
 ** Add typed metadata
@@ -41,4 +39,4 @@ Refactor:
 * Merge connection pools
 * Simplify processor
 * Clean TODO in the code
-
+* Clean Machine (returns from ApplyEntries)
