@@ -2,11 +2,8 @@ package ctrl
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -15,7 +12,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
-	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
@@ -214,6 +210,8 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 }
 
 // ListAccounts returns a cursor over accounts for a ledger (alphabetical order).
+// Uses a single forward iterator over the attribute range to discover accounts
+// and collect metadata in one pass.
 func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
 	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
 	if err != nil {
@@ -225,17 +223,44 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 
 	handle := ctrl.store.NewReadHandle()
 
-	addrCursor, err := ctrl.attrs.Volume.ListAccountAddresses(handle, ledgerInfo.Id, pageSize, afterAddress, prefix)
+	// Build lower bound: [0xF1][ledgerID] optionally followed by [afterAddress]\x02 or [prefix]
+	kb := data.NewKeyBuilder()
+	kb.PutByte(data.KeyPrefixAttributes).PutLedgerPrefix(ledgerInfo.Id)
+	if afterAddress != "" {
+		kb.PutString(afterAddress).PutByte(0x02) // skip past both \x00 (Volume) and \x01 (Metadata)
+	} else if prefix != "" {
+		kb.PutString(prefix)
+	}
+	lowerBound := kb.Build()
+
+	// Build upper bound: [0xF1][ledgerID][IncrementBytes(prefix)] or [0xF1][ledgerID+1]
+	kb.PutByte(data.KeyPrefixAttributes)
+	if prefix != "" {
+		if incPrefix := attributes.IncrementBytes([]byte(prefix)); incPrefix != nil {
+			kb.PutLedgerPrefix(ledgerInfo.Id).PutBytes(incPrefix)
+		} else {
+			kb.PutLedgerPrefix(ledgerInfo.Id + 1)
+		}
+	} else {
+		kb.PutLedgerPrefix(ledgerInfo.Id + 1)
+	}
+	upperBound := kb.Build()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
 		_ = handle.Close()
-		return nil, fmt.Errorf("listing account addresses: %w", err)
+		return nil, fmt.Errorf("creating iterator for account list: %w", err)
 	}
 
 	return &accountCursor{
-		handle:     handle,
-		attrs:      ctrl.attrs,
-		ledgerID:   ledgerInfo.Id,
-		addrCursor: addrCursor,
+		handle:   handle,
+		iter:     iter,
+		volAcc:   ctrl.attrs.Volume.NewAccumulator(),
+		metaAcc:  ctrl.attrs.Metadata.NewAccumulator(),
+		pageSize: pageSize,
 	}, nil
 }
 
@@ -353,150 +378,3 @@ func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb
 }
 
 var _ Controller = (*DefaultController)(nil)
-
-// transactionCursor uses a single reverse iterator over transaction update keys
-// to build full transactions without a second pass. It holds a ReadHandle for
-// point-in-time consistency and closes it when the cursor is closed.
-type transactionCursor struct {
-	handle     *data.ReadHandle
-	iter       *pebble.Iterator
-	started    bool
-	pageSize   uint32
-	count      uint32
-	lastTxID   uint64
-	txIDOffset int
-
-	// pending holds an already-read update when we overshoot into the next txID's territory
-	pendingTxID   uint64
-	pendingUpdate *commonpb.TransactionUpdate
-	hasPending    bool
-}
-
-func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
-	if c.pageSize > 0 && c.count >= c.pageSize {
-		return nil, io.EOF
-	}
-
-	var (
-		currentTxID uint64
-		updates     []*commonpb.TransactionUpdate
-	)
-
-	// If we have a pending entry from the last call, start with it
-	if c.hasPending {
-		currentTxID = c.pendingTxID
-		updates = append(updates, c.pendingUpdate)
-		c.hasPending = false
-	}
-
-	for {
-		var valid bool
-		if !c.started {
-			c.started = true
-			valid = c.iter.Last()
-		} else {
-			valid = c.iter.Prev()
-		}
-
-		if !valid {
-			if err := c.iter.Error(); err != nil {
-				return nil, err
-			}
-			// End of iterator — return whatever we collected
-			if len(updates) > 0 {
-				c.count++
-				return c.buildFromUpdates(currentTxID, updates)
-			}
-			return nil, io.EOF
-		}
-
-		key := c.iter.Key()
-		if len(key) < c.txIDOffset+8 {
-			continue
-		}
-		txID := binary.BigEndian.Uint64(key[c.txIDOffset : c.txIDOffset+8])
-
-		valueBytes, err := c.iter.ValueAndErr()
-		if err != nil {
-			return nil, err
-		}
-		update := &commonpb.TransactionUpdate{}
-		if err := proto.Unmarshal(valueBytes, update); err != nil {
-			return nil, fmt.Errorf("unmarshaling transaction update: %w", err)
-		}
-
-		// First entry for this Next() call
-		if len(updates) == 0 {
-			currentTxID = txID
-			updates = append(updates, update)
-			continue
-		}
-
-		// Same txID — collect it
-		if txID == currentTxID {
-			updates = append(updates, update)
-			continue
-		}
-
-		// Different txID — save as pending and return current collection
-		c.pendingTxID = txID
-		c.pendingUpdate = update
-		c.hasPending = true
-		c.count++
-		return c.buildFromUpdates(currentTxID, updates)
-	}
-}
-
-// buildFromUpdates reverses updates (collected in reverse order) and assembles the transaction.
-func (c *transactionCursor) buildFromUpdates(txID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
-	slices.Reverse(updates)
-	return assembleTransaction(c.handle, txID, updates)
-}
-
-func (c *transactionCursor) Close() error {
-	err := c.iter.Close()
-	if closeErr := c.handle.Close(); err == nil {
-		err = closeErr
-	}
-	return err
-}
-
-// accountCursor wraps an address cursor to return full accounts with metadata and volumes.
-// It holds a ReadHandle for point-in-time consistency and closes it when the cursor is closed.
-type accountCursor struct {
-	handle     *data.ReadHandle
-	attrs      *attributes.Attributes
-	ledgerID   uint32
-	addrCursor data.Cursor[string]
-}
-
-func (c *accountCursor) Next() (*commonpb.Account, error) {
-	address, err := c.addrCursor.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	metadataMap, err := GetAccountMetadata(c.handle, c.attrs, c.ledgerID, []string{address})
-	if err != nil {
-		return nil, fmt.Errorf("getting account metadata for %s: %w", address, err)
-	}
-
-	account := &commonpb.Account{
-		Address:  address,
-		Metadata: &commonpb.MetadataSet{},
-	}
-
-	if md, exists := metadataMap[address]; exists {
-		account.Metadata = commonpb.MetadataSetFromMap(md)
-	}
-
-	return account, nil
-}
-
-func (c *accountCursor) Close() error {
-	err := c.addrCursor.Close()
-	if closeErr := c.handle.Close(); err == nil {
-		err = closeErr
-	}
-	return err
-}

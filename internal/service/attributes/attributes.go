@@ -3,7 +3,6 @@ package attributes
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -123,7 +122,9 @@ func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, canonicalKey []b
 	return a.writeEntry(batch, index, canonicalKey, 1, diff)
 }
 
-const suffixLen = 10 // attrType(1) + raftIndex(8) + entryType(1)
+// SuffixLen is the fixed suffix length of an attribute Pebble key:
+// [AttrType(1)][RaftIndex(8)][EntryType(1)] = 10 bytes.
+const SuffixLen = 10
 
 // ComputeValue computes the final value for the given canonical key at the specified raft index.
 // It finds the most recent base with index <= maxIndex and applies all diffs with index <= maxIndex.
@@ -290,248 +291,191 @@ func (a *Attribute[V]) ScanEntries(reader data.PebbleReader, canonicalKey []byte
 	return result, nil
 }
 
-// ListEntry represents an entry found when listing attributes.
-// It contains the canonical key bytes extracted from the Pebble key.
-type ListEntry struct {
-	// CanonicalKey is the original key bytes
+// ComputedEntry holds a computed attribute value alongside its canonical key.
+type ComputedEntry[V proto.Message] struct {
 	CanonicalKey []byte
+	Value        V
 }
 
-// List returns all unique canonical keys for this attribute type.
-// It iterates over all attributes (prefix 0xF1) and filters by attrType.
-// Key layout: [0xF1][canonicalKey][attrType][raftIndex(8)][entryType(1)]
-// Note: Allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) List(reader data.PebbleReader) ([]ListEntry, error) {
-	// Scan the entire attribute range [0xF1, 0xF2)
-	buf := make([]byte, 2)
-	buf[0] = data.KeyPrefixAttributes
-	buf[1] = data.KeyPrefixAttributes + 1 // upper bound
+// Accumulator collects attribute entries fed in Pebble key order and computes
+// final values per unique canonical key. It tracks base/diff state and flushes
+// the computed value when a canonical key boundary is crossed.
+//
+// Usage: create via NewAccumulator, call Feed for each Pebble key-value pair,
+// call Flush when a logical group boundary is reached (e.g., a different entity).
+type Accumulator[V proto.Message] struct {
+	attr             *Attribute[V]
+	currentCanonical string
+	baseValue        V
+	baseIndex        uint64
+	lastDiff         V
+	pending          []ComputedEntry[V]
+}
+
+// NewAccumulator creates an Accumulator for this attribute type.
+func (a *Attribute[V]) NewAccumulator() *Accumulator[V] {
+	return &Accumulator[V]{attr: a}
+}
+
+// Prefix returns the attribute type prefix byte.
+func (acc *Accumulator[V]) Prefix() byte {
+	return acc.attr.prefix
+}
+
+// Feed processes a raw Pebble key-value pair from the attribute range.
+// Returns true if the entry matched this accumulator's attribute type and was consumed.
+// Entries must be fed in Pebble key order for correct computation.
+func (acc *Accumulator[V]) Feed(pebbleKey, pebbleValue []byte) (bool, error) {
+	if len(pebbleKey) <= 1+SuffixLen {
+		return false, nil
+	}
+
+	attrType := pebbleKey[len(pebbleKey)-SuffixLen]
+	if attrType != acc.attr.prefix {
+		return false, nil
+	}
+
+	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
+	raftIndex := binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-9 : len(pebbleKey)-1])
+	entryType := pebbleKey[len(pebbleKey)-1]
+
+	if canonical != acc.currentCanonical {
+		acc.flushCurrent()
+		acc.currentCanonical = canonical
+		var zero V
+		acc.baseValue = zero
+		acc.baseIndex = 0
+		acc.lastDiff = zero
+	}
+
+	v := acc.attr.newValue()
+	if err := unmarshalProto(pebbleValue, v); err != nil {
+		return false, fmt.Errorf("unmarshaling value: %w", err)
+	}
+
+	switch entryType {
+	case 0: // base
+		acc.baseValue = v
+		acc.baseIndex = raftIndex
+		var zero V
+		acc.lastDiff = zero
+	case 1: // diff
+		if (any)(acc.baseValue) == nil || raftIndex > acc.baseIndex {
+			acc.lastDiff = v
+		}
+	}
+
+	return true, nil
+}
+
+func (acc *Accumulator[V]) flushCurrent() {
+	if acc.currentCanonical == "" {
+		return
+	}
+	computed := acc.attr.computeFn(acc.baseValue, acc.lastDiff)
+	if (any)(computed) != nil {
+		acc.pending = append(acc.pending, ComputedEntry[V]{
+			CanonicalKey: []byte(acc.currentCanonical),
+			Value:        computed,
+		})
+	}
+}
+
+// Flush computes any pending value and returns all accumulated results.
+// Resets the accumulator for the next group.
+func (acc *Accumulator[V]) Flush() []ComputedEntry[V] {
+	acc.flushCurrent()
+	results := acc.pending
+	acc.pending = nil
+	acc.currentCanonical = ""
+	var zero V
+	acc.baseValue = zero
+	acc.lastDiff = zero
+	acc.baseIndex = 0
+	return results
+}
+
+// ComputeAllForPrefix computes the final value for all canonical keys sharing the
+// given prefix. It performs a single forward scan using an Accumulator internally.
+// This is more efficient than List + ComputeValue per key, as it uses one iterator
+// scoped to just the prefix range instead of the entire attribute space.
+// Thread-safe: allocates its own buffer for concurrent access.
+func (a *Attribute[V]) ComputeAllForPrefix(reader data.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+	lowerBound := make([]byte, 1+len(canonicalPrefix))
+	lowerBound[0] = data.KeyPrefixAttributes
+	copy(lowerBound[1:], canonicalPrefix)
+
+	var upperBound []byte
+	if incPrefix := IncrementBytes(canonicalPrefix); incPrefix != nil {
+		upperBound = make([]byte, 1+len(incPrefix))
+		upperBound[0] = data.KeyPrefixAttributes
+		copy(upperBound[1:], incPrefix)
+	} else {
+		upperBound = []byte{data.KeyPrefixAttributes + 1}
+	}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:1],
-		UpperBound: buf[1:2],
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for attributes: %w", err)
+		return nil, fmt.Errorf("creating iterator for prefix scan: %w", err)
 	}
 	defer func() { _ = iter.Close() }()
 
-	// Use a map to track unique canonical keys
-	seen := make(map[string]struct{})
-	var entries []ListEntry
-
-	// Minimum key length: 1 (prefix) + 1 (canonicalKey min) + suffixLen (10)
-	minKeyLen := 1 + suffixLen
+	acc := a.NewAccumulator()
+	minKeyLen := 1 + SuffixLen
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		iterKey := iter.Key()
-		if len(iterKey) <= minKeyLen {
-			continue // Skip invalid keys
-		}
-
-		// attrType is at key[len(key)-10]
-		attrType := iterKey[len(iterKey)-suffixLen]
-		if attrType != a.prefix {
-			continue // Filter by attr type
-		}
-
-		// canonicalKey is between prefix (1 byte) and suffix (10 bytes)
-		canonicalKey := string(iterKey[1 : len(iterKey)-suffixLen])
-
-		// Skip if we've already seen this canonical key
-		if _, ok := seen[canonicalKey]; ok {
-			continue
-		}
-		seen[canonicalKey] = struct{}{}
-
-		// Make a copy for the entry
-		canonicalBytes := make([]byte, len(canonicalKey))
-		copy(canonicalBytes, canonicalKey)
-
-		entries = append(entries, ListEntry{
-			CanonicalKey: canonicalBytes,
-		})
-	}
-
-	return entries, nil
-}
-
-// ListAccountAddresses returns a cursor over unique account addresses for a ledger
-// by scanning Volume attribute keys. The Volume canonical key layout is:
-//
-//	[ledgerID(4)][account]\x00[asset]
-//
-// Full Pebble key: [0xF1][ledgerID(4)][account]\x00[asset][V][raftIndex(8)][entryType(1)]
-//
-// Accounts are naturally sorted by Pebble key order. The cursor deduplicates
-// by seeking past all entries for the current account after extracting it.
-// Thread-safe: allocates its own buffer.
-func (a *Attribute[V]) ListAccountAddresses(
-	reader data.PebbleReader,
-	ledgerID uint32,
-	pageSize uint32,
-	afterAddress string,
-	prefix string,
-) (data.Cursor[string], error) {
-	// Build lower bound: [0xF1][ledgerID]...
-	// Base prefix length: 1 (KeyPrefixAttributes) + 4 (ledgerID) = 5
-	const basePrefixLen = 5
-
-	lowerBuf := make([]byte, basePrefixLen+len(afterAddress)+len(prefix)+1)
-	lowerBuf[0] = data.KeyPrefixAttributes
-	binary.BigEndian.PutUint32(lowerBuf[1:], ledgerID)
-	lowerLen := basePrefixLen
-	if afterAddress != "" {
-		// Start after the given address: account\x01 skips all assets for this account
-		// (since \x01 > \x00 which is the account/asset separator)
-		lowerLen += copy(lowerBuf[lowerLen:], afterAddress)
-		lowerBuf[lowerLen] = 0x01
-		lowerLen++
-	} else if prefix != "" {
-		lowerLen += copy(lowerBuf[lowerLen:], prefix)
-	}
-
-	// Build upper bound
-	var upperBuf []byte
-	if prefix != "" {
-		incremented := incrementBytes([]byte(prefix))
-		if incremented != nil {
-			upperBuf = make([]byte, basePrefixLen+len(incremented))
-			upperBuf[0] = data.KeyPrefixAttributes
-			binary.BigEndian.PutUint32(upperBuf[1:], ledgerID)
-			copy(upperBuf[basePrefixLen:], incremented)
-		} else {
-			// All 0xFF prefix — use next ledger as upper bound
-			upperBuf = make([]byte, basePrefixLen)
-			upperBuf[0] = data.KeyPrefixAttributes
-			binary.BigEndian.PutUint32(upperBuf[1:], ledgerID+1)
-		}
-	} else {
-		// No prefix — use next ledger as upper bound
-		upperBuf = make([]byte, basePrefixLen)
-		upperBuf[0] = data.KeyPrefixAttributes
-		binary.BigEndian.PutUint32(upperBuf[1:], ledgerID+1)
-	}
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBuf[:lowerLen],
-		UpperBound: upperBuf,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating iterator for account list: %w", err)
-	}
-
-	return &volumeAccountCursor{
-		iter:     iter,
-		attrType: a.prefix,
-		pageSize: pageSize,
-		// seekBuf is lazily allocated on first use
-	}, nil
-}
-
-// volumeAccountCursor iterates over unique account addresses derived from Volume attribute keys.
-// It deduplicates by seeking past all entries for the current account using SeekGE.
-type volumeAccountCursor struct {
-	iter     *pebble.Iterator
-	attrType byte
-	seeked   bool // true when the iterator is already positioned via SeekGE
-	pageSize uint32
-	count    uint32
-	seekBuf  []byte // reusable buffer for SeekGE operations
-}
-
-// advance moves the iterator to the next valid position.
-// On first call it uses First(), on subsequent calls after a seek it checks
-// the current position, otherwise it calls Next().
-func (c *volumeAccountCursor) advance() bool {
-	if c.seeked {
-		// Iterator was positioned by SeekGE — check current position
-		c.seeked = false
-		return c.iter.Valid()
-	}
-	if c.count == 0 {
-		return c.iter.First()
-	}
-	return c.iter.Next()
-}
-
-func (c *volumeAccountCursor) Next() (string, error) {
-	if c.pageSize > 0 && c.count >= c.pageSize {
-		return "", io.EOF
-	}
-
-	for c.advance() {
-		// Key layout: [0xF1][canonicalKey][attrType(1)][raftIndex(8)][entryType(1)]
-		// Volume canonical key: [ledgerID(4)][account]\x00[asset]
-		iterKey := c.iter.Key()
-
-		// Minimum key: 1 (prefix) + 4 (ledgerID) + 1 (account min) + suffixLen (10)
-		if len(iterKey) < 1+4+1+suffixLen {
+		key := iter.Key()
+		if len(key) <= minKeyLen {
 			continue
 		}
 
-		// Check that this is a Volume attribute key
-		if iterKey[len(iterKey)-suffixLen] != c.attrType {
+		// Filter by maxIndex before feeding
+		raftIndex := binary.BigEndian.Uint64(key[len(key)-9 : len(key)-1])
+		if raftIndex > maxIndex {
 			continue
 		}
 
-		// Extract canonical key: between prefix byte and suffix
-		canonicalKey := iterKey[1 : len(iterKey)-suffixLen]
-
-		// Find the \x00 separator between account and asset (after ledgerID)
-		account := extractAccountFromCanonicalKey(canonicalKey)
-		if account == "" {
-			continue
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading value: %w", err)
 		}
 
-		c.count++
-
-		// Seek past all entries for this account: [0xF1][ledgerID][account\x01]
-		// Since \x01 > \x00 (the account/asset separator), this skips all assets.
-		seekLen := 5 + len(account) + 1
-		if len(c.seekBuf) < seekLen {
-			c.seekBuf = make([]byte, seekLen+32)
-		}
-		c.seekBuf[0] = iterKey[0]          // KeyPrefixAttributes
-		copy(c.seekBuf[1:5], iterKey[1:5]) // ledgerID
-		copy(c.seekBuf[5:], account)
-		c.seekBuf[5+len(account)] = 0x01
-
-		c.iter.SeekGE(c.seekBuf[:seekLen])
-		c.seeked = true
-
-		return account, nil
-	}
-
-	if err := c.iter.Error(); err != nil {
-		return "", err
-	}
-	return "", io.EOF
-}
-
-func (c *volumeAccountCursor) Close() error {
-	return c.iter.Close()
-}
-
-// extractAccountFromCanonicalKey extracts the account string from a Volume canonical key.
-// Canonical key format: [ledgerID(4)][account]\x00[asset]
-// Returns empty string if the format is invalid.
-func extractAccountFromCanonicalKey(canonicalKey []byte) string {
-	if len(canonicalKey) < 5 { // 4 (ledgerID) + 1 (minimum account)
-		return ""
-	}
-	// Find the \x00 separator after ledgerID
-	for i := 4; i < len(canonicalKey); i++ {
-		if canonicalKey[i] == 0x00 {
-			return string(canonicalKey[4:i])
+		if _, err := acc.Feed(key, valueBytes); err != nil {
+			return nil, err
 		}
 	}
-	return ""
+
+	if err := iter.Error(); err != nil {
+		return nil, err
+	}
+
+	return acc.Flush(), nil
 }
 
-// incrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).
+// AttrTypeFromKey extracts the attribute type prefix byte from a Pebble attribute key.
+// Returns (attrType, true) on success, or (0, false) if the key is too short.
+func AttrTypeFromKey(pebbleKey []byte) (byte, bool) {
+	if len(pebbleKey) <= 1+SuffixLen {
+		return 0, false
+	}
+	return pebbleKey[len(pebbleKey)-SuffixLen], true
+}
+
+// CanonicalKeyFromPebbleKey extracts the canonical key from a Pebble attribute key.
+// Returns nil if the key is too short.
+func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
+	if len(pebbleKey) <= 1+SuffixLen {
+		return nil
+	}
+	return pebbleKey[1 : len(pebbleKey)-SuffixLen]
+}
+
+// IncrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).
 // Returns nil if all bytes are 0xFF (overflow).
-func incrementBytes(b []byte) []byte {
+func IncrementBytes(b []byte) []byte {
 	result := make([]byte, len(b))
 	copy(result, b)
 	for i := len(result) - 1; i >= 0; i-- {

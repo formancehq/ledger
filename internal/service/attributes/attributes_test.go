@@ -137,8 +137,8 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, result)
 
-	// Verify List no longer returns this key
-	entries, err := attrs.Metadata.List(store)
+	// Verify no entries remain for this prefix
+	entries, err := attrs.Metadata.ComputeAllForPrefix(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }

@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -10,56 +11,49 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
-// GetAccountMetadata retrieves account metadata for multiple accounts from the store for a specific ledger.
-// It uses the attributes system to list all metadata keys and compute their values.
-func GetAccountMetadata(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
-	result := make(map[string]metadata.Metadata)
+// metadataCanonicalPrefix builds the canonical key prefix for all metadata keys
+// of a given account: [ledgerID(4)][account]\x01
+func metadataCanonicalPrefix(ledgerID uint32, account string) []byte {
+	prefix := make([]byte, 4+len(account)+1)
+	binary.BigEndian.PutUint32(prefix, ledgerID)
+	copy(prefix[4:], account)
+	prefix[4+len(account)] = 0x01
+	return prefix
+}
 
-	// Initialize with empty metadata for all requested accounts
+// volumeCanonicalPrefix builds the canonical key prefix for all volume keys
+// of a given account: [ledgerID(4)][account]\x00
+func volumeCanonicalPrefix(ledgerID uint32, account string) []byte {
+	prefix := make([]byte, 4+len(account)+1)
+	binary.BigEndian.PutUint32(prefix, ledgerID)
+	copy(prefix[4:], account)
+	prefix[4+len(account)] = 0x00
+	return prefix
+}
+
+// GetAccountMetadata retrieves account metadata for multiple accounts from the store for a specific ledger.
+// For each account, it performs a single targeted scan over that account's metadata range
+// using ComputeAllForPrefix, avoiding the global attribute scan.
+func GetAccountMetadata(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
+	result := make(map[string]metadata.Metadata, len(accounts))
+
 	for _, account := range accounts {
 		result[account] = make(metadata.Metadata)
-	}
 
-	// Create a set of requested accounts for fast lookup
-	accountSet := make(map[string]struct{}, len(accounts))
-	for _, account := range accounts {
-		accountSet[account] = struct{}{}
-	}
-
-	// List all metadata keys
-	entries, err := attrs.Metadata.List(reader)
-	if err != nil {
-		return nil, fmt.Errorf("listing metadata keys: %w", err)
-	}
-
-	// Filter entries by ledger and account, then compute values
-	for _, entry := range entries {
-		// Parse the canonical key
-		var key data.MetadataKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			return nil, fmt.Errorf("parsing metadata key: %w", err)
-		}
-
-		// Skip if not the requested ledger
-		if key.LedgerID != ledgerID {
-			continue
-		}
-
-		// Skip if not one of the requested accounts
-		if _, ok := accountSet[key.Account]; !ok {
-			continue
-		}
-
-		// Compute the metadata value (use max uint64 to get the latest value)
-		value, err := attrs.Metadata.ComputeValue(reader, ^uint64(0), entry.CanonicalKey)
+		prefix := metadataCanonicalPrefix(ledgerID, account)
+		entries, err := attrs.Metadata.ComputeAllForPrefix(reader, ^uint64(0), prefix)
 		if err != nil {
-			return nil, fmt.Errorf("computing metadata value for %d/%s/%s: %w",
-				key.LedgerID, key.Account, key.Key, err)
+			return nil, fmt.Errorf("computing metadata for account %s: %w", account, err)
 		}
 
-		// Skip nil values (deleted metadata)
-		if value != nil {
-			result[key.Account][key.Key] = value.Value
+		for _, entry := range entries {
+			var key data.MetadataKey
+			if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+				return nil, fmt.Errorf("parsing metadata key: %w", err)
+			}
+			if entry.Value != nil {
+				result[account][key.Key] = entry.Value.Value
+			}
 		}
 	}
 
@@ -67,41 +61,31 @@ func GetAccountMetadata(reader data.PebbleReader, attrs *attributes.Attributes, 
 }
 
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
-// It uses the attributes system to list all volume keys and compute cumulative values.
+// It performs a single targeted scan over the account's volume range using ComputeAllForPrefix,
+// avoiding the global attribute scan.
 func GetAccountVolumes(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
-	const maxIndex uint64 = 1 << 62
 
-	// List all Volume entries
-	volumeEntries, err := attrs.Volume.List(reader)
+	prefix := volumeCanonicalPrefix(ledgerID, account)
+	entries, err := attrs.Volume.ComputeAllForPrefix(reader, ^uint64(0), prefix)
 	if err != nil {
-		return nil, fmt.Errorf("listing volume entries: %w", err)
+		return nil, fmt.Errorf("computing volumes for account %s: %w", account, err)
 	}
 
-	// Filter entries by ledger and account, then compute values
-	for _, entry := range volumeEntries {
+	for _, entry := range entries {
 		var key data.VolumeKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			return nil, fmt.Errorf("parsing volume key: %w", err)
 		}
-		if key.LedgerID != ledgerID || key.Account != account {
-			continue
-		}
-
-		// Compute the merged VolumePair for this asset
-		pair, err := attrs.Volume.ComputeValue(reader, maxIndex, entry.CanonicalKey)
-		if err != nil {
-			return nil, fmt.Errorf("computing volume for %s: %w", key.Asset, err)
-		}
 
 		input := big.NewInt(0)
 		output := big.NewInt(0)
-		if pair != nil {
-			if pair.InputKnown != nil {
-				input = pair.InputKnown.ToBigInt()
+		if entry.Value != nil {
+			if entry.Value.InputKnown != nil {
+				input = entry.Value.InputKnown.ToBigInt()
 			}
-			if pair.OutputKnown != nil {
-				output = pair.OutputKnown.ToBigInt()
+			if entry.Value.OutputKnown != nil {
+				output = entry.Value.OutputKnown.ToBigInt()
 			}
 		}
 		balance := new(big.Int).Sub(input, output)

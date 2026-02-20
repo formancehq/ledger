@@ -22,6 +22,7 @@ import (
 type MockStore struct {
 	ctrl     *gomock.Controller
 	recorder *MockStoreMockRecorder
+	isgomock struct{}
 }
 
 // MockStoreMockRecorder is the mock recorder for MockStore.
@@ -622,6 +623,7 @@ func (mr *MockStoreMockRecorder) UpdatePeriod(period any) *gomock.Call {
 type MockpostingProducer struct {
 	ctrl     *gomock.Controller
 	recorder *MockpostingProducerMockRecorder
+	isgomock struct{}
 }
 
 // MockpostingProducerMockRecorder is the mock recorder for MockpostingProducer.

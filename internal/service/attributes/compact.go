@@ -60,7 +60,7 @@ func CompactAllForBackup(s *data.Store) error {
 	}
 
 	seen := make(map[entryKey]struct{})
-	minKeyLen := 1 + suffixLen // prefix(1) + suffix(10)
+	minKeyLen := 1 + SuffixLen // prefix(1) + suffix(10)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		iterKey := iter.Key()
@@ -68,8 +68,8 @@ func CompactAllForBackup(s *data.Store) error {
 			continue
 		}
 
-		attrType := iterKey[len(iterKey)-suffixLen]
-		canonicalKey := string(iterKey[1 : len(iterKey)-suffixLen])
+		attrType := iterKey[len(iterKey)-SuffixLen]
+		canonicalKey := string(iterKey[1 : len(iterKey)-SuffixLen])
 
 		ek := entryKey{canonicalKey: canonicalKey, attrType: attrType}
 		if _, ok := seen[ek]; ok {
