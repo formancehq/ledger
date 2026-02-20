@@ -1,26 +1,41 @@
-* Test https://connectrpc.com/
+API:
+* Test https://connectrpc.com/ (grpcwebproxy)
 * Checkpoint + exposed api to read at PIT
-* Ledger derivation?
-* Chart of account pattern recognition
-* Mirror mode
-* Extract HTTP layer into a compat service?
-* Checker add transactions
-* Logs export CLI (filtrage par date/ledger)
-* ACL system / authentication
-* Mode not atomic
-* Convert K6 tests to GRPC
 * Eventual consistency (read your writes)
+* Clean HTTP layer
+* ACL system / authentication
+
+Business:
 * Flow control
-* Automated periods
+* Mode not atomic
+* Chart of account
+* Mirror mode
+* Sanity checks
+** Checker add transactions
+* Numscript
+** Add typed variables
+** Add typed metadata
+
+Tests:
 * Add hash consistency tests
-* --bootstrap-from-backup
-* Signing :
+* Convert K6 tests to GRPC
+
+Management node:
+* Removal
+* Bootstrap from backup (tar file as input)
+
+Periods:
+* Add CRON
+
+Signing :
 ** when outputting the actions that were signed by a key, also output the key-id that validated the request
 ** have a list of keys
 ** in that list of keys, also map the key that has been used to register the key
 ** when revoking a key, potentially propose to revoke all keys that were registered using this key
 ** Sign responses too to avoid MITM
-* Test Parquet
-* Node removal
-* Cold storage logs only
-* Signed/Encrypt backup
+
+Cold storage:
+* Add S3/Parquet support
+
+Backups:
+* Add encrypted backup
