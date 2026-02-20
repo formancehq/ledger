@@ -171,6 +171,8 @@ message LogPayload {
     ArchivePeriodLog archive_period = 11;
     ConfirmArchivePeriodLog confirm_archive_period = 12;
     SetMaintenanceModeLog set_maintenance_mode = 13;
+    SetPeriodScheduleLog set_period_schedule = 14;
+    DeletePeriodScheduleLog delete_period_schedule = 15;
   }
 }
 
@@ -208,6 +210,14 @@ message RemovedEventsSinkLog {
 message SetMaintenanceModeLog {
   bool enabled = 1;
 }
+
+// SetPeriodScheduleLog records a period schedule change.
+message SetPeriodScheduleLog {
+  string cron = 1;
+}
+
+// DeletePeriodScheduleLog records the removal of the period schedule.
+message DeletePeriodScheduleLog {}
 
 // SinkConfig wraps a single sink configuration with per-sink settings.
 message SinkConfig {

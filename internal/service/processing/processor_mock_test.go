@@ -102,6 +102,18 @@ func (mr *MockStoreMockRecorder) DeleteAccountMetadata(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockStore)(nil).DeleteAccountMetadata), key)
 }
 
+// DeletePeriodSchedule mocks base method.
+func (m *MockStore) DeletePeriodSchedule() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeletePeriodSchedule")
+}
+
+// DeletePeriodSchedule indicates an expected call of DeletePeriodSchedule.
+func (mr *MockStoreMockRecorder) DeletePeriodSchedule() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePeriodSchedule", reflect.TypeOf((*MockStore)(nil).DeletePeriodSchedule))
+}
+
 // GetAccountMetadata mocks base method.
 func (m *MockStore) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {
 	m.ctrl.T.Helper()
@@ -557,6 +569,18 @@ func (m *MockStore) SetPendingArchive(periodID, startSequence, closeSequence uin
 func (mr *MockStoreMockRecorder) SetPendingArchive(periodID, startSequence, closeSequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPendingArchive", reflect.TypeOf((*MockStore)(nil).SetPendingArchive), periodID, startSequence, closeSequence)
+}
+
+// SetPeriodSchedule mocks base method.
+func (m *MockStore) SetPeriodSchedule(cron string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetPeriodSchedule", cron)
+}
+
+// SetPeriodSchedule indicates an expected call of SetPeriodSchedule.
+func (mr *MockStoreMockRecorder) SetPeriodSchedule(cron any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPeriodSchedule", reflect.TypeOf((*MockStore)(nil).SetPeriodSchedule), cron)
 }
 
 // SetPurgeRange mocks base method.

@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
@@ -75,6 +76,10 @@ type Machine struct {
 	snapshotIndex               uint64
 	generationRotationThreshold uint64
 	auditEnabled                bool
+
+	// Period schedule cron expression (empty = disabled)
+	periodSchedule  string
+	scheduleChanged signal.Signal
 
 	// KeyStore holds registered signing keys (updated after proposal apply)
 	keyStore *keystore.KeyStore
@@ -187,6 +192,11 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
 
+	periodSchedule, err := dataStore.LoadPeriodSchedule()
+	if err != nil {
+		return nil, fmt.Errorf("loading period schedule from store: %w", err)
+	}
+
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
@@ -283,6 +293,8 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
 		sealRequestCh:     make(chan SealRequest, 1),
 		archiveRequestCh:  make(chan ArchiveRequest, 1),
+		periodSchedule:  periodSchedule,
+		scheduleChanged: signal.New(),
 	}
 
 	return fsm, nil
@@ -1557,6 +1569,17 @@ func (fsm *Machine) AllPeriods() []*commonpb.Period {
 // Used for crash recovery on startup.
 func (fsm *Machine) ClosingPeriod() *commonpb.Period {
 	return fsm.closingPeriod
+}
+
+// PeriodSchedule returns the current period schedule cron expression.
+// Empty string means the schedule is disabled.
+func (fsm *Machine) PeriodSchedule() string {
+	return fsm.periodSchedule
+}
+
+// ScheduleChanged returns the Signal that fires when the period schedule changes.
+func (fsm *Machine) ScheduleChanged() signal.Signal {
+	return fsm.scheduleChanged
 }
 
 // checkClosePeriod checks if the apply result contains a ClosePeriod log

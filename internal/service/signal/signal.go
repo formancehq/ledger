@@ -1,4 +1,4 @@
-package events
+package signal
 
 // Signal is a non-blocking notification mechanism backed by a buffered(1) channel.
 // Multiple Notify() calls coalesce into a single pending notification.
@@ -6,8 +6,8 @@ type Signal struct {
 	ch chan struct{}
 }
 
-// NewSignal creates a new Signal with a buffered(1) channel.
-func NewSignal() Signal {
+// New creates a new Signal with a buffered(1) channel.
+func New() Signal {
 	return Signal{ch: make(chan struct{}, 1)}
 }
 

@@ -34,6 +34,7 @@ const (
 	BucketService_GetEventsSinks_FullMethodName    = "/ledger.BucketService/GetEventsSinks"
 	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
 	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
+	BucketService_GetPeriodSchedule_FullMethodName = "/ledger.BucketService/GetPeriodSchedule"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -68,6 +69,8 @@ type BucketServiceClient interface {
 	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
 	// ListLogs streams system logs
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
+	// GetPeriodSchedule returns the current automatic period rotation schedule
+	GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -271,6 +274,16 @@ func (c *bucketServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest,
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsClient = grpc.ServerStreamingClient[commonpb.Log]
 
+func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPeriodScheduleResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetPeriodSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -303,6 +316,8 @@ type BucketServiceServer interface {
 	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
 	// ListLogs streams system logs
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
+	// GetPeriodSchedule returns the current automatic period rotation schedule
+	GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -351,6 +366,9 @@ func (UnimplementedBucketServiceServer) ListPeriods(*ListPeriodsRequest, grpc.Se
 }
 func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error {
 	return status.Errorf(codes.Unimplemented, "method ListLogs not implemented")
+}
+func (UnimplementedBucketServiceServer) GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPeriodSchedule not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -558,6 +576,24 @@ func _BucketService_ListLogs_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsServer = grpc.ServerStreamingServer[commonpb.Log]
 
+func _BucketService_GetPeriodSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPeriodScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetPeriodSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetPeriodSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetPeriodSchedule(ctx, req.(*GetPeriodScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -588,6 +624,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEventsSinks",
 			Handler:    _BucketService_GetEventsSinks_Handler,
+		},
+		{
+			MethodName: "GetPeriodSchedule",
+			Handler:    _BucketService_GetPeriodSchedule_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

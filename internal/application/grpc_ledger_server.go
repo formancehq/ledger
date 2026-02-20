@@ -381,6 +381,14 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servic
 	}, nil
 }
 
+func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
+	cronExpr, err := impl.store.LoadPeriodSchedule()
+	if err != nil {
+		return nil, fmt.Errorf("loading period schedule: %w", err)
+	}
+	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
+}
+
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {
 	servicepb.RegisterBucketServiceServer(server, ledgerServiceServer)
 }

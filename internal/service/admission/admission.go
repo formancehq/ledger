@@ -1150,6 +1150,16 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Enabled: reqType.SetMaintenanceMode.Enabled,
 			},
 		}
+	case *servicepb.Request_SetPeriodSchedule:
+		order.Type = &raftcmdpb.Order_SetPeriodSchedule{
+			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{
+				Cron: reqType.SetPeriodSchedule.Cron,
+			},
+		}
+	case *servicepb.Request_DeletePeriodSchedule:
+		order.Type = &raftcmdpb.Order_DeletePeriodSchedule{
+			DeletePeriodSchedule: &raftcmdpb.DeletePeriodScheduleOrder{},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}

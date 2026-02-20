@@ -38,6 +38,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		periodNotFound               *processing.ErrPeriodNotFound
 		periodNotClosing             *processing.ErrPeriodNotClosing
 		invalidReceipt               *processing.ErrInvalidReceipt
+		invalidCronExpression        *processing.ErrInvalidCronExpression
 	)
 
 	switch {
@@ -157,6 +158,14 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 	case errors.Is(inner, processing.ErrMaintenanceMode):
 		code = codes.Unavailable
 		reason = processing.ErrReasonMaintenanceMode
+
+	case errors.As(inner, &invalidCronExpression):
+		code = codes.InvalidArgument
+		reason = processing.ErrReasonInvalidCronExpression
+		metadata = map[string]string{
+			"expression": invalidCronExpression.Expression,
+			"details":    invalidCronExpression.Details,
+		}
 
 	default:
 		// Unknown business error — fall back to Internal

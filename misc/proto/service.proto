@@ -41,6 +41,8 @@ service BucketService {
   rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
   // ListLogs streams system logs
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
+  // GetPeriodSchedule returns the current automatic period rotation schedule
+  rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
 }
 
 // ============================================================================
@@ -122,6 +124,8 @@ message Request {
     ArchivePeriodRequest archive_period = 13;
     ConfirmArchivePeriodRequest confirm_archive_period = 14;
     SetMaintenanceModeRequest set_maintenance_mode = 15;
+    SetPeriodScheduleRequest set_period_schedule = 16;
+    DeletePeriodScheduleRequest delete_period_schedule = 17;
   }
   signature.RequestSignature signature = 5;
 }
@@ -181,6 +185,20 @@ message ListPeriodsRequest {}
 // When enabled, all write operations are blocked except maintenance mode toggle.
 message SetMaintenanceModeRequest {
   bool enabled = 1;   // Whether maintenance mode is active
+}
+
+// SetPeriodScheduleRequest sets the automatic period rotation schedule.
+message SetPeriodScheduleRequest {
+  string cron = 1;   // Cron expression (standard 5-field)
+}
+
+// DeletePeriodScheduleRequest disables the automatic period rotation schedule.
+message DeletePeriodScheduleRequest {}
+
+message GetPeriodScheduleRequest {}
+
+message GetPeriodScheduleResponse {
+  string cron = 1;   // Current cron expression, empty if disabled
 }
 
 

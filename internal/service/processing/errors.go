@@ -29,6 +29,7 @@ const (
 	ErrReasonPeriodNotArchiving           = "PERIOD_NOT_ARCHIVING"
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
+	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -224,6 +225,16 @@ type ErrPeriodNotArchiving struct {
 
 func (e *ErrPeriodNotArchiving) Error() string {
 	return fmt.Sprintf("period %d is not in ARCHIVING state", e.PeriodID)
+}
+
+// ErrInvalidCronExpression is returned when a cron expression is invalid.
+type ErrInvalidCronExpression struct {
+	Expression string
+	Details    string
+}
+
+func (e *ErrInvalidCronExpression) Error() string {
+	return fmt.Sprintf("invalid cron expression %q: %s", e.Expression, e.Details)
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.

@@ -50,6 +50,7 @@ type Buffered struct {
 	pendingSigningKeyUpdates     []signingKeyUpdate
 	pendingSigningConfigUpdate   *signingConfigUpdate
 	pendingMaintenanceModeUpdate *maintenanceModeUpdate
+	pendingPeriodScheduleUpdate  *string
 	sinkConfigChanged            bool
 	allPeriods                   map[uint64]*commonpb.Period
 	currentOpenPeriod            *commonpb.Period
@@ -249,6 +250,19 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 			b.fsm.keyStore.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 		}
 	}
+	if b.pendingPeriodScheduleUpdate != nil {
+		if *b.pendingPeriodScheduleUpdate == "" {
+			if err := batch.DeletePeriodSchedule(); err != nil {
+				return fmt.Errorf("deleting period schedule: %w", err)
+			}
+		} else {
+			if err := batch.SavePeriodSchedule(*b.pendingPeriodScheduleUpdate); err != nil {
+				return fmt.Errorf("saving period schedule: %w", err)
+			}
+		}
+		b.fsm.periodSchedule = *b.pendingPeriodScheduleUpdate
+		b.fsm.scheduleChanged.Notify()
+	}
 
 	sinkUpdates, sinkDeletions, err := b.SinkConfigs.Merge()
 	if err != nil {
@@ -444,6 +458,15 @@ func (b *Buffered) SetMaintenanceMode(enabled bool) {
 	b.pendingMaintenanceModeUpdate = &maintenanceModeUpdate{
 		enabled: enabled,
 	}
+}
+
+func (b *Buffered) SetPeriodSchedule(cronExpr string) {
+	b.pendingPeriodScheduleUpdate = &cronExpr
+}
+
+func (b *Buffered) DeletePeriodSchedule() {
+	empty := ""
+	b.pendingPeriodScheduleUpdate = &empty
 }
 
 func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {

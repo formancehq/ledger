@@ -293,6 +293,30 @@ func (b *Batch) SaveMaintenanceMode(enabled bool) error {
 	return nil
 }
 
+// SavePeriodSchedule stores the period schedule cron expression in the batch.
+func (b *Batch) SavePeriodSchedule(cron string) error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	if err := b.batch.Set([]byte{keyPrefixPeriodSchedule}, []byte(cron), pebble.NoSync); err != nil {
+		return fmt.Errorf("saving period schedule: %w", err)
+	}
+	return nil
+}
+
+// DeletePeriodSchedule removes the period schedule from the batch.
+func (b *Batch) DeletePeriodSchedule() error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	if err := b.batch.Delete([]byte{keyPrefixPeriodSchedule}, pebble.NoSync); err != nil {
+		return fmt.Errorf("deleting period schedule: %w", err)
+	}
+	return nil
+}
+
 // DeleteAllSigningKeys removes all signing keys from the batch using a range delete.
 func (b *Batch) DeleteAllSigningKeys() error {
 	if b.committed {

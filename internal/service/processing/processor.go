@@ -65,6 +65,10 @@ type Store interface {
 	// Maintenance mode operations
 	SetMaintenanceMode(enabled bool)
 
+	// Period schedule operations
+	SetPeriodSchedule(cron string)
+	DeletePeriodSchedule()
+
 	// Events sink operations
 	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
 	AddSinkConfig(config *commonpb.SinkConfig)
@@ -252,6 +256,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commo
 		return p.processArchivePeriod(orderType.ArchivePeriod, s)
 	case *raftcmdpb.Order_ConfirmArchivePeriod:
 		return p.processConfirmArchivePeriod(orderType.ConfirmArchivePeriod, s)
+	case *raftcmdpb.Order_SetPeriodSchedule:
+		return p.processSetPeriodSchedule(orderType.SetPeriodSchedule, s)
+	case *raftcmdpb.Order_DeletePeriodSchedule:
+		return p.processDeletePeriodSchedule(s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}

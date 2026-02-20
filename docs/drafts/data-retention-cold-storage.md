@@ -506,7 +506,7 @@ The signing key should be rotatable. Receipts include a `key_id` field to suppor
 - Crash recovery on leadership gain: scan for ARCHIVING periods and retry
 - CLI command: `periods archive <period-id>`
 - Server flags: `--cold-storage-driver`, `--cold-storage-path`, `--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`
-- Scheduled auto-close (deferred — configurable cron)
+- ✅ Scheduled auto-close (configurable cron via `SetPeriodSchedule` Raft order, leader-only scheduler)
 
 ### Phase 3 — Read-Only Access (Future)
 - Transparent read-only queries on archived periods

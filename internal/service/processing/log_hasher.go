@@ -136,6 +136,12 @@ func (h *logHasher) hashLogPayload(p *commonpb.LogPayload) {
 	case *commonpb.LogPayload_SetMaintenanceMode:
 		h.writeDiscriminator(13)
 		h.hashSetMaintenanceModeLog(v.SetMaintenanceMode)
+	case *commonpb.LogPayload_SetPeriodSchedule:
+		h.writeDiscriminator(14)
+		h.hashSetPeriodScheduleLog(v.SetPeriodSchedule)
+	case *commonpb.LogPayload_DeletePeriodSchedule:
+		h.writeDiscriminator(15)
+		h.hashDeletePeriodScheduleLog(v.DeletePeriodSchedule)
 	default:
 		h.writeDiscriminator(0)
 	}
@@ -539,6 +545,27 @@ func (h *logHasher) hashSetMaintenanceModeLog(m *commonpb.SetMaintenanceModeLog)
 	}
 	h.writePresence(true)
 	h.writeBool(m.Enabled)
+}
+
+// --- Period schedule log hasher ---
+
+func (h *logHasher) hashSetPeriodScheduleLog(m *commonpb.SetPeriodScheduleLog) {
+	if m == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(m.Cron)
+}
+
+// --- Delete period schedule log hasher ---
+
+func (h *logHasher) hashDeletePeriodScheduleLog(m *commonpb.DeletePeriodScheduleLog) {
+	if m == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
 }
 
 func (h *logHasher) hashMetadataSet(ms *commonpb.MetadataSet) {

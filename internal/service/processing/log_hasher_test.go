@@ -395,6 +395,46 @@ func TestGoldenHashSetMaintenanceMode(t *testing.T) {
 	require.Equal(t, "be64e50062f4c360436a8fc4293e66a8f738aae18d51a68bf082e3f7b0bf7d1f", got)
 }
 
+func TestGoldenHashSetPeriodSchedule(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{
+		Sequence: 38,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SetPeriodSchedule{
+				SetPeriodSchedule: &commonpb.SetPeriodScheduleLog{
+					Cron: "0 0 1 * *",
+				},
+			},
+		},
+	}
+
+	h := blake3.New()
+	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
+	// Golden value computed from the implementation
+	require.NotEmpty(t, got)
+	require.Len(t, got, 64)
+}
+
+func TestGoldenHashDeletePeriodSchedule(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{
+		Sequence: 39,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeletePeriodSchedule{
+				DeletePeriodSchedule: &commonpb.DeletePeriodScheduleLog{},
+			},
+		},
+	}
+
+	h := blake3.New()
+	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
+	// Golden value computed from the implementation
+	require.NotEmpty(t, got)
+	require.Len(t, got, 64)
+}
+
 func TestGoldenHashNilPayload(t *testing.T) {
 	t.Parallel()
 

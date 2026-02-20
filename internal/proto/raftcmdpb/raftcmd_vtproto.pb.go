@@ -205,6 +205,24 @@ func (m *Order_SetMaintenanceMode) CloneVT() isOrder_Type {
 	return r
 }
 
+func (m *Order_SetPeriodSchedule) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_SetPeriodSchedule)(nil)
+	}
+	r := new(Order_SetPeriodSchedule)
+	r.SetPeriodSchedule = m.SetPeriodSchedule.CloneVT()
+	return r
+}
+
+func (m *Order_DeletePeriodSchedule) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_DeletePeriodSchedule)(nil)
+	}
+	r := new(Order_DeletePeriodSchedule)
+	r.DeletePeriodSchedule = m.DeletePeriodSchedule.CloneVT()
+	return r
+}
+
 func (m *AddEventsSinkOrder) CloneVT() *AddEventsSinkOrder {
 	if m == nil {
 		return (*AddEventsSinkOrder)(nil)
@@ -381,6 +399,39 @@ func (m *SetMaintenanceModeOrder) CloneVT() *SetMaintenanceModeOrder {
 }
 
 func (m *SetMaintenanceModeOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SetPeriodScheduleOrder) CloneVT() *SetPeriodScheduleOrder {
+	if m == nil {
+		return (*SetPeriodScheduleOrder)(nil)
+	}
+	r := new(SetPeriodScheduleOrder)
+	r.Cron = m.Cron
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetPeriodScheduleOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *DeletePeriodScheduleOrder) CloneVT() *DeletePeriodScheduleOrder {
+	if m == nil {
+		return (*DeletePeriodScheduleOrder)(nil)
+	}
+	r := new(DeletePeriodScheduleOrder)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *DeletePeriodScheduleOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1684,6 +1735,56 @@ func (this *Order_SetMaintenanceMode) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
+func (this *Order_SetPeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SetPeriodSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetPeriodSchedule, that.SetPeriodSchedule; p != q {
+		if p == nil {
+			p = &SetPeriodScheduleOrder{}
+		}
+		if q == nil {
+			q = &SetPeriodScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Order_DeletePeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_DeletePeriodSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeletePeriodSchedule, that.DeletePeriodSchedule; p != q {
+		if p == nil {
+			p = &DeletePeriodScheduleOrder{}
+		}
+		if q == nil {
+			q = &DeletePeriodScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AddEventsSinkOrder) EqualVT(that *AddEventsSinkOrder) bool {
 	if this == that {
 		return true
@@ -1872,6 +1973,41 @@ func (this *SetMaintenanceModeOrder) EqualVT(that *SetMaintenanceModeOrder) bool
 
 func (this *SetMaintenanceModeOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*SetMaintenanceModeOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SetPeriodScheduleOrder) EqualVT(that *SetPeriodScheduleOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Cron != that.Cron {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetPeriodScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetPeriodScheduleOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *DeletePeriodScheduleOrder) EqualVT(that *DeletePeriodScheduleOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *DeletePeriodScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletePeriodScheduleOrder)
 	if !ok {
 		return false
 	}
@@ -3728,6 +3864,48 @@ func (m *Order_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Order_SetPeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_SetPeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetPeriodSchedule != nil {
+		size, err := m.SetPeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x82
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Order_DeletePeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_DeletePeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeletePeriodSchedule != nil {
+		size, err := m.DeletePeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x8a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AddEventsSinkOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -4134,6 +4312,79 @@ func (m *SetMaintenanceModeOrder) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		}
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetPeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetPeriodScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetPeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Cron) > 0 {
+		i -= len(m.Cron)
+		copy(dAtA[i:], m.Cron)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cron)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeletePeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeletePeriodScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DeletePeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -6665,6 +6916,30 @@ func (m *Order_SetMaintenanceMode) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Order_SetPeriodSchedule) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetPeriodSchedule != nil {
+		l = m.SetPeriodSchedule.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Order_DeletePeriodSchedule) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeletePeriodSchedule != nil {
+		l = m.DeletePeriodSchedule.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AddEventsSinkOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -6800,6 +7075,30 @@ func (m *SetMaintenanceModeOrder) SizeVT() (n int) {
 	if m.Enabled {
 		n += 2
 	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SetPeriodScheduleOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Cron)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *DeletePeriodScheduleOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -8705,6 +9004,88 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Order_SetMaintenanceMode{SetMaintenanceMode: v}
 			}
 			iNdEx = postIndex
+		case 16:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetPeriodSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_SetPeriodSchedule); ok {
+				if err := oneof.SetPeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetPeriodScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_SetPeriodSchedule{SetPeriodSchedule: v}
+			}
+			iNdEx = postIndex
+		case 17:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeletePeriodSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_DeletePeriodSchedule); ok {
+				if err := oneof.DeletePeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeletePeriodScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_DeletePeriodSchedule{DeletePeriodSchedule: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -9512,6 +9893,140 @@ func (m *SetMaintenanceModeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Enabled = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetPeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetPeriodScheduleOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetPeriodScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cron", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Cron = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeletePeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeletePeriodScheduleOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeletePeriodScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

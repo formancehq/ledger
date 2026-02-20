@@ -374,6 +374,26 @@ func Module() fx.Option {
 				)
 			},
 			func(
+				logger logging.Logger,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.PeriodScheduler {
+				return state.NewPeriodScheduler(
+					logger,
+					raftNode.IsLeader,
+					machine.PeriodSchedule,
+					func() {
+						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+							Type: &servicepb.Request_ClosePeriod{
+								ClosePeriod: &servicepb.ClosePeriodRequest{},
+							},
+						})
+					},
+					machine.ScheduleChanged(),
+				)
+			},
+			func(
 				raftNode *node.Node,
 				servicePool *transport.ServiceConnectionPool,
 				admission ctrl.Admission,
@@ -709,6 +729,18 @@ func Module() fx.Option {
 					},
 					OnStop: func(_ context.Context) error {
 						archiver.Stop()
+						return nil
+					},
+				})
+			},
+			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						scheduler.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						scheduler.Stop()
 						return nil
 					},
 				})

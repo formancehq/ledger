@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
@@ -22,15 +23,15 @@ type managedSink struct {
 // It is created independently (no dependency on Node or Manager) to break the
 // circular dependency in the fx graph.
 type Notifications struct {
-	LogCommitted  Signal
-	ConfigChanged Signal
+	LogCommitted  signal.Signal
+	ConfigChanged signal.Signal
 }
 
 // NewNotifications creates a new Notifications with buffered(1) signals.
 func NewNotifications() *Notifications {
 	return &Notifications{
-		LogCommitted:  NewSignal(),
-		ConfigChanged: NewSignal(),
+		LogCommitted:  signal.New(),
+		ConfigChanged: signal.New(),
 	}
 }
 

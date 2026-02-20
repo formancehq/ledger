@@ -188,12 +188,68 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 - `internal/service/admission/admission.go` — Receipt verification and postings extraction
 - `internal/application/grpc_ledger_server.go` — Receipt signing and `GetTransaction` receipt computation
 
+## Automatic Period Rotation (Cron Scheduler)
+
+Period rotation can be automated via a cron schedule. The schedule is a runtime-modifiable configuration stored in Raft (not a static CLI flag), following the same pattern as `SetMaintenanceMode`.
+
+### Configuration
+
+```bash
+# Rotate every day at midnight
+ledgerctl periods set-schedule "0 0 * * *"
+
+# Rotate on the 1st of every month at midnight
+ledgerctl periods set-schedule "0 0 1 * *"
+
+# Disable automatic rotation
+ledgerctl periods delete-schedule
+
+# Show current schedule
+ledgerctl periods get-schedule
+```
+
+The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
+
+### How It Works
+
+The `PeriodScheduler` runs on every node but only triggers period rotation on the **Raft leader**. When the cron fires, the leader proposes a `ClosePeriod` order through the admission layer — the same path as `ledgerctl periods close`.
+
+1. The schedule is persisted in Pebble (key prefix `0xEF`) and replicated via Raft.
+2. When the schedule changes, a notification channel wakes the scheduler goroutine to recompute the next fire time.
+3. On leader change, the new leader's scheduler is already running and will fire at the next scheduled time.
+
+The period granularity is configurable and can be changed at any time. Changing from monthly to quarterly mid-flight simply means the next period will be longer — existing closed periods are unaffected.
+
+**File**: `internal/service/state/period_scheduler.go`
+
+### Protobuf Messages
+
+```protobuf
+// Raft-replicated log entries
+message SetPeriodScheduleLog {
+  string cron = 1;
+}
+message DeletePeriodScheduleLog {}
+
+// gRPC requests (via Apply)
+message SetPeriodScheduleRequest {
+  string cron = 1;
+}
+message DeletePeriodScheduleRequest {}
+
+// gRPC query
+rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
+```
+
 ## gRPC API
 
 | Method | Description |
 |--------|-------------|
 | `Apply(ClosePeriodRequest)` | Close the current open period (write, leader-only) |
+| `Apply(SetPeriodScheduleRequest)` | Set the automatic period rotation schedule (write, leader-only) |
+| `Apply(DeletePeriodScheduleRequest)` | Delete the automatic period rotation schedule (write, leader-only) |
 | `Apply(ArchivePeriodRequest)` | Archive a closed period to cold storage (write, leader-only) |
+| `GetPeriodSchedule(GetPeriodScheduleRequest)` | Get the current period rotation schedule (read, any node) |
 | `ListPeriods(ListPeriodsRequest)` | Stream all periods (read, any node) |
 
 ### CLI Commands
@@ -201,6 +257,15 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 ```bash
 # Close the current open period
 ledgerctl periods close
+
+# Set automatic period rotation schedule
+ledgerctl periods set-schedule "0 0 1 * *"
+
+# Disable automatic rotation
+ledgerctl periods delete-schedule
+
+# Show current schedule
+ledgerctl periods get-schedule
 
 # Archive a closed period to cold storage
 ledgerctl periods archive <period-id>
@@ -215,6 +280,7 @@ Periods are persisted in Pebble using two key prefixes:
 
 | Prefix | Key | Value |
 |--------|-----|-------|
+| `0xEF` | `[keyPrefixPeriodSchedule]` | Cron expression string (empty = disabled) |
 | `0xF7` | `[keyPrefixPeriods][periodID]` | Period protobuf blob |
 | `0xF8` | `[keyPrefixNextPeriodID]` | `uint64` — next period ID counter |
 

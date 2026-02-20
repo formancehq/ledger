@@ -42,6 +42,8 @@ message Order {
     ArchivePeriodOrder archive_period = 13;
     ConfirmArchivePeriodOrder confirm_archive_period = 14;
     SetMaintenanceModeOrder set_maintenance_mode = 15;
+    SetPeriodScheduleOrder set_period_schedule = 16;
+    DeletePeriodScheduleOrder delete_period_schedule = 17;
   }
   signature.RequestSignature signature = 5;
 }
@@ -86,6 +88,12 @@ message ConfirmArchivePeriodOrder {
 message SetMaintenanceModeOrder {
   bool enabled = 1;
 }
+
+message SetPeriodScheduleOrder {
+  string cron = 1;
+}
+
+message DeletePeriodScheduleOrder {}
 
 message CreateLedgerOrder {
   string name = 1;

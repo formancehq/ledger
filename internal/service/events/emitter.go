@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
@@ -50,7 +51,7 @@ type Emitter struct {
 	config   EmitterConfig
 	logger   logging.Logger
 
-	notify  Signal
+	notify  signal.Signal
 	stopCh  chan struct{}
 	stopped chan struct{}
 	mu       sync.Mutex
@@ -77,7 +78,7 @@ func NewEmitter(store *data.Store, sink Sink, sinkName string, proposer Proposer
 		proposer: proposer,
 		config:   config,
 		logger: logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
-		notify: NewSignal(),
+		notify: signal.New(),
 	}
 }
 

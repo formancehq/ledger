@@ -90,6 +90,7 @@ var (
 	keyPrefixSinkStatus           byte = 0xFC // [keyPrefixSinkStatus][name] -> SinkStatus protobuf
 	keyPrefixMaintenanceMode      byte = 0xFD // [keyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 	keyPrefixPersistedConfig      byte = 0xFE // [keyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
+	keyPrefixPeriodSchedule       byte = 0xEF // [keyPrefixPeriodSchedule] -> cron expression string
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
@@ -1311,6 +1312,21 @@ func (s *Store) LoadMaintenanceMode() (bool, error) {
 		return false, nil
 	}
 	return value[0] == 0x01, nil
+}
+
+// LoadPeriodSchedule loads the period schedule cron expression from Pebble.
+// Returns an empty string if no schedule is configured.
+func (s *Store) LoadPeriodSchedule() (string, error) {
+	value, closer, err := s.getDB().Get([]byte{keyPrefixPeriodSchedule})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return "", nil
+		}
+		return "", fmt.Errorf("loading period schedule: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	return string(value), nil
 }
 
 // LoadSinkConfig loads a single sink configuration by name from Pebble.

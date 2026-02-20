@@ -180,7 +180,10 @@ Periods partition a ledger's transaction history into discrete, sealed segments.
 
 **gRPC Methods:**
 - `Apply(ClosePeriodRequest)` - Close the current open period (write, leader-only)
+- `Apply(SetPeriodScheduleRequest)` - Set automatic period rotation schedule (write, leader-only)
+- `Apply(DeletePeriodScheduleRequest)` - Delete automatic period rotation schedule (write, leader-only)
 - `Apply(ArchivePeriodRequest)` - Archive a closed period to cold storage (write, leader-only)
+- `GetPeriodSchedule(GetPeriodScheduleRequest)` - Get the current period rotation schedule (read, any node)
 - `ListPeriods(ListPeriodsRequest)` - Stream all periods (read, any node)
 
 **Features:**
@@ -190,12 +193,21 @@ Periods partition a ledger's transaction history into discrete, sealed segments.
 - ✅ Transaction receipts (HMAC-SHA256 JWT with period ID)
 - ✅ List all periods with status, timestamps, and sealing hashes
 - ✅ Archive period (CLOSED → ARCHIVED with cold storage export and hot purge)
-- ❌ Scheduled period close (Phase 3)
+- ✅ Scheduled automatic period rotation (cron-based, leader-only, runtime-configurable)
 
 **CLI commands:**
 ```bash
 # Close the current open period
 ledgerctl periods close
+
+# Set automatic period rotation (every day at midnight)
+ledgerctl periods set-schedule "0 0 * * *"
+
+# Disable automatic rotation
+ledgerctl periods delete-schedule
+
+# Show current schedule
+ledgerctl periods get-schedule
 
 # Archive a closed period to cold storage
 ledgerctl periods archive 1

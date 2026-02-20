@@ -1221,6 +1221,76 @@ ledgerctl periods close
 #  INFO  Background sealing process will compute the sealing hash
 ```
 
+#### periods set-schedule
+
+Set a cron schedule for automatic period rotation. The schedule is stored in Raft and takes effect immediately on the leader.
+
+```bash
+ledgerctl periods set-schedule <cron-expression>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
+
+**Examples:**
+
+```bash
+# Rotate every day at midnight
+ledgerctl periods set-schedule "0 0 * * *"
+
+# Rotate on the 1st of every month at midnight
+ledgerctl periods set-schedule "0 0 1 * *"
+
+# Rotate every 30 seconds (6-field format)
+ledgerctl periods set-schedule "*/30 * * * * *"
+```
+
+#### periods delete-schedule
+
+Remove the cron schedule for automatic period rotation, disabling automatic rotation.
+
+```bash
+ledgerctl periods delete-schedule
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+**Example:**
+
+```bash
+ledgerctl periods delete-schedule
+#  SUCCESS  Period schedule deleted
+```
+
+#### periods get-schedule
+
+Display the current cron schedule for automatic period rotation.
+
+```bash
+ledgerctl periods get-schedule
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+**Example:**
+
+```bash
+ledgerctl periods get-schedule
+
+# Output (schedule set):
+#  SUCCESS  Period schedule: 0 0 1 * *
+
+# Output (no schedule):
+#  SUCCESS  No period schedule configured (automatic rotation disabled)
+```
+
 #### periods archive
 
 Archive a closed period to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
