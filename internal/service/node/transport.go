@@ -56,6 +56,7 @@ type DefaultTransport struct {
 	nodeID        uint64
 	clusterID     string
 
+	bufferSize       int
 	pendingSendQueue chan []raftpb.Message
 	stopCh           chan chan struct{}
 
@@ -100,6 +101,7 @@ func NewTransport(
 	nodeID uint64,
 	config TransportConfig,
 	clusterID string,
+	bufferSize int,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -119,6 +121,7 @@ func NewTransport(
 		config:               config,
 		nodeID:               nodeID,
 		clusterID:            clusterID,
+		bufferSize:           bufferSize,
 		stopCh:               make(chan chan struct{}),
 		pendingSendQueue:     make(chan []raftpb.Message, pendingSendCapacity),
 	}
@@ -279,6 +282,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		peerID:                 id,
 		nodeID:                 t.nodeID,
 		clusterID:              t.clusterID,
+		bufferSize:             t.bufferSize,
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
 		reconnected:            make(chan struct{}),
@@ -577,6 +581,7 @@ type peerConnection struct {
 	peerID                 uint64
 	nodeID                 uint64
 	clusterID              string
+	bufferSize             int
 	pendingResponseCounter metric.Float64UpDownCounter
 	pingLatency            metric.Int64Histogram
 	reconnected            chan struct{}
@@ -630,7 +635,7 @@ func (conn *peerConnection) closeQueues() {
 func (conn *peerConnection) loop() {
 	defer otlplogs.RecoverAndLogPanics(conn.logger)
 
-	conn.buf = make([]byte, 0, 1024*1024*10) // todo: make configurable
+	conn.buf = make([]byte, 0, conn.bufferSize)
 
 	for {
 		select {

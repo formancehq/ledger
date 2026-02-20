@@ -889,7 +889,11 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
-	processingTick := time.NewTicker(tickInterval / 10) // todo: make configurable
+	processingTickInterval := node.config.ProcessingTickInterval
+	if processingTickInterval == 0 {
+		processingTickInterval = tickInterval / 10
+	}
+	processingTick := time.NewTicker(processingTickInterval)
 	defer processingTick.Stop()
 
 	// Helper to process a batch of messages.
@@ -1071,12 +1075,13 @@ func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
 	}
 
 	count := 0
-	batch := make([]raftpb.Entry, 0, 1000)
+	batchSize := node.config.ReplayBatchSize
+	batch := make([]raftpb.Entry, 0, batchSize)
 	logFields := map[string]any{}
 	var lastEntry *raftpb.Entry
 	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
 		batch = append(batch, entry)
-		if len(batch) >= 1000 { // todo: configure
+		if len(batch) >= batchSize {
 			result, err := node.applyEntriesAndResolveCommands(ctx, batch...)
 			if err != nil {
 				return err

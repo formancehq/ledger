@@ -73,6 +73,7 @@ func Module() fx.Option {
 					cfg.RaftConfig.NodeID,
 					cfg.TransportConfig,
 					cfg.ClusterID,
+					cfg.RaftConfig.TransportBufferSize,
 				)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*data.Store, error) {
@@ -190,6 +191,9 @@ func Module() fx.Option {
 			},
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
+			},
+			func(cfg Config) transport.PoolConfig {
+				return cfg.PoolConfig
 			},
 			func(cfg Config) (credentials.TransportCredentials, error) {
 				return ClientTransportCredentials(cfg.TLSConfig)

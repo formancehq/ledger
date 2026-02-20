@@ -7,7 +7,63 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding/gzip"
 )
+
+// PoolConfig holds gRPC dial options shared by all connection pools.
+type PoolConfig struct {
+	BackoffBaseDelay  time.Duration // Default: 100ms
+	BackoffMaxDelay   time.Duration // Default: 1s — must stay below the election timeout
+	BackoffMultiplier float64       // Default: 1.6
+	BackoffJitter     float64       // Default: 0.2
+	Compression       bool          // Enable gzip compression on calls
+}
+
+func (c *PoolConfig) SetDefaults() {
+	if c.BackoffBaseDelay == 0 {
+		c.BackoffBaseDelay = 100 * time.Millisecond
+	}
+	if c.BackoffMaxDelay == 0 {
+		c.BackoffMaxDelay = time.Second
+	}
+	if c.BackoffMultiplier == 0 {
+		c.BackoffMultiplier = 1.6
+	}
+	if c.BackoffJitter == 0 {
+		c.BackoffJitter = 0.2
+	}
+}
+
+// dialOptions returns the common gRPC dial options derived from PoolConfig.
+func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.DialOption {
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+		// NOTE: BackoffMaxDelay must stay below the election timeout.
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay:  cfg.BackoffBaseDelay,
+				Multiplier: cfg.BackoffMultiplier,
+				Jitter:     cfg.BackoffJitter,
+				MaxDelay:   cfg.BackoffMaxDelay,
+			},
+			MinConnectTimeout: 0,
+		}),
+		grpc.WithInitialWindowSize(16 * 1024 * 1024),     // 16MB stream window
+		grpc.WithInitialConnWindowSize(64 * 1024 * 1024),  // 64MB conn window
+		grpc.WithReadBufferSize(1 * 1024 * 1024),
+		grpc.WithWriteBufferSize(1 * 1024 * 1024),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64 * 1024 * 1024),
+			grpc.MaxCallSendMsgSize(64 * 1024 * 1024),
+		),
+	}
+	if cfg.Compression {
+		opts = append(opts, grpc.WithDefaultCallOptions(
+			grpc.UseCompressor(gzip.Name),
+		))
+	}
+	return opts
+}
 
 // ConnectionPool manages raw gRPC connections for peers
 // This pool can be reused for different services that need gRPC connections
@@ -16,14 +72,17 @@ type ConnectionPool struct {
 	peers       map[uint64]string // peer ID -> address
 	connections map[uint64]*grpc.ClientConn
 	creds       credentials.TransportCredentials
+	config      PoolConfig
 }
 
 // NewConnectionPool creates a new gRPC connection pool
-func NewConnectionPool(creds credentials.TransportCredentials) *ConnectionPool {
+func NewConnectionPool(creds credentials.TransportCredentials, cfg PoolConfig) *ConnectionPool {
+	cfg.SetDefaults()
 	return &ConnectionPool{
 		peers:       make(map[uint64]string),
 		connections: make(map[uint64]*grpc.ClientConn),
 		creds:       creds,
+		config:      cfg,
 	}
 }
 
@@ -40,32 +99,7 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 }
 
 func (p *ConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
-	return grpc.NewClient("dns:///"+addr,
-		grpc.WithTransportCredentials(p.creds),
-		// TODO: Make that configuration
-		// TOneverDO: Configure a MaxDelay greater than the election timeout
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff: backoff.Config{
-				BaseDelay:  100 * time.Millisecond,
-				Multiplier: 1.6,
-				Jitter:     0.2,
-				MaxDelay:   time.Second,
-			},
-			MinConnectTimeout: 0,
-		}),
-		grpc.WithInitialWindowSize(16*1024*1024),     // 16MB stream window
-		grpc.WithInitialConnWindowSize(64*1024*1024), // 64MB conn window
-		grpc.WithReadBufferSize(1*1024*1024),
-		grpc.WithWriteBufferSize(1*1024*1024),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
-		// todo: make configurable
-		//grpc.WithDefaultCallOptions(
-		//	grpc.UseCompressor(gzip.Name),
-		//),
-	)
+	return grpc.NewClient("dns:///"+addr, dialOptions(p.creds, p.config)...)
 }
 
 func (p *ConnectionPool) RestartConnection(id uint64) error {

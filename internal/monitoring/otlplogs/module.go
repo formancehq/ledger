@@ -71,7 +71,6 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 		exporter = NewNoOpExporter()
 	}
 
-	// todo: make go libs export resource attributes without the fx wrapper
 	defaultResource := resource.Default()
 	attributes := make([]attribute.KeyValue, 0)
 	attributes = append(attributes, attribute.String("service.name", "ledger-exp"))

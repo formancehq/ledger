@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 )
 
@@ -38,6 +39,7 @@ type Config struct {
 	AdmissionMetrics  bool
 	ReceiptSigningKey string
 	ColdStorageConfig coldstorage.Config
+	PoolConfig         transport.PoolConfig
 	TLSConfig          TLSConfig
 	Restore                       bool
 	NumscriptCacheSize            int

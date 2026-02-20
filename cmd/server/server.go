@@ -89,6 +89,10 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
+	runCmd.Flags().Int("raft-transport-buffer-size", 0, "Per-peer send buffer capacity in bytes (0 = use default 10MB)")
+	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Interval for processing committed entries (0 = tick-interval/10)")
+	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
+	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
 
 	// Pebble storage configuration flags
 	runCmd.Flags().Uint64("pebble-memtable-size", 0, "Pebble memtable size in bytes (default: 256MB)")
@@ -318,6 +322,10 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.TickInterval = getDuration("raft-tick-interval", 0)
 	cfg.RaftConfig.CompactionMargin = getUint64("raft-compaction-margin", 1000)
 	cfg.RaftConfig.ProposeQueueCapacity = getInt("raft-propose-queue-capacity", 0)
+	cfg.RaftConfig.TransportBufferSize = getInt("raft-transport-buffer-size", 0)
+	cfg.RaftConfig.ProcessingTickInterval = getDuration("raft-processing-tick-interval", 0)
+	cfg.RaftConfig.ReplayBatchSize = getInt("raft-replay-batch-size", 0)
+	cfg.PoolConfig.Compression = getBool("grpc-compression", false)
 
 	// Load Pebble configuration with defaults
 	cfg.PebbleConfig = loadPebbleConfig(cmd)

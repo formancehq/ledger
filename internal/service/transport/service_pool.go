@@ -2,10 +2,8 @@ package transport
 
 import (
 	"sync"
-	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -17,14 +15,17 @@ type ServiceConnectionPool struct {
 	peers       map[uint64]string // peer ID -> service address
 	connections map[uint64]*grpc.ClientConn
 	creds       credentials.TransportCredentials
+	config      PoolConfig
 }
 
 // NewServiceConnectionPool creates a new service connection pool
-func NewServiceConnectionPool(creds credentials.TransportCredentials) *ServiceConnectionPool {
+func NewServiceConnectionPool(creds credentials.TransportCredentials, cfg PoolConfig) *ServiceConnectionPool {
+	cfg.SetDefaults()
 	return &ServiceConnectionPool{
 		peers:       make(map[uint64]string),
 		connections: make(map[uint64]*grpc.ClientConn),
 		creds:       creds,
+		config:      cfg,
 	}
 }
 
@@ -50,26 +51,7 @@ func (p *ServiceConnectionPool) AddPeer(id uint64, serviceAddr string) error {
 }
 
 func (p *ServiceConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
-	return grpc.NewClient("dns:///"+addr,
-		grpc.WithTransportCredentials(p.creds),
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff: backoff.Config{
-				BaseDelay:  100 * time.Millisecond,
-				Multiplier: 1.6,
-				Jitter:     0.2,
-				MaxDelay:   time.Second,
-			},
-			MinConnectTimeout: 0,
-		}),
-		grpc.WithInitialWindowSize(16*1024*1024),
-		grpc.WithInitialConnWindowSize(64*1024*1024),
-		grpc.WithReadBufferSize(1*1024*1024),
-		grpc.WithWriteBufferSize(1*1024*1024),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
-	)
+	return grpc.NewClient("dns:///"+addr, dialOptions(p.creds, p.config)...)
 }
 
 // GetConnection returns the gRPC connection for a specific peer's service port

@@ -22,8 +22,11 @@ type NodeConfig struct {
 	ProposeQueueCapacity int    // Capacity of the propose queue (default: 100)
 	AdvertiseAddr        string
 	BindAddr             string
-	Bootstrap              bool   // When true, initialize a new single-node cluster (this node is the sole voter)
-	AutoPromoteThreshold   uint64 // Number of log entries a learner may lag behind the commit index before auto-promotion (0 = disable)
+	TransportBufferSize    int           // Per-peer send buffer capacity in bytes (default: 10MB)
+	ProcessingTickInterval time.Duration // Interval for processing committed entries (default: TickInterval/10)
+	ReplayBatchSize        int           // Number of entries per batch during spool replay (default: 1000)
+	Bootstrap              bool          // When true, initialize a new single-node cluster (this node is the sole voter)
+	AutoPromoteThreshold   uint64        // Number of log entries a learner may lag behind the commit index before auto-promotion (0 = disable)
 }
 
 func (cfg *NodeConfig) Validate() error {
@@ -60,6 +63,12 @@ func (cfg *NodeConfig) SetDefaults() {
 	}
 	if cfg.ProposeQueueCapacity == 0 {
 		cfg.ProposeQueueCapacity = 100
+	}
+	if cfg.TransportBufferSize == 0 {
+		cfg.TransportBufferSize = 10 * 1024 * 1024 // 10MB
+	}
+	if cfg.ReplayBatchSize == 0 {
+		cfg.ReplayBatchSize = 1000
 	}
 }
 
