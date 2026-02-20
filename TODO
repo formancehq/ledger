@@ -26,11 +26,7 @@ Signing :
 Cold storage:
 * Add S3/Parquet support
 
-Backups:
-* Add encrypted backup
-
 Refactor:
 * Merge connection pools
 * Simplify processor
-* Clean TODO in the code
 * Clean Machine (returns from ApplyEntries)
