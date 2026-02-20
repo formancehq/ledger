@@ -19,7 +19,6 @@ Tests:
 * Convert K6 tests to GRPC
 
 Management node:
-* Removal
 * Bootstrap from backup (tar file as input)
 
 Periods:
