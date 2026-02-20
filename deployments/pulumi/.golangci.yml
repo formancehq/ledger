@@ -5,4 +5,4 @@ linters:
       dot-import-whitelist:
         - github.com/formancehq/ledger/deployments/pulumi/pkg/common
         - github.com/formancehq/ledger/deployments/pulumi/pkg/utils
-        - github.com/formancehq/go-libs/v3/collectionutils
+        - github.com/formancehq/go-libs/v4/collectionutils

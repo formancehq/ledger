@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/machine"

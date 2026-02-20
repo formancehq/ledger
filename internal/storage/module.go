@@ -7,8 +7,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v3/health"
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/health"
+	"github.com/formancehq/go-libs/v4/logging"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v4/query"
 )
 
 func TestFilterTemplateValidation(t *testing.T) {

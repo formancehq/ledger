@@ -8,9 +8,9 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v4/time"
 )
 
 type Transactions struct {

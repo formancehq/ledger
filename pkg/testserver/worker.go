@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/go-libs/v4/testing/testservice"
 
 	"github.com/formancehq/ledger/cmd"
 )

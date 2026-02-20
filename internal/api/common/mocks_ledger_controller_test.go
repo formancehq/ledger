@@ -12,8 +12,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/v3/migrations"
+	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	migrations "github.com/formancehq/go-libs/v4/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	queries "github.com/formancehq/ledger/internal/queries"

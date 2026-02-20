@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/logging"
 
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )

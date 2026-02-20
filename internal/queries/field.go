@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/time"
 )
 
 func FieldTypeFromString(s string) (FieldType, error) {

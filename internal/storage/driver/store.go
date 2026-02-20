@@ -3,8 +3,8 @@ package driver
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v4/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

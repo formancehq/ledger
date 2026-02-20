@@ -9,9 +9,9 @@ import (
 
 	"github.com/iancoleman/strcase"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v4/time"
 
 	"github.com/formancehq/ledger/internal/queries"
 )

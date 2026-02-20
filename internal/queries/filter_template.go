@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"regexp"
 
-	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v4/query"
 )
 
 func unmarshalWithNumber(data []byte, v any) error {

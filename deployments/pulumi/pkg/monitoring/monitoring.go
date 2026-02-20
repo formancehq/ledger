@@ -8,7 +8,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v4/collectionutils"
 
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )

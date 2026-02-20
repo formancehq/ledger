@@ -11,7 +11,7 @@ import (
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v4/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/features"
