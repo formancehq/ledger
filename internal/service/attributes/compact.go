@@ -105,11 +105,18 @@ func CompactAllForBackup(s *data.Store) error {
 		return fmt.Errorf("resetting applied index: %w", err)
 	}
 
+	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster
+	if err := batch.DeletePersistedConfig(); err != nil {
+		_ = batch.Cancel()
+		return fmt.Errorf("deleting persisted config: %w", err)
+	}
+
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing compacted attributes: %w", err)
 	}
 
 	// Force a Pebble flush to ensure all compacted data is written to SSTs
+	// todo: directly commit with NoSync
 	if err := s.Flush(); err != nil {
 		return fmt.Errorf("flushing compacted data: %w", err)
 	}

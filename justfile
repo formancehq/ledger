@@ -15,7 +15,7 @@ build:
 
 # Build the client application
 build-client:
-    go build -o ./build/ledgerctl ./cmd/ledgerctl
+    go build -o ./build/ledgerctl ./cmd/ledgerctl/main
 
 # Run the application locally (single node)
 run:
@@ -23,10 +23,10 @@ run:
 
 # Run the client application
 run-client *ARGS:
-    go run ./cmd/ledgerctl {{ARGS}}
+    go run ./cmd/ledgerctl/main {{ARGS}}
 
 install-client:
-    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
+    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl/main
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
@@ -111,7 +111,7 @@ _generate-demo tapes:
     echo "Generating CLI demo GIFs..."
     echo "Using temporary directory: $DEMO_DIR"
     echo "Building client..."
-    go build -o ./build/ledgerctl ./cmd/ledgerctl
+    go build -o ./build/ledgerctl ./cmd/ledgerctl/main
     echo "Building server..."
     go build -o "$DEMO_DIR/ledger-server" .
     cleanup() {

@@ -728,6 +728,47 @@ ledgerctl s bk -o backup.tar
 
 ---
 
+### store bootstrap
+
+Build a data directory from a backup tar file without starting a server. This is a purely offline operation useful for scripted disaster recovery or bootstrapping from backups.
+
+```bash
+ledgerctl store bootstrap --input backup.tar --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-i, --input` | | Path to the backup tar file (required) |
+| `--data-dir` | | Target data directory (required, must be fresh) |
+| `--validate` | `false` | Run integrity checks after extraction |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+
+**Behavior:**
+
+1. Verifies the target data directory is fresh (no `CURRENT_CHECKPOINT` file)
+2. Extracts the tar archive into a staging directory
+3. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
+4. If `--validate` is set, runs the full integrity checker (same as `store check`)
+5. Prompts for confirmation (unless `--yes`)
+6. Hard-links staging to `checkpoints/0`, writes `CURRENT_CHECKPOINT` and `RESTORED` marker
+7. Cleans up the staging directory
+
+After bootstrap, start the server with `--bootstrap` to use the restored data.
+
+**Example:**
+
+```bash
+# Interactive with validation
+ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate
+
+# Non-interactive (scripted)
+ledgerctl store bootstrap -i backup.tar --data-dir ./fresh-data --yes
+```
+
+---
+
 ### audit
 
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.

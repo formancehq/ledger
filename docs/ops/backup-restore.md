@@ -17,16 +17,19 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 │    ─► Client: verify SHA256, write to disk                            │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ 2. RESTORE (fresh server with --restore)                               │
-│                                                                        │
-│    a. ledgerctl restore upload -i backup.tar    ── upload + SHA256     │
-│    b. ledgerctl restore validate                ── integrity check     │
-│    c. ledgerctl restore preview                 ── inspect contents    │
-│    d. ledgerctl restore finalize                ── commit to disk      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                │
+                 ┌──────────────┴──────────────┐
+                 ▼                             ▼
+┌──────────────────────────────┐ ┌──────────────────────────────────────┐
+│ 2a. RESTORE (gRPC, 4-step)  │ │ 2b. OFFLINE BOOTSTRAP (single CLI)   │
+│                              │ │                                      │
+│  Start server with --restore │ │  ledgerctl store bootstrap           │
+│  a. restore upload           │ │    -i backup.tar --data-dir ./data   │
+│  b. restore validate         │ │                                      │
+│  c. restore preview          │ │  No server needed.                   │
+│  d. restore finalize         │ │  Extract → preview → finalize.       │
+└──────────────────────────────┘ └──────────────────────────────────────┘
+                 │                             │
+                 └──────────────┬──────────────┘
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ 3. BOOTSTRAP (restart without --restore)                               │
@@ -274,9 +277,60 @@ Client                  Restore Server                     Disk
 
 ---
 
+## Offline Bootstrap
+
+An alternative to the 4-step gRPC restore flow. The `store bootstrap` command builds a ready-to-use data directory from a backup tar file entirely offline — no server required.
+
+### CLI Command
+
+```bash
+ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data [--validate] [--yes]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-i, --input` | | Path to the backup tar file (required) |
+| `--data-dir` | | Target data directory (required, must be fresh) |
+| `--validate` | `false` | Run integrity checks after extraction |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+
+### How It Works
+
+1. **Fresh directory guard**: Verifies the target data directory does not contain a `CURRENT_CHECKPOINT` file.
+2. **Extract**: Creates `{data-dir}/restore-staging/` and extracts the tar archive using `tarutil.ExtractTar()`.
+3. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
+4. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) — the same checker used by `store check` and `restore validate`.
+5. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
+6. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes `CURRENT_CHECKPOINT` with `"0"`, writes the `RESTORED` marker JSON.
+7. **Cleanup**: Removes the staging directory.
+
+### When to Use
+
+- **Scripted disaster recovery**: No need to start a server in `--restore` mode.
+- **CI/CD pipelines**: Single command, non-interactive with `--yes`.
+- **Air-gapped environments**: No network required.
+
+For the gRPC-based flow with streaming upload and remote validation, see the [Restore](#restore) section above.
+
+### Example
+
+```bash
+# ── On a fresh machine ──
+
+# 1. Bootstrap from backup (with validation)
+ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate --yes
+
+# 2. Start the server normally
+ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
+```
+
+**File**: `cmd/ledgerctl/store_bootstrap.go`
+
+---
+
 ## Post-Restore Bootstrap
 
-After finalize, restart the server in normal mode:
+After finalize (either via `restore finalize` or `store bootstrap`), restart the server in normal mode:
 
 ```bash
 ledger-v3-poc run --node-id 1 --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
@@ -389,13 +443,15 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | `internal/application/tar_streaming.go` | Tar streaming with SHA256 |
 | `internal/service/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction |
 | `internal/service/node/node.go` | `ProposeBackupCheckpoint()` — Raft checkpoint |
-| **Restore** | |
+| **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |
 | `internal/application/grpc_restore_server.go` | RestoreService gRPC implementation |
 | `internal/application/module_restore.go` | Minimal fx module for restore mode |
 | `internal/storage/tarutil/extract.go` | Shared tar extraction utility |
 | `internal/storage/data/store_readonly.go` | Read-only Pebble store opener |
+| **Offline Bootstrap** | |
+| `cmd/ledgerctl/store_bootstrap.go` | `store bootstrap` CLI command (offline) |
 | **Post-Restore Bootstrap** | |
 | `internal/service/node/restored_marker.go` | RESTORED marker read/write/remove |
 | `internal/service/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |

@@ -50,6 +50,19 @@ func (s *Store) LoadPersistedConfig() (*PersistedConfig, error) {
 	return &cfg, nil
 }
 
+// DeletePersistedConfig removes the persisted configuration from the batch.
+// This is used during backup compaction so the backup is portable to any cluster.
+func (b *Batch) DeletePersistedConfig() error {
+	if b.committed {
+		return fmt.Errorf("batch already committed")
+	}
+
+	if err := b.batch.Delete([]byte{keyPrefixPersistedConfig}, pebble.NoSync); err != nil {
+		return fmt.Errorf("deleting persisted config: %w", err)
+	}
+	return nil
+}
+
 // SavePersistedConfig writes the persisted configuration to the batch.
 func (b *Batch) SavePersistedConfig(cfg *PersistedConfig) error {
 	if b.committed {
