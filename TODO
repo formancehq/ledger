@@ -1,8 +1,7 @@
 API:
-* Test https://connectrpc.com/ (grpcwebproxy)
 * Checkpoint + exposed api to read at PIT
 * Eventual consistency (read your writes)
-* Clean HTTP layer
+* Clean HTTP layer / GRPC proxy
 * ACL system / authentication
 
 Business:
@@ -17,7 +16,6 @@ Business:
 ** Add typed metadata
 
 Tests:
-* Add hash consistency tests
 * Convert K6 tests to GRPC
 
 Management node:
@@ -39,3 +37,9 @@ Cold storage:
 
 Backups:
 * Add encrypted backup
+
+Refactor:
+* Merge connection pools
+* Simplify processor
+* Clean TODO in the code
+

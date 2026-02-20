@@ -56,3 +56,5 @@ misc/k6/archives/
 # Test artifacts (Pebble data, WAL)
 tests/e2e/data/
 tests/e2e/wal/
+
+worktrees

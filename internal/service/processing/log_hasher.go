@@ -10,6 +10,11 @@ import (
 	"github.com/zeebo/blake3"
 )
 
+// HashVersion is written as the first byte of every hash computation.
+// Bumping this value invalidates all existing hashes, making format
+// changes immediately detectable.
+const HashVersion byte = 1
+
 // logHasher writes proto message fields directly into an io.Writer for hashing.
 // This avoids proto.Marshal allocations in the hot path by feeding fields
 // one-by-one into the blake3 hasher.
@@ -39,6 +44,24 @@ func (h *logHasher) writeString(s string) {
 }
 
 
+
+func (h *logHasher) writeBytes(b []byte) {
+	binary.LittleEndian.PutUint32(h.buf[:4], uint32(len(b)))
+	_, _ = h.w.Write(h.buf[:4])
+	if len(b) > 0 {
+		_, _ = h.w.Write(b)
+	}
+}
+
+func (h *logHasher) writeInt32(v int32) {
+	binary.LittleEndian.PutUint32(h.buf[:4], uint32(v))
+	_, _ = h.w.Write(h.buf[:4])
+}
+
+func (h *logHasher) writeInt64(v int64) {
+	binary.LittleEndian.PutUint64(h.buf[:8], uint64(v))
+	_, _ = h.w.Write(h.buf[:8])
+}
 
 func (h *logHasher) writeBool(v bool) {
 	if v {
@@ -83,6 +106,36 @@ func (h *logHasher) hashLogPayload(p *commonpb.LogPayload) {
 	case *commonpb.LogPayload_Apply:
 		h.writeDiscriminator(3)
 		h.hashApplyLedgerLog(v.Apply)
+	case *commonpb.LogPayload_RegisterSigningKey:
+		h.writeDiscriminator(4)
+		h.hashRegisterSigningKeyLog(v.RegisterSigningKey)
+	case *commonpb.LogPayload_RevokeSigningKey:
+		h.writeDiscriminator(5)
+		h.hashRevokeSigningKeyLog(v.RevokeSigningKey)
+	case *commonpb.LogPayload_SetSigningConfig:
+		h.writeDiscriminator(6)
+		h.hashSetSigningConfigLog(v.SetSigningConfig)
+	case *commonpb.LogPayload_AddedEventsSink:
+		h.writeDiscriminator(7)
+		h.hashAddedEventsSinkLog(v.AddedEventsSink)
+	case *commonpb.LogPayload_RemovedEventsSink:
+		h.writeDiscriminator(8)
+		h.hashRemovedEventsSinkLog(v.RemovedEventsSink)
+	case *commonpb.LogPayload_ClosePeriod:
+		h.writeDiscriminator(9)
+		h.hashClosePeriodLog(v.ClosePeriod)
+	case *commonpb.LogPayload_SealPeriod:
+		h.writeDiscriminator(10)
+		h.hashSealPeriodLog(v.SealPeriod)
+	case *commonpb.LogPayload_ArchivePeriod:
+		h.writeDiscriminator(11)
+		h.hashArchivePeriodLog(v.ArchivePeriod)
+	case *commonpb.LogPayload_ConfirmArchivePeriod:
+		h.writeDiscriminator(12)
+		h.hashConfirmArchivePeriodLog(v.ConfirmArchivePeriod)
+	case *commonpb.LogPayload_SetMaintenanceMode:
+		h.writeDiscriminator(13)
+		h.hashSetMaintenanceModeLog(v.SetMaintenanceMode)
 	default:
 		h.writeDiscriminator(0)
 	}
@@ -297,6 +350,197 @@ func (h *logHasher) hashIdempotency(i *commonpb.Idempotency) {
 	h.writeString(i.Key)
 }
 
+// --- Signing key log hashers ---
+
+func (h *logHasher) hashRegisterSigningKeyLog(r *commonpb.RegisterSigningKeyLog) {
+	if r == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(r.KeyId)
+	h.writeBytes(r.PublicKey)
+}
+
+func (h *logHasher) hashRevokeSigningKeyLog(r *commonpb.RevokeSigningKeyLog) {
+	if r == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(r.KeyId)
+}
+
+func (h *logHasher) hashSetSigningConfigLog(s *commonpb.SetSigningConfigLog) {
+	if s == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeBool(s.RequireSignatures)
+}
+
+// --- Events sink log hashers ---
+
+func (h *logHasher) hashAddedEventsSinkLog(a *commonpb.AddedEventsSinkLog) {
+	if a == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashSinkConfig(a.Config)
+}
+
+func (h *logHasher) hashRemovedEventsSinkLog(r *commonpb.RemovedEventsSinkLog) {
+	if r == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(r.Name)
+}
+
+func (h *logHasher) hashSinkConfig(c *commonpb.SinkConfig) {
+	if c == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(c.Name)
+	switch v := c.Type.(type) {
+	case *commonpb.SinkConfig_Nats:
+		h.writeDiscriminator(1)
+		h.hashNatsSinkConfig(v.Nats)
+	case *commonpb.SinkConfig_Clickhouse:
+		h.writeDiscriminator(2)
+		h.hashClickHouseSinkConfig(v.Clickhouse)
+	case *commonpb.SinkConfig_Kafka:
+		h.writeDiscriminator(3)
+		h.hashKafkaSinkConfig(v.Kafka)
+	case *commonpb.SinkConfig_Http:
+		h.writeDiscriminator(4)
+		h.hashHttpSinkConfig(v.Http)
+	default:
+		h.writeDiscriminator(0)
+	}
+	h.writeString(c.Format)
+	h.writeInt32(c.BatchSize)
+	h.writeInt64(c.BatchDelayMs)
+}
+
+func (h *logHasher) hashNatsSinkConfig(n *commonpb.NatsSinkConfig) {
+	if n == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(n.Url)
+	h.writeString(n.Topic)
+}
+
+func (h *logHasher) hashClickHouseSinkConfig(c *commonpb.ClickHouseSinkConfig) {
+	if c == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(c.Dsn)
+	h.writeString(c.Table)
+}
+
+func (h *logHasher) hashKafkaSinkConfig(k *commonpb.KafkaSinkConfig) {
+	if k == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint32(uint32(len(k.Brokers)))
+	for _, b := range k.Brokers {
+		h.writeString(b)
+	}
+	h.writeString(k.Topic)
+	h.writeBool(k.Tls)
+	h.writeString(k.SaslMechanism)
+	h.writeString(k.SaslUsername)
+	h.writeString(k.SaslPassword)
+}
+
+func (h *logHasher) hashHttpSinkConfig(c *commonpb.HttpSinkConfig) {
+	if c == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(c.Endpoint)
+	h.writeString(c.Secret)
+}
+
+// --- Period log hashers ---
+
+func (h *logHasher) hashClosePeriodLog(c *commonpb.ClosePeriodLog) {
+	if c == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashPeriod(c.ClosedPeriod)
+	h.hashPeriod(c.NewPeriod)
+}
+
+func (h *logHasher) hashSealPeriodLog(s *commonpb.SealPeriodLog) {
+	if s == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashPeriod(s.Period)
+}
+
+func (h *logHasher) hashArchivePeriodLog(a *commonpb.ArchivePeriodLog) {
+	if a == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashPeriod(a.Period)
+}
+
+func (h *logHasher) hashConfirmArchivePeriodLog(c *commonpb.ConfirmArchivePeriodLog) {
+	if c == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashPeriod(c.Period)
+}
+
+func (h *logHasher) hashPeriod(p *commonpb.Period) {
+	if p == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint64(p.Id)
+	h.hashTimestamp(p.Start)
+	h.hashTimestamp(p.End)
+	h.writeInt32(int32(p.Status))
+	h.writeUint64(p.CloseSequence)
+	h.writeBytes(p.SealingHash)
+	h.writeBytes(p.LastLogHash)
+	h.writeUint64(p.StartSequence)
+}
+
+// --- Maintenance mode log hasher ---
+
+func (h *logHasher) hashSetMaintenanceModeLog(m *commonpb.SetMaintenanceModeLog) {
+	if m == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeBool(m.Enabled)
+}
+
 func (h *logHasher) hashMetadataSet(ms *commonpb.MetadataSet) {
 	if ms == nil {
 		h.writePresence(false)
@@ -337,11 +581,15 @@ func (h *logHasher) hashTimestamp(ts *commonpb.Timestamp) {
 	h.writeUint64(ts.Data)
 }
 
-// ComputeLogHash computes a blake3 hash for log chaining: blake3(lastHash || hashFields(log)).
+// ComputeLogHash computes a blake3 hash for log chaining:
+//
+//	blake3(HashVersion || lastHash || hashFields(log))
+//
 // The log's Hash field is excluded by design (hashLog only hashes sequence, payload, idempotency).
 // The hasher is reset and reused to avoid allocation overhead.
 func ComputeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
 	hasher.Reset()
+	_, _ = hasher.Write([]byte{HashVersion})
 	if len(lastHash) > 0 {
 		_, _ = hasher.Write(lastHash)
 	}
