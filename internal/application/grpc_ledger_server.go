@@ -339,7 +339,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = *req.AfterSequence
 	}
 
-	cursor, err := impl.ctrl.ListLogs(stream.Context(), afterSequence, req.Ledger, req.PageSize)
+	cursor, err := impl.ctrl.ListLogs(stream.Context(), afterSequence, req.PageSize)
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}

@@ -80,9 +80,8 @@ func (g *LedgerGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	}), nil
 }
 
-func (g *LedgerGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, ledger string, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+func (g *LedgerGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
 	req := &servicepb.ListLogsRequest{
-		Ledger:   ledger,
 		PageSize: pageSize,
 	}
 	if afterSequence > 0 {

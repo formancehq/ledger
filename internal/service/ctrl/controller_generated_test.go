@@ -137,18 +137,18 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, ledger string, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogs", ctx, afterSequence, ledger, pageSize)
+	ret := m.ctrl.Call(m, "ListLogs", ctx, afterSequence, pageSize)
 	ret0, _ := ret[0].(data.Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogs indicates an expected call of ListLogs.
-func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, ledger, pageSize any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, pageSize any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, afterSequence, ledger, pageSize)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, afterSequence, pageSize)
 }
 
 // ListPeriods mocks base method.

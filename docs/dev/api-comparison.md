@@ -39,7 +39,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | **Logs** |
-| List logs | ✅ | ✅ | gRPC stream with optional ledger filter |
+| List logs | ✅ | ✅ | gRPC stream |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |

@@ -1098,7 +1098,6 @@ func (m *ListLogsRequest) CloneVT() *ListLogsRequest {
 		return (*ListLogsRequest)(nil)
 	}
 	r := new(ListLogsRequest)
-	r.Ledger = m.Ledger
 	r.PageSize = m.PageSize
 	if rhs := m.AfterSequence; rhs != nil {
 		tmpVal := *rhs
@@ -2851,9 +2850,6 @@ func (this *ListLogsRequest) EqualVT(that *ListLogsRequest) bool {
 		return false
 	}
 	if p, q := this.AfterSequence, that.AfterSequence; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.PageSize != that.PageSize {
@@ -5697,14 +5693,7 @@ func (m *ListLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.PageSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
 		i--
-		dAtA[i] = 0x18
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x10
 	}
 	if m.AfterSequence != nil {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.AfterSequence))
@@ -6945,10 +6934,6 @@ func (m *ListLogsRequest) SizeVT() (n int) {
 	_ = l
 	if m.AfterSequence != nil {
 		n += 1 + protohelpers.SizeOfVarint(uint64(*m.AfterSequence))
-	}
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.PageSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
@@ -13331,38 +13316,6 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AfterSequence = &v
 		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
 			}

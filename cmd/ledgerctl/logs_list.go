@@ -24,7 +24,6 @@ func newLogsListCommand() *cobra.Command {
 	}
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
-	cmd.Flags().String("ledger", "", "Filter by ledger name")
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
 	cmd.Flags().Int("limit", 0, "Maximum number of logs to display (0 = unlimited)")
 	cmd.Flags().Duration("timeout", defaultTimeout, "Request timeout")
@@ -44,14 +43,11 @@ func runLogsList(cmd *cobra.Command, _ []string) error {
 
 	var (
 		jsonOutput, _ = cmd.Flags().GetBool("json")
-		ledger, _     = cmd.Flags().GetString("ledger")
 		after, _      = cmd.Flags().GetUint64("after")
 		limit, _      = cmd.Flags().GetInt("limit")
 	)
 
-	req := &servicepb.ListLogsRequest{
-		Ledger: ledger,
-	}
+	req := &servicepb.ListLogsRequest{}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after
 	}

@@ -805,7 +805,6 @@ ledgerctl logs list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
-| `--ledger` | | Filter by ledger name |
 | `--after` | `0` | Show logs after this sequence number |
 | `--limit` | `0` | Maximum number of logs to display (0 = unlimited) |
 | `--timeout` | `10s` | Request timeout |
@@ -813,16 +812,12 @@ ledgerctl logs list [flags]
 **Behavior:**
 - Streams system log entries from the server
 - Each entry shows: sequence number, log type, ledger name (if applicable), and details
-- Use `--ledger` to filter logs related to a specific ledger
 
 **Example:**
 
 ```bash
 # List all system logs
 ledgerctl logs list
-
-# Filter by ledger
-ledgerctl logs list --ledger my-ledger
 
 # Show logs after sequence 100
 ledgerctl logs list --after 100

@@ -3090,8 +3090,7 @@ func (x *ListAuditEntriesRequest) GetFailuresOnly() bool {
 type ListLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
-	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	PageSize      uint32                 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageSize      uint32                 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3131,13 +3130,6 @@ func (x *ListLogsRequest) GetAfterSequence() uint64 {
 		return *x.AfterSequence
 	}
 	return 0
-}
-
-func (x *ListLogsRequest) GetLedger() string {
-	if x != nil {
-		return x.Ledger
-	}
-	return ""
 }
 
 func (x *ListLogsRequest) GetPageSize() uint32 {
@@ -3456,11 +3448,10 @@ const file_service_proto_rawDesc = "" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12#\n" +
 	"\rfailures_only\x18\x03 \x01(\bR\ffailuresOnlyB\x11\n" +
-	"\x0f_after_sequence\"\x85\x01\n" +
+	"\x0f_after_sequence\"m\n" +
 	"\x0fListLogsRequest\x12*\n" +
-	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12\x1b\n" +
-	"\tpage_size\x18\x03 \x01(\rR\bpageSizeB\x11\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\rR\bpageSizeB\x11\n" +
 	"\x0f_after_sequence\"\x17\n" +
 	"\x15GetEventsSinksRequest\"{\n" +
 	"\x16GetEventsSinksResponse\x12(\n" +

@@ -66,7 +66,7 @@ type BucketServiceClient interface {
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
-	// ListLogs streams system logs (optionally filtered by ledger)
+	// ListLogs streams system logs
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 }
 
@@ -301,7 +301,7 @@ type BucketServiceServer interface {
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
-	// ListLogs streams system logs (optionally filtered by ledger)
+	// ListLogs streams system logs
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
