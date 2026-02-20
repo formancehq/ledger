@@ -130,6 +130,9 @@ func printCheckError(e *servicepb.CheckStoreError) {
 	if e.Asset != "" {
 		details += fmt.Sprintf(" asset=%s", e.Asset)
 	}
+	if e.TransactionId > 0 {
+		details += fmt.Sprintf(" tx=%d", e.TransactionId)
+	}
 
 	pterm.Printf("  %s %s: %s\n", prefix, pterm.Gray(details), e.Message)
 }

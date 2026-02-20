@@ -110,10 +110,12 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	modifiedMetadata := make(map[string]struct{})
 
 	store := &inMemoryStore{
-		engine:           e,
-		date:             proposal.Date,
-		modifiedVolumes:  modifiedVolumes,
-		modifiedMetadata: modifiedMetadata,
+		engine:             e,
+		date:               proposal.Date,
+		modifiedVolumes:    modifiedVolumes,
+		modifiedMetadata:   modifiedMetadata,
+		transactionUpdates: make(map[string][]*commonpb.TransactionUpdate),
+		modifiedReverted:   make(map[string]struct{}),
 	}
 	resp, err := e.processor.ProcessProposal(proposal, store)
 	require.NoError(e.t, err)
@@ -165,6 +167,24 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 			err := e.attrs.Metadata.Delete(batch, canonicalKey)
 			require.NoError(e.t, err)
 		}
+	}
+
+	// Write transaction updates to Pebble
+	for keyStr, updates := range store.transactionUpdates {
+		var tk data.TransactionKey
+		err := tk.Unmarshal([]byte(keyStr))
+		require.NoError(e.t, err)
+		for _, update := range updates {
+			err := batch.StoreTransactionUpdate(tk, update)
+			require.NoError(e.t, err)
+		}
+	}
+
+	// Write modified reverted status to Pebble
+	for keyStr := range store.modifiedReverted {
+		reverted := e.reverted[keyStr]
+		err := e.attrs.Reverted.SetBase(batch, e.raftIndex, []byte(keyStr), &commonpb.RevertedValue{Reverted: reverted})
+		require.NoError(e.t, err)
 	}
 
 	// Write ledger info
@@ -236,6 +256,10 @@ type inMemoryStore struct {
 	date             *commonpb.Timestamp
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
+	// Transaction updates accumulated during this proposal
+	transactionUpdates map[string][]*commonpb.TransactionUpdate // txKey -> updates
+	// Transaction keys whose reverted status was modified
+	modifiedReverted map[string]struct{}
 }
 
 func (s *inMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
@@ -301,7 +325,9 @@ func (s *inMemoryStore) GetReverted(key data.TransactionKey) (bool, error) {
 }
 
 func (s *inMemoryStore) PutReverted(key data.TransactionKey, reverted bool) {
-	s.engine.reverted[string(key.Bytes())] = reverted
+	k := string(key.Bytes())
+	s.engine.reverted[k] = reverted
+	s.modifiedReverted[k] = struct{}{}
 }
 
 func (s *inMemoryStore) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
@@ -328,7 +354,10 @@ func (s *inMemoryStore) PutTransactionReference(key data.TransactionReferenceKey
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *inMemoryStore) AddTransactionUpdate(_ data.TransactionKey, _ *commonpb.TransactionUpdate) {}
+func (s *inMemoryStore) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
+	k := string(key.Bytes())
+	s.transactionUpdates[k] = append(s.transactionUpdates[k], update)
+}
 
 func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)           {}
 func (s *inMemoryStore) RemoveSigningKey(_ string)                  {}
@@ -677,6 +706,15 @@ func TestCheckerComprehensive(t *testing.T) {
 		newPosting("world", "customer:dave", "USD", 3000),
 	))
 
+	// --- Step 7b: Transaction metadata operations ---
+	// Save metadata on the first trading transaction (tx ID 1)
+	engine.processAndCommit(saveTransactionMetadataOrder("trading", 1, map[string]string{
+		"category": "funding",
+		"note":     "initial bank funding",
+	}))
+	// Delete transaction metadata
+	engine.processAndCommit(deleteTransactionMetadataOrder("trading", 1, "note"))
+
 	// --- Step 8: Revert a transaction ---
 	// Revert the first user:alice USD transfer (tx ID 4 in trading ledger, 0-indexed tx=3 -> 4th tx)
 	// The postings were: bank -> user:alice 1000 USD
@@ -988,7 +1026,168 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 	require.Empty(t, errors, "store built from valid operations should have no integrity errors")
 }
 
+func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[string]string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+					AddMetadata: &raftcmdpb.SaveMetadataOrder{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Id: txID,
+								},
+							},
+						},
+						Metadata: commonpb.MetadataSetFromMap(metadata),
+					},
+				},
+			},
+		},
+	}
+}
+
+func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Id: txID,
+								},
+							},
+						},
+						Key: key,
+					},
+				},
+			},
+		},
+	}
+}
+
 // computeCorrectHash computes the correct hash for a log entry, matching the production logic.
 func computeCorrectHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
 	return processing.ComputeLogHash(hasher, lastHash, log)
+}
+
+// TestCheckerDetectsTransactionUpdateMismatch verifies the checker detects
+// corrupted transaction updates.
+func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("test"))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 1000),
+	))
+
+	// Write a spurious transaction update to Pebble for tx 1 (ledger ID 1)
+	batch := engine.store.NewBatch()
+	err := batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, &commonpb.TransactionUpdate{
+		ByLog: 999,
+		Updates: []*commonpb.TransactionUpdateType{{
+			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
+				TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
+					Metadata: &commonpb.Metadata{
+						Key:   "spurious",
+						Value: &commonpb.MetadataValue{Value: "data"},
+					},
+				},
+			},
+		}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var txErrors []*servicepb.CheckStoreError
+	for _, e := range errors {
+		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
+			txErrors = append(txErrors, e)
+		}
+	}
+	require.NotEmpty(t, txErrors, "should detect transaction update mismatch")
+	require.Equal(t, uint64(1), txErrors[0].TransactionId)
+}
+
+// TestCheckerDetectsRevertedMismatch verifies the checker detects
+// corrupted reverted status.
+func TestCheckerDetectsRevertedMismatch(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("test"))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 1000),
+	))
+
+	// Revert the transaction
+	engine.processAndCommit(revertTransactionOrder("test", 1,
+		[]*commonpb.Posting{
+			newPosting("world", "user:alice", "USD", 1000),
+		},
+	))
+
+	// Overwrite the reverted status to false in Pebble
+	tkBytes := data.TransactionKey{LedgerID: 1, ID: 1}.Bytes()
+	batch := engine.store.NewBatch()
+	// Write a later raft index to override the existing base
+	err := engine.attrs.Reverted.SetBase(batch, 1<<61, tkBytes, &commonpb.RevertedValue{Reverted: false})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var revertErrors []*servicepb.CheckStoreError
+	for _, e := range errors {
+		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+			revertErrors = append(revertErrors, e)
+		}
+	}
+	require.NotEmpty(t, revertErrors, "should detect reverted mismatch")
+	require.Equal(t, uint64(1), revertErrors[0].TransactionId)
+}
+
+// TestCheckerWithTransactionMetadata verifies that transaction metadata
+// operations (save and delete) are properly tracked and verified.
+func TestCheckerWithTransactionMetadata(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("test"))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 1000),
+	))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:bob", "USD", 2000),
+	))
+
+	// Save metadata on transaction 1
+	engine.processAndCommit(saveTransactionMetadataOrder("test", 1, map[string]string{
+		"category": "funding",
+		"approved": "true",
+	}))
+
+	// Save metadata on transaction 2
+	engine.processAndCommit(saveTransactionMetadataOrder("test", 2, map[string]string{
+		"category": "payment",
+	}))
+
+	// Delete metadata on transaction 1
+	engine.processAndCommit(deleteTransactionMetadataOrder("test", 1, "approved"))
+
+	// Verify no check errors
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	for _, e := range errors {
+		t.Logf("Check error: [%s] %s (log=%d, ledger=%s, account=%s, asset=%s, tx=%d)",
+			e.ErrorType, e.Message, e.LogSequence, e.Ledger, e.Account, e.Asset, e.TransactionId)
+	}
+	require.Empty(t, errors, "store with transaction metadata should have no integrity errors")
 }

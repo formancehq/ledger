@@ -27,12 +27,14 @@ const (
 type CheckStoreErrorType int32
 
 const (
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED       CheckStoreErrorType = 0
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH     CheckStoreErrorType = 1
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP      CheckStoreErrorType = 2
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH   CheckStoreErrorType = 3
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH CheckStoreErrorType = 4
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER    CheckStoreErrorType = 5
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED                 CheckStoreErrorType = 0
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH               CheckStoreErrorType = 1
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP                CheckStoreErrorType = 2
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH             CheckStoreErrorType = 3
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH           CheckStoreErrorType = 4
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER              CheckStoreErrorType = 5
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH CheckStoreErrorType = 6
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH           CheckStoreErrorType = 7
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -44,14 +46,18 @@ var (
 		3: "CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH",
 		4: "CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH",
 		5: "CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER",
+		6: "CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH",
+		7: "CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
-		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":       0,
-		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":     1,
-		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":      2,
-		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":   3,
-		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH": 4,
-		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":    5,
+		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
+		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":               1,
+		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":                2,
+		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":             3,
+		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH":           4,
+		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":              5,
+		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH": 6,
+		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":           7,
 	}
 )
 
@@ -2899,6 +2905,7 @@ type CheckStoreError struct {
 	Ledger        string                 `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Account       string                 `protobuf:"bytes,5,opt,name=account,proto3" json:"account,omitempty"`
 	Asset         string                 `protobuf:"bytes,6,opt,name=asset,proto3" json:"asset,omitempty"`
+	TransactionId uint64                 `protobuf:"varint,7,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2973,6 +2980,13 @@ func (x *CheckStoreError) GetAsset() string {
 		return x.Asset
 	}
 	return ""
+}
+
+func (x *CheckStoreError) GetTransactionId() uint64 {
+	if x != nil {
+		return x.TransactionId
+	}
+	return 0
 }
 
 type CheckStoreProgress struct {
@@ -3431,7 +3445,7 @@ const file_service_proto_rawDesc = "" +
 	"\x0fCheckStoreEvent\x12/\n" +
 	"\x05error\x18\x01 \x01(\v2\x17.ledger.CheckStoreErrorH\x00R\x05error\x128\n" +
 	"\bprogress\x18\x02 \x01(\v2\x1a.ledger.CheckStoreProgressH\x00R\bprogressB\x06\n" +
-	"\x04type\"\xd2\x01\n" +
+	"\x04type\"\xf9\x01\n" +
 	"\x0fCheckStoreError\x12:\n" +
 	"\n" +
 	"error_type\x18\x01 \x01(\x0e2\x1b.ledger.CheckStoreErrorTypeR\terrorType\x12\x18\n" +
@@ -3439,7 +3453,8 @@ const file_service_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x04R\vlogSequence\x12\x16\n" +
 	"\x06ledger\x18\x04 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaccount\x18\x05 \x01(\tR\aaccount\x12\x14\n" +
-	"\x05asset\x18\x06 \x01(\tR\x05asset\"V\n" +
+	"\x05asset\x18\x06 \x01(\tR\x05asset\x12%\n" +
+	"\x0etransaction_id\x18\a \x01(\x04R\rtransactionId\"V\n" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
@@ -3456,14 +3471,16 @@ const file_service_proto_rawDesc = "" +
 	"\x15GetEventsSinksRequest\"{\n" +
 	"\x16GetEventsSinksResponse\x12(\n" +
 	"\x05sinks\x18\x01 \x03(\v2\x12.common.SinkConfigR\x05sinks\x127\n" +
-	"\rsink_statuses\x18\x02 \x03(\v2\x12.common.SinkStatusR\fsinkStatuses*\x95\x02\n" +
+	"\rsink_statuses\x18\x02 \x03(\v2\x12.common.SinkStatusR\fsinkStatuses*\xfb\x02\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
 	"#CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP\x10\x02\x12*\n" +
 	"&CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH\x10\x03\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
-	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x052\x84\a\n" +
+	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
+	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
+	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\x84\a\n" +
 	"\rBucketService\x12G\n" +
 	"\x11GetAllLedgersInfo\x12\x1c.ledger.GetAllLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
