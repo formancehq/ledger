@@ -603,9 +603,7 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 		// task that is immediately interrupted by the second syncSnapshot call,
 		// which corrupts the spool read cache (entries read but never applied).
 		if ss.Lead != 0 && node.status.Load() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
-			if err := node.syncSnapshot(ctx, ss.Lead); err != nil {
-				return fmt.Errorf("syncing snapshot: %w", err)
-			}
+			node.syncSnapshot(ctx, ss.Lead)
 		}
 
 		actualNodeLastSoftState := node.lastSoftState.Load()
@@ -658,12 +656,11 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 
-		// todo: since the snapshot is already written in storage at this point
-		// we must be able to detect a crash and restart the restoration process
-		// in case of rawNode recover
-		if err := node.syncSnapshot(ctx, node.lastSoftState.Load().Lead); err != nil {
-			return fmt.Errorf("restoring snapshot in storage: %w", err)
-		}
+		// The snapshot is already persisted in WAL at this point. If syncSnapshot
+		// fails (network issue, leader unavailable, etc.), the node transitions to
+		// statusOutOfSync and will retry automatically when a leader is detected
+		// via SoftState or on restart (isStoreUpToDate check).
+		node.syncSnapshot(ctx, node.lastSoftState.Load().Lead)
 	}
 
 	// Send messages via transport
@@ -1021,7 +1018,6 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 
 	node.status.Store(statusNormal)
 
-	// todo: measure time
 	lastAppliedIndex, err = node.store.GetLastAppliedIndex()
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
@@ -1035,8 +1031,10 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 	return nil
 }
 
-// syncSnapshot syncs a snapshot from a leader
-func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
+// syncSnapshot starts a background synchronization with the leader.
+// On failure the node transitions to statusOutOfSync so that new entries
+// are spooled and a retry is triggered when a leader reappears in SoftState.
+func (node *Node) syncSnapshot(ctx context.Context, leader uint64) {
 	node.logger.
 		WithFields(map[string]any{
 			"leader": leader,
@@ -1048,19 +1046,23 @@ func (node *Node) syncSnapshot(ctx context.Context, leader uint64) error {
 	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		snapshotFetcher, err := node.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
-			return 0, fmt.Errorf("getting snapshot fetcher for leader %d: %w", leader, err)
+			node.logger.WithFields(map[string]any{
+				"leader": leader,
+				"error":  err,
+			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
+			node.status.Store(statusOutOfSync)
+			return 0, nil
 		}
 		if _, err := node.fsm.SynchronizeWithLeader(ctx, snapshotFetcher); err != nil {
-			if errors.Is(err, state.ErrNotAvailable) {
-				node.status.Store(statusOutOfSync)
-				return 0, nil
-			}
-			return 0, err
+			node.logger.WithFields(map[string]any{
+				"leader": leader,
+				"error":  err,
+			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
+			node.status.Store(statusOutOfSync)
+			return 0, nil
 		}
 		return 0, nil
 	}, nil)
-
-	return nil
 }
 
 func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
@@ -1519,7 +1521,6 @@ func (node *Node) Stop(ctx context.Context) error {
 func (node *Node) SetObserver(obs *Observer) {
 	node.observer = obs
 }
-
 
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
 // Must be called on the leader.
