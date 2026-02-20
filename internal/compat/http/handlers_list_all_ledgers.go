@@ -12,7 +12,7 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get all ledgers info
-	cursor, err := s.backend.GetAllLedgersInfo(ctx)
+	cursor, err := s.backend.ListLedgers(ctx)
 	if err != nil {
 		handleError(w, r, err)
 		return

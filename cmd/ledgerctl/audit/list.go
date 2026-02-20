@@ -30,7 +30,6 @@ func NewListCommand() *cobra.Command {
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
-	cmd.Flags().String("ledger", "", "Filter by ledger name")
 	cmd.Flags().Uint64("after", 0, "Show entries after this sequence number")
 	cmd.Flags().Int("limit", 0, "Maximum number of entries to display (0 = unlimited)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -51,13 +50,11 @@ func runList(cmd *cobra.Command, _ []string) error {
 	var (
 		jsonOutput, _   = cmd.Flags().GetBool("json")
 		failuresOnly, _ = cmd.Flags().GetBool("failures-only")
-		ledger, _       = cmd.Flags().GetString("ledger")
 		after, _        = cmd.Flags().GetUint64("after")
 		limit, _        = cmd.Flags().GetInt("limit")
 	)
 
 	req := &servicepb.ListAuditEntriesRequest{
-		Ledger:       ledger,
 		FailuresOnly: failuresOnly,
 	}
 	if cmd.Flags().Changed("after") {

@@ -21,7 +21,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BucketService_GetAllLedgersInfo_FullMethodName = "/ledger.BucketService/GetAllLedgersInfo"
+	BucketService_ListLedgers_FullMethodName       = "/ledger.BucketService/ListLedgers"
 	BucketService_GetLedger_FullMethodName         = "/ledger.BucketService/GetLedger"
 	BucketService_GetAccount_FullMethodName        = "/ledger.BucketService/GetAccount"
 	BucketService_GetTransaction_FullMethodName    = "/ledger.BucketService/GetTransaction"
@@ -43,8 +43,8 @@ const (
 //
 // BucketService provides ledger operations
 type BucketServiceClient interface {
-	// GetAllLedgersInfo streams all ledgers info in the cluster
-	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)
+	// ListLedgers streams all ledgers info in the cluster
+	ListLedgers(ctx context.Context, in *ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error)
 	// GetAccount retrieves an account by address
@@ -81,13 +81,13 @@ func NewBucketServiceClient(cc grpc.ClientConnInterface) BucketServiceClient {
 	return &bucketServiceClient{cc}
 }
 
-func (c *bucketServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
+func (c *bucketServiceClient) ListLedgers(ctx context.Context, in *ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[0], BucketService_GetAllLedgersInfo_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[0], BucketService_ListLedgers_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ListLedgersRequest, commonpb.LedgerInfo]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (c *bucketServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllL
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_GetAllLedgersInfoClient = grpc.ServerStreamingClient[commonpb.LedgerInfo]
+type BucketService_ListLedgersClient = grpc.ServerStreamingClient[commonpb.LedgerInfo]
 
 func (c *bucketServiceClient) GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -290,8 +290,8 @@ func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeri
 //
 // BucketService provides ledger operations
 type BucketServiceServer interface {
-	// GetAllLedgersInfo streams all ledgers info in the cluster
-	GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error
+	// ListLedgers streams all ledgers info in the cluster
+	ListLedgers(*ListLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error)
 	// GetAccount retrieves an account by address
@@ -328,8 +328,8 @@ type BucketServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedBucketServiceServer struct{}
 
-func (UnimplementedBucketServiceServer) GetAllLedgersInfo(*GetAllLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
-	return status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
+func (UnimplementedBucketServiceServer) ListLedgers(*ListLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
+	return status.Errorf(codes.Unimplemented, "method ListLedgers not implemented")
 }
 func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLedger not implemented")
@@ -391,16 +391,16 @@ func RegisterBucketServiceServer(s grpc.ServiceRegistrar, srv BucketServiceServe
 	s.RegisterService(&BucketService_ServiceDesc, srv)
 }
 
-func _BucketService_GetAllLedgersInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(GetAllLedgersRequest)
+func _BucketService_ListLedgers_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListLedgersRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(BucketServiceServer).GetAllLedgersInfo(m, &grpc.GenericServerStream[GetAllLedgersRequest, commonpb.LedgerInfo]{ServerStream: stream})
+	return srv.(BucketServiceServer).ListLedgers(m, &grpc.GenericServerStream[ListLedgersRequest, commonpb.LedgerInfo]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_GetAllLedgersInfoServer = grpc.ServerStreamingServer[commonpb.LedgerInfo]
+type BucketService_ListLedgersServer = grpc.ServerStreamingServer[commonpb.LedgerInfo]
 
 func _BucketService_GetLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLedgerRequest)
@@ -632,8 +632,8 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "GetAllLedgersInfo",
-			Handler:       _BucketService_GetAllLedgersInfo_Handler,
+			StreamName:    "ListLedgers",
+			Handler:       _BucketService_ListLedgers_Handler,
 			ServerStreams: true,
 		},
 		{

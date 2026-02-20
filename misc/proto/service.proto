@@ -15,8 +15,8 @@ import "signature.proto";
 
 // BucketService provides ledger operations
 service BucketService {
-  // GetAllLedgersInfo streams all ledgers info in the cluster
-  rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (stream common.LedgerInfo);
+  // ListLedgers streams all ledgers info in the cluster
+  rpc ListLedgers(ListLedgersRequest) returns (stream common.LedgerInfo);
   // GetLedger returns a ledger info by its name or ID
   rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo);
   // GetAccount retrieves an account by address
@@ -94,7 +94,10 @@ message DeleteLedgerRequest {
 
 message DeleteLedgerResponse {}
 
-message GetAllLedgersRequest {}
+message ListLedgersRequest {
+  // page_size is the maximum number of ledgers to return (0 = no limit)
+  uint32 page_size = 1;
+}
 
 message GetLedgerRequest {
   string ledger = 1;
@@ -179,7 +182,10 @@ message ConfirmArchivePeriodRequest {
   uint64 period_id = 1;
 }
 
-message ListPeriodsRequest {}
+message ListPeriodsRequest {
+  // page_size is the maximum number of periods to return (0 = no limit)
+  uint32 page_size = 1;
+}
 
 // SetMaintenanceModeRequest enables or disables maintenance mode.
 // When enabled, all write operations are blocked except maintenance mode toggle.
@@ -398,8 +404,9 @@ message CheckStoreProgress {
 
 message ListAuditEntriesRequest {
   optional uint64 after_sequence = 1;
-  string ledger = 2;
-  bool failures_only = 3;
+  bool failures_only = 2;
+  // page_size is the maximum number of audit entries to return (0 = no limit)
+  uint32 page_size = 3;
 }
 
 // ============================================================================

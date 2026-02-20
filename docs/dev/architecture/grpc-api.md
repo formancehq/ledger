@@ -46,7 +46,7 @@ The main service is `BucketService`:
 ```protobuf
 service BucketService {
   // Read operations
-  rpc GetAllLedgersInfo(GetAllLedgersRequest) returns (stream LedgerInfo);
+  rpc ListLedgers(ListLedgersRequest) returns (stream LedgerInfo);
   rpc GetLedger(GetLedgerRequest) returns (LedgerInfo);
   rpc GetAccount(GetAccountRequest) returns (Account);
   rpc GetTransaction(GetTransactionRequest) returns (Transaction);
@@ -66,12 +66,12 @@ service BucketService {
 
 ## Read Operations
 
-### GetAllLedgersInfo
+### ListLedgers
 
 Streams all ledgers in the cluster.
 
 ```go
-stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 if err != nil {
     return err
 }

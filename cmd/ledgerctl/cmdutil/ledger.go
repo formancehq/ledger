@@ -83,7 +83,7 @@ func sortStrings(s []string) {
 
 // GetAllLedgersInfo collects all ledgers from the streaming RPC into a map.
 func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient) (map[string]*commonpb.LedgerInfo, error) {
-	stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}

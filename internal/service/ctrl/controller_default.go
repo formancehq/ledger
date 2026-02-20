@@ -2,14 +2,20 @@ package ctrl
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"slices"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
@@ -43,19 +49,22 @@ func NewDefaultController(
 	}
 }
 
-// GetAllLedgersInfo returns a cursor over all active (non-deleted) ledgers
-func (ctrl *DefaultController) GetAllLedgersInfo(_ context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
-	cursor, err := ctrl.store.ListLedgers()
+// ListLedgers returns a cursor over all active (non-deleted) ledgers
+func (ctrl *DefaultController) ListLedgers(_ context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+	handle := ctrl.store.NewReadHandle()
+	cursor, err := data.ReadLedgers(handle)
 	if err != nil {
+		_ = handle.Close()
 		return nil, err
 	}
-	// Filter out soft-deleted ledgers
-	return data.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
+	// Filter out soft-deleted ledgers, close handle when cursor closes
+	filtered := data.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
 		return ledger.DeletedAt == nil
-	}), nil
+	})
+	return data.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -63,18 +72,26 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 		}
 		return nil, err
 	}
-	return ctrl.buildTransaction(ledgerInfo.Id, transactionID)
+
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	return buildTransaction(handle, ledgerInfo.Id, transactionID)
 }
 
-// buildTransaction builds a transaction from updates and logs.
-func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
-	// Get all updates for this transaction
-	updates, err := ctrl.store.GetTransactionUpdates(ledgerID, transactionID)
+// buildTransaction builds a transaction from updates and logs using the given reader.
+func buildTransaction(reader data.PebbleReader, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+	updates, err := data.ReadTransactionUpdates(reader, ledgerID, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
 
-	// Collect metadata modifications and find sequence/revert status
+	return assembleTransaction(reader, transactionID, updates)
+}
+
+// assembleTransaction builds a transaction from a slice of updates and a log reader.
+// The updates must be in chronological order (lowest byLog first).
+func assembleTransaction(reader data.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
 	var (
 		sequence         uint64
 		reverted         bool
@@ -90,15 +107,11 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 				reverted = true
 			}
 			if addMeta := updateType.GetTransactionModificationAddMetadata(); addMeta != nil {
-				// Add metadata - later updates override earlier ones
 				metadataToAdd[addMeta.Metadata.Key] = addMeta.Metadata.Value.Value
-				// If this key was previously deleted, remove from delete set
 				delete(metadataToDelete, addMeta.Metadata.Key)
 			}
 			if delMeta := updateType.GetTransactionModificationDeleteMetadata(); delMeta != nil {
-				// Delete metadata - mark for deletion (empty value)
 				metadataToDelete[delMeta.Key] = struct{}{}
-				// Remove from add map if present
 				delete(metadataToAdd, delMeta.Key)
 			}
 		}
@@ -108,8 +121,7 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	// Get the system log containing the transaction
-	log, err := ctrl.store.GetLogBySequence(sequence)
+	log, err := data.ReadLogBySequence(reader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
@@ -117,14 +129,12 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	// Extract the ledger log from the log
 	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
 		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
 	}
 	ledgerLog := applyLog.Apply.Log
 
-	// Extract the transaction from the log payload
 	var tx *commonpb.Transaction
 	switch payload := ledgerLog.Data.Payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
@@ -141,26 +151,18 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.Id)
 	}
 
-	// Apply metadata modifications
 	tx.Reverted = reverted
 	if len(metadataToAdd) > 0 || len(metadataToDelete) > 0 {
-		// Get existing metadata as map
 		existingMeta := tx.Metadata.ToMap()
 		if existingMeta == nil {
 			existingMeta = make(map[string]string)
 		}
-
-		// Apply additions
 		for key, value := range metadataToAdd {
 			existingMeta[key] = value
 		}
-
-		// Apply deletions (remove key from map entirely)
 		for key := range metadataToDelete {
 			delete(existingMeta, key)
 		}
-
-		// Convert back to MetadataSet
 		tx.Metadata = commonpb.MetadataSetFromMap(existingMeta)
 	}
 
@@ -168,6 +170,7 @@ func (ctrl *DefaultController) buildTransaction(ledgerID uint32, transactionID u
 }
 
 // ListTransactions returns a cursor over transactions for a ledger (newest first).
+// Uses a single reverse iterator over transaction update keys for efficiency.
 func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
 	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
 	if err != nil {
@@ -177,17 +180,36 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		return nil, err
 	}
 
-	// Get transaction ID cursor from store
-	idCursor, err := ctrl.store.ListTransactionIDs(ledgerInfo.Id, pageSize, afterTxID)
+	handle := ctrl.store.NewReadHandle()
+
+	// Build iterator bounds for [keyPrefixTransactionUpdate][ledgerID]...[afterTxID or max]
+	kb := data.NewKeyBuilder()
+	kb.PutByte(data.KeyPrefixTransactionUpdate).
+		PutLedgerPrefix(ledgerInfo.Id)
+	lowerBound := kb.Snapshot()
+
+	if afterTxID > 0 {
+		kb.PutUInt64(afterTxID)
+	} else {
+		kb.PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	}
+	upperBound := kb.Build()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("listing transaction IDs: %w", err)
+		_ = handle.Close()
+		return nil, fmt.Errorf("creating iterator for transaction list: %w", err)
 	}
 
-	// Return a cursor that builds full transactions from IDs
 	return &transactionCursor{
-		ctrl:     ctrl,
-		ledgerID: ledgerInfo.Id,
-		idCursor: idCursor,
+		handle:     handle,
+		iter:       iter,
+		pageSize:   pageSize,
+		lastTxID:   ^uint64(0),
+		txIDOffset: data.TxUpdateTxIDOffset,
 	}, nil
 }
 
@@ -201,15 +223,17 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		return nil, err
 	}
 
-	// Get account address cursor from Volume attribute keys
-	addrCursor, err := ctrl.attrs.Volume.ListAccountAddresses(ctrl.store, ledgerInfo.Id, pageSize, afterAddress, prefix)
+	handle := ctrl.store.NewReadHandle()
+
+	addrCursor, err := ctrl.attrs.Volume.ListAccountAddresses(handle, ledgerInfo.Id, pageSize, afterAddress, prefix)
 	if err != nil {
+		_ = handle.Close()
 		return nil, fmt.Errorf("listing account addresses: %w", err)
 	}
 
-	// Return a cursor that enriches addresses with metadata and volumes
 	return &accountCursor{
-		ctrl:       ctrl,
+		handle:     handle,
+		attrs:      ctrl.attrs,
 		ledgerID:   ledgerInfo.Id,
 		addrCursor: addrCursor,
 	}, nil
@@ -224,26 +248,25 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	// Get account metadata using attributes
-	metadataMap, err := GetAccountMetadata(ctrl.store, ctrl.attrs, ledgerInfo.Id, []string{address})
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	metadataMap, err := GetAccountMetadata(handle, ctrl.attrs, ledgerInfo.Id, []string{address})
 	if err != nil {
 		return nil, fmt.Errorf("getting account metadata: %w", err)
 	}
 
-	// Get account volumes
-	volumes, err := GetAccountVolumes(ctrl.store, ctrl.attrs, ledgerInfo.Id, address)
+	volumes, err := GetAccountVolumes(handle, ctrl.attrs, ledgerInfo.Id, address)
 	if err != nil {
 		return nil, fmt.Errorf("getting account volumes: %w", err)
 	}
 
-	// Build the account response
 	account := &commonpb.Account{
 		Address:  address,
 		Metadata: &commonpb.MetadataSet{},
 		Volumes:  volumes,
 	}
 
-	// Add metadata if it exists
 	if md, exists := metadataMap[address]; exists {
 		account.Metadata = commonpb.MetadataSetFromMap(md)
 	}
@@ -264,21 +287,52 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 
 // ListLogs returns a cursor over system logs.
 func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
-	cursor, err := ctrl.store.ListLogsSince(afterSequence)
+	handle := ctrl.store.NewReadHandle()
+	cursor, err := data.ReadLogsSince(handle, afterSequence)
 	if err != nil {
+		_ = handle.Close()
 		return nil, fmt.Errorf("listing logs: %w", err)
 	}
 
+	var result = data.NewClosingCursor(cursor, handle)
 	if pageSize > 0 {
-		cursor = data.NewLimitedCursor(cursor, pageSize)
+		result = data.NewLimitedCursor(result, pageSize)
 	}
 
-	return cursor, nil
+	return result, nil
 }
 
-// ListPeriods returns all non-purged periods from the store.
-func (ctrl *DefaultController) ListPeriods(_ context.Context) ([]*commonpb.Period, error) {
-	return ctrl.store.GetPeriods()
+// ListAuditEntries returns a cursor over audit entries, applying optional filters.
+func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+	handle := ctrl.store.NewReadHandle()
+	cursor, err := data.ReadAuditEntries(handle, afterSequence)
+	if err != nil {
+		_ = handle.Close()
+		return nil, fmt.Errorf("listing audit entries: %w", err)
+	}
+
+	var result = data.NewClosingCursor(cursor, handle)
+
+	if failuresOnly {
+		result = data.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
+			return entry.GetFailure() != nil
+		})
+	}
+
+	if pageSize > 0 {
+		result = data.NewLimitedCursor(result, pageSize)
+	}
+
+	return result, nil
+}
+
+// ListPeriods returns a cursor over all non-purged periods from the store.
+func (ctrl *DefaultController) ListPeriods(_ context.Context) (data.Cursor[*commonpb.Period], error) {
+	periods, err := ctrl.store.GetPeriods()
+	if err != nil {
+		return nil, err
+	}
+	return data.NewSliceCursor(periods), nil
 }
 
 // Apply applies a list of requests and returns the resulting logs.
@@ -290,8 +344,6 @@ func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb
 		return nil, fmt.Errorf("at least one request is required")
 	}
 
-	// Apply all requests through Raft
-	// The FSM handles idempotency checking and returns cached logs if needed
 	logs, err := ctrl.admission.Admit(ctx, requests...)
 	if err != nil {
 		return nil, fmt.Errorf("applying raft requests: %w", err)
@@ -302,34 +354,118 @@ func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb
 
 var _ Controller = (*DefaultController)(nil)
 
-// transactionCursor wraps a transaction ID cursor to return full transactions.
+// transactionCursor uses a single reverse iterator over transaction update keys
+// to build full transactions without a second pass. It holds a ReadHandle for
+// point-in-time consistency and closes it when the cursor is closed.
 type transactionCursor struct {
-	ctrl     *DefaultController
-	ledgerID uint32
-	idCursor data.Cursor[uint64]
+	handle     *data.ReadHandle
+	iter       *pebble.Iterator
+	started    bool
+	pageSize   uint32
+	count      uint32
+	lastTxID   uint64
+	txIDOffset int
+
+	// pending holds an already-read update when we overshoot into the next txID's territory
+	pendingTxID   uint64
+	pendingUpdate *commonpb.TransactionUpdate
+	hasPending    bool
 }
 
 func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
-	txID, err := c.idCursor.Next()
-	if err != nil {
-		return nil, err
+	if c.pageSize > 0 && c.count >= c.pageSize {
+		return nil, io.EOF
 	}
 
-	tx, err := c.ctrl.buildTransaction(c.ledgerID, txID)
-	if err != nil {
-		return nil, fmt.Errorf("building transaction %d: %w", txID, err)
+	var (
+		currentTxID uint64
+		updates     []*commonpb.TransactionUpdate
+	)
+
+	// If we have a pending entry from the last call, start with it
+	if c.hasPending {
+		currentTxID = c.pendingTxID
+		updates = append(updates, c.pendingUpdate)
+		c.hasPending = false
 	}
 
-	return tx, nil
+	for {
+		var valid bool
+		if !c.started {
+			c.started = true
+			valid = c.iter.Last()
+		} else {
+			valid = c.iter.Prev()
+		}
+
+		if !valid {
+			if err := c.iter.Error(); err != nil {
+				return nil, err
+			}
+			// End of iterator — return whatever we collected
+			if len(updates) > 0 {
+				c.count++
+				return c.buildFromUpdates(currentTxID, updates)
+			}
+			return nil, io.EOF
+		}
+
+		key := c.iter.Key()
+		if len(key) < c.txIDOffset+8 {
+			continue
+		}
+		txID := binary.BigEndian.Uint64(key[c.txIDOffset : c.txIDOffset+8])
+
+		valueBytes, err := c.iter.ValueAndErr()
+		if err != nil {
+			return nil, err
+		}
+		update := &commonpb.TransactionUpdate{}
+		if err := proto.Unmarshal(valueBytes, update); err != nil {
+			return nil, fmt.Errorf("unmarshaling transaction update: %w", err)
+		}
+
+		// First entry for this Next() call
+		if len(updates) == 0 {
+			currentTxID = txID
+			updates = append(updates, update)
+			continue
+		}
+
+		// Same txID — collect it
+		if txID == currentTxID {
+			updates = append(updates, update)
+			continue
+		}
+
+		// Different txID — save as pending and return current collection
+		c.pendingTxID = txID
+		c.pendingUpdate = update
+		c.hasPending = true
+		c.count++
+		return c.buildFromUpdates(currentTxID, updates)
+	}
+}
+
+// buildFromUpdates reverses updates (collected in reverse order) and assembles the transaction.
+func (c *transactionCursor) buildFromUpdates(txID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
+	slices.Reverse(updates)
+	return assembleTransaction(c.handle, txID, updates)
 }
 
 func (c *transactionCursor) Close() error {
-	return c.idCursor.Close()
+	err := c.iter.Close()
+	if closeErr := c.handle.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // accountCursor wraps an address cursor to return full accounts with metadata and volumes.
+// It holds a ReadHandle for point-in-time consistency and closes it when the cursor is closed.
 type accountCursor struct {
-	ctrl       *DefaultController
+	handle     *data.ReadHandle
+	attrs      *attributes.Attributes
 	ledgerID   uint32
 	addrCursor data.Cursor[string]
 }
@@ -340,8 +476,7 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 		return nil, err
 	}
 
-	// Get account metadata
-	metadataMap, err := GetAccountMetadata(c.ctrl.store, c.ctrl.attrs, c.ledgerID, []string{address})
+	metadataMap, err := GetAccountMetadata(c.handle, c.attrs, c.ledgerID, []string{address})
 	if err != nil {
 		return nil, fmt.Errorf("getting account metadata for %s: %w", address, err)
 	}
@@ -359,5 +494,9 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 }
 
 func (c *accountCursor) Close() error {
-	return c.addrCursor.Close()
+	err := c.addrCursor.Close()
+	if closeErr := c.handle.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }

@@ -400,7 +400,7 @@ type Controller interface {
     GetAccount(ctx context.Context, ledger string, address string) (*commonpb.Account, error)
     GetTransaction(ctx context.Context, ledger string, txID uint64) (*commonpb.Transaction, error)
     GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
-    GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error)
+    ListLedgers(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error)
     ListTransactions(ctx context.Context, ledger string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error)
 }
 ```

@@ -12,7 +12,7 @@ import (
 
 // GetAccountMetadata retrieves account metadata for multiple accounts from the store for a specific ledger.
 // It uses the attributes system to list all metadata keys and compute their values.
-func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
+func GetAccountMetadata(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
 	result := make(map[string]metadata.Metadata)
 
 	// Initialize with empty metadata for all requested accounts
@@ -27,7 +27,7 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerI
 	}
 
 	// List all metadata keys
-	entries, err := attrs.Metadata.List(store)
+	entries, err := attrs.Metadata.List(reader)
 	if err != nil {
 		return nil, fmt.Errorf("listing metadata keys: %w", err)
 	}
@@ -51,7 +51,7 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerI
 		}
 
 		// Compute the metadata value (use max uint64 to get the latest value)
-		value, err := attrs.Metadata.ComputeValue(store, ^uint64(0), entry.CanonicalKey)
+		value, err := attrs.Metadata.ComputeValue(reader, ^uint64(0), entry.CanonicalKey)
 		if err != nil {
 			return nil, fmt.Errorf("computing metadata value for %d/%s/%s: %w",
 				key.LedgerID, key.Account, key.Key, err)
@@ -68,12 +68,12 @@ func GetAccountMetadata(store *data.Store, attrs *attributes.Attributes, ledgerI
 
 // GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
 // It uses the attributes system to list all volume keys and compute cumulative values.
-func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
+func GetAccountVolumes(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
 	result := make(map[string]*commonpb.VolumesWithBalance)
 	const maxIndex uint64 = 1 << 62
 
 	// List all Volume entries
-	volumeEntries, err := attrs.Volume.List(s)
+	volumeEntries, err := attrs.Volume.List(reader)
 	if err != nil {
 		return nil, fmt.Errorf("listing volume entries: %w", err)
 	}
@@ -89,7 +89,7 @@ func GetAccountVolumes(s *data.Store, attrs *attributes.Attributes, ledgerID uin
 		}
 
 		// Compute the merged VolumePair for this asset
-		pair, err := attrs.Volume.ComputeValue(s, maxIndex, entry.CanonicalKey)
+		pair, err := attrs.Volume.ComputeValue(reader, maxIndex, entry.CanonicalKey)
 		if err != nil {
 			return nil, fmt.Errorf("computing volume for %s: %w", key.Asset, err)
 		}

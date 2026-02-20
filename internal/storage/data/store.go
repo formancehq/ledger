@@ -68,10 +68,13 @@ var (
 	ColdSequencePrefixes = []byte{keyPrefixLog, keyPrefixAudit}
 
 	// Composite-keyed cold prefix: [prefix][ledgerID][txID][byLog] -- requires filtered iteration.
-	keyPrefixTransactionUpdate byte = 0x03 // [keyPrefixTransactionUpdate][ledgerID][txID][byLog] -> TransactionUpdate
+	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][ledgerID][txID][byLog] -> TransactionUpdate
 
-	// txUpdateKeyLen is the fixed key length for transaction update entries.
-	txUpdateKeyLen = 1 + 4 + 8 + 8 // prefix(1) + ledgerID(4) + txID(8) + byLog(8)
+	// TxUpdateKeyLen is the fixed key length for transaction update entries.
+	TxUpdateKeyLen = 1 + 4 + 8 + 8 // prefix(1) + ledgerID(4) + txID(8) + byLog(8)
+
+	// TxUpdateTxIDOffset is the byte offset where the transaction ID starts in the key.
+	TxUpdateTxIDOffset = 1 + 4 // prefix(1) + ledgerID(4)
 
 	// Attributes zone [0xF1, 0xF2) -- seal hash domain
 	KeyPrefixAttributes byte = 0xF1
@@ -249,13 +252,13 @@ func (s *Store) Close() error {
 	return nil
 }
 
-// GetLogBySequence retrieves a log by its sequence number.
-func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
+// ReadLogBySequence retrieves a log by its sequence number from the given reader.
+func ReadLogBySequence(reader PebbleReader, sequence uint64) (*commonpb.Log, error) {
 	kb := NewKeyBuilder()
 	kb.PutByte(keyPrefixLog).
 		PutUInt64(sequence)
 
-	value, closer, err := s.getDB().Get(kb.Build())
+	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -266,13 +269,17 @@ func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
 		_ = closer.Close()
 	}()
 
-	// Unmarshal protobuf Log
 	log := &commonpb.Log{}
 	if err := proto.Unmarshal(value, log); err != nil {
 		return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
 	return log, nil
+}
+
+// GetLogBySequence retrieves a log by its sequence number.
+func (s *Store) GetLogBySequence(sequence uint64) (*commonpb.Log, error) {
+	return ReadLogBySequence(s, sequence)
 }
 
 // GetSequenceForIdempotencyKey retrieves the sequence for an idempotency key (global) (implements data.Store)
@@ -295,109 +302,11 @@ func (s *Store) GetSequenceForIdempotencyKey(idempotencyKey string) (uint64, err
 	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
-// ListTransactionIDs returns a cursor over transaction IDs for a ledger (newest first).
-// If afterTxID > 0, it starts after that transaction ID (exclusive).
-// pageSize limits the number of results (0 = no limit).
-func (s *Store) ListTransactionIDs(ledgerID uint32, pageSize uint32, afterTxID uint64) (Cursor[uint64], error) {
+
+// ReadTransactionUpdates retrieves all updates for a transaction ID from the given reader, ordered by ByLog.
+func ReadTransactionUpdates(reader PebbleReader, ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
 	kb := NewKeyBuilder()
-	kb.PutByte(keyPrefixTransactionUpdate).
-		PutLedgerPrefix(ledgerID)
-	lowerBound := kb.Snapshot()
-
-	// Calculate the offset where transaction ID starts in the key
-	// Key format: [keyPrefixTransactionUpdate (1 byte)][ledgerID (4 bytes)][transactionID (8 bytes)][byLog (8 bytes)]
-	txIDOffset := 1 + 4 // 1 byte for keyPrefixTransactionUpdate + ledgerID (4 bytes)
-
-	// Upper bound: if afterTxID is specified, start from afterTxID - 1
-	// Otherwise, start from the maximum possible transaction ID
-	if afterTxID > 0 {
-		kb.PutUInt64(afterTxID)
-	} else {
-		kb.PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
-	}
-	upperBound := kb.Build()
-
-	iter, err := s.getDB().NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating iterator for transaction list: %w", err)
-	}
-
-	return newTransactionIDCursor(iter, pageSize, txIDOffset), nil
-}
-
-// transactionIDCursor iterates over transaction IDs in reverse order (newest first)
-type transactionIDCursor struct {
-	iter       *pebble.Iterator
-	started    bool
-	pageSize   uint32
-	count      uint32
-	lastTxID   uint64 // Track last seen transaction ID to skip duplicates
-	txIDOffset int    // Offset in key where transaction ID starts
-}
-
-func newTransactionIDCursor(iter *pebble.Iterator, pageSize uint32, txIDOffset int) *transactionIDCursor {
-	return &transactionIDCursor{
-		iter:       iter,
-		pageSize:   pageSize,
-		lastTxID:   ^uint64(0), // Max uint64 so first ID is always different
-		txIDOffset: txIDOffset,
-	}
-}
-
-func (c *transactionIDCursor) Next() (uint64, error) {
-	// Check page limit
-	if c.pageSize > 0 && c.count >= c.pageSize {
-		return 0, io.EOF
-	}
-
-	for {
-		var valid bool
-		if !c.started {
-			c.started = true
-			valid = c.iter.Last()
-		} else {
-			valid = c.iter.Prev()
-		}
-
-		if !valid {
-			if err := c.iter.Error(); err != nil {
-				return 0, err
-			}
-			return 0, io.EOF
-		}
-
-		// Parse transaction ID from key
-		// Key format: [ledgerName (variable)][keyPrefixTransactionUpdate (1 byte)][transactionID (8 bytes)][byLog (8 bytes)]
-		key := c.iter.Key()
-
-		// Ensure key is long enough to contain transaction ID
-		if len(key) < c.txIDOffset+8 {
-			continue
-		}
-		txID := binary.BigEndian.Uint64(key[c.txIDOffset : c.txIDOffset+8])
-
-		// Skip if same as last transaction (duplicate entries for same tx)
-		if txID == c.lastTxID {
-			continue
-		}
-
-		c.lastTxID = txID
-		c.count++
-		return txID, nil
-	}
-}
-
-func (c *transactionIDCursor) Close() error {
-	return c.iter.Close()
-}
-
-// GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
-func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
-	kb := NewKeyBuilder()
-	kb.PutByte(keyPrefixTransactionUpdate).
+	kb.PutByte(KeyPrefixTransactionUpdate).
 		PutLedgerPrefix(ledgerID).
 		PutUInt64(transactionID)
 	lowerBound := kb.Snapshot()
@@ -406,7 +315,7 @@ func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]
 	kb.PutByte(0xFF)
 	upperBound := kb.Build()
 
-	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -432,6 +341,11 @@ func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]
 	}
 
 	return updates, nil
+}
+
+// GetTransactionUpdates retrieves all updates for a transaction ID, ordered by ByLog.
+func (s *Store) GetTransactionUpdates(ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+	return ReadTransactionUpdates(s, ledgerID, transactionID)
 }
 
 // FindTransactionCreationLog returns the system log that created a transaction.
@@ -1058,9 +972,9 @@ func (s *Store) GetLastAuditSequence() (uint64, error) {
 	return entry.Sequence, nil
 }
 
-// ListAuditEntries returns a cursor over audit entries after the given sequence.
+// ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
 // Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
-func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEntry], error) {
+func ReadAuditEntries(reader PebbleReader, afterSequence *uint64) (Cursor[*auditpb.AuditEntry], error) {
 	kb := NewKeyBuilder()
 	kb.PutByte(keyPrefixAudit)
 	if afterSequence != nil {
@@ -1073,7 +987,7 @@ func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEn
 		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 	upperBound := kb2.Build()
 
-	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -1082,6 +996,12 @@ func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEn
 	}
 
 	return newCursor[*auditpb.AuditEntry](iter), nil
+}
+
+// ListAuditEntries returns a cursor over audit entries after the given sequence.
+// Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
+func (s *Store) ListAuditEntries(afterSequence *uint64) (Cursor[*auditpb.AuditEntry], error) {
+	return ReadAuditEntries(s, afterSequence)
 }
 
 // GetSinkCursor returns the last successfully emitted log sequence for a named sink.
@@ -1165,9 +1085,9 @@ func (s *Store) LoadAllSinkStatuses() ([]*commonpb.SinkStatus, error) {
 	return statuses, nil
 }
 
-// ListLogsSince returns a cursor over global log entries after the given sequence.
+// ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func (s *Store) ListLogsSince(afterSequence uint64) (Cursor[*commonpb.Log], error) {
+func ReadLogsSince(reader PebbleReader, afterSequence uint64) (Cursor[*commonpb.Log], error) {
 	kb := NewKeyBuilder()
 	kb.PutByte(keyPrefixLog)
 	if afterSequence > 0 {
@@ -1180,7 +1100,7 @@ func (s *Store) ListLogsSince(afterSequence uint64) (Cursor[*commonpb.Log], erro
 		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 	upperBound := kb2.Build()
 
-	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -1189,6 +1109,12 @@ func (s *Store) ListLogsSince(afterSequence uint64) (Cursor[*commonpb.Log], erro
 	}
 
 	return newCursor[*commonpb.Log](iter), nil
+}
+
+// ListLogsSince returns a cursor over global log entries after the given sequence.
+// Pass afterSequence=0 to return all log entries.
+func (s *Store) ListLogsSince(afterSequence uint64) (Cursor[*commonpb.Log], error) {
+	return ReadLogsSince(s, afterSequence)
 }
 
 // cursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
@@ -1383,13 +1309,12 @@ func (s *Store) LoadAllSinkConfigs() ([]*commonpb.SinkConfig, error) {
 	return configs, nil
 }
 
-// ListLedgers returns a cursor over all registered ledgers.
-func (s *Store) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
-	// Create bounds for ledger info prefix
+// ReadLedgers returns a cursor over all registered ledgers from the given reader.
+func ReadLedgers(reader PebbleReader) (Cursor[*commonpb.LedgerInfo], error) {
 	lowerBound := []byte{keyPrefixLedgerInfo}
 	upperBound := []byte{keyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
 
-	iter, err := s.getDB().NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -1398,6 +1323,11 @@ func (s *Store) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
 	}
 
 	return newCursor[*commonpb.LedgerInfo](iter), nil
+}
+
+// ListLedgers returns a cursor over all registered ledgers.
+func (s *Store) ListLedgers() (Cursor[*commonpb.LedgerInfo], error) {
+	return ReadLedgers(s)
 }
 
 // GetLedgerByName retrieves a ledger by its name.

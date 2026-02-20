@@ -394,7 +394,7 @@ Idempotency keys are stored as attributes in the generation-based cache and pers
 
 Reads can be served locally without going through Raft:
 - `GetLedger`: Local read from attributes
-- `GetAllLedgersInfo`: Local read from attributes (streaming RPC)
+- `ListLedgers`: Local read from attributes (streaming RPC)
 - `GetAccount`: Local read from attributes (volumes + metadata)
 - `GetTransaction`: Local read from Pebble store (log + transaction updates)
 - `ListTransactions`: Local read from Pebble store (streaming RPC)

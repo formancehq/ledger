@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
@@ -97,8 +98,8 @@ func (g *LedgerGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, p
 	}), nil
 }
 
-func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
-	stream, err := g.client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+func (g *LedgerGrpcClient) ListLedgers(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+	stream, err := g.client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -114,21 +115,31 @@ func (g *LedgerGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *LedgerGrpcClient) ListPeriods(ctx context.Context) ([]*commonpb.Period, error) {
+func (g *LedgerGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+	req := &servicepb.ListAuditEntriesRequest{
+		AfterSequence: afterSequence,
+		FailuresOnly:  failuresOnly,
+		PageSize:      pageSize,
+	}
+	stream, err := g.client.ListAuditEntries(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return data.NewGRPCStreamCursor(stream, func(res *auditpb.AuditEntry) (*auditpb.AuditEntry, error) {
+		return res, nil
+	}), nil
+}
+
+func (g *LedgerGrpcClient) ListPeriods(ctx context.Context) (data.Cursor[*commonpb.Period], error) {
 	stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
 	}
 
-	var periods []*commonpb.Period
-	for {
-		period, err := stream.Recv()
-		if err != nil {
-			break
-		}
-		periods = append(periods, period)
-	}
-	return periods, nil
+	return data.NewGRPCStreamCursor(stream, func(res *commonpb.Period) (*commonpb.Period, error) {
+		return res, nil
+	}), nil
 }
 
 var _ ctrl.Controller = (*LedgerGrpcClient)(nil)

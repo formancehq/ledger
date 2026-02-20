@@ -388,7 +388,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Verify the ledger is visible from all nodes
 			for i, srv := range servers {
 				Eventually(func(g Gomega) {
-					ledgers, err := getAllLedgersInfo(ctx, srv.client)
+					ledgers, err := listLedgers(ctx, srv.client)
 					g.Expect(err).To(Succeed())
 					g.Expect(ledgers).To(HaveKey("tls-multi-ledger"))
 				}).Within(5 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed(),

@@ -3,12 +3,9 @@ package application
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
@@ -88,17 +85,17 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 	log.Receipt = receiptToken
 }
 
-func (impl *BucketServiceServerImpl) ListPeriods(_ *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
-	periods, err := impl.ctrl.ListPeriods(stream.Context())
+func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
+	cursor, err := impl.ctrl.ListPeriods(stream.Context())
 	if err != nil {
 		return fmt.Errorf("listing periods: %w", err)
 	}
-	for _, period := range periods {
-		if err := stream.Send(period); err != nil {
-			return fmt.Errorf("sending period: %w", err)
-		}
+
+	if req.PageSize > 0 {
+		cursor = data.NewLimitedCursor(cursor, req.PageSize)
 	}
-	return nil
+
+	return sendCursorToStream(cursor, stream, "period")
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -149,57 +146,27 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d)",
 		req.Ledger, req.PageSize, req.AfterTxId)
 
-	ctx := stream.Context()
-	cursor, err := impl.ctrl.ListTransactions(ctx, req.Ledger, req.PageSize, req.AfterTxId)
+	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId)
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
-	defer func() {
-		_ = cursor.Close()
-	}()
 
-	for {
-		tx, err := cursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading transaction: %w", err)
-		}
-		if err := stream.Send(tx); err != nil {
-			return fmt.Errorf("sending transaction: %w", err)
-		}
-	}
-
-	return nil
+	return sendCursorToStream(cursor, stream, "transaction")
 }
 
-func (impl *BucketServiceServerImpl) GetAllLedgersInfo(_ *servicepb.GetAllLedgersRequest, stream servicepb.BucketService_GetAllLedgersInfoServer) error {
-	impl.logger.Debugf("GetAllLedgersInfo request received")
+func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
+	impl.logger.Debugf("ListLedgers request received")
 
-	ctx := stream.Context()
-	cursor, err := impl.ctrl.GetAllLedgersInfo(ctx)
+	cursor, err := impl.ctrl.ListLedgers(stream.Context())
 	if err != nil {
-		return fmt.Errorf("getting all ledgers: %w", err)
-	}
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	for {
-		ledger, err := cursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading ledger: %w", err)
-		}
-		if err := stream.Send(ledger); err != nil {
-			return fmt.Errorf("sending ledger: %w", err)
-		}
+		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
-	return nil
+	if req.PageSize > 0 {
+		cursor = data.NewLimitedCursor(cursor, req.PageSize)
+	}
+
+	return sendCursorToStream(cursor, stream, "ledger")
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
@@ -225,29 +192,12 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, prefix=%q)",
 		req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
 
-	ctx := stream.Context()
-	cursor, err := impl.ctrl.ListAccounts(ctx, req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
+	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
-	defer func() {
-		_ = cursor.Close()
-	}()
 
-	for {
-		account, err := cursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading account: %w", err)
-		}
-		if err := stream.Send(account); err != nil {
-			return fmt.Errorf("sending account: %w", err)
-		}
-	}
-
-	return nil
+	return sendCursorToStream(cursor, stream, "account")
 }
 
 func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
@@ -277,60 +227,12 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return processing.ErrAuditDisabled
 	}
 
-	cursor, err := impl.store.ListAuditEntries(req.AfterSequence) //nolint:protogetter
+	cursor, err := impl.ctrl.ListAuditEntries(stream.Context(), req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
-	defer func() {
-		_ = cursor.Close()
-	}()
 
-	for {
-		entry, err := cursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading audit entry: %w", err)
-		}
-
-		// Apply ledger filter: check if any order targets the requested ledger
-		if req.Ledger != "" && !auditEntryMatchesLedger(entry, req.Ledger) {
-			continue
-		}
-
-		// Apply failures-only filter
-		if req.FailuresOnly && entry.GetFailure() == nil {
-			continue
-		}
-
-		if err := stream.Send(entry); err != nil {
-			return fmt.Errorf("sending audit entry: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// auditEntryMatchesLedger checks if any order in the audit entry targets the given ledger.
-func auditEntryMatchesLedger(entry *auditpb.AuditEntry, ledger string) bool {
-	for _, order := range entry.Orders {
-		switch t := order.Type.(type) {
-		case *raftcmdpb.Order_Apply:
-			if t.Apply.Ledger == ledger {
-				return true
-			}
-		case *raftcmdpb.Order_CreateLedger:
-			if t.CreateLedger.Name == ledger {
-				return true
-			}
-		case *raftcmdpb.Order_DeleteLedger:
-			if t.DeleteLedger.Name == ledger {
-				return true
-			}
-		}
-	}
-	return false
+	return sendCursorToStream(cursor, stream, "audit entry")
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -343,25 +245,8 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
-	defer func() {
-		_ = cursor.Close()
-	}()
 
-	for {
-		log, err := cursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading log: %w", err)
-		}
-
-		if err := stream.Send(log); err != nil {
-			return fmt.Errorf("sending log: %w", err)
-		}
-	}
-
-	return nil
+	return sendCursorToStream(cursor, stream, "log")
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {

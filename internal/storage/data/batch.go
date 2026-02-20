@@ -148,14 +148,14 @@ func (b *Batch) SaveLedger(info *commonpb.LedgerInfo) error {
 }
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
-// Key: [keyPrefixTransactionUpdate][ledgerID][transactionID][byLog] -> TransactionUpdate
+// Key: [KeyPrefixTransactionUpdate][ledgerID][transactionID][byLog] -> TransactionUpdate
 func (b *Batch) StoreTransactionUpdate(key TransactionKey, update *commonpb.TransactionUpdate) error {
 	if b.committed {
 		return fmt.Errorf("batch already committed")
 	}
 
 	b.KeyBuilder.
-		PutByte(keyPrefixTransactionUpdate).
+		PutByte(KeyPrefixTransactionUpdate).
 		PutLedgerPrefix(key.LedgerID).
 		PutUInt64(key.ID).
 		PutUInt64(update.ByLog)
@@ -466,8 +466,8 @@ func (b *Batch) PurgeTransactionUpdates(startSeq, closeSeq uint64) error {
 	}
 
 	iter, err := b.store.getDB().NewIter(&pebble.IterOptions{
-		LowerBound: []byte{keyPrefixTransactionUpdate},
-		UpperBound: []byte{keyPrefixTransactionUpdate + 1},
+		LowerBound: []byte{KeyPrefixTransactionUpdate},
+		UpperBound: []byte{KeyPrefixTransactionUpdate + 1},
 	})
 	if err != nil {
 		return fmt.Errorf("creating iterator for transaction update purge: %w", err)
@@ -476,7 +476,7 @@ func (b *Batch) PurgeTransactionUpdates(startSeq, closeSeq uint64) error {
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		if len(key) < txUpdateKeyLen {
+		if len(key) < TxUpdateKeyLen {
 			continue
 		}
 		byLog := binary.BigEndian.Uint64(key[len(key)-8:])

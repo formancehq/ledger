@@ -148,7 +148,7 @@ var _ = Describe("Simple cluster", func() {
 
 			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
 			Eventually(func(g Gomega) bool {
-				ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
+				ledgers, err := listLedgers(ctx, servers[followerID-1].client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				return found

@@ -510,26 +510,28 @@ func (*DeleteLedgerResponse) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{7}
 }
 
-type GetAllLedgersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+type ListLedgersRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// page_size is the maximum number of ledgers to return (0 = no limit)
+	PageSize      uint32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetAllLedgersRequest) Reset() {
-	*x = GetAllLedgersRequest{}
+func (x *ListLedgersRequest) Reset() {
+	*x = ListLedgersRequest{}
 	mi := &file_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetAllLedgersRequest) String() string {
+func (x *ListLedgersRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetAllLedgersRequest) ProtoMessage() {}
+func (*ListLedgersRequest) ProtoMessage() {}
 
-func (x *GetAllLedgersRequest) ProtoReflect() protoreflect.Message {
+func (x *ListLedgersRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -541,9 +543,16 @@ func (x *GetAllLedgersRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetAllLedgersRequest.ProtoReflect.Descriptor instead.
-func (*GetAllLedgersRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListLedgersRequest.ProtoReflect.Descriptor instead.
+func (*ListLedgersRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListLedgersRequest) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
 }
 
 type GetLedgerRequest struct {
@@ -1398,7 +1407,9 @@ func (x *ConfirmArchivePeriodRequest) GetPeriodId() uint64 {
 }
 
 type ListPeriodsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// page_size is the maximum number of periods to return (0 = no limit)
+	PageSize      uint32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1431,6 +1442,13 @@ func (x *ListPeriodsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListPeriodsRequest.ProtoReflect.Descriptor instead.
 func (*ListPeriodsRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListPeriodsRequest) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
 }
 
 // SetMaintenanceModeRequest enables or disables maintenance mode.
@@ -3238,8 +3256,9 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 type ListAuditEntriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
-	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	FailuresOnly  bool                   `protobuf:"varint,3,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
+	FailuresOnly  bool                   `protobuf:"varint,2,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
+	// page_size is the maximum number of audit entries to return (0 = no limit)
+	PageSize      uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3281,18 +3300,18 @@ func (x *ListAuditEntriesRequest) GetAfterSequence() uint64 {
 	return 0
 }
 
-func (x *ListAuditEntriesRequest) GetLedger() string {
-	if x != nil {
-		return x.Ledger
-	}
-	return ""
-}
-
 func (x *ListAuditEntriesRequest) GetFailuresOnly() bool {
 	if x != nil {
 		return x.FailuresOnly
 	}
 	return false
+}
+
+func (x *ListAuditEntriesRequest) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
 }
 
 type ListLogsRequest struct {
@@ -3463,8 +3482,9 @@ const file_service_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x01(\v2\x13.common.MetadataSetR\bmetadata\")\n" +
 	"\x13DeleteLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14DeleteLedgerResponse\"\x16\n" +
-	"\x14GetAllLedgersRequest\"*\n" +
+	"\x14DeleteLedgerResponse\"1\n" +
+	"\x12ListLedgersRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\rR\bpageSize\"*\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\";\n" +
 	"\fApplyRequest\x12+\n" +
@@ -3511,8 +3531,9 @@ const file_service_proto_rawDesc = "" +
 	"\x14ArchivePeriodRequest\x12\x1b\n" +
 	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\":\n" +
 	"\x1bConfirmArchivePeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\"\x14\n" +
-	"\x12ListPeriodsRequest\"5\n" +
+	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\"1\n" +
+	"\x12ListPeriodsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\rR\bpageSize\"5\n" +
 	"\x19SetMaintenanceModeRequest\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\".\n" +
 	"\x18SetPeriodScheduleRequest\x12\x12\n" +
@@ -3660,11 +3681,11 @@ const file_service_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x95\x01\n" +
+	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x9a\x01\n" +
 	"\x17ListAuditEntriesRequest\x12*\n" +
-	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12#\n" +
-	"\rfailures_only\x18\x03 \x01(\bR\ffailuresOnlyB\x11\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12#\n" +
+	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\rR\bpageSizeB\x11\n" +
 	"\x0f_after_sequence\"m\n" +
 	"\x0fListLogsRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
@@ -3682,9 +3703,9 @@ const file_service_proto_rawDesc = "" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\xde\a\n" +
-	"\rBucketService\x12G\n" +
-	"\x11GetAllLedgersInfo\x12\x1c.ledger.GetAllLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
+	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\xd6\a\n" +
+	"\rBucketService\x12?\n" +
+	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
 	"\n" +
 	"GetAccount\x12\x19.ledger.GetAccountRequest\x1a\x0f.common.Account\x12O\n" +
@@ -3725,7 +3746,7 @@ var file_service_proto_goTypes = []any{
 	(*CreateLedgerRequest)(nil),            // 6: ledger.CreateLedgerRequest
 	(*DeleteLedgerRequest)(nil),            // 7: ledger.DeleteLedgerRequest
 	(*DeleteLedgerResponse)(nil),           // 8: ledger.DeleteLedgerResponse
-	(*GetAllLedgersRequest)(nil),           // 9: ledger.GetAllLedgersRequest
+	(*ListLedgersRequest)(nil),             // 9: ledger.ListLedgersRequest
 	(*GetLedgerRequest)(nil),               // 10: ledger.GetLedgerRequest
 	(*ApplyRequest)(nil),                   // 11: ledger.ApplyRequest
 	(*ApplyResponse)(nil),                  // 12: ledger.ApplyResponse
@@ -3835,7 +3856,7 @@ var file_service_proto_depIdxs = []int32{
 	58, // 45: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
 	64, // 46: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
 	55, // 47: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	9,  // 48: ledger.BucketService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	9,  // 48: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
 	10, // 49: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
 	1,  // 50: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
 	2,  // 51: ledger.BucketService.GetTransaction:input_type -> ledger.GetTransactionRequest
@@ -3849,7 +3870,7 @@ var file_service_proto_depIdxs = []int32{
 	23, // 59: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
 	50, // 60: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
 	27, // 61: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
-	65, // 62: ledger.BucketService.GetAllLedgersInfo:output_type -> common.LedgerInfo
+	65, // 62: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
 	65, // 63: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
 	66, // 64: ledger.BucketService.GetAccount:output_type -> common.Account
 	3,  // 65: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse

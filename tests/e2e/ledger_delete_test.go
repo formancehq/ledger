@@ -65,7 +65,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
 			// Verify the ledger is not in the list of all ledgers (soft-deleted are filtered)
-			ledgers, err := getAllLedgersInfo(ctx, client)
+			ledgers, err := listLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			for name := range ledgers {
 				Expect(name).NotTo(Equal(ledgerName))
@@ -78,7 +78,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 
 			// Verify the ledger does not appear in the list
-			ledgers, err = getAllLedgersInfo(ctx, client)
+			ledgers, err = listLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			_, found := ledgers[ledgerName]
 			Expect(found).To(BeFalse())

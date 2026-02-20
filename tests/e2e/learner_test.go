@@ -132,7 +132,7 @@ var _ = Describe("Learner node", func() {
 
 			followerID := ((lid + 1) % countInstances) + 1
 			Eventually(func(g Gomega) {
-				ledgers, err := getAllLedgersInfo(ctx, servers[followerID-1].client)
+				ledgers, err := listLedgers(ctx, servers[followerID-1].client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				g.Expect(found).To(BeTrue())

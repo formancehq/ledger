@@ -129,7 +129,7 @@ const suffixLen = 10 // attrType(1) + raftIndex(8) + entryType(1)
 // It finds the most recent base with index <= maxIndex and applies all diffs with index <= maxIndex.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) ComputeValue(reader data.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
@@ -149,7 +149,7 @@ func (a *Attribute[V]) ComputeValue(s *data.Store, index uint64, canonicalKey []
 		binary.BigEndian.PutUint64(buf[pLen:], index+1)
 	}
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:pLen],
 		UpperBound: buf[:pLen+upperExtra],
 	})
@@ -239,14 +239,14 @@ type ScanResult[V proto.Message] struct {
 
 // ScanEntries scans all entries for a canonical key and returns the latest base/diff info.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ScanEntries(s *data.Store, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader data.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
 	// Single allocation for both bounds.
 	pLen := prefixLen(canonicalKey)
 	buf := make([]byte, pLen+1)
 	a.putPrefix(buf, canonicalKey)
 	buf[pLen] = 0xFF
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:pLen],
 		UpperBound: buf[:pLen+1],
 	})
@@ -301,13 +301,13 @@ type ListEntry struct {
 // It iterates over all attributes (prefix 0xF1) and filters by attrType.
 // Key layout: [0xF1][canonicalKey][attrType][raftIndex(8)][entryType(1)]
 // Note: Allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
+func (a *Attribute[V]) List(reader data.PebbleReader) ([]ListEntry, error) {
 	// Scan the entire attribute range [0xF1, 0xF2)
 	buf := make([]byte, 2)
 	buf[0] = data.KeyPrefixAttributes
 	buf[1] = data.KeyPrefixAttributes + 1 // upper bound
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],
 		UpperBound: buf[1:2],
 	})
@@ -367,7 +367,7 @@ func (a *Attribute[V]) List(s *data.Store) ([]ListEntry, error) {
 // by seeking past all entries for the current account after extracting it.
 // Thread-safe: allocates its own buffer.
 func (a *Attribute[V]) ListAccountAddresses(
-	s *data.Store,
+	reader data.PebbleReader,
 	ledgerID uint32,
 	pageSize uint32,
 	afterAddress string,
@@ -413,7 +413,7 @@ func (a *Attribute[V]) ListAccountAddresses(
 		binary.BigEndian.PutUint32(upperBuf[1:], ledgerID+1)
 	}
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBuf[:lowerLen],
 		UpperBound: upperBuf,
 	})

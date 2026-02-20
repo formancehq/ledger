@@ -9,6 +9,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	data "github.com/formancehq/ledger-v3-poc/internal/storage/data"
@@ -73,21 +74,6 @@ func (mr *MockControllerMockRecorder) GetAccount(ctx, ledgerName, address any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockController)(nil).GetAccount), ctx, ledgerName, address)
 }
 
-// GetAllLedgersInfo mocks base method.
-func (m *MockController) GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllLedgersInfo", ctx)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.LedgerInfo])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAllLedgersInfo indicates an expected call of GetAllLedgersInfo.
-func (mr *MockControllerMockRecorder) GetAllLedgersInfo(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllLedgersInfo", reflect.TypeOf((*MockController)(nil).GetAllLedgersInfo), ctx)
-}
-
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
@@ -133,6 +119,36 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, prefix)
 }
 
+// ListAuditEntries mocks base method.
+func (m *MockController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, afterSequence, failuresOnly, pageSize)
+	ret0, _ := ret[0].(data.Cursor[*auditpb.AuditEntry])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAuditEntries indicates an expected call of ListAuditEntries.
+func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuditEntries", reflect.TypeOf((*MockController)(nil).ListAuditEntries), ctx, afterSequence, failuresOnly, pageSize)
+}
+
+// ListLedgers mocks base method.
+func (m *MockController) ListLedgers(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLedgers", ctx)
+	ret0, _ := ret[0].(data.Cursor[*commonpb.LedgerInfo])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLedgers indicates an expected call of ListLedgers.
+func (mr *MockControllerMockRecorder) ListLedgers(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockController)(nil).ListLedgers), ctx)
+}
+
 // ListLogs mocks base method.
 func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
@@ -149,10 +165,10 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, pageSize any)
 }
 
 // ListPeriods mocks base method.
-func (m *MockController) ListPeriods(ctx context.Context) ([]*commonpb.Period, error) {
+func (m *MockController) ListPeriods(ctx context.Context) (data.Cursor[*commonpb.Period], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPeriods", ctx)
-	ret0, _ := ret[0].([]*commonpb.Period)
+	ret0, _ := ret[0].(data.Cursor[*commonpb.Period])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

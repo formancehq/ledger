@@ -16,7 +16,7 @@ The ledger currently provides these read capabilities:
 | `GetTransaction(ledger, txID)` | Single transaction by ID |
 | `ListTransactions(ledger, pageSize, afterTxID)` | Paginated list, newest-first, no filter |
 | `ListAccounts(ledger, pageSize, afterAddr, prefix)` | Paginated list with optional address prefix filter |
-| `GetAllLedgersInfo` / `GetLedger` | Ledger listing |
+| `ListLedgers` / `GetLedger` | Ledger listing |
 | `ListAuditEntries` | Audit trail with ledger + failures-only filter |
 
 This is insufficient for real-world use cases:

@@ -328,9 +328,9 @@ func newPosting(source, destination string, amount *big.Int, asset string) *comm
 	return commonpb.NewPosting(source, destination, asset, amount)
 }
 
-// getAllLedgersInfo collects all ledgers from the streaming RPC into a map
-func getAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient) (map[string]*commonpb.LedgerInfo, error) {
-	stream, err := client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
+// listLedgers collects all ledgers from the streaming RPC into a map
+func listLedgers(ctx context.Context, client servicepb.BucketServiceClient) (map[string]*commonpb.LedgerInfo, error) {
+	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
