@@ -48,17 +48,6 @@ func (ks *KeyStore) HasKeys() bool {
 	return len(ks.publicKeys) > 0
 }
 
-// GetAllKeys returns a copy of all registered public keys.
-// Used for snapshot serialization.
-func (ks *KeyStore) GetAllKeys() map[string]ed25519.PublicKey {
-	ks.mu.RLock()
-	defer ks.mu.RUnlock()
-	result := make(map[string]ed25519.PublicKey, len(ks.publicKeys))
-	for k, v := range ks.publicKeys {
-		result[k] = v
-	}
-	return result
-}
 
 // Reset clears all keys. Used during snapshot restore.
 func (ks *KeyStore) Reset() {
