@@ -921,6 +921,38 @@ ledgerctl cluster promote-learner 4
 ledgerctl cluster promote-learner 5 --timeout 60s
 ```
 
+#### cluster remove-node
+
+Remove a node (voter or learner) from the Raft cluster. The request is forwarded to the leader. Cannot remove the leader itself; transfer leadership first.
+
+```bash
+ledgerctl cluster remove-node <node-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- The request is forwarded to the current leader if sent to a follower
+- The leader proposes a ConfChange to remove the node from the cluster
+- Once committed, all nodes remove the peer from their transport and service pool
+- Cannot remove the leader node; use `cluster transfer-leader` first
+- Works for both voters and learners
+- The removed node is not automatically shut down; the operator must stop it manually
+
+**Example:**
+
+```bash
+# Remove node 3 from the cluster
+ledgerctl cluster remove-node 3
+
+# Remove with custom timeout
+ledgerctl cluster remove-node 4 --timeout 30s
+```
+
 #### cluster disk-usage
 
 Display disk space used by storage components on the connected node.

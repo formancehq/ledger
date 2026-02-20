@@ -314,6 +314,25 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	go conn.loop()
 }
 
+// RemovePeer removes a peer from the transport, stopping its connection and cleaning up resources.
+func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
+	conn, exists := t.peers[id]
+	if !exists {
+		return
+	}
+
+	if err := conn.stop(ctx); err != nil {
+		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "error": err}).
+			Errorf("Failed to stop peer connection")
+	}
+	delete(t.peers, id)
+
+	if err := t.connectionPool.RemovePeer(id); err != nil {
+		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "error": err}).
+			Errorf("Failed to remove peer from connection pool")
+	}
+}
+
 // Send sends a message to a peer
 func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 	if len(msgs) == 0 {

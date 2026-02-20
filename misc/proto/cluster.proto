@@ -33,6 +33,10 @@ service ClusterService {
   // PromoteLearner promotes a learner node to a full voter.
   // The request is forwarded to the leader.
   rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse);
+
+  // RemoveNode removes a node (voter or learner) from the Raft cluster.
+  // The request is forwarded to the leader. Cannot remove the leader itself.
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
 }
 
 message GetClusterStateRequest {
@@ -144,6 +148,16 @@ message PromoteLearnerRequest {
 }
 
 message PromoteLearnerResponse {}
+
+// ============================================================================
+// Remove Node Messages
+// ============================================================================
+
+message RemoveNodeRequest {
+  uint64 node_id = 1;  // Numeric ID of the node to remove
+}
+
+message RemoveNodeResponse {}
 
 // ============================================================================
 // Backup Messages

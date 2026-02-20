@@ -387,6 +387,67 @@ Time 3: Nodes 2 and 3 catch up with the leader's log
 Cluster fully operational with 3 voters.
 ```
 
+## Removing a Node
+
+Nodes can be removed from the cluster using the `RemoveNode` RPC or the CLI command. This works for both voters and learners.
+
+### Prerequisites
+
+- The node to remove must **not** be the current leader. Transfer leadership first with `cluster transfer-leader`.
+- The node must be a current member of the cluster.
+
+### Procedure
+
+```bash
+# 1. Check cluster status to identify the node
+ledgerctl cluster status
+
+# 2. If removing a voter that is the leader, transfer leadership first
+ledgerctl cluster transfer-leader <other-node-id>
+
+# 3. Remove the node
+ledgerctl cluster remove-node <node-id>
+
+# 4. Verify the node was removed
+ledgerctl cluster status
+
+# 5. Stop the removed node process manually
+```
+
+### What Happens
+
+1. The `RemoveNode` request is forwarded to the current leader (if sent to a follower)
+2. The leader validates that the target is not itself and is a cluster member
+3. The leader proposes a `ConfChangeRemoveNode` through Raft consensus
+4. Once committed, all remaining nodes:
+   - Apply the configuration change (node is removed from the Raft group)
+   - Close the transport connection to the removed peer
+   - Remove the peer from the service connection pool
+5. The removed node is **not** automatically shut down; the operator must stop it manually
+
+### Important Notes
+
+- After removal, the removed node will no longer receive Raft messages or log entries
+- The removed node should be stopped by the operator after the removal is confirmed
+- Removing a voter reduces the cluster quorum size; ensure the remaining cluster can still form a majority
+- For a 3-node cluster, removing one voter leaves a 2-node cluster where both nodes must be available for writes
+
+### Example: Scale Down from 3 to 2 Nodes
+
+```bash
+# Starting state: 3 voters (nodes 1, 2, 3), node 1 is leader
+
+# Remove node 3 (a follower)
+ledgerctl cluster remove-node 3
+
+# Stop the node 3 process
+# (on node 3's host)
+kill <node-3-pid>
+
+# Verify: cluster now has 2 voters
+ledgerctl cluster status
+```
+
 ## Related Documentation
 
 - [Raft Consensus](../dev/architecture/raft-consensus.md) - Raft protocol details, elections, replication

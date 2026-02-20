@@ -100,6 +100,23 @@ func (p *ServiceConnectionPool) PeerIDs() []uint64 {
 	return ids
 }
 
+// RemovePeer removes a peer from the pool and closes its connection.
+func (p *ServiceConnectionPool) RemovePeer(id uint64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	conn, ok := p.connections[id]
+	if !ok {
+		return nil
+	}
+
+	err := conn.Close()
+	delete(p.connections, id)
+	delete(p.peers, id)
+
+	return err
+}
+
 // Close closes all gRPC connections
 func (p *ServiceConnectionPool) Close() error {
 	p.mu.Lock()

@@ -744,6 +744,14 @@ func handleConfChangeEvent(
 		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
 		}
+	case raftpb.ConfChangeRemoveNode:
+		logger.WithFields(map[string]any{
+			"node_id": e.NodeID,
+		}).Infof("Removing peer from ConfChange")
+		defaultTransport.RemovePeer(context.Background(), e.NodeID)
+		if err := servicePool.RemovePeer(e.NodeID); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
+		}
 	}
 }
 

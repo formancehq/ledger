@@ -329,6 +329,34 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 	return &clusterpb.PromoteLearnerResponse{}, nil
 }
 
+func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
+	if req.NodeId == 0 {
+		return nil, fmt.Errorf("node_id must be non-zero")
+	}
+
+	// Forward to leader if not leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+		return client.RemoveNode(ctx, req)
+	}
+
+	if err := impl.node.RemoveNode(ctx, req.NodeId); err != nil {
+		return nil, fmt.Errorf("removing node: %w", err)
+	}
+
+	return &clusterpb.RemoveNodeResponse{}, nil
+}
+
 func RegisterClusterService(server *grpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {
 	clusterpb.RegisterClusterServiceServer(server, clusterServiceServer)
 }
