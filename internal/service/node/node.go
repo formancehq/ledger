@@ -1346,19 +1346,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// Get leader
 	leaderID := status.Lead
 
-	// Convert state to string
-	stateStr := "Unknown"
-	// todo: use to string of status.RaftState (work for cursor)
-	switch status.RaftState {
-	case raft.StateLeader:
-		stateStr = "Leader"
-	case raft.StateFollower:
-		stateStr = "Follower"
-	case raft.StateCandidate:
-		stateStr = "Candidate"
-	case raft.StatePreCandidate:
-		stateStr = "PreCandidate"
-	}
+	stateStr := status.RaftState.String()
 
 	// Build progress information map and nodes list only if this node is the leader
 	var nodes []*clusterpb.NodeInfo

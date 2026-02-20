@@ -79,8 +79,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Uint64("learner-promotion-threshold", 100, "Max log entry lag before auto-promoting a caught-up learner to voter (0 = disable)")
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	runCmd.Flags().Uint64("snapshot-threshold", 5000, "Number of logs before triggering a snapshot (0 = use Raft default)")
-	// todo: remove
-	runCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
+
 	runCmd.Flags().Int("raft-election-tick", 10, "Election timeout in ticks (0 = use default 10)")
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
 	runCmd.Flags().Uint64("raft-max-size-per-msg", 0, "Maximum size per message in bytes (0 = use default 1MB)")
@@ -311,7 +310,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.RaftConfig.Bootstrap = getBool("bootstrap", false)
 	cfg.RaftConfig.AutoPromoteThreshold = getUint64("learner-promotion-threshold", 100)
 	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)
-	cfg.RaftConfig.SnapshotInterval = getDuration("snapshot-interval", 0)
+
 	cfg.RaftConfig.ElectionTick = getInt("raft-election-tick", 0)
 	cfg.RaftConfig.HeartbeatTick = getInt("raft-heartbeat-tick", 0)
 	cfg.RaftConfig.MaxSizePerMsg = getUint64("raft-max-size-per-msg", 0)

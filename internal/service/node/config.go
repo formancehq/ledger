@@ -11,7 +11,7 @@ type NodeConfig struct {
 	WalDir               string
 	DataDir              string        // Data directory (for detecting RESTORED marker)
 	SnapshotThreshold    uint64        // Number of logs before triggering a snapshot
-	SnapshotInterval     time.Duration // Minimum interval between snapshots
+
 	RotationThreshold    uint64        // Number of entries before rotating generations (default: 1000)
 	ElectionTick         int           // Election timeout in ticks (default: 10)
 	HeartbeatTick        int           // Heartbeat interval in ticks (default: 1)
