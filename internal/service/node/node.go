@@ -47,6 +47,12 @@ var (
 
 	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
 	ErrLearnerNotEligible = fmt.Errorf("learner nodes are not eligible for leadership")
+
+	// ErrCannotRemoveSelf is returned when trying to remove the leader node itself.
+	ErrCannotRemoveSelf = fmt.Errorf("cannot remove the leader node; transfer leadership first")
+
+	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
+	ErrNodeNotInCluster = fmt.Errorf("node is not a member of the cluster")
 )
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
@@ -1582,6 +1588,34 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 					NodeID: nodeID,
 				},
 			},
+		}
+
+		return node.rawNode.ProposeConfChange(cc)
+	})
+}
+
+// RemoveNode proposes removing a node (voter or learner) from the Raft cluster.
+// Must be called on the leader. Cannot remove the leader itself.
+func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		if nodeID == node.config.NodeID {
+			return ErrCannotRemoveSelf
+		}
+
+		if _, ok := status.Progress[nodeID]; !ok {
+			return ErrNodeNotInCluster
+		}
+
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeRemoveNode,
+				NodeID: nodeID,
+			}},
 		}
 
 		return node.rawNode.ProposeConfChange(cc)

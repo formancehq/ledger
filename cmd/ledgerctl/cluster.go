@@ -18,6 +18,7 @@ func newClusterCommand() *cobra.Command {
 	cmd.AddCommand(newClusterTransferLeaderCommand())
 	cmd.AddCommand(newClusterAddLearnerCommand())
 	cmd.AddCommand(newClusterPromoteLearnerCommand())
+	cmd.AddCommand(newClusterRemoveNodeCommand())
 	cmd.AddCommand(newClusterMaintenanceCommand())
 
 	return cmd

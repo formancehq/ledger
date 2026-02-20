@@ -95,6 +95,23 @@ func (p *ConnectionPool) GetPeerAddress(peerID uint64) string {
 	return p.peers[peerID]
 }
 
+// RemovePeer removes a peer from the pool and closes its connection.
+func (p *ConnectionPool) RemovePeer(id uint64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	conn, ok := p.connections[id]
+	if !ok {
+		return nil
+	}
+
+	err := conn.Close()
+	delete(p.connections, id)
+	delete(p.peers, id)
+
+	return err
+}
+
 // Close closes all gRPC connections
 func (p *ConnectionPool) Close() error {
 	p.mu.Lock()
