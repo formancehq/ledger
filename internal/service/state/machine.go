@@ -118,6 +118,10 @@ type Machine struct {
 	// eventNotifier is notified after new logs are committed and when events
 	// config changes. Used by the event Manager.
 	eventNotifier EventNotifier
+
+	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
+	// repeated allocations (snapshots can be large).
+	snapshotBuf []byte
 }
 
 func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
@@ -1091,25 +1095,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, false, false, nil
 	}
 
-	// Extract created logs and resolve reference sequences
-	var (
-		createdLogs  []*commonpb.Log
-		responseLogs []*commonpb.Log
-	)
+	// Extract created logs for the write buffer (reference sequences are idempotent
+	// responses that don't produce new logs)
+	var createdLogs []*commonpb.Log
 	for _, logOrRef := range response.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			createdLogs = append(createdLogs, created)
-			responseLogs = append(responseLogs, created)
-		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
-			// Idempotent response - fetch the existing log by sequence
-			// todo: remove that here!
-			// This should be fetched in admission callback
-			// Limit data store interface to only writes to prevent any error regarding this point
-			log, err := fsm.dataStore.GetLogBySequence(refSeq)
-			if err != nil {
-				return nil, false, false, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, err)
-			}
-			responseLogs = append(responseLogs, log)
 		}
 	}
 
@@ -1129,7 +1120,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			Orders:     proposal.Orders,
 			Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{
-					LogSequences: extractLogSequences(responseLogs),
+					LogSequences: extractLogSequencesFromLogsOrRefs(response.Logs),
 				},
 			},
 		}
@@ -1143,7 +1134,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	return &ApplyResult{
 		ProposalID: proposal.Id,
-		Logs:       responseLogs,
+		Logs:       response.Logs,
 	}, configChanged, len(buffer.pendingArchives) > 0, nil
 }
 
@@ -1178,8 +1169,17 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		ClosedPeriods:        closedPeriods,
 	}
 
-	// todo: use a reusable buffer as the snapshot can be big
-	return snapshot.MarshalVT()
+	size := snapshot.SizeVT()
+	if cap(fsm.snapshotBuf) < size {
+		fsm.snapshotBuf = make([]byte, size)
+	} else {
+		fsm.snapshotBuf = fsm.snapshotBuf[:size]
+	}
+	n, err := snapshot.MarshalToVT(fsm.snapshotBuf)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling snapshot: %w", err)
+	}
+	return fsm.snapshotBuf[:n], nil
 }
 
 // serializeCacheGeneration serializes either Gen0 (genIndex=0) or Gen1 (genIndex=1) from the cache
@@ -1620,13 +1620,17 @@ func (fsm *Machine) ScheduleChanged() signal.Signal {
 
 // checkClosePeriod checks if the apply result contains a ClosePeriod log
 // and returns a SealRequest if the sealer should be triggered.
+// Only created logs are checked since reference sequences are idempotent
+// responses that already triggered sealing when first applied.
 func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	if result == nil {
 		return nil
 	}
-	for _, log := range result.Logs {
-		if closePeriodLog := log.Payload.GetClosePeriod(); closePeriodLog != nil {
-			return SealRequestFromPeriod(closePeriodLog.ClosedPeriod)
+	for _, logOrRef := range result.Logs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			if closePeriodLog := created.Payload.GetClosePeriod(); closePeriodLog != nil {
+				return SealRequestFromPeriod(closePeriodLog.ClosedPeriod)
+			}
 		}
 	}
 	return nil
@@ -1642,7 +1646,7 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 
 type ApplyResult struct {
 	ProposalID     uint64
-	Logs           []*commonpb.Log
+	Logs           []*raftcmdpb.CreatedLogOrReference
 	Error          error
 	CheckpointPath string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
 }

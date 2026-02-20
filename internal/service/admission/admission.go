@@ -832,7 +832,23 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// At this point, the cache will have the values, so we can remove them from the loader
 	loadedKeys.MarkApplied(a.loaders)
 
-	return result.Logs, err
+	// Resolve CreatedLogOrReference entries into concrete logs.
+	// Created logs are returned directly; reference sequences (idempotent responses)
+	// are fetched from PebbleDB here on the parallel path, outside the FSM hot path.
+	logs := make([]*commonpb.Log, len(result.Logs))
+	for i, logOrRef := range result.Logs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			logs[i] = created
+		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
+			log, fetchErr := a.store.GetLogBySequence(refSeq)
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
+			}
+			logs[i] = log
+		}
+	}
+
+	return logs, err
 }
 
 // verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.

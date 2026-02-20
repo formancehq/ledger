@@ -674,7 +674,14 @@ func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, 
 		return nil, fmt.Errorf("fsm returned empty logs")
 	}
 
-	return result.Logs, nil
+	// Extract created logs (test helper doesn't use idempotent references)
+	var logs []*commonpb.Log
+	for _, logOrRef := range result.Logs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			logs = append(logs, created)
+		}
+	}
+	return logs, nil
 }
 
 // nowTimestamp returns the current time as a commonpb.Timestamp

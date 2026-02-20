@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 )
 
@@ -94,11 +94,17 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	return failure
 }
 
-// extractLogSequences extracts the sequence numbers from a slice of logs.
-func extractLogSequences(logs []*commonpb.Log) []uint64 {
-	sequences := make([]uint64, len(logs))
-	for i, log := range logs {
-		sequences[i] = log.Sequence
+// extractLogSequencesFromLogsOrRefs extracts the sequence numbers from a slice of
+// CreatedLogOrReference. For created logs it returns the log sequence; for reference
+// sequences it returns the reference directly.
+func extractLogSequencesFromLogsOrRefs(logsOrRefs []*raftcmdpb.CreatedLogOrReference) []uint64 {
+	sequences := make([]uint64, len(logsOrRefs))
+	for i, logOrRef := range logsOrRefs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			sequences[i] = created.Sequence
+		} else {
+			sequences[i] = logOrRef.GetReferenceSequence()
+		}
 	}
 	return sequences
 }

@@ -358,14 +358,14 @@ func TestBuildAuditFailure(t *testing.T) {
 	})
 }
 
-func TestExtractLogSequences(t *testing.T) {
+func TestExtractLogSequencesFromLogsOrRefs(t *testing.T) {
 	t.Parallel()
 
-	logs := []*commonpb.Log{
-		{Sequence: 1},
-		{Sequence: 5},
-		{Sequence: 10},
+	logsOrRefs := []*raftcmdpb.CreatedLogOrReference{
+		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: &commonpb.Log{Sequence: 1}}},
+		{Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{ReferenceSequence: 5}},
+		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: &commonpb.Log{Sequence: 10}}},
 	}
-	sequences := extractLogSequences(logs)
+	sequences := extractLogSequencesFromLogsOrRefs(logsOrRefs)
 	require.Equal(t, []uint64{1, 5, 10}, sequences)
 }

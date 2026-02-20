@@ -35,7 +35,6 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
-	// todo: as parsing is an expensive process, we should either limit the number of the script of having an already parsed version of the AST in the raft entry
 	parsed, err := p.cache.GetOrParse(order.Script.Plain)
 	if err != nil {
 		return nil, err
