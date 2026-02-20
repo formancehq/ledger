@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/logging"
-	sharedapi "github.com/formancehq/go-libs/v3/testing/api"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/logging"
+	sharedapi "github.com/formancehq/go-libs/v4/testing/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"

@@ -5,10 +5,10 @@ package bucket_test
 import (
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/v3/testing/utils"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/testing/docker"
+	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v4/testing/utils"
 )
 
 var (

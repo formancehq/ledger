@@ -13,22 +13,21 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	apilib "github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/aws/iam"
-	"github.com/formancehq/go-libs/v3/ballast"
-	"github.com/formancehq/go-libs/v3/bun/bunconnect"
-	"github.com/formancehq/go-libs/v3/health"
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v3/publish"
-	"github.com/formancehq/go-libs/v3/service"
+	apilib "github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/aws/iam"
+	"github.com/formancehq/go-libs/v4/ballast"
+	"github.com/formancehq/go-libs/v4/bun/bunconnect"
+	"github.com/formancehq/go-libs/v4/health"
+	"github.com/formancehq/go-libs/v4/httpserver"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v4/publish"
+	"github.com/formancehq/go-libs/v4/service"
 
 	"github.com/formancehq/ledger/internal/api"
-	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -36,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/formancehq/ledger/internal/worker"
@@ -126,7 +126,7 @@ func NewServeCommand() *cobra.Command {
 						MaxSize:  cfg.BulkMaxSize,
 						Parallel: cfg.BulkParallel,
 					},
-					Pagination: common.PaginationConfig{
+					Pagination: storagecommon.PaginationConfig{
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},

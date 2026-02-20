@@ -1,6 +1,6 @@
 package provisionner
 
-import . "github.com/formancehq/go-libs/v3/collectionutils"
+import . "github.com/formancehq/go-libs/v4/collectionutils"
 
 type ExporterState struct {
 	ID     string         `yaml:"id"`

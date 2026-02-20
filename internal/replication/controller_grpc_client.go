@@ -6,9 +6,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	. "github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v4/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"

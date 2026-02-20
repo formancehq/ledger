@@ -4,17 +4,16 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
-func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
+func readVolumes(paginationConfig storagecommon.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 
@@ -51,12 +50,12 @@ func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
 			}
 		}
 
-		rq, err := getPaginatedQuery[ledgerstore.GetVolumesOptions](
+		rq, err := getPaginatedQuery[ledger.GetVolumesOptions](
 			r,
 			paginationConfig,
 			"account",
 			bunpaginate.OrderAsc,
-			func(rq *storagecommon.ResourceQuery[ledgerstore.GetVolumesOptions]) {
+			func(rq *storagecommon.ResourceQuery[ledger.GetVolumesOptions]) {
 				if groupBy > 0 {
 					rq.Opts.GroupLvl = groupBy
 				}

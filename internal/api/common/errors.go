@@ -4,10 +4,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -71,7 +71,8 @@ func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err er
 	switch {
 	case errors.Is(err, storagecommon.ErrInvalidQuery{}) ||
 		errors.Is(err, ledger.ErrMissingFeature{}) ||
-		errors.Is(err, storagecommon.ErrNotPaginatedField{}):
+		errors.Is(err, storagecommon.ErrNotPaginatedField{}) ||
+		errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		api.BadRequest(w, ErrValidation, err)
 	default:
 		HandleCommonErrors(w, r, err)

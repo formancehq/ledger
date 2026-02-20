@@ -12,10 +12,10 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/v3/metadata"
-	migrations "github.com/formancehq/go-libs/v3/migrations"
-	time "github.com/formancehq/go-libs/v3/time"
+	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	metadata "github.com/formancehq/go-libs/v4/metadata"
+	migrations "github.com/formancehq/go-libs/v4/migrations"
+	time "github.com/formancehq/go-libs/v4/time"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
@@ -62,10 +62,10 @@ func (mr *MockStoreMockRecorder) Accounts() *gomock.Call {
 }
 
 // AggregatedBalances mocks base method.
-func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions] {
+func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregatedBalances")
-	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions])
+	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions])
 	return ret0
 }
 
@@ -407,10 +407,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions] {
+func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions])
 	return ret0
 }
 

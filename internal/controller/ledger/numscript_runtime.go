@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v4/metadata"
 	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"

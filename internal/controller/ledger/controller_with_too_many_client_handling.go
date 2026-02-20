@@ -10,10 +10,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -169,6 +170,20 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	})
 
 	return schemas, err
+}
+
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+	var (
+		resource *queries.ResourceKind
+		cursor   *bunpaginate.Cursor[any]
+		err      error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		resource, cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, q, paginationConfig)
+		return err
+	})
+
+	return resource, cursor, err
 }
 
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {

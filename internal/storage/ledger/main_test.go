@@ -14,12 +14,12 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
-	"github.com/formancehq/go-libs/v3/bun/bundebug"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/v3/testing/utils"
+	"github.com/formancehq/go-libs/v4/bun/bundebug"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/testing/deferred"
+	"github.com/formancehq/go-libs/v4/testing/docker"
+	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v4/testing/utils"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"

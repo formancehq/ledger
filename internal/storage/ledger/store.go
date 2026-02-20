@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -51,15 +51,15 @@ type Store struct {
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	GetVolumesOptions] {
+	ledger.GetVolumesOptions] {
 	return common.NewPaginatedResourceRepository[
 		ledger.VolumesWithBalanceByAssetByAccount,
-		GetVolumesOptions,
+		ledger.GetVolumesOptions,
 	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
 }
 
-func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
-	return common.NewResourceRepository[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
+	return common.NewResourceRepository[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }

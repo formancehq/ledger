@@ -10,8 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"go.vallahaye.net/batcher"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v4/logging"
 )
 
 type Batcher struct {

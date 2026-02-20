@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	. "github.com/formancehq/go-libs/v3/collectionutils"
+	. "github.com/formancehq/go-libs/v4/collectionutils"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

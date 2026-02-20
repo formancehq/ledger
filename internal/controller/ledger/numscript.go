@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v4/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

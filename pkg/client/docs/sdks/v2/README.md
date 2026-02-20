@@ -33,6 +33,7 @@
 * [ListLogs](#listlogs) - List the logs from a ledger
 * [ImportLogs](#importlogs)
 * [ExportLogs](#exportlogs) - Export logs
+* [RunQuery](#runquery) - Run a query template
 * [ListExporters](#listexporters) - List exporters
 * [CreateExporter](#createexporter) - Create exporter
 * [GetExporterState](#getexporterstate) - Get exporter state
@@ -281,6 +282,17 @@ func main() {
             Transactions: map[string]components.V2TransactionTemplate{
                 "key": components.V2TransactionTemplate{
                     Script: "<value>",
+                },
+            },
+            Queries: map[string]components.V2QueryTemplate{
+                "key": components.V2QueryTemplate{
+                    Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
+                        components.QueryTemplateAccountParams{
+                            Resource: components.V2QueryParams1ResourceAccounts.ToPointer(),
+                            PageSize: client.Int64(100),
+                            Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+                        },
+                    )),
                 },
             },
         },
@@ -1853,6 +1865,78 @@ func main() {
 | Error Type         | Status Code        | Content Type       |
 | ------------------ | ------------------ | ------------------ |
 | sdkerrors.SDKError | 4XX, 5XX           | \*/\*              |
+
+## RunQuery
+
+Run a query template on a ledger
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.RunQuery(ctx, operations.V2RunQueryRequest{
+        Ledger: "ledger001",
+        SchemaVersion: "v1.0.0",
+        ID: "CUSTOMER_DEPOSIT",
+        PageSize: client.Int64(100),
+        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.String("id:desc"),
+        RequestBody: operations.V2RunQueryRequestBody{
+            Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
+                components.QueryTemplateAccountParams{
+                    PageSize: client.Int64(100),
+                    Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+                },
+            )),
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.OneOf != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                    | Type                                                                         | Required                                                                     | Description                                                                  |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `ctx`                                                                        | [context.Context](https://pkg.go.dev/context#Context)                        | :heavy_check_mark:                                                           | The context to use for the request.                                          |
+| `request`                                                                    | [operations.V2RunQueryRequest](../../models/operations/v2runqueryrequest.md) | :heavy_check_mark:                                                           | The request object to use for the request.                                   |
+| `opts`                                                                       | [][operations.Option](../../models/operations/option.md)                     | :heavy_minus_sign:                                                           | The options for this request.                                                |
+
+### Response
+
+**[*operations.V2RunQueryResponse](../../models/operations/v2runqueryresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
 ## ListExporters
 

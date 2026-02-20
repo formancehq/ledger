@@ -10,10 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	"github.com/formancehq/go-libs/v3/testing/platform/elastictesting"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v4/testing/docker"
+	"github.com/formancehq/go-libs/v4/testing/platform/elastictesting"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"

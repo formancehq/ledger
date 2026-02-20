@@ -2,6 +2,34 @@
 
 package components
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type V2LogsCursorResponseResource string
+
+const (
+	V2LogsCursorResponseResourceLogs V2LogsCursorResponseResource = "logs"
+)
+
+func (e V2LogsCursorResponseResource) ToPointer() *V2LogsCursorResponseResource {
+	return &e
+}
+func (e *V2LogsCursorResponseResource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "logs":
+		*e = V2LogsCursorResponseResource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2LogsCursorResponseResource: %v", v)
+	}
+}
+
 type V2LogsCursorResponseCursor struct {
 	PageSize int64   `json:"pageSize"`
 	HasMore  bool    `json:"hasMore"`
@@ -46,7 +74,15 @@ func (o *V2LogsCursorResponseCursor) GetData() []V2Log {
 }
 
 type V2LogsCursorResponse struct {
-	Cursor V2LogsCursorResponseCursor `json:"cursor"`
+	Resource *V2LogsCursorResponseResource `json:"resource,omitempty"`
+	Cursor   V2LogsCursorResponseCursor    `json:"cursor"`
+}
+
+func (o *V2LogsCursorResponse) GetResource() *V2LogsCursorResponseResource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *V2LogsCursorResponse) GetCursor() V2LogsCursorResponseCursor {

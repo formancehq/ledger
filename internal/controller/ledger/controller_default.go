@@ -16,16 +16,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v4/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/internal/queries"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -210,7 +212,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, q storagecommon.R
 	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
 	if err != nil {
 		return nil, err
@@ -222,7 +224,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q storagecommon.Pag
 	return ctrl.store.Logs().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q storagecommon.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q storagecommon.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
@@ -668,6 +670,162 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	log, _, idempotencyHit, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
 	return log, idempotencyHit, err
+}
+
+func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template ledger.QueryTemplate, q storagecommon.RunQuery) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+	var result *bunpaginate.Cursor[any]
+	switch template.Resource {
+	case queries.ResourceKindTransaction:
+		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
+		if err != nil {
+			return nil, nil, newErrQueryValidation(err)
+		}
+		r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
+	case queries.ResourceKindAccount:
+		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
+		if err != nil {
+			return nil, nil, newErrQueryValidation(err)
+		}
+		r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
+	case queries.ResourceKindLog:
+		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
+		if err != nil {
+			return nil, nil, newErrQueryValidation(err)
+		}
+		r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
+	case queries.ResourceKindVolume:
+		resourceQuery, err := storagecommon.UnmarshalCursor[ledger.GetVolumesOptions](*q.Cursor)
+		if err != nil {
+			return nil, nil, newErrQueryValidation(err)
+		}
+		r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
+	default:
+		return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
+	}
+	return &template.Resource, result, nil
+}
+
+func templateParamsToQuery[Opts any](params ledger.QueryTemplateParams[Opts], builder query.Builder, paginationConfig storagecommon.PaginationConfig) storagecommon.InitialPaginatedQuery[Opts] {
+	if uint64(params.PageSize) > paginationConfig.MaxPageSize {
+		params.PageSize = uint(paginationConfig.MaxPageSize)
+	}
+	return storagecommon.InitialPaginatedQuery[Opts]{
+		Options: storagecommon.ResourceQuery[Opts]{
+			PIT:     params.PIT,
+			OOT:     params.OOT,
+			Builder: builder,
+			Expand:  params.Expand,
+			Opts:    params.Opts,
+		},
+		Column:   params.SortColumn,
+		Order:    params.SortOrder,
+		PageSize: uint64(params.PageSize),
+	}
+}
+
+func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion string, id string, q storagecommon.RunQuery, paginationConfig storagecommon.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+	schema, err := ctrl.GetSchema(ctx, schemaVersion)
+	if err != nil {
+		return nil, nil, newErrSchemaValidationError(schemaVersion, fmt.Errorf("failed to find schema: %w", err))
+	}
+	if template, ok := schema.Queries[id]; ok {
+		if q.Cursor != nil {
+			return ctrl.runQueryFromCursor(ctx, template, q)
+		} else {
+			var result *bunpaginate.Cursor[any]
+			builder, err := queries.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
+			if err != nil {
+				return nil, nil, newErrQueryValidation(err)
+			}
+			switch template.Resource {
+			case queries.ResourceKindTransaction:
+				params, err := ledger.QueryTemplateParams[any]{
+					PageSize:   uint(paginationConfig.DefaultPageSize),
+					SortColumn: "id",
+					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				}.Overwrite(template.Params, q.Params)
+				if err != nil {
+					return nil, nil, newErrQueryValidation(err)
+				}
+				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
+				r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
+				if err != nil {
+					return nil, nil, err
+				}
+				result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
+			case queries.ResourceKindAccount:
+				params, err := ledger.QueryTemplateParams[any]{
+					PageSize:   uint(paginationConfig.DefaultPageSize),
+					SortColumn: "address",
+					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				}.Overwrite(template.Params, q.Params)
+				if err != nil {
+					return nil, nil, newErrQueryValidation(err)
+				}
+				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
+				r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
+				if err != nil {
+					return nil, nil, err
+				}
+				result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
+			case queries.ResourceKindLog:
+				params, err := ledger.QueryTemplateParams[any]{
+					PageSize:   uint(paginationConfig.DefaultPageSize),
+					SortColumn: "id",
+					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				}.Overwrite(template.Params, q.Params)
+				if err != nil {
+					return nil, nil, newErrQueryValidation(err)
+				}
+				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
+				r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
+				if err != nil {
+					return nil, nil, err
+				}
+				result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
+			case queries.ResourceKindVolume:
+				params, err := ledger.QueryTemplateParams[ledger.GetVolumesOptions]{
+					PageSize:   uint(paginationConfig.DefaultPageSize),
+					SortColumn: "account",
+					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+					Opts: ledger.GetVolumesOptions{
+						UseInsertionDate: false,
+						GroupLvl:         0,
+					},
+				}.Overwrite(template.Params, q.Params)
+				if err != nil {
+					return nil, nil, newErrQueryValidation(err)
+				}
+				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
+				r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
+				if err != nil {
+					return nil, nil, err
+				}
+				result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
+			default:
+				return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
+			}
+			return &template.Resource, result, nil
+		}
+	} else {
+		return nil, nil, newErrSchemaValidationError(schemaVersion, fmt.Errorf("unknown query template: %s", id))
+	}
 }
 
 var _ Controller = (*DefaultController)(nil)

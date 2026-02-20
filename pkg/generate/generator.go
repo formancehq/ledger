@@ -14,8 +14,8 @@ import (
 	"github.com/dop251/goja"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v4/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"

@@ -7,11 +7,11 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/query"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v4/time"
 	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -62,8 +62,8 @@ type Store interface {
 	Accounts() common.PaginatedResource[ledger.Account, any]
 	Logs() common.PaginatedResource[ledger.Log, any]
 	Transactions() common.PaginatedResource[ledger.Transaction, any]
-	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions]
+	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {

@@ -7,12 +7,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/health"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
-	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 type BulkConfig struct {
@@ -24,7 +24,7 @@ type Config struct {
 	Version    string
 	Debug      bool
 	Bulk       BulkConfig
-	Pagination common.PaginationConfig
+	Pagination storagecommon.PaginationConfig
 	Exporters  bool
 }
 

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v4/api"
 )
 
 func WithBody[V any](w http.ResponseWriter, r *http.Request, fn func(v V)) {

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v4/collectionutils"
 )
 
 const (

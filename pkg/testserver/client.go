@@ -1,8 +1,8 @@
 package testserver
 
 import (
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/go-libs/v4/testing/deferred"
+	"github.com/formancehq/go-libs/v4/testing/testservice"
 
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 )

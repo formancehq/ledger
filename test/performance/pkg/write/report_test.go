@@ -7,7 +7,7 @@ import (
 
 	"github.com/jamiealquiza/tachymeter"
 
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/time"
 
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 )

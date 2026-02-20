@@ -10,12 +10,12 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
-	. "github.com/formancehq/go-libs/v3/testing/api"
-	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/pointer"
+	. "github.com/formancehq/go-libs/v4/testing/api"
+	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v4/testing/testservice"
 
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"

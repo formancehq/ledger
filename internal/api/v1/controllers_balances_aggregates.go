@@ -3,11 +3,11 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/query"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func buildAggregatedBalancesQuery(r *http.Request) query.Builder {
@@ -19,8 +19,7 @@ func buildAggregatedBalancesQuery(r *http.Request) query.Builder {
 }
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
-
-	rq, err := getResourceQuery[ledgerstore.GetAggregatedVolumesOptions](r, func(q *ledgerstore.GetAggregatedVolumesOptions) error {
+	rq, err := getResourceQuery(r, func(q *ledger.GetAggregatedVolumesOptions) error {
 		q.UseInsertionDate = true
 
 		return nil

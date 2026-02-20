@@ -13,17 +13,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v4/service"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 // todo: refine textual errors
@@ -118,7 +119,7 @@ type routerOptions struct {
 	meterProvider    metric.MeterProvider
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
-	paginationConfig common.PaginationConfig
+	paginationConfig storagecommon.PaginationConfig
 	exporters        bool
 }
 
@@ -142,7 +143,7 @@ func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
 	}
 }
 
-func WithPaginationConfiguration(paginationConfig common.PaginationConfig) RouterOption {
+func WithPaginationConfiguration(paginationConfig storagecommon.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
 	}
@@ -164,7 +165,7 @@ var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
-	WithPaginationConfiguration(common.PaginationConfig{
+	WithPaginationConfiguration(storagecommon.PaginationConfig{
 		MaxPageSize:     bunpaginate.MaxPageSize,
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 	}),

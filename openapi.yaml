@@ -2843,6 +2843,122 @@ paths:
       security:
         - Authorization:
             - ledger:write
+  /v2/{ledger}/queries/{id}/run:
+    post:
+      tags:
+        - ledger.v2
+      summary: Run a query template
+      description: Run a query template on a ledger
+      operationId: v2RunQuery
+      x-speakeasy-name-override: RunQuery
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: schemaVersion
+          in: query
+          required: true
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
+        - name: id
+          in: path
+          description: Query template ID.
+          required: true
+          schema:
+            type: string
+            example: CUSTOMER_DEPOSIT
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to 15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: order
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated: Use sort param"
+          schema:
+            type: string
+            enum:
+              - effective
+        - name: reverse
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cursor:
+                  type: string
+                params:
+                  $ref: "#/components/schemas/V2QueryParams"
+                vars:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/V2TransactionsCursorResponse"
+                  - $ref: "#/components/schemas/V2AccountsCursorResponse"
+                  - $ref: "#/components/schemas/V2LogsCursorResponse"
+                  - $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /v2/_/exporters:
     get:
       summary: List exporters
@@ -3854,6 +3970,10 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          type: string
+          enum:
+            - accounts
         cursor:
           type: object
           required:
@@ -3885,6 +4005,10 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          type: string
+          enum:
+            - transactions
         cursor:
           type: object
           required:
@@ -3916,6 +4040,10 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          type: string
+          enum:
+            - logs
         cursor:
           type: object
           required:
@@ -3961,6 +4089,10 @@ components:
       required:
         - cursor
       properties:
+        resource:
+          type: string
+          enum:
+            - volumes
         cursor:
           type: object
           required:
@@ -4807,6 +4939,99 @@ components:
       description: Transaction templates
       additionalProperties:
         $ref: "#/components/schemas/V2TransactionTemplate"
+    V2QueryTemplateVar:
+      type: object
+      properties:
+        type:
+          type: string
+        default: {}
+      required:
+        - type
+    V2QueryResource:
+      type: string
+      enum: [transactions, accounts, logs, volumes]
+    V2QueryParams:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+        cursor:
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to 15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        expand:
+          type: string
+          items:
+            type: string
+        pit:
+          type: string
+          format: date-time
+        sort:
+          $ref: "#/components/parameters/sort"
+      oneOf:
+        - x-speakeasy-name-override: QueryTemplateAccountParams
+          properties:
+            resource:
+              type: string
+              enum:
+                - accounts
+        - x-speakeasy-name-override: QueryTemplateTransactionParams
+          properties:
+            resource:
+              type: string
+              enum:
+                - transactions
+        - x-speakeasy-name-override: QueryTemplateLogParams
+          properties:
+            resource:
+              type: string
+              enum:
+                - logs
+        - x-speakeasy-name-override: QueryTemplateVolumeParams
+          properties:
+            resource:
+              type: string
+              enum:
+                - volumes
+            insertionDate:
+              type: boolean
+            groupBy:
+              type: integer
+    V2QueryTemplate:
+      type: object
+      properties:
+        description:
+          type: string
+        resource:
+          $ref: "#/components/schemas/V2QueryResource"
+        params:
+          $ref: "#/components/schemas/V2QueryParams"
+        vars:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/V2QueryTemplateVar"
+        body:
+          type: object
+          additionalProperties: true
+    V2QueryTemplates:
+      type: object
+      description: Query templates
+      additionalProperties:
+        $ref: "#/components/schemas/V2QueryTemplate"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas
@@ -4815,6 +5040,8 @@ components:
           $ref: "#/components/schemas/V2ChartOfAccounts"
         transactions:
           $ref: "#/components/schemas/V2TransactionTemplates"
+        queries:
+          $ref: "#/components/schemas/V2QueryTemplates"
       required:
         - chart
         - transactions
@@ -5030,7 +5257,9 @@ components:
     sort:
       name: sort
       in: query
-      description: "Sort results using a field name and order (ascending or descending). \nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n"
+      description: |
+        Sort results using a field name and order (ascending or descending).
+        Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
       required: false
       schema:
         type: string

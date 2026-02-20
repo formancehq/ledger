@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/machine"
@@ -322,5 +322,22 @@ func (e ErrSchemaAlreadyExists) Is(err error) bool {
 func newErrSchemaAlreadyExists(version string) ErrSchemaAlreadyExists {
 	return ErrSchemaAlreadyExists{
 		version,
+	}
+}
+
+type ErrQueryValidation struct {
+	err error
+}
+
+func (e ErrQueryValidation) Error() string {
+	return fmt.Sprintf("failed to resolve query template: %s", e.err.Error())
+}
+func (e ErrQueryValidation) Is(err error) bool {
+	_, ok := err.(ErrQueryValidation)
+	return ok
+}
+func newErrQueryValidation(err error) ErrQueryValidation {
+	return ErrQueryValidation{
+		err,
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v4/metadata"
 )
 
 type ChartAccountRules struct{}

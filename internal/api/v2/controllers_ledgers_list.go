@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -16,7 +16,7 @@ import (
 // The handler applies the provided pagination configuration (sorted by "id" ascending),
 // reads the "includeDeleted" query parameter to include deleted ledgers when set,
 // invokes the controller's ListLedgers, and renders the resulting paginated cursor.
-func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
+func listLedgers(b system.Controller, paginationConfig storagecommon.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		rq, err := getPaginatedQuery[systemstore.ListLedgersQueryPayload](

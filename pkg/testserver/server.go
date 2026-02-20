@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/bun/bunconnect"
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/go-libs/v4/bun/bunconnect"
+	"github.com/formancehq/go-libs/v4/testing/deferred"
+	"github.com/formancehq/go-libs/v4/testing/testservice"
 
 	"github.com/formancehq/ledger/cmd"
 )

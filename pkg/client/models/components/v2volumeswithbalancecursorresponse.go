@@ -2,6 +2,34 @@
 
 package components
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type V2VolumesWithBalanceCursorResponseResource string
+
+const (
+	V2VolumesWithBalanceCursorResponseResourceVolumes V2VolumesWithBalanceCursorResponseResource = "volumes"
+)
+
+func (e V2VolumesWithBalanceCursorResponseResource) ToPointer() *V2VolumesWithBalanceCursorResponseResource {
+	return &e
+}
+func (e *V2VolumesWithBalanceCursorResponseResource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "volumes":
+		*e = V2VolumesWithBalanceCursorResponseResource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2VolumesWithBalanceCursorResponseResource: %v", v)
+	}
+}
+
 type V2VolumesWithBalanceCursorResponseCursor struct {
 	PageSize int64                  `json:"pageSize"`
 	HasMore  bool                   `json:"hasMore"`
@@ -46,7 +74,15 @@ func (o *V2VolumesWithBalanceCursorResponseCursor) GetData() []V2VolumesWithBala
 }
 
 type V2VolumesWithBalanceCursorResponse struct {
-	Cursor V2VolumesWithBalanceCursorResponseCursor `json:"cursor"`
+	Resource *V2VolumesWithBalanceCursorResponseResource `json:"resource,omitempty"`
+	Cursor   V2VolumesWithBalanceCursorResponseCursor    `json:"cursor"`
+}
+
+func (o *V2VolumesWithBalanceCursorResponse) GetResource() *V2VolumesWithBalanceCursorResponseResource {
+	if o == nil {
+		return nil
+	}
+	return o.Resource
 }
 
 func (o *V2VolumesWithBalanceCursorResponse) GetCursor() V2VolumesWithBalanceCursorResponseCursor {

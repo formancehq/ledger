@@ -11,14 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/query"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v4/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestBalancesAggregates(t *testing.T) {
@@ -28,7 +27,7 @@ func TestBalancesAggregates(t *testing.T) {
 		name        string
 		queryParams url.Values
 		body        string
-		expectQuery storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]
+		expectQuery storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]
 	}
 
 	now := time.Now()
@@ -36,8 +35,8 @@ func TestBalancesAggregates(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-				Opts:   ledgerstore.GetAggregatedVolumesOptions{},
+			expectQuery: storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+				Opts:   ledger.GetAggregatedVolumesOptions{},
 				PIT:    &now,
 				Expand: make([]string, 0),
 			},
@@ -45,8 +44,8 @@ func TestBalancesAggregates(t *testing.T) {
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-				Opts:    ledgerstore.GetAggregatedVolumesOptions{},
+			expectQuery: storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+				Opts:    ledger.GetAggregatedVolumesOptions{},
 				PIT:     &now,
 				Builder: query.Match("address", "foo"),
 				Expand:  make([]string, 0),
@@ -55,8 +54,8 @@ func TestBalancesAggregates(t *testing.T) {
 		{
 			name: "using exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-				Opts:    ledgerstore.GetAggregatedVolumesOptions{},
+			expectQuery: storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+				Opts:    ledger.GetAggregatedVolumesOptions{},
 				PIT:     &now,
 				Builder: query.Exists("metadata", "foo"),
 				Expand:  make([]string, 0),
@@ -67,8 +66,8 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"pit": []string{now.Format(time.RFC3339Nano)},
 			},
-			expectQuery: storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-				Opts:   ledgerstore.GetAggregatedVolumesOptions{},
+			expectQuery: storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+				Opts:   ledger.GetAggregatedVolumesOptions{},
 				PIT:    &now,
 				Expand: make([]string, 0),
 			},
@@ -79,8 +78,8 @@ func TestBalancesAggregates(t *testing.T) {
 				"pit":              []string{now.Format(time.RFC3339Nano)},
 				"useInsertionDate": []string{"true"},
 			},
-			expectQuery: storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-				Opts: ledgerstore.GetAggregatedVolumesOptions{
+			expectQuery: storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+				Opts: ledger.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
 				PIT:    &now,

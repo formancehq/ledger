@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v4/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

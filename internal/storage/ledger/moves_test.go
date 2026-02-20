@@ -13,14 +13,13 @@ import (
 	"github.com/alitto/pond"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v4/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestMovesInsert(t *testing.T) {
@@ -173,8 +172,8 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
-			Opts: ledgerstore.GetAggregatedVolumesOptions{
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+			Opts: ledger.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},
 		})
