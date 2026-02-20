@@ -518,13 +518,16 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetDate().Return(now)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().DeleteAccountMetadata(data.MetadataKey{
+	metaKey := data.MetadataKey{
 		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
 		Key:        "status",
-	})
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(&commonpb.MetadataValue{}, nil)
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().DeleteAccountMetadata(metaKey)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -554,6 +557,53 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	deletedMetadata := applyLog.Log.Data.GetDeletedMetadata()
 	require.NotNil(t, deletedMetadata)
 	require.Equal(t, "status", deletedMetadata.Key)
+}
+
+func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	metaKey := data.MetadataKey{
+		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+		Key:        "status",
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, data.ErrNotFound)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:123"},
+							},
+						},
+						Key: "status",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var metaNotFound *ErrMetadataNotFound
+	require.ErrorAs(t, err, &metaNotFound)
+	require.Equal(t, "users:123", metaNotFound.Target)
+	require.Equal(t, "status", metaNotFound.Key)
 }
 
 func TestProcessCreateTransaction(t *testing.T) {

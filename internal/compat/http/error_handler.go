@@ -21,6 +21,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		insufficient   *processing.ErrInsufficientFunds
 		balNotFound    *processing.ErrBalanceNotFound
 		parseErr       *processing.ErrNumscriptParse
+		metaNotFound   *processing.ErrMetadataNotFound
 	)
 
 	switch {
@@ -57,6 +58,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &parseErr):
 		writeErrorResponse(w, http.StatusBadRequest, "SCRIPT_PARSE_ERROR", err)
+
+	case errors.As(err, &metaNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
 	case errors.Is(err, processing.ErrTargetRequired),
 		errors.Is(err, processing.ErrMetadataKeyRequired),

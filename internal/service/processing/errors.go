@@ -27,6 +27,7 @@ const (
 	ErrReasonPeriodNotClosing             = "PERIOD_NOT_CLOSING"
 	ErrReasonPeriodNotClosed              = "PERIOD_NOT_CLOSED"
 	ErrReasonPeriodNotArchiving           = "PERIOD_NOT_ARCHIVING"
+	ErrReasonMetadataNotFound             = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
 	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
@@ -154,6 +155,16 @@ type ErrSinkAlreadyExists struct {
 
 func (e *ErrSinkAlreadyExists) Error() string {
 	return fmt.Sprintf("event sink already exists: %s", e.Name)
+}
+
+// ErrMetadataNotFound is returned when deleting a metadata key that does not exist.
+type ErrMetadataNotFound struct {
+	Target string
+	Key    string
+}
+
+func (e *ErrMetadataNotFound) Error() string {
+	return fmt.Sprintf("metadata key %q not found on %s", e.Key, e.Target)
 }
 
 // ErrSinkNotFound is returned when removing a sink that does not exist.

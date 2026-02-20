@@ -35,6 +35,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		numscriptParse               *processing.ErrNumscriptParse
 		sinkAlreadyExists            *processing.ErrSinkAlreadyExists
 		sinkNotFound                 *processing.ErrSinkNotFound
+		metadataNotFound             *processing.ErrMetadataNotFound
 		periodNotFound               *processing.ErrPeriodNotFound
 		periodNotClosing             *processing.ErrPeriodNotClosing
 		invalidReceipt               *processing.ErrInvalidReceipt
@@ -119,6 +120,11 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		code = codes.NotFound
 		reason = processing.ErrReasonSinkNotFound
 		metadata = map[string]string{"name": sinkNotFound.Name}
+
+	case errors.As(inner, &metadataNotFound):
+		code = codes.NotFound
+		reason = processing.ErrReasonMetadataNotFound
+		metadata = map[string]string{"target": metadataNotFound.Target, "key": metadataNotFound.Key}
 
 	case errors.Is(inner, processing.ErrNoPeriodOpen):
 		code = codes.FailedPrecondition

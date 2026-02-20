@@ -1019,6 +1019,17 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 						Asset: posting.Asset,
 					}] = struct{}{}
 				}
+			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+				// Preload the metadata key so processDeleteMetadata can check existence
+				if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
+					neededMetadata[data.MetadataKey{
+						AccountKey: data.AccountKey{
+							LedgerID: ledgerID,
+							Account:  target.Account.Addr,
+						},
+						Key: applyData.DeleteMetadata.Key,
+					}] = struct{}{}
+				}
 			}
 		}
 	}

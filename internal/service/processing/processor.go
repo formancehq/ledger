@@ -509,14 +509,23 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 
 	switch target := order.Target.Target.(type) {
 	case *commonpb.Target_Account:
-		// TODO: is it necessary to check if the metadata was already present?
-		s.DeleteAccountMetadata(data.MetadataKey{
+		metaKey := data.MetadataKey{
 			AccountKey: data.AccountKey{
 				LedgerID: ledgerID,
 				Account:  target.Account.Addr,
 			},
 			Key: order.Key,
-		})
+		}
+		if _, err := s.GetAccountMetadata(metaKey); err != nil {
+			if errors.Is(err, data.ErrNotFound) {
+				return nil, &ErrMetadataNotFound{
+					Target: target.Account.Addr,
+					Key:    order.Key,
+				}
+			}
+			return nil, fmt.Errorf("checking account metadata: %w", err)
+		}
+		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
 		if target.Transaction.Id >= boundaries.NextTransactionId {
 			return nil, &ErrTransactionNotFound{TransactionID: target.Transaction.Id}
