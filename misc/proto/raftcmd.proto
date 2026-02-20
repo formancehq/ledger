@@ -231,6 +231,7 @@ message Preload {
      PreloadBoundary boundary = 5;
      PreloadTransactionReference transaction_reference = 6;
      PreloadSinkConfig sink_config = 7;
+     PreloadAccountMetadata account_metadata = 8;
   }
 }
 
@@ -269,6 +270,11 @@ message PreloadTransactionReference {
 message PreloadSinkConfig {
   AttributeID id = 1;
   common.SinkConfig config = 2;
+}
+
+message PreloadAccountMetadata {
+  AttributeID id = 1;
+  common.MetadataValue value = 2;
 }
 
 // ============================================================================

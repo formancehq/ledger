@@ -136,9 +136,7 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should allow read operations in maintenance mode", func() {
 			// GetLedger is a read operation, should work
 			ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-				Ledger: &servicepb.LedgerNameOrId{
-					Type: &servicepb.LedgerNameOrId_Name{Name: ledgerName},
-				},
+				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
 			Expect(ledger.Name).To(Equal(ledgerName))

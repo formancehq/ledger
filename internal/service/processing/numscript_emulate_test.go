@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDiscoverNumscriptVolumes(t *testing.T) {
+func TestDiscoverNumscriptDependencies(t *testing.T) {
 	t.Parallel()
 
 	const ledgerID = uint32(42)
@@ -22,15 +22,15 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err)
-		require.Len(t, volumes, 2)
+		require.Len(t, result.Volumes, 2)
 
-		_, hasAlice := volumes[data.VolumeKey{
+		_, hasAlice := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
-		_, hasBob := volumes[data.VolumeKey{
+		_, hasBob := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
@@ -48,15 +48,15 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err)
-		require.Len(t, volumes, 2)
+		require.Len(t, result.Volumes, 2)
 
-		_, hasWorld := volumes[data.VolumeKey{
+		_, hasWorld := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "world"},
 			Asset:      "EUR/2",
 		}]
-		_, hasTreasury := volumes[data.VolumeKey{
+		_, hasTreasury := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "treasury"},
 			Asset:      "EUR/2",
 		}]
@@ -82,11 +82,11 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			"amount":   "USD/2 1000",
 		}
 
-		volumes, err := DiscoverNumscriptVolumes(script, vars, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, vars, ledgerID)
 		require.NoError(t, err)
-		require.Len(t, volumes, 2)
+		require.Len(t, result.Volumes, 2)
 
-		_, hasEscrow := volumes[data.VolumeKey{
+		_, hasEscrow := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "escrow:order-123"},
 			Asset:      "USD/2",
 		}]
@@ -106,18 +106,18 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err)
 
-		_, hasChecking := volumes[data.VolumeKey{
+		_, hasChecking := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice:checking"},
 			Asset:      "USD/2",
 		}]
-		_, hasSavings := volumes[data.VolumeKey{
+		_, hasSavings := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice:savings"},
 			Asset:      "USD/2",
 		}]
-		_, hasMerchant := volumes[data.VolumeKey{
+		_, hasMerchant := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "merchant"},
 			Asset:      "USD/2",
 		}]
@@ -139,14 +139,14 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err)
 
-		_, hasAlice := volumes[data.VolumeKey{
+		_, hasAlice := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
-		_, hasBob := volumes[data.VolumeKey{
+		_, hasBob := result.Volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
@@ -159,9 +159,9 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 
 		script := `send [USD/2 invalid] ( source = @world destination = @users:alice )`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.Error(t, err)
-		require.Nil(t, volumes)
+		require.Nil(t, result)
 
 		var parseErr *ErrNumscriptParse
 		require.ErrorAs(t, err, &parseErr)
@@ -183,11 +183,11 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 		// Don't provide the $amount variable — this will cause an execution error
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err) // Parse succeeds, execution error is ignored
 		// Discovery may or may not have found accounts depending on when the error occurred,
 		// but the function should not return an error
-		require.NotNil(t, volumes)
+		require.NotNil(t, result)
 	})
 
 	t.Run("sets correct ledger ID on all discovered volumes", func(t *testing.T) {
@@ -200,10 +200,10 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err)
 
-		for key := range volumes {
+		for key := range result.Volumes {
 			require.Equal(t, ledgerID, key.LedgerID, "all volume keys should have the correct ledger ID")
 		}
 	})
@@ -230,7 +230,7 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 		`
 		vars := map[string]string{"user": "users:alice"}
 
-		volumes, err := DiscoverNumscriptVolumes(script, vars, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, vars, ledgerID)
 
 		// The numscript interpreter may batch all balance queries in a single
 		// GetBalances call or call it multiple times depending on the script structure.
@@ -239,7 +239,7 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			var nonDetErr *ErrNonDeterministicScript
 			require.ErrorAs(t, err, &nonDetErr)
 			require.Equal(t, "GetBalances", nonDetErr.Method)
-			require.Nil(t, volumes)
+			require.Nil(t, result)
 		}
 		// If the interpreter batches all queries into one call, the test still passes
 	})
@@ -255,8 +255,8 @@ func TestDiscoverNumscriptVolumes(t *testing.T) {
 			)
 		`
 
-		volumes, err := DiscoverNumscriptVolumes(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
 		require.NoError(t, err, "single GetBalances call should be allowed")
-		require.NotEmpty(t, volumes)
+		require.NotEmpty(t, result.Volumes)
 	})
 }

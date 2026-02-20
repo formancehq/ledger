@@ -216,7 +216,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: source (world) and destination (user:alice)
 		require.Len(t, volumes, 2)
@@ -267,7 +267,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: original destination (alice, now source) and original source (world, now destination)
 		require.Len(t, volumes, 2)
@@ -321,7 +321,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 3 volume keys: world, alice, bob (all in USD)
 		require.Len(t, volumes, 3)
@@ -588,7 +588,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 0 volume keys with force=true - processor stores deltas only
 		require.Len(t, volumes, 0, "force=true should skip volume extraction")
@@ -622,7 +622,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have 2 volume keys: source and destination
 		require.Len(t, volumes, 2, "force=false should extract volumes normally")
@@ -692,7 +692,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should have volumes only from force=false order (2 volume keys)
 		require.Len(t, volumes, 2)
@@ -745,7 +745,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should still have 2 volume keys for revert (even with force=true)
 		// because volume preloading is needed for correct accounting
@@ -889,7 +889,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Numscript emulation should discover both source and destination
 		require.NotEmpty(t, volumes, "numscript emulation should discover volumes")
@@ -937,7 +937,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Force=true should skip volume extraction entirely
 		require.Empty(t, volumes, "force=true should skip numscript emulation")
@@ -974,7 +974,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractNeededVolumes(orders, map[string]uint32{testLedgerName: testLedgerID})
+		volumes, _ := admission.extractNeededVolumesAndMetadata(orders, map[string]uint32{testLedgerName: testLedgerID})
 
 		// Should use explicit postings, not numscript emulation
 		require.Len(t, volumes, 2)

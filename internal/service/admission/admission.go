@@ -420,8 +420,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
-	// Phase 2: Extract volumes and transactions using resolved IDs
-	neededVolumes := a.extractNeededVolumes(orders, ledgerIDs)
+	// Phase 2: Extract volumes, metadata, and transactions using resolved IDs
+	neededVolumes, neededAccountMetadata := a.extractNeededVolumesAndMetadata(orders, ledgerIDs)
 	neededTransactions := a.extractNeededTransactions(orders, ledgerIDs)
 
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededVolumes)),
@@ -709,6 +709,61 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	// Phase 5: Preload account metadata for Numscript meta() calls
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(neededAccountMetadata)),
+		metric.WithAttributes(attribute.String("type", "account_metadata")))
+	for metadataKey := range neededAccountMetadata {
+		canonicalKey := metadataKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+
+		if !a.cache.AccountMetadata.IsGuaranteedInCache(nextIndex, id) {
+			preloadStart := time.Now()
+			result, err := a.loaders.AccountMetadata.LoadOrWait(id, boundary, func() (*commonpb.MetadataValue, error) {
+				return a.attrs.Metadata.ComputeValue(a.store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("computing account metadata value at boundary %d for %s/%s: %w", boundary, metadataKey.Account, metadataKey.Key, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.AccountMetadata = append(loadedKeys.AccountMetadata, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "account_metadata")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "account_metadata")))
+			}
+
+			// Only send preload if the metadata exists in the store
+			if result.Value != nil {
+				attrID := &raftcmdpb.AttributeID{
+					Id:  id[:],
+					Tag: tag,
+				}
+
+				a.logger.WithFields(map[string]any{
+					"id":        id.Hex(),
+					"boundary":  boundary,
+					"nextIndex": nextIndex,
+					"account":   metadataKey.Account,
+					"key":       metadataKey.Key,
+					"fromLoad":  result.FromLoad,
+				}).Debug("Preloading account metadata from store")
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_AccountMetadata{
+						AccountMetadata: &raftcmdpb.PreloadAccountMetadata{
+							Id:    attrID,
+							Value: result.Value,
+						},
+					},
+				})
+			}
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "account_metadata")))
+		}
+	}
+
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
 	defer func() {
@@ -865,16 +920,22 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	return true
 }
 
-// extractNeededVolumes extracts all volume keys that are needed for the given orders.
-// Both sources and destinations need preloading:
+// extractNeededVolumesAndMetadata extracts all volume keys and account metadata keys
+// needed for the given orders. Both sources and destinations need volume preloading:
 // - Sources need balance checks (Input + Output to compute balance)
 // - Destinations need to be in cache to receive credits
+//
+// For Numscript transactions, metadata keys queried by meta() calls are also discovered
+// in the same emulation pass, avoiding a redundant script execution.
 //
 // When Force is true on a CreateTransaction, volume preloading is skipped because:
 // - Balance checks are bypassed anyway
 // - The processor stores deltas (DiffSinceBaseIndex) instead of absolute values
-func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.VolumeKey]struct{} {
+// However, metadata preloading is still performed for Force transactions since
+// Numscript scripts may still query metadata via meta() calls.
+func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) (map[data.VolumeKey]struct{}, map[data.MetadataKey]struct{}) {
 	neededVolumes := make(map[data.VolumeKey]struct{})
+	neededMetadata := make(map[data.MetadataKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
@@ -882,18 +943,13 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs ma
 			ledgerID := ledgerIDs[orderType.Apply.Ledger]
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-				// Skip volume preloading for force transactions - they store deltas only
-				if applyData.CreateTransaction.Force {
-					continue
-				}
-
-				// Numscript emulation: discover required accounts by running with infinite balances.
+				// Numscript emulation: discover required accounts and metadata by running with infinite balances.
 				// This is needed because Numscript transactions have no explicit postings at admission
 				// time — the accounts are determined dynamically by the script at runtime.
 				if applyData.CreateTransaction.Script != nil &&
 					applyData.CreateTransaction.Script.Plain != "" &&
 					len(applyData.CreateTransaction.Postings) == 0 {
-					discovered, err := processing.DiscoverNumscriptVolumes(
+					discovered, err := processing.DiscoverNumscriptDependencies(
 						applyData.CreateTransaction.Script.Plain,
 						applyData.CreateTransaction.Script.Vars,
 						ledgerID,
@@ -901,11 +957,24 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs ma
 					if err != nil {
 						a.logger.WithFields(map[string]any{
 							"error": err.Error(),
-						}).Info("Numscript emulation failed during volume discovery, skipping preload")
+						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
 					}
-					for key := range discovered {
-						neededVolumes[key] = struct{}{}
+					if discovered != nil {
+						// Skip volume preloading for force transactions - they store deltas only
+						if !applyData.CreateTransaction.Force {
+							for key := range discovered.Volumes {
+								neededVolumes[key] = struct{}{}
+							}
+						}
+						for key := range discovered.Metadata {
+							neededMetadata[key] = struct{}{}
+						}
 					}
+					continue
+				}
+
+				// Skip volume preloading for force transactions - they store deltas only
+				if applyData.CreateTransaction.Force {
 					continue
 				}
 
@@ -954,7 +1023,7 @@ func (a *Admission) extractNeededVolumes(orders []*raftcmdpb.Order, ledgerIDs ma
 		}
 	}
 
-	return neededVolumes
+	return neededVolumes, neededMetadata
 }
 
 // extractNeededTransactions extracts all transaction keys that need their reverted status checked.

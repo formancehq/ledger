@@ -412,8 +412,8 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			for i, srv := range servers {
 				Eventually(func(g Gomega) {
 					txResp, err := srv.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
-						Ledger: "tls-multi-ledger",
-						Id:     0,
+						Ledger:        "tls-multi-ledger",
+						TransactionId: 0,
 					})
 					g.Expect(err).To(Succeed())
 					g.Expect(txResp).NotTo(BeNil())

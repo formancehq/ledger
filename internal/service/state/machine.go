@@ -866,7 +866,31 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
-	// todo: handle metadata preload
+	// Helper function to put a preloaded account metadata value into a cache generation
+	putInCacheMetadataValue := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]],
+		attrID *raftcmdpb.AttributeID,
+		value *commonpb.MetadataValue,
+	) *commonpb.MetadataValue {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id": id.Hex(),
+		}).Debugf("Preload account metadata")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[*commonpb.MetadataValue]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.Type.(type) {
 		case *raftcmdpb.Preload_Volume:
@@ -934,6 +958,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, value)
 			} else {
 				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
+			}
+
+		case *raftcmdpb.Preload_AccountMetadata:
+			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
+				value := putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
+				putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, value)
+			} else {
+				putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
 			}
 		}
 	}

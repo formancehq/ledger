@@ -9,6 +9,13 @@ import (
 	"github.com/formancehq/numscript"
 )
 
+// DiscoveryResult holds the results of Numscript dependency discovery.
+// It contains both the volume keys and metadata keys that a script queries.
+type DiscoveryResult struct {
+	Volumes  map[data.VolumeKey]struct{}
+	Metadata map[data.MetadataKey]struct{}
+}
+
 // discoveryStore implements numscript.Store to discover which accounts/assets
 // a Numscript script queries. It returns infinite balances so the script
 // executes fully, and records every account/asset pair queried via GetBalances.
@@ -21,7 +28,8 @@ import (
 // This is a temporary workaround until the Numscript library implements static
 // analysis of required inputs (see docs/drafts/numscript-static-inputs-rfc.md).
 type discoveryStore struct {
-	queried          map[data.VolumeKey]struct{}
+	queriedVolumes   map[data.VolumeKey]struct{}
+	queriedMetadata  map[data.MetadataKey]struct{}
 	balancesCalled   bool
 	metadataCalled   bool
 	nonDeterministic *ErrNonDeterministicScript
@@ -39,7 +47,7 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscript.BalanceQ
 		accountBalance := make(numscript.AccountBalance, len(assets))
 		balances[account] = accountBalance
 		for _, asset := range assets {
-			s.queried[data.VolumeKey{
+			s.queriedVolumes[data.VolumeKey{
 				AccountKey: data.AccountKey{Account: account},
 				Asset:      asset,
 			}] = struct{}{}
@@ -57,15 +65,21 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscript.
 	s.metadataCalled = true
 
 	result := make(numscript.AccountsMetadata, len(query))
-	for account := range query {
+	for account, keys := range query {
 		result[account] = make(numscript.AccountMetadata)
+		for _, key := range keys {
+			s.queriedMetadata[data.MetadataKey{
+				AccountKey: data.AccountKey{Account: account},
+				Key:        key,
+			}] = struct{}{}
+		}
 	}
 	return result, nil
 }
 
-// DiscoverNumscriptVolumes runs a Numscript script with a discovery store that
-// returns infinite balances, solely to discover which accounts/assets the script
-// queries. The returned volume keys have their LedgerID set to the provided value.
+// DiscoverNumscriptDependencies runs a Numscript script with a discovery store that
+// returns infinite balances, solely to discover which accounts/assets and metadata keys
+// the script queries. The returned keys have their LedgerID set to the provided value.
 //
 // Scripts must be deterministic: GetBalances and GetAccountsMetadata may each be
 // called at most once. If a script calls either more than once (e.g., via mid-script
@@ -76,7 +90,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscript.
 // accounts were queried before the error occurred.
 //
 // Known limitation: with infinite balances, `oneof` may only query the first source.
-func DiscoverNumscriptVolumes(script string, vars map[string]string, ledgerID uint32) (map[data.VolumeKey]struct{}, error) {
+func DiscoverNumscriptDependencies(script string, vars map[string]string, ledgerID uint32) (*DiscoveryResult, error) {
 	parsed := numscript.Parse(script)
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 		return nil, &ErrNumscriptParse{
@@ -88,7 +102,8 @@ func DiscoverNumscriptVolumes(script string, vars map[string]string, ledgerID ui
 	maps.Copy(variablesMap, vars)
 
 	store := &discoveryStore{
-		queried: make(map[data.VolumeKey]struct{}),
+		queriedVolumes:  make(map[data.VolumeKey]struct{}),
+		queriedMetadata: make(map[data.MetadataKey]struct{}),
 	}
 
 	// Run the script. The discovery store captures source accounts via GetBalances
@@ -103,24 +118,34 @@ func DiscoverNumscriptVolumes(script string, vars map[string]string, ledgerID ui
 	}
 
 	// Collect volume keys from balance queries (sources) with the real ledgerID
-	result := make(map[data.VolumeKey]struct{}, len(store.queried))
-	for key := range store.queried {
+	volumes := make(map[data.VolumeKey]struct{}, len(store.queriedVolumes))
+	for key := range store.queriedVolumes {
 		key.LedgerID = ledgerID
-		result[key] = struct{}{}
+		volumes[key] = struct{}{}
 	}
 
 	// Also collect volume keys from postings (both sources and destinations).
 	// GetBalances only captures source accounts; destinations come from postings.
 	for _, posting := range execResult.Postings {
-		result[data.VolumeKey{
+		volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: posting.Source},
 			Asset:      posting.Asset,
 		}] = struct{}{}
-		result[data.VolumeKey{
+		volumes[data.VolumeKey{
 			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
 			Asset:      posting.Asset,
 		}] = struct{}{}
 	}
 
-	return result, nil
+	// Collect metadata keys with the real ledgerID
+	metadata := make(map[data.MetadataKey]struct{}, len(store.queriedMetadata))
+	for key := range store.queriedMetadata {
+		key.LedgerID = ledgerID
+		metadata[key] = struct{}{}
+	}
+
+	return &DiscoveryResult{
+		Volumes:  volumes,
+		Metadata: metadata,
+	}, nil
 }
