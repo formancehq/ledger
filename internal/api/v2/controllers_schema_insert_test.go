@@ -99,7 +99,7 @@ func TestInsertSchema(t *testing.T) {
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			body, _ := json.Marshal(tc.requestBody)
-			req := httptest.NewRequest(http.MethodPost, "/default/schema/"+tc.version, bytes.NewBuffer(body))
+			req := httptest.NewRequest(http.MethodPost, "/default/schemas/"+tc.version, bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 

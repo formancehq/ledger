@@ -322,7 +322,7 @@ Authorization ( Scopes: ledger:write )
 > Code samples
 
 ```http
-POST http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+POST http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
@@ -330,7 +330,7 @@ Idempotency-Key: string
 
 ```
 
-`POST /v2/{ledger}/schema/{version}`
+`POST /v2/{ledger}/schemas/{version}`
 
 > Body parameter
 
@@ -452,13 +452,13 @@ Authorization ( Scopes: ledger:write )
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+GET http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/{ledger}/schema/{version}`
+`GET /v2/{ledger}/schemas/{version}`
 
 <h3 id="get-a-schema-for-a-ledger-by-version-parameters">Parameters</h3>
 
@@ -566,13 +566,13 @@ Authorization ( Scopes: ledger:read )
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/{ledger}/schema HTTP/1.1
+GET http://localhost:8080/v2/{ledger}/schemas HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/{ledger}/schema`
+`GET /v2/{ledger}/schemas`
 
 <h3 id="list-all-schemas-for-a-ledger-parameters">Parameters</h3>
 

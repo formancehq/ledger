@@ -147,7 +147,7 @@ func TestListSchemas(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
-			req := httptest.NewRequest(http.MethodGet, "/default/schema?"+tc.queryParams.Encode(), nil)
+			req := httptest.NewRequest(http.MethodGet, "/default/schemas?"+tc.queryParams.Encode(), nil)
 			rec := httptest.NewRecorder()
 
 			router.ServeHTTP(rec, req)

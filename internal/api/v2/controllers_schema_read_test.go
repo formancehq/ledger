@@ -78,7 +78,7 @@ func TestGetSchema(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
-			req := httptest.NewRequest(http.MethodGet, "/default/schema/"+tc.version, nil)
+			req := httptest.NewRequest(http.MethodGet, "/default/schemas/"+tc.version, nil)
 			rec := httptest.NewRecorder()
 
 			router.ServeHTTP(rec, req)
