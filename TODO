@@ -16,12 +16,6 @@ Business:
 Tests:
 * Convert K6 tests to GRPC
 
-Management node:
-* Bootstrap from backup (tar file as input)
-
-Periods:
-* Add CRON
-
 Signing :
 ** when outputting the actions that were signed by a key, also output the key-id that validated the request
 ** have a list of keys
