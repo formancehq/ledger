@@ -58,3 +58,4 @@ tests/e2e/data/
 tests/e2e/wal/
 
 worktrees
+/ledgerctl
