@@ -101,3 +101,35 @@ var _ Cursor[any] = (*FilteredCursor[any])(nil)
 func NewFilteredCursor[T any](inner Cursor[T], predicate func(T) bool) Cursor[T] {
 	return &FilteredCursor[T]{inner: inner, predicate: predicate}
 }
+
+// LimitedCursor wraps a cursor and limits the number of items returned
+type LimitedCursor[T any] struct {
+	inner    Cursor[T]
+	limit    uint32
+	returned uint32
+}
+
+func (c *LimitedCursor[T]) Next() (T, error) {
+	if c.returned >= c.limit {
+		var zero T
+		return zero, io.EOF
+	}
+	item, err := c.inner.Next()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	c.returned++
+	return item, nil
+}
+
+func (c *LimitedCursor[T]) Close() error {
+	return c.inner.Close()
+}
+
+var _ Cursor[any] = (*LimitedCursor[any])(nil)
+
+// NewLimitedCursor creates a new cursor that returns at most limit items
+func NewLimitedCursor[T any](inner Cursor[T], limit uint32) Cursor[T] {
+	return &LimitedCursor[T]{inner: inner, limit: limit}
+}

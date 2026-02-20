@@ -33,6 +33,7 @@ const (
 	BucketService_ListAuditEntries_FullMethodName  = "/ledger.BucketService/ListAuditEntries"
 	BucketService_GetEventsSinks_FullMethodName    = "/ledger.BucketService/GetEventsSinks"
 	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
+	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -65,6 +66,8 @@ type BucketServiceClient interface {
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
+	// ListLogs streams system logs (optionally filtered by ledger)
+	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 }
 
 type bucketServiceClient struct {
@@ -249,6 +252,25 @@ func (c *bucketServiceClient) ListPeriods(ctx context.Context, in *ListPeriodsRe
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListPeriodsClient = grpc.ServerStreamingClient[commonpb.Period]
 
+func (c *bucketServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[6], BucketService_ListLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListLogsRequest, commonpb.Log]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListLogsClient = grpc.ServerStreamingClient[commonpb.Log]
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -279,6 +301,8 @@ type BucketServiceServer interface {
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
+	// ListLogs streams system logs (optionally filtered by ledger)
+	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -324,6 +348,9 @@ func (UnimplementedBucketServiceServer) GetEventsSinks(context.Context, *GetEven
 }
 func (UnimplementedBucketServiceServer) ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error {
 	return status.Errorf(codes.Unimplemented, "method ListPeriods not implemented")
+}
+func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error {
+	return status.Errorf(codes.Unimplemented, "method ListLogs not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -520,6 +547,17 @@ func _BucketService_ListPeriods_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListPeriodsServer = grpc.ServerStreamingServer[commonpb.Period]
 
+func _BucketService_ListLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListLogs(m, &grpc.GenericServerStream[ListLogsRequest, commonpb.Log]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListLogsServer = grpc.ServerStreamingServer[commonpb.Log]
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -581,6 +619,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListPeriods",
 			Handler:       _BucketService_ListPeriods_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListLogs",
+			Handler:       _BucketService_ListLogs_Handler,
 			ServerStreams: true,
 		},
 	},

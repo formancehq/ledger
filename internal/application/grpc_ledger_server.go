@@ -333,6 +333,37 @@ func auditEntryMatchesLedger(entry *auditpb.AuditEntry, ledger string) bool {
 	return false
 }
 
+func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
+	var afterSequence uint64
+	if req.AfterSequence != nil {
+		afterSequence = *req.AfterSequence
+	}
+
+	cursor, err := impl.ctrl.ListLogs(stream.Context(), afterSequence, req.Ledger, req.PageSize)
+	if err != nil {
+		return fmt.Errorf("listing logs: %w", err)
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		log, err := cursor.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading log: %w", err)
+		}
+
+		if err := stream.Send(log); err != nil {
+			return fmt.Errorf("sending log: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
 	sinks, err := impl.store.LoadAllSinkConfigs()
 	if err != nil {

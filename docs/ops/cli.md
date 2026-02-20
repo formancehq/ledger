@@ -784,6 +784,58 @@ ledgerctl audit list --json
 
 ---
 
+### logs
+
+View system logs. System logs record every state change (ledger creation/deletion, transactions, metadata, signing keys, etc.) in the global log.
+
+**Aliases:** `log`
+
+#### logs list
+
+List system log entries via gRPC streaming.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl logs list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--ledger` | | Filter by ledger name |
+| `--after` | `0` | Show logs after this sequence number |
+| `--limit` | `0` | Maximum number of logs to display (0 = unlimited) |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Streams system log entries from the server
+- Each entry shows: sequence number, log type, ledger name (if applicable), and details
+- Use `--ledger` to filter logs related to a specific ledger
+
+**Example:**
+
+```bash
+# List all system logs
+ledgerctl logs list
+
+# Filter by ledger
+ledgerctl logs list --ledger my-ledger
+
+# Show logs after sequence 100
+ledgerctl logs list --after 100
+
+# Limit to 20 entries
+ledgerctl logs list --limit 20
+
+# Output as JSON
+ledgerctl logs list --json
+```
+
+---
+
 ### cluster
 
 Manage and inspect the Raft cluster.

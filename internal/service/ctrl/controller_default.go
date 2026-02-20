@@ -262,6 +262,43 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 	return ledgerInfo, nil
 }
 
+// ListLogs returns a cursor over system logs, optionally filtered by ledger.
+func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, ledger string, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+	cursor, err := ctrl.store.ListLogsSince(afterSequence)
+	if err != nil {
+		return nil, fmt.Errorf("listing logs: %w", err)
+	}
+
+	if ledger != "" {
+		cursor = data.NewFilteredCursor(cursor, func(log *commonpb.Log) bool {
+			return logMatchesLedger(log, ledger)
+		})
+	}
+
+	if pageSize > 0 {
+		cursor = data.NewLimitedCursor(cursor, pageSize)
+	}
+
+	return cursor, nil
+}
+
+// logMatchesLedger checks if a log entry is associated with the given ledger.
+func logMatchesLedger(log *commonpb.Log, ledger string) bool {
+	if log.Payload == nil {
+		return false
+	}
+	switch t := log.Payload.Type.(type) {
+	case *commonpb.LogPayload_Apply:
+		return t.Apply != nil && t.Apply.LedgerName == ledger
+	case *commonpb.LogPayload_CreateLedger:
+		return t.CreateLedger != nil && t.CreateLedger.Info != nil && t.CreateLedger.Info.Name == ledger
+	case *commonpb.LogPayload_DeleteLedger:
+		return t.DeleteLedger != nil && t.DeleteLedger.Info != nil && t.DeleteLedger.Info.Name == ledger
+	default:
+		return false
+	}
+}
+
 // ListPeriods returns all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(_ context.Context) ([]*commonpb.Period, error) {
 	return ctrl.store.GetPeriods()

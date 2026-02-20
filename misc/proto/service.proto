@@ -39,6 +39,8 @@ service BucketService {
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
   // ListPeriods streams all periods
   rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
+  // ListLogs streams system logs (optionally filtered by ledger)
+  rpc ListLogs(ListLogsRequest) returns (stream common.Log);
 }
 
 // ============================================================================
@@ -377,6 +379,16 @@ message ListAuditEntriesRequest {
   optional uint64 after_sequence = 1;
   string ledger = 2;
   bool failures_only = 3;
+}
+
+// ============================================================================
+// System Log Messages
+// ============================================================================
+
+message ListLogsRequest {
+  optional uint64 after_sequence = 1;
+  string ledger = 2;
+  uint32 page_size = 3;
 }
 
 // ============================================================================

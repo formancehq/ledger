@@ -39,7 +39,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | **Logs** |
-| List logs | ❌ | ✅ | Not implemented |
+| List logs | ✅ | ✅ | gRPC stream with optional ledger filter |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -351,7 +351,7 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /{ledgerName}/logs` | ❌ | ✅ | List logs |
+| `GET /{ledgerName}/logs` | ✅ | ✅ | List logs (gRPC stream) |
 | `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
 | `GET /{ledgerName}/stats` | ❌ | ✅ | Ledger statistics |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
@@ -407,6 +407,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Apply(ClosePeriod)` | Close the current open period | ✅ |
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
+| `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
 
 ### Apply Method
 

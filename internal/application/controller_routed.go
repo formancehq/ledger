@@ -98,6 +98,11 @@ func (b *RoutedController) ListPeriods(ctx context.Context) ([]*commonpb.Period,
 	return ctrl.ListPeriods(ctx)
 }
 
+func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, ledger string, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+	// Read from local store - logs are replicated via Raft
+	return b.localController.ListLogs(ctx, afterSequence, ledger, pageSize)
+}
+
 func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// Read from local store - data is replicated via Raft
 	return b.localController.GetAccount(ctx, ledgerName, address)

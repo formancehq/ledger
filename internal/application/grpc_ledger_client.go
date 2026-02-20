@@ -80,6 +80,24 @@ func (g *LedgerGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	}), nil
 }
 
+func (g *LedgerGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, ledger string, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+	req := &servicepb.ListLogsRequest{
+		Ledger:   ledger,
+		PageSize: pageSize,
+	}
+	if afterSequence > 0 {
+		req.AfterSequence = &afterSequence
+	}
+	stream, err := g.client.ListLogs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return data.NewGRPCStreamCursor(stream, func(res *commonpb.Log) (*commonpb.Log, error) {
+		return res, nil
+	}), nil
+}
+
 func (g *LedgerGrpcClient) GetAllLedgersInfo(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
 	stream, err := g.client.GetAllLedgersInfo(ctx, &servicepb.GetAllLedgersRequest{})
 	if err != nil {
