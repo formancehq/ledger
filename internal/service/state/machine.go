@@ -284,8 +284,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		),
 		nextLedgerID:   1,
 		nextSequenceID: 1,
-		// todo: should be 1 to be coherent with other ids
-		nextAuditSequenceID: 0,
+		nextAuditSequenceID: 1,
 		allPeriods:          allPeriods,
 		currentOpenPeriod:   currentOpenPeriod,
 		closingPeriod:       closingPeriod,

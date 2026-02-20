@@ -99,9 +99,9 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 2, "should have 2 audit entries (create ledger + transaction)")
 
-	// First entry: create ledger (success) — sequences start at 0
+	// First entry: create ledger (success) — sequences start at 1
 	first := entries[0]
-	require.Equal(t, uint64(0), first.Sequence)
+	require.Equal(t, uint64(1), first.Sequence)
 	require.Equal(t, uint64(1), first.ProposalId)
 	require.NotNil(t, first.GetSuccess(), "create ledger should be success")
 	require.NotEmpty(t, first.GetSuccess().LogSequences)
@@ -109,7 +109,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 
 	// Second entry: create transaction (success)
 	second := entries[1]
-	require.Equal(t, uint64(1), second.Sequence)
+	require.Equal(t, uint64(2), second.Sequence)
 	require.Equal(t, uint64(2), second.ProposalId)
 	require.NotNil(t, second.GetSuccess(), "transaction should be success")
 	require.NotEmpty(t, second.GetSuccess().LogSequences)
@@ -148,9 +148,9 @@ func TestAuditLogOnFailure(t *testing.T) {
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 2, "should have 2 audit entries (create ledger + failed tx)")
 
-	// Second entry: failed transaction — sequences start at 0
+	// Second entry: failed transaction — sequences start at 1
 	failEntry := entries[1]
-	require.Equal(t, uint64(1), failEntry.Sequence)
+	require.Equal(t, uint64(2), failEntry.Sequence)
 	require.Equal(t, uint64(2), failEntry.ProposalId)
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is BALANCE_NOT_FOUND because the account doesn't exist yet (no balance preloaded)
@@ -187,11 +187,11 @@ func TestAuditLogSequenceMonotonic(t *testing.T) {
 		require.NoError(t, result.Results[0].Error)
 	}
 
-	// Verify sequences are monotonically increasing (starting at 0)
+	// Verify sequences are monotonically increasing (starting at 1)
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 5)
 	for i, entry := range entries {
-		require.Equal(t, uint64(i), entry.Sequence, "sequence should be %d", i)
+		require.Equal(t, uint64(i+1), entry.Sequence, "sequence should be %d", i+1)
 	}
 }
 
@@ -226,15 +226,15 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 	all := listAuditEntries(t, dataStore, 0)
 	require.Len(t, all, 4)
 
-	// After sequence 1: should return entries with sequence 2 and 3
-	after1 := listAuditEntries(t, dataStore, 1)
-	require.Len(t, after1, 2)
-	require.Equal(t, uint64(2), after1[0].Sequence)
-	require.Equal(t, uint64(3), after1[1].Sequence)
+	// After sequence 2: should return entries with sequence 3 and 4
+	after2 := listAuditEntries(t, dataStore, 2)
+	require.Len(t, after2, 2)
+	require.Equal(t, uint64(3), after2[0].Sequence)
+	require.Equal(t, uint64(4), after2[1].Sequence)
 
-	// After sequence 3: should return nothing
-	after3 := listAuditEntries(t, dataStore, 3)
-	require.Empty(t, after3)
+	// After sequence 4: should return nothing
+	after4 := listAuditEntries(t, dataStore, 4)
+	require.Empty(t, after4)
 }
 
 func TestAuditLogDisabled(t *testing.T) {
@@ -300,8 +300,8 @@ func TestAuditLogInSnapshot(t *testing.T) {
 
 	var snapshot raftcmdpb.MemorySnapshot
 	require.NoError(t, proto.Unmarshal(snapshotBytes, &snapshot))
-	require.Equal(t, uint64(2), snapshot.NextAuditSequenceId,
-		"snapshot should capture next audit sequence ID (2 entries written starting at 0, next = 2)")
+	require.Equal(t, uint64(3), snapshot.NextAuditSequenceId,
+		"snapshot should capture next audit sequence ID (2 entries written starting at 1, next = 3)")
 }
 
 func TestBuildAuditFailure(t *testing.T) {
