@@ -134,6 +134,12 @@ func main() {
 			pullRegistry = registry
 		}
 		
+		// Docker builder name (e.g., a custom buildx builder)
+		dockerBuilderName := cfg.Get("docker-builder-name")
+		if dockerBuilderName == "" {
+			dockerBuilderName = "formance-runner"
+		}
+
 		// Generate build version from git commit + timestamp
 		buildVersion := getBuildVersion()
 		ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
@@ -149,7 +155,7 @@ func main() {
 				Location: pulumi.String("../.."),
 			},
 			Builder: dockerbuild.BuilderConfigArgs{
-				Name: pulumi.String("formance-runner"), // todo: make configurable
+				Name: pulumi.String(dockerBuilderName),
 			},
 			CacheFrom: dockerbuild.CacheFromArray{
 				dockerbuild.CacheFromArgs{
@@ -192,7 +198,7 @@ func main() {
 				Location: pulumi.String("../benchmark-operator"),
 			},
 			Builder: dockerbuild.BuilderConfigArgs{
-				Name: pulumi.String("formance-runner"), // todo: make configurable
+				Name: pulumi.String(dockerBuilderName),
 			},
 			CacheFrom: dockerbuild.CacheFromArray{
 				dockerbuild.CacheFromArgs{
