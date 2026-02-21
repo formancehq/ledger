@@ -14,6 +14,7 @@ Business:
 ** Add typed metadata
 * Events
 ** Filter internal events
+* Audit: enabled by the user
 
 Tests:
 * Convert K6 tests to GRPC
