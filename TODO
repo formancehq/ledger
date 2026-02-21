@@ -35,4 +35,4 @@ Refactor:
 * Separate modules in application package
 * Cyclic dependencies in tests
 * Split admission
-* Categorize raft commands
+* Categorize raft commands (user commands vs system commands)
