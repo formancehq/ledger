@@ -678,15 +678,15 @@ func TestReadSigningKeys(t *testing.T) {
 		}
 
 		batch := s.NewBatch()
-		require.NoError(t, SaveSigningKey(batch, "key-1", pubKey1))
-		require.NoError(t, SaveSigningKey(batch, "key-2", pubKey2))
+		require.NoError(t, SaveSigningKey(batch, "key-1", pubKey1, ""))
+		require.NoError(t, SaveSigningKey(batch, "key-2", pubKey2, ""))
 		require.NoError(t, batch.Commit())
 
 		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Len(t, keys, 2)
-		require.Equal(t, pubKey1, keys["key-1"])
-		require.Equal(t, pubKey2, keys["key-2"])
+		require.Equal(t, pubKey1, keys["key-1"].PublicKey)
+		require.Equal(t, pubKey2, keys["key-2"].PublicKey)
 	})
 
 	t.Run("delete signing key", func(t *testing.T) {
@@ -697,8 +697,10 @@ func TestReadSigningKeys(t *testing.T) {
 		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Len(t, keys, 1)
-		require.Nil(t, keys["key-1"])
-		require.NotNil(t, keys["key-2"])
+		_, hasKey1 := keys["key-1"]
+		require.False(t, hasKey1)
+		_, hasKey2 := keys["key-2"]
+		require.True(t, hasKey2)
 	})
 
 	t.Run("save and load signing config", func(t *testing.T) {
@@ -722,9 +724,9 @@ func TestReadSigningKeys(t *testing.T) {
 	t.Run("delete all signing keys", func(t *testing.T) {
 		// Add some keys first
 		batch := s.NewBatch()
-		require.NoError(t, SaveSigningKey(batch, "a", make([]byte, 32)))
-		require.NoError(t, SaveSigningKey(batch, "b", make([]byte, 32)))
-		require.NoError(t, SaveSigningKey(batch, "c", make([]byte, 32)))
+		require.NoError(t, SaveSigningKey(batch, "a", make([]byte, 32), ""))
+		require.NoError(t, SaveSigningKey(batch, "b", make([]byte, 32), ""))
+		require.NoError(t, SaveSigningKey(batch, "c", make([]byte, 32), ""))
 		require.NoError(t, batch.Commit())
 
 		keys, err := ReadSigningKeys(s)

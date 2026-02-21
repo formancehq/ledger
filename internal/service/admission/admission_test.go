@@ -1036,7 +1036,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		adm := createTestAdmission(t, store)
 
 		existingPubKey, _ := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("existing", existingPubKey)
+		adm.keyStore.AddPublicKey("existing", existingPubKey, "")
 
 		newPubKey, _ := generateTestKeyPair(t)
 
@@ -1061,7 +1061,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		adm := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("my-key", pubKey)
+		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
 		requests := []*servicepb.Request{
 			{
@@ -1083,7 +1083,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		adm := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("my-key", pubKey)
+		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
 		requests := []*servicepb.Request{
 			{
@@ -1105,7 +1105,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		adm := createTestAdmission(t, store)
 
 		existingPubKey, existingPrivKey := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("existing", existingPubKey)
+		adm.keyStore.AddPublicKey("existing", existingPubKey, "")
 
 		newPubKey, _ := generateTestKeyPair(t)
 
@@ -1174,7 +1174,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		adm := createTestAdmission(t, store)
 
 		pubKey, privKey := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("my-key", pubKey)
+		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 		adm.sharedState.SetRequireSignatures(true)
 
 		req := &servicepb.Request{
@@ -1223,7 +1223,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 		_, otherPrivKey := generateTestKeyPair(t)
-		adm.keyStore.AddPublicKey("my-key", pubKey)
+		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
 		req := &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{

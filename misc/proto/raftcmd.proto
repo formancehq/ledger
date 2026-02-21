@@ -60,10 +60,12 @@ message RemoveEventsSinkOrder {
 message RegisterSigningKeyOrder {
   string key_id = 1;
   bytes public_key = 2;
+  string parent_key_id = 3;
 }
 
 message RevokeSigningKeyOrder {
   string key_id = 1;
+  bool cascade = 2;
 }
 
 message SetSigningConfigOrder {

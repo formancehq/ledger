@@ -1191,16 +1191,22 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			Apply: applyOrder,
 		}
 	case *servicepb.Request_RegisterSigningKey:
+		var parentKeyID string
+		if req.Signature != nil {
+			parentKeyID = req.Signature.KeyId
+		}
 		order.Type = &raftcmdpb.Order_RegisterSigningKey{
 			RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-				KeyId:     reqType.RegisterSigningKey.KeyId,
-				PublicKey: reqType.RegisterSigningKey.PublicKey,
+				KeyId:       reqType.RegisterSigningKey.KeyId,
+				PublicKey:   reqType.RegisterSigningKey.PublicKey,
+				ParentKeyId: parentKeyID,
 			},
 		}
 	case *servicepb.Request_RevokeSigningKey:
 		order.Type = &raftcmdpb.Order_RevokeSigningKey{
 			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-				KeyId: reqType.RevokeSigningKey.KeyId,
+				KeyId:   reqType.RevokeSigningKey.KeyId,
+				Cascade: reqType.RevokeSigningKey.Cascade,
 			},
 		}
 	case *servicepb.Request_SetSigningConfig:

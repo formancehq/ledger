@@ -14,9 +14,10 @@ import (
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
 type signingKeyUpdate struct {
-	keyID     string
-	publicKey []byte // nil for removals
-	remove    bool
+	keyID       string
+	publicKey   []byte // nil for removals
+	parentKeyID string
+	remove      bool
 }
 
 // signingConfigUpdate represents a pending require-signatures change.
@@ -226,11 +227,11 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 				b.fsm.keyStore.RemovePublicKey(update.keyID)
 			}
 		} else {
-			if err := SaveSigningKey(batch, update.keyID, update.publicKey); err != nil {
+			if err := SaveSigningKey(batch, update.keyID, update.publicKey, update.parentKeyID); err != nil {
 				return fmt.Errorf("saving signing key: %w", err)
 			}
 			if b.fsm.keyStore != nil {
-				b.fsm.keyStore.AddPublicKey(update.keyID, update.publicKey)
+				b.fsm.keyStore.AddPublicKey(update.keyID, update.publicKey, update.parentKeyID)
 			}
 		}
 	}
@@ -430,10 +431,11 @@ func (b *Buffered) AddTransactionUpdate(key dal.TransactionKey, update *commonpb
 	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
 }
 
-func (b *Buffered) AddSigningKey(keyID string, publicKey []byte) {
+func (b *Buffered) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
 	b.pendingSigningKeyUpdates = append(b.pendingSigningKeyUpdates, signingKeyUpdate{
-		keyID:     keyID,
-		publicKey: publicKey,
+		keyID:       keyID,
+		publicKey:   publicKey,
+		parentKeyID: parentKeyID,
 	})
 }
 
@@ -442,6 +444,40 @@ func (b *Buffered) RemoveSigningKey(keyID string) {
 		keyID:  keyID,
 		remove: true,
 	})
+}
+
+// GetSigningKeyChildren returns all key IDs that have keyID as their parent.
+// It checks the committed KeyStore and accounts for pending additions/removals.
+func (b *Buffered) GetSigningKeyChildren(keyID string) []string {
+	// Start from committed state
+	children := b.fsm.keyStore.GetChildren(keyID)
+
+	// Build a set of pending removals for fast lookup
+	pendingRemovals := make(map[string]struct{})
+	for _, update := range b.pendingSigningKeyUpdates {
+		if update.remove {
+			pendingRemovals[update.keyID] = struct{}{}
+		}
+	}
+
+	// Filter out pending removals from committed children
+	filtered := children[:0]
+	for _, child := range children {
+		if _, removed := pendingRemovals[child]; !removed {
+			filtered = append(filtered, child)
+		}
+	}
+
+	// Add pending additions whose parent matches
+	for _, update := range b.pendingSigningKeyUpdates {
+		if !update.remove && update.parentKeyID == keyID {
+			if _, removed := pendingRemovals[update.keyID]; !removed {
+				filtered = append(filtered, update.keyID)
+			}
+		}
+	}
+
+	return filtered
 }
 
 func (b *Buffered) SetRequireSignatures(require bool) {

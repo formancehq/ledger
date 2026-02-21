@@ -54,7 +54,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Security** |
 | Request signing (Ed25519) | ✅ | ❌ | Envelope pattern with signed_payload |
-| Dynamic key management | ✅ | ❌ | Register/revoke keys via gRPC API (bootstrap: first key unsigned) |
+| Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |
 | Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
@@ -421,6 +421,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
+| `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 
 ### Apply Method

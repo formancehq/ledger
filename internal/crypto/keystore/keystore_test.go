@@ -23,7 +23,7 @@ func TestAddAndGetPublicKey(t *testing.T) {
 	require.NoError(t, err)
 
 	ks := NewKeyStore()
-	ks.AddPublicKey("admin-key", pub)
+	ks.AddPublicKey("admin-key", pub, "")
 
 	require.True(t, ks.HasKeys())
 	require.Equal(t, ed25519.PublicKey(pub), ks.GetPublicKey("admin-key"))
@@ -37,7 +37,7 @@ func TestRemovePublicKey(t *testing.T) {
 	require.NoError(t, err)
 
 	ks := NewKeyStore()
-	ks.AddPublicKey("key-1", pub)
+	ks.AddPublicKey("key-1", pub, "")
 	require.True(t, ks.HasKeys())
 
 	ks.RemovePublicKey("key-1")
@@ -52,7 +52,7 @@ func TestReset(t *testing.T) {
 	require.NoError(t, err)
 
 	ks := NewKeyStore()
-	ks.AddPublicKey("key-1", pub)
+	ks.AddPublicKey("key-1", pub, "")
 
 	require.True(t, ks.HasKeys())
 
@@ -71,8 +71,8 @@ func TestMultipleKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	ks := NewKeyStore()
-	ks.AddPublicKey("key-1", pub1)
-	ks.AddPublicKey("key-2", pub2)
+	ks.AddPublicKey("key-1", pub1, "")
+	ks.AddPublicKey("key-2", pub2, "")
 
 	require.True(t, ks.HasKeys())
 	require.Equal(t, ed25519.PublicKey(pub1), ks.GetPublicKey("key-1"))

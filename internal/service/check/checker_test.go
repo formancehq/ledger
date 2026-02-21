@@ -360,8 +360,9 @@ func (s *inMemoryStore) AddTransactionUpdate(key dal.TransactionKey, update *com
 	s.transactionUpdates[k] = append(s.transactionUpdates[k], update)
 }
 
-func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)                     {}
+func (s *inMemoryStore) AddSigningKey(_ string, _ []byte, _ string)           {}
 func (s *inMemoryStore) RemoveSigningKey(_ string)                            {}
+func (s *inMemoryStore) GetSigningKeyChildren(_ string) []string              { return nil }
 func (s *inMemoryStore) SetRequireSignatures(_ bool)                          {}
 func (s *inMemoryStore) SetMaintenanceMode(_ bool)                            {}
 func (s *inMemoryStore) SetPeriodSchedule(_ string)                           {}

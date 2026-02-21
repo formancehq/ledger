@@ -358,6 +358,17 @@ func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commo
 	return dal.NewClosingCursor(cursor, handle), nil
 }
 
+// ListSigningKeys returns a cursor over all registered signing keys.
+func (ctrl *DefaultController) ListSigningKeys(_ context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+	handle := ctrl.store.NewReadHandle()
+	cursor, err := state.ReadSigningKeysCursor(handle)
+	if err != nil {
+		_ = handle.Close()
+		return nil, err
+	}
+	return dal.NewClosingCursor(cursor, handle), nil
+}
+
 // Apply applies a list of requests and returns the resulting logs.
 // The controller forwards requests to the Raft admission layer.
 // The FSM is responsible for interpreting orders, validating, and applying changes.

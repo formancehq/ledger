@@ -124,6 +124,11 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	return b.localController.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
 }
 
+func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+	// Read from local store - signing keys are replicated via Raft
+	return b.localController.ListSigningKeys(ctx)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

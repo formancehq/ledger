@@ -263,6 +263,7 @@ func (m *RegisterSigningKeyOrder) CloneVT() *RegisterSigningKeyOrder {
 	}
 	r := new(RegisterSigningKeyOrder)
 	r.KeyId = m.KeyId
+	r.ParentKeyId = m.ParentKeyId
 	if rhs := m.PublicKey; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -285,6 +286,7 @@ func (m *RevokeSigningKeyOrder) CloneVT() *RevokeSigningKeyOrder {
 	}
 	r := new(RevokeSigningKeyOrder)
 	r.KeyId = m.KeyId
+	r.Cascade = m.Cascade
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1862,6 +1864,9 @@ func (this *RegisterSigningKeyOrder) EqualVT(that *RegisterSigningKeyOrder) bool
 	if string(this.PublicKey) != string(that.PublicKey) {
 		return false
 	}
+	if this.ParentKeyId != that.ParentKeyId {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1879,6 +1884,9 @@ func (this *RevokeSigningKeyOrder) EqualVT(that *RevokeSigningKeyOrder) bool {
 		return false
 	}
 	if this.KeyId != that.KeyId {
+		return false
+	}
+	if this.Cascade != that.Cascade {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4093,6 +4101,13 @@ func (m *RegisterSigningKeyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.ParentKeyId) > 0 {
+		i -= len(m.ParentKeyId)
+		copy(dAtA[i:], m.ParentKeyId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ParentKeyId)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if len(m.PublicKey) > 0 {
 		i -= len(m.PublicKey)
 		copy(dAtA[i:], m.PublicKey)
@@ -4139,6 +4154,16 @@ func (m *RevokeSigningKeyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Cascade {
+		i--
+		if m.Cascade {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.KeyId) > 0 {
 		i -= len(m.KeyId)
@@ -7128,6 +7153,10 @@ func (m *RegisterSigningKeyOrder) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.ParentKeyId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -7141,6 +7170,9 @@ func (m *RevokeSigningKeyOrder) SizeVT() (n int) {
 	l = len(m.KeyId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Cascade {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -9549,6 +9581,38 @@ func (m *RegisterSigningKeyOrder) UnmarshalVT(dAtA []byte) error {
 				m.PublicKey = []byte{}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ParentKeyId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ParentKeyId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -9632,6 +9696,26 @@ func (m *RevokeSigningKeyOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.KeyId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cascade", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Cascade = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -1167,6 +1167,34 @@ operations must be signed by an existing key.
 
 **Aliases:** `sign`, `keys`
 
+#### signing list-keys
+
+List all registered signing keys and their parent relationships.
+
+**Aliases:** `ls`, `list`
+
+```bash
+ledgerctl signing list-keys
+```
+
+**Output columns:**
+
+| Column | Description |
+|--------|-------------|
+| Key ID | Unique identifier of the key |
+| Public Key (hex) | Ed25519 public key (hex-encoded) |
+| Parent | Parent key ID, or `(root)` for bootstrap keys |
+
+**Example:**
+
+```bash
+# List all signing keys
+ledgerctl signing list-keys
+
+# With remote server
+ledgerctl --server node1:8888 signing list-keys
+```
+
 #### signing generate-key
 
 Generate an Ed25519 keypair for request signing. Creates two hex-encoded files in the specified output directory.
@@ -1229,6 +1257,7 @@ ledgerctl signing revoke-key --key-id ops --signing-key /path/to/seed
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--key-id` | Yes | Key ID to revoke |
+| `--cascade` | No | Also revoke all descendant keys (default: false) |
 | `--timeout` | No | Request timeout (default: 10s) |
 
 #### signing require

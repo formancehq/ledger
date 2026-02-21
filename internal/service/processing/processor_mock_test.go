@@ -43,15 +43,15 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // AddSigningKey mocks base method.
-func (m *MockStore) AddSigningKey(keyID string, publicKey []byte) {
+func (m *MockStore) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddSigningKey", keyID, publicKey)
+	m.ctrl.Call(m, "AddSigningKey", keyID, publicKey, parentKeyID)
 }
 
 // AddSigningKey indicates an expected call of AddSigningKey.
-func (mr *MockStoreMockRecorder) AddSigningKey(keyID, publicKey any) *gomock.Call {
+func (mr *MockStoreMockRecorder) AddSigningKey(keyID, publicKey, parentKeyID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSigningKey", reflect.TypeOf((*MockStore)(nil).AddSigningKey), keyID, publicKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSigningKey", reflect.TypeOf((*MockStore)(nil).AddSigningKey), keyID, publicKey, parentKeyID)
 }
 
 // AddSinkConfig mocks base method.
@@ -302,6 +302,20 @@ func (m *MockStore) GetReverted(key dal.TransactionKey) (bool, error) {
 func (mr *MockStoreMockRecorder) GetReverted(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReverted", reflect.TypeOf((*MockStore)(nil).GetReverted), key)
+}
+
+// GetSigningKeyChildren mocks base method.
+func (m *MockStore) GetSigningKeyChildren(keyID string) []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSigningKeyChildren", keyID)
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// GetSigningKeyChildren indicates an expected call of GetSigningKeyChildren.
+func (mr *MockStoreMockRecorder) GetSigningKeyChildren(keyID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSigningKeyChildren", reflect.TypeOf((*MockStore)(nil).GetSigningKeyChildren), keyID)
 }
 
 // GetSinkConfig mocks base method.

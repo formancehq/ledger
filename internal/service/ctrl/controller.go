@@ -31,6 +31,9 @@ type Controller interface {
 	// Period operations
 	ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error)
 
+	// Signing key operations
+	ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 }

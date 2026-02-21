@@ -1143,6 +1143,7 @@ func (x *RegisterSigningKeyRequest) GetPublicKey() []byte {
 type RevokeSigningKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"` // Key ID to revoke
+	Cascade       bool                   `protobuf:"varint,2,opt,name=cascade,proto3" json:"cascade,omitempty"`         // When true, also revoke all descendant keys
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1182,6 +1183,13 @@ func (x *RevokeSigningKeyRequest) GetKeyId() string {
 		return x.KeyId
 	}
 	return ""
+}
+
+func (x *RevokeSigningKeyRequest) GetCascade() bool {
+	if x != nil {
+		return x.Cascade
+	}
+	return false
 }
 
 // SetSigningConfigRequest updates the signing configuration.
@@ -1230,6 +1238,42 @@ func (x *SetSigningConfigRequest) GetRequireSignatures() bool {
 	return false
 }
 
+type ListSigningKeysRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSigningKeysRequest) Reset() {
+	*x = ListSigningKeysRequest{}
+	mi := &file_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSigningKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSigningKeysRequest) ProtoMessage() {}
+
+func (x *ListSigningKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSigningKeysRequest.ProtoReflect.Descriptor instead.
+func (*ListSigningKeysRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{18}
+}
+
 type ClosePeriodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1238,7 +1282,7 @@ type ClosePeriodRequest struct {
 
 func (x *ClosePeriodRequest) Reset() {
 	*x = ClosePeriodRequest{}
-	mi := &file_service_proto_msgTypes[18]
+	mi := &file_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1250,7 +1294,7 @@ func (x *ClosePeriodRequest) String() string {
 func (*ClosePeriodRequest) ProtoMessage() {}
 
 func (x *ClosePeriodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[18]
+	mi := &file_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1263,7 +1307,7 @@ func (x *ClosePeriodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClosePeriodRequest.ProtoReflect.Descriptor instead.
 func (*ClosePeriodRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{18}
+	return file_service_proto_rawDescGZIP(), []int{19}
 }
 
 type SealPeriodRequest struct {
@@ -1276,7 +1320,7 @@ type SealPeriodRequest struct {
 
 func (x *SealPeriodRequest) Reset() {
 	*x = SealPeriodRequest{}
-	mi := &file_service_proto_msgTypes[19]
+	mi := &file_service_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1288,7 +1332,7 @@ func (x *SealPeriodRequest) String() string {
 func (*SealPeriodRequest) ProtoMessage() {}
 
 func (x *SealPeriodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[19]
+	mi := &file_service_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1301,7 +1345,7 @@ func (x *SealPeriodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealPeriodRequest.ProtoReflect.Descriptor instead.
 func (*SealPeriodRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{19}
+	return file_service_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SealPeriodRequest) GetPeriodId() uint64 {
@@ -1327,7 +1371,7 @@ type ArchivePeriodRequest struct {
 
 func (x *ArchivePeriodRequest) Reset() {
 	*x = ArchivePeriodRequest{}
-	mi := &file_service_proto_msgTypes[20]
+	mi := &file_service_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1339,7 +1383,7 @@ func (x *ArchivePeriodRequest) String() string {
 func (*ArchivePeriodRequest) ProtoMessage() {}
 
 func (x *ArchivePeriodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[20]
+	mi := &file_service_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1352,7 +1396,7 @@ func (x *ArchivePeriodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchivePeriodRequest.ProtoReflect.Descriptor instead.
 func (*ArchivePeriodRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{20}
+	return file_service_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ArchivePeriodRequest) GetPeriodId() uint64 {
@@ -1371,7 +1415,7 @@ type ConfirmArchivePeriodRequest struct {
 
 func (x *ConfirmArchivePeriodRequest) Reset() {
 	*x = ConfirmArchivePeriodRequest{}
-	mi := &file_service_proto_msgTypes[21]
+	mi := &file_service_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1427,7 @@ func (x *ConfirmArchivePeriodRequest) String() string {
 func (*ConfirmArchivePeriodRequest) ProtoMessage() {}
 
 func (x *ConfirmArchivePeriodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[21]
+	mi := &file_service_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1440,7 @@ func (x *ConfirmArchivePeriodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmArchivePeriodRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmArchivePeriodRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{21}
+	return file_service_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ConfirmArchivePeriodRequest) GetPeriodId() uint64 {
@@ -1416,7 +1460,7 @@ type ListPeriodsRequest struct {
 
 func (x *ListPeriodsRequest) Reset() {
 	*x = ListPeriodsRequest{}
-	mi := &file_service_proto_msgTypes[22]
+	mi := &file_service_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1428,7 +1472,7 @@ func (x *ListPeriodsRequest) String() string {
 func (*ListPeriodsRequest) ProtoMessage() {}
 
 func (x *ListPeriodsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[22]
+	mi := &file_service_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1441,7 +1485,7 @@ func (x *ListPeriodsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPeriodsRequest.ProtoReflect.Descriptor instead.
 func (*ListPeriodsRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{22}
+	return file_service_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListPeriodsRequest) GetPageSize() uint32 {
@@ -1462,7 +1506,7 @@ type SetMaintenanceModeRequest struct {
 
 func (x *SetMaintenanceModeRequest) Reset() {
 	*x = SetMaintenanceModeRequest{}
-	mi := &file_service_proto_msgTypes[23]
+	mi := &file_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1518,7 @@ func (x *SetMaintenanceModeRequest) String() string {
 func (*SetMaintenanceModeRequest) ProtoMessage() {}
 
 func (x *SetMaintenanceModeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[23]
+	mi := &file_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1487,7 +1531,7 @@ func (x *SetMaintenanceModeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMaintenanceModeRequest.ProtoReflect.Descriptor instead.
 func (*SetMaintenanceModeRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{23}
+	return file_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SetMaintenanceModeRequest) GetEnabled() bool {
@@ -1507,7 +1551,7 @@ type SetPeriodScheduleRequest struct {
 
 func (x *SetPeriodScheduleRequest) Reset() {
 	*x = SetPeriodScheduleRequest{}
-	mi := &file_service_proto_msgTypes[24]
+	mi := &file_service_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1563,7 @@ func (x *SetPeriodScheduleRequest) String() string {
 func (*SetPeriodScheduleRequest) ProtoMessage() {}
 
 func (x *SetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[24]
+	mi := &file_service_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1576,7 @@ func (x *SetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPeriodScheduleRequest.ProtoReflect.Descriptor instead.
 func (*SetPeriodScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{24}
+	return file_service_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SetPeriodScheduleRequest) GetCron() string {
@@ -1551,7 +1595,7 @@ type DeletePeriodScheduleRequest struct {
 
 func (x *DeletePeriodScheduleRequest) Reset() {
 	*x = DeletePeriodScheduleRequest{}
-	mi := &file_service_proto_msgTypes[25]
+	mi := &file_service_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1563,7 +1607,7 @@ func (x *DeletePeriodScheduleRequest) String() string {
 func (*DeletePeriodScheduleRequest) ProtoMessage() {}
 
 func (x *DeletePeriodScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[25]
+	mi := &file_service_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1576,7 +1620,7 @@ func (x *DeletePeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePeriodScheduleRequest.ProtoReflect.Descriptor instead.
 func (*DeletePeriodScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{25}
+	return file_service_proto_rawDescGZIP(), []int{26}
 }
 
 type GetPeriodScheduleRequest struct {
@@ -1587,7 +1631,7 @@ type GetPeriodScheduleRequest struct {
 
 func (x *GetPeriodScheduleRequest) Reset() {
 	*x = GetPeriodScheduleRequest{}
-	mi := &file_service_proto_msgTypes[26]
+	mi := &file_service_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1599,7 +1643,7 @@ func (x *GetPeriodScheduleRequest) String() string {
 func (*GetPeriodScheduleRequest) ProtoMessage() {}
 
 func (x *GetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[26]
+	mi := &file_service_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1612,7 +1656,7 @@ func (x *GetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPeriodScheduleRequest.ProtoReflect.Descriptor instead.
 func (*GetPeriodScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{26}
+	return file_service_proto_rawDescGZIP(), []int{27}
 }
 
 type GetPeriodScheduleResponse struct {
@@ -1624,7 +1668,7 @@ type GetPeriodScheduleResponse struct {
 
 func (x *GetPeriodScheduleResponse) Reset() {
 	*x = GetPeriodScheduleResponse{}
-	mi := &file_service_proto_msgTypes[27]
+	mi := &file_service_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1636,7 +1680,7 @@ func (x *GetPeriodScheduleResponse) String() string {
 func (*GetPeriodScheduleResponse) ProtoMessage() {}
 
 func (x *GetPeriodScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[27]
+	mi := &file_service_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1649,7 +1693,7 @@ func (x *GetPeriodScheduleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPeriodScheduleResponse.ProtoReflect.Descriptor instead.
 func (*GetPeriodScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{27}
+	return file_service_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetPeriodScheduleResponse) GetCron() string {
@@ -1667,7 +1711,7 @@ type DiscoveryRequest struct {
 
 func (x *DiscoveryRequest) Reset() {
 	*x = DiscoveryRequest{}
-	mi := &file_service_proto_msgTypes[28]
+	mi := &file_service_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1679,7 +1723,7 @@ func (x *DiscoveryRequest) String() string {
 func (*DiscoveryRequest) ProtoMessage() {}
 
 func (x *DiscoveryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[28]
+	mi := &file_service_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1692,7 +1736,7 @@ func (x *DiscoveryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoveryRequest.ProtoReflect.Descriptor instead.
 func (*DiscoveryRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{28}
+	return file_service_proto_rawDescGZIP(), []int{29}
 }
 
 type DiscoveryResponse struct {
@@ -1704,7 +1748,7 @@ type DiscoveryResponse struct {
 
 func (x *DiscoveryResponse) Reset() {
 	*x = DiscoveryResponse{}
-	mi := &file_service_proto_msgTypes[29]
+	mi := &file_service_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1716,7 +1760,7 @@ func (x *DiscoveryResponse) String() string {
 func (*DiscoveryResponse) ProtoMessage() {}
 
 func (x *DiscoveryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[29]
+	mi := &file_service_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1729,7 +1773,7 @@ func (x *DiscoveryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoveryResponse.ProtoReflect.Descriptor instead.
 func (*DiscoveryResponse) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{29}
+	return file_service_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DiscoveryResponse) GetResponseSigning() *ResponseSigningInfo {
@@ -1750,7 +1794,7 @@ type ResponseSigningInfo struct {
 
 func (x *ResponseSigningInfo) Reset() {
 	*x = ResponseSigningInfo{}
-	mi := &file_service_proto_msgTypes[30]
+	mi := &file_service_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1762,7 +1806,7 @@ func (x *ResponseSigningInfo) String() string {
 func (*ResponseSigningInfo) ProtoMessage() {}
 
 func (x *ResponseSigningInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[30]
+	mi := &file_service_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1775,7 +1819,7 @@ func (x *ResponseSigningInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseSigningInfo.ProtoReflect.Descriptor instead.
 func (*ResponseSigningInfo) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{30}
+	return file_service_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ResponseSigningInfo) GetPublicKey() []byte {
@@ -1808,7 +1852,7 @@ type CreateTransactionPayload struct {
 
 func (x *CreateTransactionPayload) Reset() {
 	*x = CreateTransactionPayload{}
-	mi := &file_service_proto_msgTypes[31]
+	mi := &file_service_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1820,7 +1864,7 @@ func (x *CreateTransactionPayload) String() string {
 func (*CreateTransactionPayload) ProtoMessage() {}
 
 func (x *CreateTransactionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[31]
+	mi := &file_service_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1833,7 +1877,7 @@ func (x *CreateTransactionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionPayload.ProtoReflect.Descriptor instead.
 func (*CreateTransactionPayload) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{31}
+	return file_service_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *CreateTransactionPayload) GetPostings() []*commonpb.Posting {
@@ -1899,7 +1943,7 @@ type RevertTransactionPayload struct {
 
 func (x *RevertTransactionPayload) Reset() {
 	*x = RevertTransactionPayload{}
-	mi := &file_service_proto_msgTypes[32]
+	mi := &file_service_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1911,7 +1955,7 @@ func (x *RevertTransactionPayload) String() string {
 func (*RevertTransactionPayload) ProtoMessage() {}
 
 func (x *RevertTransactionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[32]
+	mi := &file_service_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1924,7 +1968,7 @@ func (x *RevertTransactionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertTransactionPayload.ProtoReflect.Descriptor instead.
 func (*RevertTransactionPayload) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{32}
+	return file_service_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *RevertTransactionPayload) GetTransactionId() uint64 {
@@ -1979,7 +2023,7 @@ type LedgerApplyRequest struct {
 
 func (x *LedgerApplyRequest) Reset() {
 	*x = LedgerApplyRequest{}
-	mi := &file_service_proto_msgTypes[33]
+	mi := &file_service_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1991,7 +2035,7 @@ func (x *LedgerApplyRequest) String() string {
 func (*LedgerApplyRequest) ProtoMessage() {}
 
 func (x *LedgerApplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[33]
+	mi := &file_service_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2004,7 +2048,7 @@ func (x *LedgerApplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerApplyRequest.ProtoReflect.Descriptor instead.
 func (*LedgerApplyRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{33}
+	return file_service_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *LedgerApplyRequest) GetLedger() string {
@@ -2093,7 +2137,7 @@ type GetStoreMetricsRequest struct {
 
 func (x *GetStoreMetricsRequest) Reset() {
 	*x = GetStoreMetricsRequest{}
-	mi := &file_service_proto_msgTypes[34]
+	mi := &file_service_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2149,7 @@ func (x *GetStoreMetricsRequest) String() string {
 func (*GetStoreMetricsRequest) ProtoMessage() {}
 
 func (x *GetStoreMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[34]
+	mi := &file_service_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2162,7 @@ func (x *GetStoreMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStoreMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetStoreMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{34}
+	return file_service_proto_rawDescGZIP(), []int{35}
 }
 
 type GetStoreMetricsResponse struct {
@@ -2133,7 +2177,7 @@ type GetStoreMetricsResponse struct {
 
 func (x *GetStoreMetricsResponse) Reset() {
 	*x = GetStoreMetricsResponse{}
-	mi := &file_service_proto_msgTypes[35]
+	mi := &file_service_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2145,7 +2189,7 @@ func (x *GetStoreMetricsResponse) String() string {
 func (*GetStoreMetricsResponse) ProtoMessage() {}
 
 func (x *GetStoreMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[35]
+	mi := &file_service_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2158,7 +2202,7 @@ func (x *GetStoreMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStoreMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetStoreMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{35}
+	return file_service_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetStoreMetricsResponse) GetAvailable() bool {
@@ -2195,7 +2239,7 @@ type PebbleMetrics struct {
 
 func (x *PebbleMetrics) Reset() {
 	*x = PebbleMetrics{}
-	mi := &file_service_proto_msgTypes[36]
+	mi := &file_service_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2207,7 +2251,7 @@ func (x *PebbleMetrics) String() string {
 func (*PebbleMetrics) ProtoMessage() {}
 
 func (x *PebbleMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[36]
+	mi := &file_service_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2220,7 +2264,7 @@ func (x *PebbleMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PebbleMetrics.ProtoReflect.Descriptor instead.
 func (*PebbleMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{36}
+	return file_service_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *PebbleMetrics) GetBlockCache() *BlockCacheMetrics {
@@ -2312,7 +2356,7 @@ type BlockCacheMetrics struct {
 
 func (x *BlockCacheMetrics) Reset() {
 	*x = BlockCacheMetrics{}
-	mi := &file_service_proto_msgTypes[37]
+	mi := &file_service_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2324,7 +2368,7 @@ func (x *BlockCacheMetrics) String() string {
 func (*BlockCacheMetrics) ProtoMessage() {}
 
 func (x *BlockCacheMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[37]
+	mi := &file_service_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2337,7 +2381,7 @@ func (x *BlockCacheMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockCacheMetrics.ProtoReflect.Descriptor instead.
 func (*BlockCacheMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{37}
+	return file_service_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *BlockCacheMetrics) GetSize() int64 {
@@ -2388,7 +2432,7 @@ type CompactMetrics struct {
 
 func (x *CompactMetrics) Reset() {
 	*x = CompactMetrics{}
-	mi := &file_service_proto_msgTypes[38]
+	mi := &file_service_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2400,7 +2444,7 @@ func (x *CompactMetrics) String() string {
 func (*CompactMetrics) ProtoMessage() {}
 
 func (x *CompactMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[38]
+	mi := &file_service_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2413,7 +2457,7 @@ func (x *CompactMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactMetrics.ProtoReflect.Descriptor instead.
 func (*CompactMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{38}
+	return file_service_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CompactMetrics) GetCount() int64 {
@@ -2513,7 +2557,7 @@ type FlushMetrics struct {
 
 func (x *FlushMetrics) Reset() {
 	*x = FlushMetrics{}
-	mi := &file_service_proto_msgTypes[39]
+	mi := &file_service_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2525,7 +2569,7 @@ func (x *FlushMetrics) String() string {
 func (*FlushMetrics) ProtoMessage() {}
 
 func (x *FlushMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[39]
+	mi := &file_service_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2538,7 +2582,7 @@ func (x *FlushMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlushMetrics.ProtoReflect.Descriptor instead.
 func (*FlushMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{39}
+	return file_service_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *FlushMetrics) GetCount() int64 {
@@ -2588,7 +2632,7 @@ type MemTableMetrics struct {
 
 func (x *MemTableMetrics) Reset() {
 	*x = MemTableMetrics{}
-	mi := &file_service_proto_msgTypes[40]
+	mi := &file_service_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2600,7 +2644,7 @@ func (x *MemTableMetrics) String() string {
 func (*MemTableMetrics) ProtoMessage() {}
 
 func (x *MemTableMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[40]
+	mi := &file_service_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2613,7 +2657,7 @@ func (x *MemTableMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemTableMetrics.ProtoReflect.Descriptor instead.
 func (*MemTableMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{40}
+	return file_service_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *MemTableMetrics) GetSize() uint64 {
@@ -2656,7 +2700,7 @@ type SnapshotsMetrics struct {
 
 func (x *SnapshotsMetrics) Reset() {
 	*x = SnapshotsMetrics{}
-	mi := &file_service_proto_msgTypes[41]
+	mi := &file_service_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2668,7 +2712,7 @@ func (x *SnapshotsMetrics) String() string {
 func (*SnapshotsMetrics) ProtoMessage() {}
 
 func (x *SnapshotsMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[41]
+	mi := &file_service_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2681,7 +2725,7 @@ func (x *SnapshotsMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotsMetrics.ProtoReflect.Descriptor instead.
 func (*SnapshotsMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{41}
+	return file_service_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SnapshotsMetrics) GetCount() int32 {
@@ -2724,7 +2768,7 @@ type TableMetrics struct {
 
 func (x *TableMetrics) Reset() {
 	*x = TableMetrics{}
-	mi := &file_service_proto_msgTypes[42]
+	mi := &file_service_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2736,7 +2780,7 @@ func (x *TableMetrics) String() string {
 func (*TableMetrics) ProtoMessage() {}
 
 func (x *TableMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[42]
+	mi := &file_service_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2749,7 +2793,7 @@ func (x *TableMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableMetrics.ProtoReflect.Descriptor instead.
 func (*TableMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{42}
+	return file_service_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *TableMetrics) GetZombieSize() uint64 {
@@ -2792,7 +2836,7 @@ type TableCacheMetrics struct {
 
 func (x *TableCacheMetrics) Reset() {
 	*x = TableCacheMetrics{}
-	mi := &file_service_proto_msgTypes[43]
+	mi := &file_service_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2804,7 +2848,7 @@ func (x *TableCacheMetrics) String() string {
 func (*TableCacheMetrics) ProtoMessage() {}
 
 func (x *TableCacheMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[43]
+	mi := &file_service_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2817,7 +2861,7 @@ func (x *TableCacheMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableCacheMetrics.ProtoReflect.Descriptor instead.
 func (*TableCacheMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{43}
+	return file_service_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *TableCacheMetrics) GetSize() int64 {
@@ -2861,7 +2905,7 @@ type WALMetrics struct {
 
 func (x *WALMetrics) Reset() {
 	*x = WALMetrics{}
-	mi := &file_service_proto_msgTypes[44]
+	mi := &file_service_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2873,7 +2917,7 @@ func (x *WALMetrics) String() string {
 func (*WALMetrics) ProtoMessage() {}
 
 func (x *WALMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[44]
+	mi := &file_service_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2886,7 +2930,7 @@ func (x *WALMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WALMetrics.ProtoReflect.Descriptor instead.
 func (*WALMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{44}
+	return file_service_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *WALMetrics) GetFiles() int64 {
@@ -2934,7 +2978,7 @@ type KeysMetrics struct {
 
 func (x *KeysMetrics) Reset() {
 	*x = KeysMetrics{}
-	mi := &file_service_proto_msgTypes[45]
+	mi := &file_service_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2946,7 +2990,7 @@ func (x *KeysMetrics) String() string {
 func (*KeysMetrics) ProtoMessage() {}
 
 func (x *KeysMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[45]
+	mi := &file_service_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2959,7 +3003,7 @@ func (x *KeysMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeysMetrics.ProtoReflect.Descriptor instead.
 func (*KeysMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{45}
+	return file_service_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *KeysMetrics) GetRangeKeySetsCount() uint64 {
@@ -2998,7 +3042,7 @@ type LevelMetrics struct {
 
 func (x *LevelMetrics) Reset() {
 	*x = LevelMetrics{}
-	mi := &file_service_proto_msgTypes[46]
+	mi := &file_service_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3010,7 +3054,7 @@ func (x *LevelMetrics) String() string {
 func (*LevelMetrics) ProtoMessage() {}
 
 func (x *LevelMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[46]
+	mi := &file_service_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3023,7 +3067,7 @@ func (x *LevelMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LevelMetrics.ProtoReflect.Descriptor instead.
 func (*LevelMetrics) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{46}
+	return file_service_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *LevelMetrics) GetLevel() int32 {
@@ -3132,7 +3176,7 @@ type CheckStoreRequest struct {
 
 func (x *CheckStoreRequest) Reset() {
 	*x = CheckStoreRequest{}
-	mi := &file_service_proto_msgTypes[47]
+	mi := &file_service_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3144,7 +3188,7 @@ func (x *CheckStoreRequest) String() string {
 func (*CheckStoreRequest) ProtoMessage() {}
 
 func (x *CheckStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[47]
+	mi := &file_service_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3157,7 +3201,7 @@ func (x *CheckStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStoreRequest.ProtoReflect.Descriptor instead.
 func (*CheckStoreRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{47}
+	return file_service_proto_rawDescGZIP(), []int{48}
 }
 
 type CheckStoreEvent struct {
@@ -3173,7 +3217,7 @@ type CheckStoreEvent struct {
 
 func (x *CheckStoreEvent) Reset() {
 	*x = CheckStoreEvent{}
-	mi := &file_service_proto_msgTypes[48]
+	mi := &file_service_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3185,7 +3229,7 @@ func (x *CheckStoreEvent) String() string {
 func (*CheckStoreEvent) ProtoMessage() {}
 
 func (x *CheckStoreEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[48]
+	mi := &file_service_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3198,7 +3242,7 @@ func (x *CheckStoreEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStoreEvent.ProtoReflect.Descriptor instead.
 func (*CheckStoreEvent) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{48}
+	return file_service_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CheckStoreEvent) GetType() isCheckStoreEvent_Type {
@@ -3257,7 +3301,7 @@ type CheckStoreError struct {
 
 func (x *CheckStoreError) Reset() {
 	*x = CheckStoreError{}
-	mi := &file_service_proto_msgTypes[49]
+	mi := &file_service_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3269,7 +3313,7 @@ func (x *CheckStoreError) String() string {
 func (*CheckStoreError) ProtoMessage() {}
 
 func (x *CheckStoreError) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[49]
+	mi := &file_service_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3282,7 +3326,7 @@ func (x *CheckStoreError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStoreError.ProtoReflect.Descriptor instead.
 func (*CheckStoreError) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{49}
+	return file_service_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *CheckStoreError) GetErrorType() CheckStoreErrorType {
@@ -3344,7 +3388,7 @@ type CheckStoreProgress struct {
 
 func (x *CheckStoreProgress) Reset() {
 	*x = CheckStoreProgress{}
-	mi := &file_service_proto_msgTypes[50]
+	mi := &file_service_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3356,7 +3400,7 @@ func (x *CheckStoreProgress) String() string {
 func (*CheckStoreProgress) ProtoMessage() {}
 
 func (x *CheckStoreProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[50]
+	mi := &file_service_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3369,7 +3413,7 @@ func (x *CheckStoreProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStoreProgress.ProtoReflect.Descriptor instead.
 func (*CheckStoreProgress) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{50}
+	return file_service_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CheckStoreProgress) GetLogsChecked() uint64 {
@@ -3398,7 +3442,7 @@ type ListAuditEntriesRequest struct {
 
 func (x *ListAuditEntriesRequest) Reset() {
 	*x = ListAuditEntriesRequest{}
-	mi := &file_service_proto_msgTypes[51]
+	mi := &file_service_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3410,7 +3454,7 @@ func (x *ListAuditEntriesRequest) String() string {
 func (*ListAuditEntriesRequest) ProtoMessage() {}
 
 func (x *ListAuditEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[51]
+	mi := &file_service_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3423,7 +3467,7 @@ func (x *ListAuditEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{51}
+	return file_service_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListAuditEntriesRequest) GetAfterSequence() uint64 {
@@ -3456,7 +3500,7 @@ type GetAuditEntryRequest struct {
 
 func (x *GetAuditEntryRequest) Reset() {
 	*x = GetAuditEntryRequest{}
-	mi := &file_service_proto_msgTypes[52]
+	mi := &file_service_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3468,7 +3512,7 @@ func (x *GetAuditEntryRequest) String() string {
 func (*GetAuditEntryRequest) ProtoMessage() {}
 
 func (x *GetAuditEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[52]
+	mi := &file_service_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3481,7 +3525,7 @@ func (x *GetAuditEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuditEntryRequest.ProtoReflect.Descriptor instead.
 func (*GetAuditEntryRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{52}
+	return file_service_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *GetAuditEntryRequest) GetSequence() uint64 {
@@ -3501,7 +3545,7 @@ type ListLogsRequest struct {
 
 func (x *ListLogsRequest) Reset() {
 	*x = ListLogsRequest{}
-	mi := &file_service_proto_msgTypes[53]
+	mi := &file_service_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3513,7 +3557,7 @@ func (x *ListLogsRequest) String() string {
 func (*ListLogsRequest) ProtoMessage() {}
 
 func (x *ListLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[53]
+	mi := &file_service_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3526,7 +3570,7 @@ func (x *ListLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLogsRequest.ProtoReflect.Descriptor instead.
 func (*ListLogsRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{53}
+	return file_service_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ListLogsRequest) GetAfterSequence() uint64 {
@@ -3551,7 +3595,7 @@ type GetEventsSinksRequest struct {
 
 func (x *GetEventsSinksRequest) Reset() {
 	*x = GetEventsSinksRequest{}
-	mi := &file_service_proto_msgTypes[54]
+	mi := &file_service_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3563,7 +3607,7 @@ func (x *GetEventsSinksRequest) String() string {
 func (*GetEventsSinksRequest) ProtoMessage() {}
 
 func (x *GetEventsSinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[54]
+	mi := &file_service_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3576,7 +3620,7 @@ func (x *GetEventsSinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsSinksRequest.ProtoReflect.Descriptor instead.
 func (*GetEventsSinksRequest) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{54}
+	return file_service_proto_rawDescGZIP(), []int{55}
 }
 
 type GetEventsSinksResponse struct {
@@ -3589,7 +3633,7 @@ type GetEventsSinksResponse struct {
 
 func (x *GetEventsSinksResponse) Reset() {
 	*x = GetEventsSinksResponse{}
-	mi := &file_service_proto_msgTypes[55]
+	mi := &file_service_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3601,7 +3645,7 @@ func (x *GetEventsSinksResponse) String() string {
 func (*GetEventsSinksResponse) ProtoMessage() {}
 
 func (x *GetEventsSinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_service_proto_msgTypes[55]
+	mi := &file_service_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3614,7 +3658,7 @@ func (x *GetEventsSinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsSinksResponse.ProtoReflect.Descriptor instead.
 func (*GetEventsSinksResponse) Descriptor() ([]byte, []int) {
-	return file_service_proto_rawDescGZIP(), []int{55}
+	return file_service_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GetEventsSinksResponse) GetSinks() []*commonpb.SinkConfig {
@@ -3696,11 +3740,13 @@ const file_service_proto_rawDesc = "" +
 	"\x19RegisterSigningKeyRequest\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\"0\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"J\n" +
 	"\x17RevokeSigningKeyRequest\x12\x15\n" +
-	"\x06key_id\x18\x01 \x01(\tR\x05keyId\"H\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x18\n" +
+	"\acascade\x18\x02 \x01(\bR\acascade\"H\n" +
 	"\x17SetSigningConfigRequest\x12-\n" +
-	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x14\n" +
+	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x18\n" +
+	"\x16ListSigningKeysRequest\"\x14\n" +
 	"\x12ClosePeriodRequest\"S\n" +
 	"\x11SealPeriodRequest\x12\x1b\n" +
 	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\x12!\n" +
@@ -3889,7 +3935,7 @@ const file_service_proto_rawDesc = "" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\xda\b\n" +
+	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\xa3\t\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -3907,7 +3953,8 @@ const file_service_proto_rawDesc = "" +
 	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x12;\n" +
 	"\vListPeriods\x12\x1a.ledger.ListPeriodsRequest\x1a\x0e.common.Period0\x01\x122\n" +
 	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12X\n" +
-	"\x11GetPeriodSchedule\x12 .ledger.GetPeriodScheduleRequest\x1a!.ledger.GetPeriodScheduleResponse\x12@\n" +
+	"\x11GetPeriodSchedule\x12 .ledger.GetPeriodScheduleRequest\x1a!.ledger.GetPeriodScheduleResponse\x12G\n" +
+	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey0\x01\x12@\n" +
 	"\tDiscovery\x12\x18.ledger.DiscoveryRequest\x1a\x19.ledger.DiscoveryResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/servicepbb\x06proto3"
 
 var (
@@ -3923,7 +3970,7 @@ func file_service_proto_rawDescGZIP() []byte {
 }
 
 var file_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
 var file_service_proto_goTypes = []any{
 	(CheckStoreErrorType)(0),               // 0: ledger.CheckStoreErrorType
 	(*GetAccountRequest)(nil),              // 1: ledger.GetAccountRequest
@@ -3944,67 +3991,69 @@ var file_service_proto_goTypes = []any{
 	(*RegisterSigningKeyRequest)(nil),      // 16: ledger.RegisterSigningKeyRequest
 	(*RevokeSigningKeyRequest)(nil),        // 17: ledger.RevokeSigningKeyRequest
 	(*SetSigningConfigRequest)(nil),        // 18: ledger.SetSigningConfigRequest
-	(*ClosePeriodRequest)(nil),             // 19: ledger.ClosePeriodRequest
-	(*SealPeriodRequest)(nil),              // 20: ledger.SealPeriodRequest
-	(*ArchivePeriodRequest)(nil),           // 21: ledger.ArchivePeriodRequest
-	(*ConfirmArchivePeriodRequest)(nil),    // 22: ledger.ConfirmArchivePeriodRequest
-	(*ListPeriodsRequest)(nil),             // 23: ledger.ListPeriodsRequest
-	(*SetMaintenanceModeRequest)(nil),      // 24: ledger.SetMaintenanceModeRequest
-	(*SetPeriodScheduleRequest)(nil),       // 25: ledger.SetPeriodScheduleRequest
-	(*DeletePeriodScheduleRequest)(nil),    // 26: ledger.DeletePeriodScheduleRequest
-	(*GetPeriodScheduleRequest)(nil),       // 27: ledger.GetPeriodScheduleRequest
-	(*GetPeriodScheduleResponse)(nil),      // 28: ledger.GetPeriodScheduleResponse
-	(*DiscoveryRequest)(nil),               // 29: ledger.DiscoveryRequest
-	(*DiscoveryResponse)(nil),              // 30: ledger.DiscoveryResponse
-	(*ResponseSigningInfo)(nil),            // 31: ledger.ResponseSigningInfo
-	(*CreateTransactionPayload)(nil),       // 32: ledger.CreateTransactionPayload
-	(*RevertTransactionPayload)(nil),       // 33: ledger.RevertTransactionPayload
-	(*LedgerApplyRequest)(nil),             // 34: ledger.LedgerApplyRequest
-	(*GetStoreMetricsRequest)(nil),         // 35: ledger.GetStoreMetricsRequest
-	(*GetStoreMetricsResponse)(nil),        // 36: ledger.GetStoreMetricsResponse
-	(*PebbleMetrics)(nil),                  // 37: ledger.PebbleMetrics
-	(*BlockCacheMetrics)(nil),              // 38: ledger.BlockCacheMetrics
-	(*CompactMetrics)(nil),                 // 39: ledger.CompactMetrics
-	(*FlushMetrics)(nil),                   // 40: ledger.FlushMetrics
-	(*MemTableMetrics)(nil),                // 41: ledger.MemTableMetrics
-	(*SnapshotsMetrics)(nil),               // 42: ledger.SnapshotsMetrics
-	(*TableMetrics)(nil),                   // 43: ledger.TableMetrics
-	(*TableCacheMetrics)(nil),              // 44: ledger.TableCacheMetrics
-	(*WALMetrics)(nil),                     // 45: ledger.WALMetrics
-	(*KeysMetrics)(nil),                    // 46: ledger.KeysMetrics
-	(*LevelMetrics)(nil),                   // 47: ledger.LevelMetrics
-	(*CheckStoreRequest)(nil),              // 48: ledger.CheckStoreRequest
-	(*CheckStoreEvent)(nil),                // 49: ledger.CheckStoreEvent
-	(*CheckStoreError)(nil),                // 50: ledger.CheckStoreError
-	(*CheckStoreProgress)(nil),             // 51: ledger.CheckStoreProgress
-	(*ListAuditEntriesRequest)(nil),        // 52: ledger.ListAuditEntriesRequest
-	(*GetAuditEntryRequest)(nil),           // 53: ledger.GetAuditEntryRequest
-	(*ListLogsRequest)(nil),                // 54: ledger.ListLogsRequest
-	(*GetEventsSinksRequest)(nil),          // 55: ledger.GetEventsSinksRequest
-	(*GetEventsSinksResponse)(nil),         // 56: ledger.GetEventsSinksResponse
-	nil,                                    // 57: ledger.CreateTransactionPayload.AccountMetadataEntry
-	(*commonpb.Transaction)(nil),           // 58: common.Transaction
-	(*commonpb.MetadataSet)(nil),           // 59: common.MetadataSet
-	(*commonpb.Log)(nil),                   // 60: common.Log
-	(*signaturepb.RequestSignature)(nil),   // 61: signature.RequestSignature
-	(*commonpb.SinkConfig)(nil),            // 62: common.SinkConfig
-	(*commonpb.Posting)(nil),               // 63: common.Posting
-	(*commonpb.Script)(nil),                // 64: common.Script
-	(*commonpb.Timestamp)(nil),             // 65: common.Timestamp
-	(*commonpb.SaveMetadataCommand)(nil),   // 66: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil), // 67: common.DeleteMetadataCommand
-	(*commonpb.SinkStatus)(nil),            // 68: common.SinkStatus
-	(*commonpb.LedgerInfo)(nil),            // 69: common.LedgerInfo
-	(*commonpb.Account)(nil),               // 70: common.Account
-	(*auditpb.AuditEntry)(nil),             // 71: audit.AuditEntry
-	(*commonpb.Period)(nil),                // 72: common.Period
+	(*ListSigningKeysRequest)(nil),         // 19: ledger.ListSigningKeysRequest
+	(*ClosePeriodRequest)(nil),             // 20: ledger.ClosePeriodRequest
+	(*SealPeriodRequest)(nil),              // 21: ledger.SealPeriodRequest
+	(*ArchivePeriodRequest)(nil),           // 22: ledger.ArchivePeriodRequest
+	(*ConfirmArchivePeriodRequest)(nil),    // 23: ledger.ConfirmArchivePeriodRequest
+	(*ListPeriodsRequest)(nil),             // 24: ledger.ListPeriodsRequest
+	(*SetMaintenanceModeRequest)(nil),      // 25: ledger.SetMaintenanceModeRequest
+	(*SetPeriodScheduleRequest)(nil),       // 26: ledger.SetPeriodScheduleRequest
+	(*DeletePeriodScheduleRequest)(nil),    // 27: ledger.DeletePeriodScheduleRequest
+	(*GetPeriodScheduleRequest)(nil),       // 28: ledger.GetPeriodScheduleRequest
+	(*GetPeriodScheduleResponse)(nil),      // 29: ledger.GetPeriodScheduleResponse
+	(*DiscoveryRequest)(nil),               // 30: ledger.DiscoveryRequest
+	(*DiscoveryResponse)(nil),              // 31: ledger.DiscoveryResponse
+	(*ResponseSigningInfo)(nil),            // 32: ledger.ResponseSigningInfo
+	(*CreateTransactionPayload)(nil),       // 33: ledger.CreateTransactionPayload
+	(*RevertTransactionPayload)(nil),       // 34: ledger.RevertTransactionPayload
+	(*LedgerApplyRequest)(nil),             // 35: ledger.LedgerApplyRequest
+	(*GetStoreMetricsRequest)(nil),         // 36: ledger.GetStoreMetricsRequest
+	(*GetStoreMetricsResponse)(nil),        // 37: ledger.GetStoreMetricsResponse
+	(*PebbleMetrics)(nil),                  // 38: ledger.PebbleMetrics
+	(*BlockCacheMetrics)(nil),              // 39: ledger.BlockCacheMetrics
+	(*CompactMetrics)(nil),                 // 40: ledger.CompactMetrics
+	(*FlushMetrics)(nil),                   // 41: ledger.FlushMetrics
+	(*MemTableMetrics)(nil),                // 42: ledger.MemTableMetrics
+	(*SnapshotsMetrics)(nil),               // 43: ledger.SnapshotsMetrics
+	(*TableMetrics)(nil),                   // 44: ledger.TableMetrics
+	(*TableCacheMetrics)(nil),              // 45: ledger.TableCacheMetrics
+	(*WALMetrics)(nil),                     // 46: ledger.WALMetrics
+	(*KeysMetrics)(nil),                    // 47: ledger.KeysMetrics
+	(*LevelMetrics)(nil),                   // 48: ledger.LevelMetrics
+	(*CheckStoreRequest)(nil),              // 49: ledger.CheckStoreRequest
+	(*CheckStoreEvent)(nil),                // 50: ledger.CheckStoreEvent
+	(*CheckStoreError)(nil),                // 51: ledger.CheckStoreError
+	(*CheckStoreProgress)(nil),             // 52: ledger.CheckStoreProgress
+	(*ListAuditEntriesRequest)(nil),        // 53: ledger.ListAuditEntriesRequest
+	(*GetAuditEntryRequest)(nil),           // 54: ledger.GetAuditEntryRequest
+	(*ListLogsRequest)(nil),                // 55: ledger.ListLogsRequest
+	(*GetEventsSinksRequest)(nil),          // 56: ledger.GetEventsSinksRequest
+	(*GetEventsSinksResponse)(nil),         // 57: ledger.GetEventsSinksResponse
+	nil,                                    // 58: ledger.CreateTransactionPayload.AccountMetadataEntry
+	(*commonpb.Transaction)(nil),           // 59: common.Transaction
+	(*commonpb.MetadataSet)(nil),           // 60: common.MetadataSet
+	(*commonpb.Log)(nil),                   // 61: common.Log
+	(*signaturepb.RequestSignature)(nil),   // 62: signature.RequestSignature
+	(*commonpb.SinkConfig)(nil),            // 63: common.SinkConfig
+	(*commonpb.Posting)(nil),               // 64: common.Posting
+	(*commonpb.Script)(nil),                // 65: common.Script
+	(*commonpb.Timestamp)(nil),             // 66: common.Timestamp
+	(*commonpb.SaveMetadataCommand)(nil),   // 67: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil), // 68: common.DeleteMetadataCommand
+	(*commonpb.SinkStatus)(nil),            // 69: common.SinkStatus
+	(*commonpb.LedgerInfo)(nil),            // 70: common.LedgerInfo
+	(*commonpb.Account)(nil),               // 71: common.Account
+	(*auditpb.AuditEntry)(nil),             // 72: audit.AuditEntry
+	(*commonpb.Period)(nil),                // 73: common.Period
+	(*commonpb.SigningKey)(nil),            // 74: common.SigningKey
 }
 var file_service_proto_depIdxs = []int32{
-	58, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
-	59, // 1: ledger.CreateLedgerRequest.metadata:type_name -> common.MetadataSet
+	59, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
+	60, // 1: ledger.CreateLedgerRequest.metadata:type_name -> common.MetadataSet
 	13, // 2: ledger.ApplyRequest.requests:type_name -> ledger.Request
-	60, // 3: ledger.ApplyResponse.logs:type_name -> common.Log
-	34, // 4: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
+	61, // 3: ledger.ApplyResponse.logs:type_name -> common.Log
+	35, // 4: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	6,  // 5: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
 	7,  // 6: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
 	16, // 7: ledger.Request.register_signing_key:type_name -> ledger.RegisterSigningKeyRequest
@@ -4012,43 +4061,43 @@ var file_service_proto_depIdxs = []int32{
 	18, // 9: ledger.Request.set_signing_config:type_name -> ledger.SetSigningConfigRequest
 	14, // 10: ledger.Request.add_events_sink:type_name -> ledger.AddEventsSinkRequest
 	15, // 11: ledger.Request.remove_events_sink:type_name -> ledger.RemoveEventsSinkRequest
-	19, // 12: ledger.Request.close_period:type_name -> ledger.ClosePeriodRequest
-	20, // 13: ledger.Request.seal_period:type_name -> ledger.SealPeriodRequest
-	21, // 14: ledger.Request.archive_period:type_name -> ledger.ArchivePeriodRequest
-	22, // 15: ledger.Request.confirm_archive_period:type_name -> ledger.ConfirmArchivePeriodRequest
-	24, // 16: ledger.Request.set_maintenance_mode:type_name -> ledger.SetMaintenanceModeRequest
-	25, // 17: ledger.Request.set_period_schedule:type_name -> ledger.SetPeriodScheduleRequest
-	26, // 18: ledger.Request.delete_period_schedule:type_name -> ledger.DeletePeriodScheduleRequest
-	61, // 19: ledger.Request.signature:type_name -> signature.RequestSignature
-	62, // 20: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
-	31, // 21: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
-	63, // 22: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	64, // 23: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	65, // 24: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	59, // 25: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
-	57, // 26: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	59, // 27: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
-	32, // 28: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
-	66, // 29: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
-	33, // 30: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	67, // 31: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
-	37, // 32: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
-	38, // 33: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
-	39, // 34: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
-	40, // 35: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
-	41, // 36: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
-	42, // 37: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
-	43, // 38: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
-	44, // 39: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
-	45, // 40: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
-	46, // 41: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
-	47, // 42: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
-	50, // 43: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
-	51, // 44: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
+	20, // 12: ledger.Request.close_period:type_name -> ledger.ClosePeriodRequest
+	21, // 13: ledger.Request.seal_period:type_name -> ledger.SealPeriodRequest
+	22, // 14: ledger.Request.archive_period:type_name -> ledger.ArchivePeriodRequest
+	23, // 15: ledger.Request.confirm_archive_period:type_name -> ledger.ConfirmArchivePeriodRequest
+	25, // 16: ledger.Request.set_maintenance_mode:type_name -> ledger.SetMaintenanceModeRequest
+	26, // 17: ledger.Request.set_period_schedule:type_name -> ledger.SetPeriodScheduleRequest
+	27, // 18: ledger.Request.delete_period_schedule:type_name -> ledger.DeletePeriodScheduleRequest
+	62, // 19: ledger.Request.signature:type_name -> signature.RequestSignature
+	63, // 20: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
+	32, // 21: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
+	64, // 22: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	65, // 23: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	66, // 24: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	60, // 25: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
+	58, // 26: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	60, // 27: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
+	33, // 28: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
+	67, // 29: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
+	34, // 30: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
+	68, // 31: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
+	38, // 32: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	39, // 33: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
+	40, // 34: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
+	41, // 35: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
+	42, // 36: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
+	43, // 37: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
+	44, // 38: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
+	45, // 39: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
+	46, // 40: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
+	47, // 41: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
+	48, // 42: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
+	51, // 43: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
+	52, // 44: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
 	0,  // 45: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
-	62, // 46: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
-	68, // 47: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
-	59, // 48: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	63, // 46: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
+	69, // 47: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
+	60, // 48: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
 	9,  // 49: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
 	10, // 50: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
 	1,  // 51: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
@@ -4056,33 +4105,35 @@ var file_service_proto_depIdxs = []int32{
 	4,  // 53: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
 	5,  // 54: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
 	11, // 55: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
-	35, // 56: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
-	48, // 57: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
-	52, // 58: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
-	53, // 59: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
-	55, // 60: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
-	23, // 61: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
-	54, // 62: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
-	27, // 63: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
-	29, // 64: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
-	69, // 65: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
-	69, // 66: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
-	70, // 67: ledger.BucketService.GetAccount:output_type -> common.Account
-	3,  // 68: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
-	58, // 69: ledger.BucketService.ListTransactions:output_type -> common.Transaction
-	70, // 70: ledger.BucketService.ListAccounts:output_type -> common.Account
-	12, // 71: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	36, // 72: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	49, // 73: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	71, // 74: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
-	71, // 75: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
-	56, // 76: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
-	72, // 77: ledger.BucketService.ListPeriods:output_type -> common.Period
-	60, // 78: ledger.BucketService.ListLogs:output_type -> common.Log
-	28, // 79: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
-	30, // 80: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
-	65, // [65:81] is the sub-list for method output_type
-	49, // [49:65] is the sub-list for method input_type
+	36, // 56: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
+	49, // 57: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
+	53, // 58: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
+	54, // 59: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
+	56, // 60: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
+	24, // 61: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
+	55, // 62: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
+	28, // 63: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
+	19, // 64: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
+	30, // 65: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
+	70, // 66: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
+	70, // 67: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
+	71, // 68: ledger.BucketService.GetAccount:output_type -> common.Account
+	3,  // 69: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
+	59, // 70: ledger.BucketService.ListTransactions:output_type -> common.Transaction
+	71, // 71: ledger.BucketService.ListAccounts:output_type -> common.Account
+	12, // 72: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
+	37, // 73: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
+	50, // 74: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
+	72, // 75: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
+	72, // 76: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
+	57, // 77: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
+	73, // 78: ledger.BucketService.ListPeriods:output_type -> common.Period
+	61, // 79: ledger.BucketService.ListLogs:output_type -> common.Log
+	29, // 80: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
+	74, // 81: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
+	31, // 82: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
+	66, // [66:83] is the sub-list for method output_type
+	49, // [49:66] is the sub-list for method input_type
 	49, // [49:49] is the sub-list for extension type_name
 	49, // [49:49] is the sub-list for extension extendee
 	0,  // [0:49] is the sub-list for field type_name
@@ -4110,25 +4161,25 @@ func file_service_proto_init() {
 		(*Request_SetPeriodSchedule)(nil),
 		(*Request_DeletePeriodSchedule)(nil),
 	}
-	file_service_proto_msgTypes[33].OneofWrappers = []any{
+	file_service_proto_msgTypes[34].OneofWrappers = []any{
 		(*LedgerApplyRequest_CreateTransaction)(nil),
 		(*LedgerApplyRequest_AddMetadata)(nil),
 		(*LedgerApplyRequest_RevertTransaction)(nil),
 		(*LedgerApplyRequest_DeleteMetadata)(nil),
 	}
-	file_service_proto_msgTypes[48].OneofWrappers = []any{
+	file_service_proto_msgTypes[49].OneofWrappers = []any{
 		(*CheckStoreEvent_Error)(nil),
 		(*CheckStoreEvent_Progress)(nil),
 	}
-	file_service_proto_msgTypes[51].OneofWrappers = []any{}
-	file_service_proto_msgTypes[53].OneofWrappers = []any{}
+	file_service_proto_msgTypes[52].OneofWrappers = []any{}
+	file_service_proto_msgTypes[54].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_proto_rawDesc), len(file_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   57,
+			NumMessages:   58,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
