@@ -610,7 +610,10 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 		}
 
 		actualNodeLastSoftState := node.lastSoftState.Load()
-		if actualNodeLastSoftState != nil && *actualNodeLastSoftState != *ss {
+		wasLeader := actualNodeLastSoftState != nil && actualNodeLastSoftState.RaftState == raft.StateLeader
+		isLeader := ss.RaftState == raft.StateLeader
+
+		if wasLeader != isLeader {
 			status := node.rawNode.Status()
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
@@ -618,15 +621,15 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 			})
 
 			// leadership loss
-			if actualNodeLastSoftState.RaftState == raft.StateLeader && ss.RaftState != raft.StateLeader {
+			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 				}
 			}
 			// acquire leadership
-			if actualNodeLastSoftState.RaftState != raft.StateLeader && ss.RaftState == raft.StateLeader {
-				node.logger.Infof("Leadership gained")
+			if !wasLeader && isLeader {
+				logger.Infof("Leadership gained")
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 				}

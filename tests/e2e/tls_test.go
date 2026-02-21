@@ -415,12 +415,20 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 				g.Expect(resp).NotTo(BeNil())
 			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
+			// Extract the transaction ID from the Apply response (IDs are 1-based).
+			Expect(resp.Logs).NotTo(BeEmpty())
+			applyLog := resp.Logs[0].Payload.GetApply()
+			Expect(applyLog).NotTo(BeNil())
+			created := applyLog.Log.Data.GetCreatedTransaction()
+			Expect(created).NotTo(BeNil())
+			txID := created.Transaction.Id
+
 			// Verify the transaction is visible from all nodes
 			for i, srv := range servers {
 				Eventually(func(g Gomega) {
 					txResp, err := srv.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 						Ledger:        "tls-multi-ledger",
-						TransactionId: 0,
+						TransactionId: txID,
 					})
 					g.Expect(err).To(Succeed())
 					g.Expect(txResp).NotTo(BeNil())

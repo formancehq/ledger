@@ -184,6 +184,11 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 		}
 
 		event := LogToEvent(log)
+		// Skip internal logs (e.g. AddedEventsSink) that don't produce domain events.
+		if event.Type == eventspb.EventType_EVENT_TYPE_UNSPECIFIED {
+			cursor = log.Sequence
+			continue
+		}
 		batch = append(batch, event)
 
 		if len(batch) >= e.config.BatchSize {
