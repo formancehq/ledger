@@ -470,9 +470,19 @@ func ReadAuditEntry(reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEnt
 	return entry, nil
 }
 
+// SigningKeyEntry holds a signing key's public key and optional parent key ID.
+type SigningKeyEntry struct {
+	PublicKey   []byte
+	ParentKeyID string
+}
+
+// ed25519PublicKeySize is the size of an Ed25519 public key in bytes.
+const ed25519PublicKeySize = 32
+
 // ReadSigningKeys loads all signing keys from the given reader.
-// Returns a map of keyID → publicKey (32-byte Ed25519 public key).
-func ReadSigningKeys(reader dal.PebbleReader) (map[string][]byte, error) {
+// Returns a map of keyID → SigningKeyEntry.
+// Backward-compatible: values of exactly 32 bytes have no parent (root keys).
+func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error) {
 	lowerBound := []byte{dal.KeyPrefixSigningKey}
 	upperBound := []byte{dal.KeyPrefixSigningKey + 1}
 
@@ -485,7 +495,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string][]byte, error) {
 	}
 	defer func() { _ = iter.Close() }()
 
-	keys := make(map[string][]byte)
+	keys := make(map[string]SigningKeyEntry)
 	for iter.First(); iter.Valid(); iter.Next() {
 		// Key format: [KeyPrefixSigningKey(1)][keyID(variable)]
 		key := iter.Key()
@@ -496,12 +506,38 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string][]byte, error) {
 			return nil, fmt.Errorf("reading signing key value: %w", err)
 		}
 
-		pubKey := make([]byte, len(value))
-		copy(pubKey, value)
-		keys[keyID] = pubKey
+		entry := SigningKeyEntry{
+			PublicKey: make([]byte, ed25519PublicKeySize),
+		}
+		copy(entry.PublicKey, value[:ed25519PublicKeySize])
+
+		// Backward-compatible: bytes after 32 = parentKeyID
+		if len(value) > ed25519PublicKeySize {
+			entry.ParentKeyID = string(value[ed25519PublicKeySize:])
+		}
+
+		keys[keyID] = entry
 	}
 
 	return keys, nil
+}
+
+// ReadSigningKeysCursor returns a cursor over all registered signing keys.
+// The number of keys is always small, so we load them all and use a slice cursor.
+func ReadSigningKeysCursor(reader dal.PebbleReader) (dal.Cursor[*commonpb.SigningKey], error) {
+	keys, err := ReadSigningKeys(reader)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*commonpb.SigningKey, 0, len(keys))
+	for keyID, entry := range keys {
+		items = append(items, &commonpb.SigningKey{
+			KeyId:       keyID,
+			PublicKey:   entry.PublicKey,
+			ParentKeyId: entry.ParentKeyID,
+		})
+	}
+	return dal.NewSliceCursor(items), nil
 }
 
 // ReadSigningConfig loads the require-signatures flag from the given reader.

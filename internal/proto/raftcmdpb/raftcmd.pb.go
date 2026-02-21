@@ -552,6 +552,7 @@ type RegisterSigningKeyOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
 	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	ParentKeyId   string                 `protobuf:"bytes,3,opt,name=parent_key_id,json=parentKeyId,proto3" json:"parent_key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -600,9 +601,17 @@ func (x *RegisterSigningKeyOrder) GetPublicKey() []byte {
 	return nil
 }
 
+func (x *RegisterSigningKeyOrder) GetParentKeyId() string {
+	if x != nil {
+		return x.ParentKeyId
+	}
+	return ""
+}
+
 type RevokeSigningKeyOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	Cascade       bool                   `protobuf:"varint,2,opt,name=cascade,proto3" json:"cascade,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -642,6 +651,13 @@ func (x *RevokeSigningKeyOrder) GetKeyId() string {
 		return x.KeyId
 	}
 	return ""
+}
+
+func (x *RevokeSigningKeyOrder) GetCascade() bool {
+	if x != nil {
+		return x.Cascade
+	}
+	return false
 }
 
 type SetSigningConfigOrder struct {
@@ -3359,13 +3375,15 @@ const file_raftcmd_proto_rawDesc = "" +
 	"\x12AddEventsSinkOrder\x12*\n" +
 	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"+\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"O\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
 	"\x17RegisterSigningKeyOrder\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\".\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\"\n" +
+	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId\"H\n" +
 	"\x15RevokeSigningKeyOrder\x12\x15\n" +
-	"\x06key_id\x18\x01 \x01(\tR\x05keyId\"F\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x18\n" +
+	"\acascade\x18\x02 \x01(\bR\acascade\"F\n" +
 	"\x15SetSigningConfigOrder\x12-\n" +
 	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x12\n" +
 	"\x10ClosePeriodOrder\"Q\n" +

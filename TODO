@@ -22,11 +22,6 @@ Tests:
 * Read heavy with K6
 * Tests CLI
 
-Signing :
-** have a list of keys
-** in that list of keys, also map the key that has been used to register the key
-** when revoking a key, potentially propose to revoke all keys that were registered using this key
-
 Cold storage:
 * Add S3/Parquet support
 

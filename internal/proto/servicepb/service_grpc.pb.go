@@ -36,6 +36,7 @@ const (
 	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
 	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
 	BucketService_GetPeriodSchedule_FullMethodName = "/ledger.BucketService/GetPeriodSchedule"
+	BucketService_ListSigningKeys_FullMethodName   = "/ledger.BucketService/ListSigningKeys"
 	BucketService_Discovery_FullMethodName         = "/ledger.BucketService/Discovery"
 )
 
@@ -75,6 +76,8 @@ type BucketServiceClient interface {
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error)
+	// ListSigningKeys streams all registered signing keys
+	ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
 }
@@ -300,6 +303,25 @@ func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeri
 	return out, nil
 }
 
+func (c *bucketServiceClient) ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[7], BucketService_ListSigningKeys_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListSigningKeysRequest, commonpb.SigningKey]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListSigningKeysClient = grpc.ServerStreamingClient[commonpb.SigningKey]
+
 func (c *bucketServiceClient) Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DiscoveryResponse)
@@ -346,6 +368,8 @@ type BucketServiceServer interface {
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error)
+	// ListSigningKeys streams all registered signing keys
+	ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
@@ -402,6 +426,9 @@ func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerSt
 }
 func (UnimplementedBucketServiceServer) GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPeriodSchedule not implemented")
+}
+func (UnimplementedBucketServiceServer) ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error {
+	return status.Errorf(codes.Unimplemented, "method ListSigningKeys not implemented")
 }
 func (UnimplementedBucketServiceServer) Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Discovery not implemented")
@@ -648,6 +675,17 @@ func _BucketService_GetPeriodSchedule_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_ListSigningKeys_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListSigningKeysRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListSigningKeys(m, &grpc.GenericServerStream[ListSigningKeysRequest, commonpb.SigningKey]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListSigningKeysServer = grpc.ServerStreamingServer[commonpb.SigningKey]
+
 func _BucketService_Discovery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DiscoveryRequest)
 	if err := dec(in); err != nil {
@@ -744,6 +782,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListLogs",
 			Handler:       _BucketService_ListLogs_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListSigningKeys",
+			Handler:       _BucketService_ListSigningKeys_Handler,
 			ServerStreams: true,
 		},
 	},

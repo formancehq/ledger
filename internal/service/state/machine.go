@@ -215,8 +215,8 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		if err != nil {
 			return nil, fmt.Errorf("loading signing keys from store: %w", err)
 		}
-		for keyID, pubKeyBytes := range signingKeys {
-			ks.AddPublicKey(keyID, pubKeyBytes)
+		for keyID, entry := range signingKeys {
+			ks.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
 		}
 	}
 
@@ -1373,8 +1373,8 @@ func (fsm *Machine) reloadStateFromStore() error {
 		if err != nil {
 			return fmt.Errorf("loading signing keys: %w", err)
 		}
-		for keyID, pubKeyBytes := range signingKeys {
-			fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(pubKeyBytes))
+		for keyID, entry := range signingKeys {
+			fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(entry.PublicKey), entry.ParentKeyID)
 		}
 	}
 

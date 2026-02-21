@@ -197,6 +197,21 @@ func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockController)(nil).ListPeriods), ctx)
 }
 
+// ListSigningKeys mocks base method.
+func (m *MockController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSigningKeys", ctx)
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.SigningKey])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSigningKeys indicates an expected call of ListSigningKeys.
+func (mr *MockControllerMockRecorder) ListSigningKeys(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSigningKeys", reflect.TypeOf((*MockController)(nil).ListSigningKeys), ctx)
+}
+
 // ListTransactions mocks base method.
 func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
 	m.ctrl.T.Helper()

@@ -26,6 +26,7 @@ Examples:
 	}
 
 	cmd.Flags().String("key-id", "", "Key ID to revoke (required)")
+	cmd.Flags().Bool("cascade", false, "Also revoke all descendant keys")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -36,6 +37,7 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 	if keyID == "" {
 		return fmt.Errorf("--key-id is required")
 	}
+	cascade, _ := cmd.Flags().GetBool("cascade")
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
@@ -52,7 +54,8 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 		{
 			Type: &servicepb.Request_RevokeSigningKey{
 				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
-					KeyId: keyID,
+					KeyId:   keyID,
+					Cascade: cascade,
 				},
 			},
 		},

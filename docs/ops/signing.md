@@ -63,9 +63,54 @@ Keys are managed via gRPC API calls, replicated through Raft consensus:
 
 | Operation | Command | Description |
 |-----------|---------|-------------|
+| List keys | `signing list-keys` | List all registered signing keys |
 | Register key | `signing register-key` | Register an Ed25519 public key |
 | Revoke key | `signing revoke-key` | Revoke a registered key |
 | Require signatures | `signing require` | Enable/disable mandatory signatures |
+
+### Hierarchical Keys
+
+Keys form a **parent-child hierarchy**. When a new key is registered by signing the request with an existing key, the signing key becomes the **parent** of the new key. The first key (bootstrap) has no parent.
+
+```
+          root-key (bootstrap, no parent)
+           ├── ops-key (parent: root-key)
+           │    └── ci-key (parent: ops-key)
+           └── admin-key (parent: root-key)
+```
+
+The parent relationship is:
+- **Automatic**: deduced from the signature used to register the key (no explicit parameter needed)
+- **Immutable**: once set, the parent cannot be changed
+- **Persisted**: stored in Pebble alongside the public key and restored on startup
+
+### Cascade Revocation
+
+By default, revoking a key only removes that specific key. Use `--cascade` to also revoke all its descendants (children, grandchildren, etc.):
+
+```bash
+# Given: root-key → ops-key → ci-key
+
+# Revoke only ops-key (ci-key remains valid)
+ledgerctl signing revoke-key --key-id ops-key --signing-key ./root-keys/seed.hex
+
+# Revoke ops-key AND ci-key (cascade)
+ledgerctl signing revoke-key --key-id ops-key --cascade --signing-key ./root-keys/seed.hex
+```
+
+When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field listing all descendant keys that were also revoked, providing a complete audit trail.
+
+With `--cascade`, revoking a root key revokes the entire subtree under it. Other subtrees are unaffected.
+
+### Listing Keys
+
+List all registered signing keys and their parent relationships:
+
+```bash
+ledgerctl signing list-keys
+```
+
+Output includes key ID, public key (hex), and parent key ID. Root keys (bootstrap) show `(root)` as parent.
 
 ### Bootstrap
 
@@ -166,25 +211,35 @@ Creates `seed.hex` (mode 0600) and `pubkey.hex` in the specified directory.
 
 ```bash
 # 1. Generate a keypair
-ledgerctl signing generate-key ./my-keys
+ledgerctl signing generate-key ./root-keys
 
-# 2. Bootstrap: register the first key (unsigned)
-ledgerctl signing register-key --key-id admin --public-key-file ./my-keys/pubkey.hex
+# 2. Bootstrap: register the root key (unsigned, no parent)
+ledgerctl signing register-key --key-id root --public-key-file ./root-keys/pubkey.hex
 
 # 3. Sign write commands with the key
-ledgerctl --signing-key ./my-keys/seed.hex ledgers create --name my-ledger
-ledgerctl --signing-key ./my-keys/seed.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
+ledgerctl --signing-key ./root-keys/seed.hex ledgers create --name my-ledger
+ledgerctl --signing-key ./root-keys/seed.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 
-# 4. Register additional keys (must be signed)
+# 4. Register child keys (signed by root → parent is root)
 ledgerctl signing generate-key ./ops-keys
-ledgerctl signing register-key --key-id ops --public-key-file ./ops-keys/pubkey.hex --signing-key ./my-keys/seed.hex
+ledgerctl signing register-key --key-id ops --public-key-file ./ops-keys/pubkey.hex --signing-key ./root-keys/seed.hex
 
-# 5. Revoke a key (must be signed)
-ledgerctl signing revoke-key --key-id ops --signing-key ./my-keys/seed.hex
+# 5. Register grandchild keys (signed by ops → parent is ops)
+ledgerctl signing generate-key ./ci-keys
+ledgerctl signing register-key --key-id ci --public-key-file ./ci-keys/pubkey.hex --signing-key ./ops-keys/seed.hex
 
-# 6. Enable/disable mandatory signatures (must be signed)
-ledgerctl signing require true --signing-key ./my-keys/seed.hex
-ledgerctl signing require false --signing-key ./my-keys/seed.hex
+# 6. List all registered keys and their hierarchy
+ledgerctl signing list-keys
+
+# 7. Revoke a key only (ops is revoked, ci and root remain)
+ledgerctl signing revoke-key --key-id ops --signing-key ./root-keys/seed.hex
+
+# 7b. Or revoke a key and its descendants (ops + ci are revoked, root remains)
+ledgerctl signing revoke-key --key-id ops --cascade --signing-key ./root-keys/seed.hex
+
+# 8. Enable/disable mandatory signatures (must be signed)
+ledgerctl signing require true --signing-key ./root-keys/seed.hex
+ledgerctl signing require false --signing-key ./root-keys/seed.hex
 ```
 
 ---

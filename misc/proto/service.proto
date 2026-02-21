@@ -45,6 +45,8 @@ service BucketService {
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
   // GetPeriodSchedule returns the current automatic period rotation schedule
   rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
+  // ListSigningKeys streams all registered signing keys
+  rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
   // Discovery returns server capabilities and configuration for clients
   rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
 }
@@ -163,6 +165,7 @@ message RegisterSigningKeyRequest {
 // Must be signed by an existing key (cannot revoke all keys if require_signatures is enabled).
 message RevokeSigningKeyRequest {
   string key_id = 1;       // Key ID to revoke
+  bool cascade = 2;        // When true, also revoke all descendant keys
 }
 
 // SetSigningConfigRequest updates the signing configuration.
@@ -170,6 +173,8 @@ message RevokeSigningKeyRequest {
 message SetSigningConfigRequest {
   bool require_signatures = 1;   // Whether to reject unsigned requests
 }
+
+message ListSigningKeysRequest {}
 
 message ClosePeriodRequest {}
 

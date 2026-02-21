@@ -84,12 +84,21 @@ func AppendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
 }
 
 // SaveSigningKey stores an Ed25519 public key in the batch.
-func SaveSigningKey(b *dal.Batch, keyID string, publicKey []byte) error {
+// The value format is [publicKey (32 bytes)][parentKeyID (UTF-8 variable)].
+// Backward-compatible: existing 32-byte values are treated as root keys (no parent).
+func SaveSigningKey(b *dal.Batch, keyID string, publicKey []byte, parentKeyID string) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixSigningKey).
 		PutString(keyID)
 
-	if err := b.SetBytes(b.KeyBuilder.Build(), publicKey); err != nil {
+	value := publicKey
+	if parentKeyID != "" {
+		value = make([]byte, len(publicKey)+len(parentKeyID))
+		copy(value, publicKey)
+		copy(value[len(publicKey):], parentKeyID)
+	}
+
+	if err := b.SetBytes(b.KeyBuilder.Build(), value); err != nil {
 		return fmt.Errorf("saving signing key: %w", err)
 	}
 	return nil

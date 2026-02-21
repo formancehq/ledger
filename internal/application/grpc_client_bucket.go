@@ -148,4 +148,15 @@ func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (dal.Cursor[*commonp
 	}), nil
 }
 
+func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+	stream, err := g.client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC ListSigningKeys call failed: %w", err)
+	}
+
+	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.SigningKey) (*commonpb.SigningKey, error) {
+		return res, nil
+	}), nil
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

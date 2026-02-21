@@ -295,6 +295,15 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *ser
 	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
 }
 
+func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
+	cursor, err := impl.ctrl.ListSigningKeys(stream.Context())
+	if err != nil {
+		return fmt.Errorf("listing signing keys: %w", err)
+	}
+
+	return sendCursorToStream(cursor, stream, "signing key")
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {
