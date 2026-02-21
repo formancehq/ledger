@@ -30,7 +30,7 @@ type Checker interface {
 type HealthChecker struct {
 	node        *node.Node
 	collector   *diskusage.Collector
-	servicePool *transport.ServiceConnectionPool
+	servicePool *transport.ConnectionPool
 	logger      logging.Logger
 	interval    time.Duration
 
@@ -49,7 +49,7 @@ type HealthChecker struct {
 func NewHealthChecker(
 	n *node.Node,
 	collector *diskusage.Collector,
-	servicePool *transport.ServiceConnectionPool,
+	servicePool *transport.ConnectionPool,
 	logger logging.Logger,
 	interval time.Duration,
 	walThreshold float64,

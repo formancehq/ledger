@@ -10,6 +10,14 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 )
 
+const (
+	GRPCInitialWindowSize     = 16 << 20 // 16 MB
+	GRPCInitialConnWindowSize = 64 << 20 // 64 MB
+	GRPCReadBufferSize        = 1 << 20  // 1 MB
+	GRPCWriteBufferSize       = 1 << 20  // 1 MB
+	GRPCMaxMsgSize            = 64 << 20 // 64 MB
+)
+
 // PoolConfig holds gRPC dial options shared by all connection pools.
 type PoolConfig struct {
 	BackoffBaseDelay  time.Duration // Default: 100ms
@@ -48,13 +56,13 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 			},
 			MinConnectTimeout: 0,
 		}),
-		grpc.WithInitialWindowSize(16 * 1024 * 1024),     // 16MB stream window
-		grpc.WithInitialConnWindowSize(64 * 1024 * 1024),  // 64MB conn window
-		grpc.WithReadBufferSize(1 * 1024 * 1024),
-		grpc.WithWriteBufferSize(1 * 1024 * 1024),
+		grpc.WithInitialWindowSize(GRPCInitialWindowSize),
+		grpc.WithInitialConnWindowSize(GRPCInitialConnWindowSize),
+		grpc.WithReadBufferSize(GRPCReadBufferSize),
+		grpc.WithWriteBufferSize(GRPCWriteBufferSize),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64 * 1024 * 1024),
-			grpc.MaxCallSendMsgSize(64 * 1024 * 1024),
+			grpc.MaxCallRecvMsgSize(GRPCMaxMsgSize),
+			grpc.MaxCallSendMsgSize(GRPCMaxMsgSize),
 		),
 	}
 	if cfg.Compression {
@@ -86,16 +94,30 @@ func NewConnectionPool(creds credentials.TransportCredentials, cfg PoolConfig) *
 	}
 }
 
-// AddPeer adds a peer to the pool and creates a raw gRPC connection
+// AddPeer adds a peer to the pool and creates a raw gRPC connection.
+// If the peer already exists with the same address, it is a no-op.
 func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var err error
-	p.peers[id] = addr
-	p.connections[id], err = p.connect(addr)
+	if existing, ok := p.peers[id]; ok && existing == addr {
+		return nil
+	}
 
-	return err
+	// Close any pre-existing connection for this peer.
+	if conn, ok := p.connections[id]; ok {
+		_ = conn.Close() // best-effort close before replacing
+	}
+
+	conn, err := p.connect(addr)
+	if err != nil {
+		return err
+	}
+
+	p.peers[id] = addr
+	p.connections[id] = conn
+
+	return nil
 }
 
 func (p *ConnectionPool) connect(addr string) (*grpc.ClientConn, error) {
@@ -124,9 +146,24 @@ func (p *ConnectionPool) GetConnection(peerID uint64) *grpc.ClientConn {
 	return p.connections[peerID]
 }
 
-// GetPeerAddress returns the address for a specific peer, if it exists
+// GetPeerAddress returns the address for a specific peer, if it exists.
 func (p *ConnectionPool) GetPeerAddress(peerID uint64) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	return p.peers[peerID]
+}
+
+// PeerIDs returns the IDs of all known peers.
+func (p *ConnectionPool) PeerIDs() []uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ids := make([]uint64, 0, len(p.peers))
+	for id := range p.peers {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // RemovePeer removes a peer from the pool and closes its connection.

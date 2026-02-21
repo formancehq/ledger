@@ -22,7 +22,7 @@ type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
 	node             *node.Node
 	raftTransport    *node.DefaultTransport
-	servicePool      *transport.ServiceConnectionPool
+	servicePool      *transport.ConnectionPool
 	collector        *diskusage.Collector
 	store            *dal.Store
 	sharedState      *state.SharedState
@@ -34,7 +34,7 @@ type ClusterServiceServerImpl struct {
 func NewClusterServiceServer(
 	node *node.Node,
 	raftTransport *node.DefaultTransport,
-	servicePool *transport.ServiceConnectionPool,
+	servicePool *transport.ConnectionPool,
 	collector *diskusage.Collector,
 	store *dal.Store,
 	sharedState *state.SharedState,

@@ -61,22 +61,22 @@ func Module() fx.Option {
 		transport.Module(),
 		attributes.Module(),
 		fx.Provide(
-			func(
+			fx.Annotate(func(
 				cfg Config,
 				logger logging.Logger,
-				connectionPool *transport.ConnectionPool,
+				raftPool *transport.ConnectionPool,
 				meterProvider metric.MeterProvider,
 			) *node.DefaultTransport {
 				return node.NewTransport(
 					logger,
-					connectionPool,
+					raftPool,
 					meterProvider,
 					cfg.RaftConfig.NodeID,
 					cfg.TransportConfig,
 					cfg.ClusterID,
 					cfg.RaftConfig.TransportBufferSize,
 				)
-			},
+			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
 				store, err := dal.NewStore(
 					cfg.DataDir,
@@ -254,13 +254,13 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
 				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
-			},
-			func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ServiceConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``)),
+			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
 					logger,
@@ -269,7 +269,7 @@ func Module() fx.Option {
 					cfg.HealthConfig.DataThreshold,
 					cfg.HealthConfig.ClockSkewThreshold,
 				)
-			},
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			func() *keystore.KeyStore {
 				return keystore.NewKeyStore()
 			},
@@ -418,9 +418,9 @@ func Module() fx.Option {
 					machine.ScheduleChanged(),
 				)
 			},
-			func(
+			fx.Annotate(func(
 				raftNode *node.Node,
-				servicePool *transport.ServiceConnectionPool,
+				servicePool *transport.ConnectionPool,
 				admission ctrl.Admission,
 				store *dal.Store,
 				logger logging.Logger,
@@ -431,7 +431,7 @@ func Module() fx.Option {
 					raftNode,
 					servicePool,
 				)
-			},
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``)),
 		),
 		fx.Decorate(func(
 			params struct {
@@ -520,12 +520,12 @@ func Module() fx.Option {
 				return nil
 			},
 			// Start Raft server (internal) - must start before adding peers
-			func(
+			fx.Annotate(func(
 				lc fx.Lifecycle,
 				raftServer *RaftServer,
 				logger logging.Logger,
 				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ServiceConnectionPool,
+				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
 			) {
 				lc.Append(fx.Hook{
@@ -562,7 +562,7 @@ func Module() fx.Option {
 						return raftServer.Stop()
 					},
 				})
-			},
+			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``)),
 			// Start Service server (external)
 			func(
 				lc fx.Lifecycle,
@@ -595,10 +595,10 @@ func Module() fx.Option {
 				})
 			},
 			// Wire Observer: handle ConfChange and LeadershipChange events
-			func(
+			fx.Annotate(func(
 				n *node.Node,
 				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ServiceConnectionPool,
+				servicePool *transport.ConnectionPool,
 				logger logging.Logger,
 				manager *events.Manager,
 			) {
@@ -612,7 +612,7 @@ func Module() fx.Option {
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			},
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -644,11 +644,11 @@ func Module() fx.Option {
 			},
 			// Join mode: auto-register as learner on the leader after raft starts.
 			// Any peer will forward the request to the current leader automatically.
-			func(
+			fx.Annotate(func(
 				lc fx.Lifecycle,
 				cfg Config,
 				freshStart walFreshStart,
-				servicePool *transport.ServiceConnectionPool,
+				servicePool *transport.ConnectionPool,
 				logger logging.Logger,
 			) {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
@@ -686,7 +686,7 @@ func Module() fx.Option {
 						return nil
 					},
 				})
-			},
+			}, fx.ParamTags(``, ``, ``, `name:"service"`, ``)),
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -779,7 +779,7 @@ func Module() fx.Option {
 func handleConfChangeEvent(
 	e node.ConfChangeEvent,
 	defaultTransport *node.DefaultTransport,
-	servicePool *transport.ServiceConnectionPool,
+	servicePool *transport.ConnectionPool,
 	logger logging.Logger,
 ) {
 	switch e.ChangeType {
