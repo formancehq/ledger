@@ -442,6 +442,7 @@ func (m *Log) CloneVT() *Log {
 	r.Idempotency = m.Idempotency.CloneVT()
 	r.Signature = m.Signature.CloneVT()
 	r.Receipt = m.Receipt
+	r.ResponseSignature = m.ResponseSignature.CloneVT()
 	if rhs := m.Hash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -2108,6 +2109,9 @@ func (this *Log) EqualVT(that *Log) bool {
 		return false
 	}
 	if this.Receipt != that.Receipt {
+		return false
+	}
+	if !this.ResponseSignature.EqualVT(that.ResponseSignature) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4889,6 +4893,16 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ResponseSignature != nil {
+		size, err := m.ResponseSignature.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
 	}
 	if len(m.Receipt) > 0 {
 		i -= len(m.Receipt)
@@ -7938,6 +7952,10 @@ func (m *Log) SizeVT() (n int) {
 	}
 	l = len(m.Receipt)
 	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ResponseSignature != nil {
+		l = m.ResponseSignature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -12022,6 +12040,42 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Receipt = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResponseSignature", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ResponseSignature == nil {
+				m.ResponseSignature = &signaturepb.ResponseSignature{}
+			}
+			if err := m.ResponseSignature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

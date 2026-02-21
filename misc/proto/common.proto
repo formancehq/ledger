@@ -154,6 +154,7 @@ message Log {
   bytes hash = 4;
   signature.RequestSignature signature = 5;
   string receipt = 6;
+  signature.ResponseSignature response_signature = 7;
 }
 
 message LogPayload {

@@ -1186,15 +1186,16 @@ func (x *IdempotencyEntry) GetLogId() uint64 {
 }
 
 type Log struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	Sequence      uint64                        `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Payload       *LogPayload                   `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	Idempotency   *Idempotency                  `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Hash          []byte                        `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
-	Signature     *signaturepb.RequestSignature `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
-	Receipt       string                        `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState         `protogen:"open.v1"`
+	Sequence          uint64                         `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Payload           *LogPayload                    `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	Idempotency       *Idempotency                   `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Hash              []byte                         `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
+	Signature         *signaturepb.RequestSignature  `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
+	Receipt           string                         `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ResponseSignature *signaturepb.ResponseSignature `protobuf:"bytes,7,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Log) Reset() {
@@ -1267,6 +1268,13 @@ func (x *Log) GetReceipt() string {
 		return x.Receipt
 	}
 	return ""
+}
+
+func (x *Log) GetResponseSignature() *signaturepb.ResponseSignature {
+	if x != nil {
+		return x.ResponseSignature
+	}
+	return nil
 }
 
 type LogPayload struct {
@@ -3983,14 +3991,15 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\xef\x01\n" +
+	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\xbc\x02\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
 	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12\x12\n" +
 	"\x04hash\x18\x04 \x01(\fR\x04hash\x129\n" +
 	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignature\x12\x18\n" +
-	"\areceipt\x18\x06 \x01(\tR\areceipt\"\xda\b\n" +
+	"\areceipt\x18\x06 \x01(\tR\areceipt\x12K\n" +
+	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignature\"\xda\b\n" +
 	"\n" +
 	"LogPayload\x12>\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x17.common.CreateLedgerLogH\x00R\fcreateLedger\x12>\n" +
@@ -4248,6 +4257,7 @@ var file_common_proto_goTypes = []any{
 	nil,                                     // 66: common.Account.VolumesEntry
 	nil,                                     // 67: common.CreatedTransaction.AccountMetadataEntry
 	(*signaturepb.RequestSignature)(nil),    // 68: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil),   // 69: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
 	3,  // 0: common.Metadata.value:type_name -> common.MetadataValue
@@ -4272,71 +4282,72 @@ var file_common_proto_depIdxs = []int32{
 	21, // 19: common.Log.payload:type_name -> common.LogPayload
 	18, // 20: common.Log.idempotency:type_name -> common.Idempotency
 	68, // 21: common.Log.signature:type_name -> signature.RequestSignature
-	37, // 22: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
-	38, // 23: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
-	39, // 24: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
-	22, // 25: common.LogPayload.register_signing_key:type_name -> common.RegisterSigningKeyLog
-	23, // 26: common.LogPayload.revoke_signing_key:type_name -> common.RevokeSigningKeyLog
-	24, // 27: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
-	25, // 28: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
-	26, // 29: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
-	47, // 30: common.LogPayload.close_period:type_name -> common.ClosePeriodLog
-	48, // 31: common.LogPayload.seal_period:type_name -> common.SealPeriodLog
-	49, // 32: common.LogPayload.archive_period:type_name -> common.ArchivePeriodLog
-	50, // 33: common.LogPayload.confirm_archive_period:type_name -> common.ConfirmArchivePeriodLog
-	27, // 34: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
-	28, // 35: common.LogPayload.set_period_schedule:type_name -> common.SetPeriodScheduleLog
-	29, // 36: common.LogPayload.delete_period_schedule:type_name -> common.DeletePeriodScheduleLog
-	30, // 37: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
-	33, // 38: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
-	34, // 39: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
-	35, // 40: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
-	36, // 41: common.SinkConfig.http:type_name -> common.HttpSinkConfig
-	32, // 42: common.SinkStatus.error:type_name -> common.SinkError
-	1,  // 43: common.SinkError.occurred_at:type_name -> common.Timestamp
-	51, // 44: common.CreateLedgerLog.info:type_name -> common.LedgerInfo
-	51, // 45: common.DeleteLedgerLog.info:type_name -> common.LedgerInfo
-	40, // 46: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
-	41, // 47: common.LedgerLog.data:type_name -> common.LedgerLogPayload
-	1,  // 48: common.LedgerLog.date:type_name -> common.Timestamp
-	42, // 49: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
-	43, // 50: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
-	44, // 51: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
-	45, // 52: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
-	7,  // 53: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	67, // 54: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
-	7,  // 55: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	17, // 56: common.SavedMetadata.target:type_name -> common.Target
-	4,  // 57: common.SavedMetadata.metadata:type_name -> common.MetadataSet
-	17, // 58: common.DeletedMetadata.target:type_name -> common.Target
-	1,  // 59: common.Period.start:type_name -> common.Timestamp
-	1,  // 60: common.Period.end:type_name -> common.Timestamp
-	0,  // 61: common.Period.status:type_name -> common.PeriodStatus
-	46, // 62: common.ClosePeriodLog.closed_period:type_name -> common.Period
-	46, // 63: common.ClosePeriodLog.new_period:type_name -> common.Period
-	46, // 64: common.SealPeriodLog.period:type_name -> common.Period
-	46, // 65: common.ArchivePeriodLog.period:type_name -> common.Period
-	46, // 66: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
-	1,  // 67: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	1,  // 68: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	17, // 69: common.SaveMetadataCommand.target:type_name -> common.Target
-	4,  // 70: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
-	17, // 71: common.DeleteMetadataCommand.target:type_name -> common.Target
-	55, // 72: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
-	56, // 73: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
-	57, // 74: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
-	58, // 75: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
-	59, // 76: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
-	2,  // 77: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
-	9,  // 78: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	11, // 79: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	10, // 80: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	4,  // 81: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	82, // [82:82] is the sub-list for method output_type
-	82, // [82:82] is the sub-list for method input_type
-	82, // [82:82] is the sub-list for extension type_name
-	82, // [82:82] is the sub-list for extension extendee
-	0,  // [0:82] is the sub-list for field type_name
+	69, // 22: common.Log.response_signature:type_name -> signature.ResponseSignature
+	37, // 23: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
+	38, // 24: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
+	39, // 25: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
+	22, // 26: common.LogPayload.register_signing_key:type_name -> common.RegisterSigningKeyLog
+	23, // 27: common.LogPayload.revoke_signing_key:type_name -> common.RevokeSigningKeyLog
+	24, // 28: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
+	25, // 29: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
+	26, // 30: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
+	47, // 31: common.LogPayload.close_period:type_name -> common.ClosePeriodLog
+	48, // 32: common.LogPayload.seal_period:type_name -> common.SealPeriodLog
+	49, // 33: common.LogPayload.archive_period:type_name -> common.ArchivePeriodLog
+	50, // 34: common.LogPayload.confirm_archive_period:type_name -> common.ConfirmArchivePeriodLog
+	27, // 35: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
+	28, // 36: common.LogPayload.set_period_schedule:type_name -> common.SetPeriodScheduleLog
+	29, // 37: common.LogPayload.delete_period_schedule:type_name -> common.DeletePeriodScheduleLog
+	30, // 38: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
+	33, // 39: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
+	34, // 40: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
+	35, // 41: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
+	36, // 42: common.SinkConfig.http:type_name -> common.HttpSinkConfig
+	32, // 43: common.SinkStatus.error:type_name -> common.SinkError
+	1,  // 44: common.SinkError.occurred_at:type_name -> common.Timestamp
+	51, // 45: common.CreateLedgerLog.info:type_name -> common.LedgerInfo
+	51, // 46: common.DeleteLedgerLog.info:type_name -> common.LedgerInfo
+	40, // 47: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
+	41, // 48: common.LedgerLog.data:type_name -> common.LedgerLogPayload
+	1,  // 49: common.LedgerLog.date:type_name -> common.Timestamp
+	42, // 50: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
+	43, // 51: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
+	44, // 52: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
+	45, // 53: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
+	7,  // 54: common.CreatedTransaction.transaction:type_name -> common.Transaction
+	67, // 55: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	7,  // 56: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	17, // 57: common.SavedMetadata.target:type_name -> common.Target
+	4,  // 58: common.SavedMetadata.metadata:type_name -> common.MetadataSet
+	17, // 59: common.DeletedMetadata.target:type_name -> common.Target
+	1,  // 60: common.Period.start:type_name -> common.Timestamp
+	1,  // 61: common.Period.end:type_name -> common.Timestamp
+	0,  // 62: common.Period.status:type_name -> common.PeriodStatus
+	46, // 63: common.ClosePeriodLog.closed_period:type_name -> common.Period
+	46, // 64: common.ClosePeriodLog.new_period:type_name -> common.Period
+	46, // 65: common.SealPeriodLog.period:type_name -> common.Period
+	46, // 66: common.ArchivePeriodLog.period:type_name -> common.Period
+	46, // 67: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
+	1,  // 68: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	1,  // 69: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	17, // 70: common.SaveMetadataCommand.target:type_name -> common.Target
+	4,  // 71: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
+	17, // 72: common.DeleteMetadataCommand.target:type_name -> common.Target
+	55, // 73: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
+	56, // 74: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
+	57, // 75: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
+	58, // 76: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
+	59, // 77: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
+	2,  // 78: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
+	9,  // 79: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	11, // 80: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	10, // 81: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	4,  // 82: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	83, // [83:83] is the sub-list for method output_type
+	83, // [83:83] is the sub-list for method input_type
+	83, // [83:83] is the sub-list for extension type_name
+	83, // [83:83] is the sub-list for extension extendee
+	0,  // [0:83] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

@@ -420,6 +420,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
+| `Discovery` | Return server capabilities (response signing config) | ✅ |
 
 ### Apply Method
 

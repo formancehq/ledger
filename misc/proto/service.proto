@@ -43,6 +43,8 @@ service BucketService {
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
   // GetPeriodSchedule returns the current automatic period rotation schedule
   rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
+  // Discovery returns server capabilities and configuration for clients
+  rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
 }
 
 // ============================================================================
@@ -207,6 +209,21 @@ message GetPeriodScheduleResponse {
   string cron = 1;   // Current cron expression, empty if disabled
 }
 
+// ============================================================================
+// Discovery Messages
+// ============================================================================
+
+message DiscoveryRequest {}
+
+message DiscoveryResponse {
+  ResponseSigningInfo response_signing = 1;  // Response signing config (nil if disabled)
+}
+
+// ResponseSigningInfo describes the server's response signing configuration.
+message ResponseSigningInfo {
+  bytes public_key = 1;    // Ed25519 public key (32 bytes)
+  string key_id = 2;       // Key identifier (SHA256 fingerprint)
+}
 
 // ============================================================================
 // Ledger Actions (used by Apply RPC)

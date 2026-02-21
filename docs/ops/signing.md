@@ -1,6 +1,11 @@
-# Request Signing (Ed25519)
+# Signing (Ed25519)
 
-The ledger supports Ed25519 request signing to guarantee **authenticity** (who issued a request), **integrity** (detect any modification in transit), and **non-repudiation** (cryptographic proof stored with each log entry for audit).
+The ledger supports Ed25519 signing in two directions:
+
+- **Request signing** (client → server): guarantees **authenticity** (who issued a request), **integrity** (detect any modification in transit), and **non-repudiation** (cryptographic proof stored with each log entry for audit).
+- **Response signing** (server → client): guarantees that response logs truly come from the server and haven't been tampered with.
+
+## Request Signing
 
 ## Overview
 
@@ -130,12 +135,12 @@ This is inherent to the Raft consensus model where all state changes are eventua
 
 | Package | Description |
 |---------|-------------|
-| `internal/crypto/signing/` | Core Ed25519 sign/verify logic (transport-agnostic) |
+| `internal/crypto/signing/` | Core Ed25519 sign/verify logic (transport-agnostic), including `ResponseSigner` |
 | `internal/crypto/keystore/` | Thread-safe in-memory key cache (`sync.RWMutex`) |
 | `internal/service/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/service/state/buffer.go` | Signing key changes accumulated during processing, applied in `Merge()` |
 | `internal/storage/data/` | Pebble persistence for signing keys (prefixes `0x0B`/`0x0C`) |
-| `misc/proto/signature.proto` | `RequestSignature` protobuf message |
+| `misc/proto/signature.proto` | `RequestSignature` and `ResponseSignature` protobuf messages |
 
 ## CLI Reference
 
@@ -145,6 +150,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 |------|---------|-------------|
 | `--signing-key` | | Path to Ed25519 seed file (32 bytes raw or hex) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
+| `--response-verify-key` | | Path to Ed25519 public key file for response signature verification |
 
 ### Commands
 
@@ -156,7 +162,7 @@ ledgerctl signing generate-key ./my-keys
 
 Creates `seed.hex` (mode 0600) and `pubkey.hex` in the specified directory.
 
-#### Full workflow
+#### Full workflow (request signing)
 
 ```bash
 # 1. Generate a keypair
@@ -180,3 +186,112 @@ ledgerctl signing revoke-key --key-id ops --signing-key ./my-keys/seed.hex
 ledgerctl signing require true --signing-key ./my-keys/seed.hex
 ledgerctl signing require false --signing-key ./my-keys/seed.hex
 ```
+
+---
+
+## Response Signing
+
+Response signing allows clients to verify that response logs returned by the server are authentic and haven't been tampered with. The server signs every `Log` in an `ApplyResponse` with an Ed25519 key.
+
+### Overview
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │                Server                         │
+                    │                                              │
+                    │  1. Process request through Raft consensus   │
+                    │  2. Get Log result                           │
+                    │  3. Clone Log, clear receipt + response_sig  │
+                    │  4. MarshalVT() → signed_payload             │
+                    │  5. Ed25519.Sign(privkey, signed_payload)    │
+                    │  6. Attach ResponseSignature to Log          │
+                    └──────────────────┬───────────────────────────┘
+                                       │ gRPC ApplyResponse
+                                       ▼
+                    ┌──────────────────────────────────────────────┐
+                    │               Client (ledgerctl)             │
+                    │                                              │
+                    │  1. Get public key via Discovery RPC         │
+                    │     (or --response-verify-key flag)          │
+                    │  2. Ed25519.Verify(pubkey, signed_payload)   │
+                    │  3. Trust the Log if verification passes     │
+                    └──────────────────────────────────────────────┘
+```
+
+### Server Setup
+
+1. Generate an Ed25519 keypair:
+
+```bash
+ledgerctl signing generate-key ./response-keys
+```
+
+2. Start the server with the response signing key:
+
+```bash
+ledger-v3-poc run --response-signing-key ./response-keys/seed.hex [other flags...]
+```
+
+3. The server will sign every `Log` in `ApplyResponse` messages. The key ID (SHA256 fingerprint of the public key) is included in each signature.
+
+### Client-Side Verification
+
+Clients can verify response signatures in two ways:
+
+#### Using the Discovery RPC
+
+The `Discovery` RPC returns the server's public key:
+
+```bash
+# Programmatic: call Discovery RPC to get the public key
+grpcurl -plaintext localhost:8888 ledger.BucketService/Discovery
+```
+
+#### Using --response-verify-key
+
+Pass the server's public key file to `ledgerctl`:
+
+```bash
+ledgerctl --response-verify-key ./response-keys/pubkey.hex \
+  transactions create --ledger my-ledger --posting "world,bank,1000,USD"
+```
+
+If the server's response signature is missing or invalid, the command fails with an error.
+
+### Kubernetes Deployment
+
+In Helm, configure response signing via a Kubernetes secret:
+
+```yaml
+config:
+  responseSigning:
+    enabled: true
+    secretName: "ledger-response-signing-key"
+    secretKey: "seed"  # Key within the secret
+```
+
+Create the secret:
+
+```bash
+kubectl create secret generic ledger-response-signing-key \
+  --from-file=seed=./response-keys/seed.hex
+```
+
+### Protobuf Messages
+
+```protobuf
+message ResponseSignature {
+  string key_id = 1;         // SHA256 fingerprint of server public key
+  bytes signature = 2;       // Ed25519 signature (64 bytes)
+  bytes signed_payload = 3;  // Exact serialized bytes that were signed
+}
+```
+
+The `signed_payload` contains the serialized `Log` message with `response_signature` and `receipt` fields cleared (both are node-local and non-deterministic).
+
+### Design Decisions
+
+- **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
+- **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
+- **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It only appears in the gRPC response.
+- **Receipt is cleared before signing**: the `receipt` field (JWT) is node-local and not part of the signed content. This ensures signature verification is independent of receipt computation.

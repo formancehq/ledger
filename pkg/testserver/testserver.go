@@ -205,3 +205,10 @@ func WithRestore() testservice.InstrumentationFunc {
 	}
 }
 
+func WithResponseSigningKey(path string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--response-signing-key", path)
+		return nil
+	}
+}
+

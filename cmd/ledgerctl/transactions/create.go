@@ -357,6 +357,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to create transaction", err)
 	}
 
+	// Verify response signatures if a verification key is configured
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+		spinner.Fail("Response signature verification failed")
+		return fmt.Errorf("response signature verification failed: %w", err)
+	}
+
 	// Extract the created transaction from the response
 	if len(resp.Logs) == 0 {
 		spinner.Fail("No response received")

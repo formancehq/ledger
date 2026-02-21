@@ -165,6 +165,11 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to revert transaction", err)
 	}
 
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+		spinner.Fail("Response signature verification failed")
+		return fmt.Errorf("response signature verification failed: %w", err)
+	}
+
 	spinner.Success("Reverted")
 
 	if len(resp.Logs) == 0 {

@@ -35,6 +35,7 @@ const (
 	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
 	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
 	BucketService_GetPeriodSchedule_FullMethodName = "/ledger.BucketService/GetPeriodSchedule"
+	BucketService_Discovery_FullMethodName         = "/ledger.BucketService/Discovery"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -71,6 +72,8 @@ type BucketServiceClient interface {
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error)
+	// Discovery returns server capabilities and configuration for clients
+	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -284,6 +287,16 @@ func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeri
 	return out, nil
 }
 
+func (c *bucketServiceClient) Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiscoveryResponse)
+	err := c.cc.Invoke(ctx, BucketService_Discovery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -318,6 +331,8 @@ type BucketServiceServer interface {
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error)
+	// Discovery returns server capabilities and configuration for clients
+	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -369,6 +384,9 @@ func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerSt
 }
 func (UnimplementedBucketServiceServer) GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPeriodSchedule not implemented")
+}
+func (UnimplementedBucketServiceServer) Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Discovery not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -594,6 +612,24 @@ func _BucketService_GetPeriodSchedule_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_Discovery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiscoveryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).Discovery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_Discovery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).Discovery(ctx, req.(*DiscoveryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -628,6 +664,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPeriodSchedule",
 			Handler:    _BucketService_GetPeriodSchedule_Handler,
+		},
+		{
+			MethodName: "Discovery",
+			Handler:    _BucketService_Discovery_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

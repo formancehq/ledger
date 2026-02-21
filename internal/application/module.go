@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -184,6 +185,21 @@ func Module() fx.Option {
 				}
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
+			func(cfg Config, logger logging.Logger) *signing.ResponseSigner {
+				if cfg.ResponseSigningKeyFile == "" {
+					return nil
+				}
+				seed, err := signing.LoadSeedFromFile(cfg.ResponseSigningKeyFile)
+				if err != nil {
+					logger.Errorf("Failed to load response signing key: %v", err)
+					return nil
+				}
+				signer := signing.NewResponseSigner(seed)
+				logger.WithFields(map[string]any{
+					"key_id": signer.KeyID(),
+				}).Infof("Response signing enabled")
+				return signer
+			},
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.DataDir = cfg.DataDir
 				cfg.RaftConfig.SetDefaults()
@@ -225,8 +241,8 @@ func Module() fx.Option {
 
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
-			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, signer *receipt.Signer) servicepb.BucketServiceServer {
-				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer)
+			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, signer *receipt.Signer, respSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer, respSigner)
 			},
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)

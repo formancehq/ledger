@@ -84,6 +84,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to create ledger", err)
 	}
 
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+		spinner.Fail("Response signature verification failed")
+		return fmt.Errorf("response signature verification failed: %w", err)
+	}
+
 	if len(resp.Logs) == 0 {
 		spinner.Fail("No response received")
 		return fmt.Errorf("no response received")
