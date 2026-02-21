@@ -2,25 +2,54 @@ package attributes
 
 import (
 	"archive/tar"
+	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"github.com/stretchr/testify/require"
 )
+
+// readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
+// Defined here to avoid importing state (which imports attributes, creating a cycle).
+func readLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
+	get, closer, err := reader.Get([]byte{dal.KeyPrefixLastAppliedIndex})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer func() { _ = closer.Close() }()
+
+	if len(get) == 0 {
+		return 0, nil
+	}
+	return binary.BigEndian.Uint64(get[:8]), nil
+}
+
+// setAppliedIndex writes the last applied Raft index via Batch.
+// Defined here to avoid importing state (which imports attributes, creating a cycle).
+func setAppliedIndex(b *dal.Batch, index uint64) error {
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, index)
+	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, value)
+}
 
 func TestCompactToBase(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
 	logger := logging.FromContext(logging.TestingContext())
-	s, err := data.OpenDirect(tmpDir, logger)
+	s, err := dal.OpenDirect(tmpDir, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -62,7 +91,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 
 	// Phase 1: Write data at index 5 and compact to 0
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -87,7 +116,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 
 	// Phase 2: Reopen and verify
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -105,7 +134,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 		require.NotNil(t, bval, "compacted boundary should be visible after reopen")
 		require.Equal(t, uint32(1), bval.LedgerId)
 
-		lastIdx, err := s.GetLastAppliedIndex()
+		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastIdx, "lastAppliedIndex should be 0 after compaction")
 	}()
@@ -122,7 +151,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 	checkpointDir := filepath.Join(tmpDir, "checkpoint")
 
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 
 		ledgerAttr := NewLedgerAttribute()
@@ -139,7 +168,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, batch.SetAppliedIndex(5))
+		require.NoError(t, setAppliedIndex(batch, 5))
 		require.NoError(t, batch.Commit())
 		require.NoError(t, s.Flush())
 
@@ -150,7 +179,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 
 	// Copy the database to checkpoint dir (simulating Pebble checkpoint)
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 		// Can't call Checkpoint directly since it's on pebble.DB, so we'll just
 		// compact the original dir and copy manually
@@ -159,7 +188,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 
 	// Actually, let me just compact the original dir
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -176,7 +205,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 
 	// Reopen and verify
 	func() {
-		s, err := data.OpenDirect(tmpDir, logger)
+		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -242,7 +271,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 
 	// Phase 1: Write data, compact, close
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -260,7 +289,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, batch.SetAppliedIndex(5))
+		require.NoError(t, setAppliedIndex(batch, 5))
 		require.NoError(t, batch.Commit())
 
 		err = CompactAllForBackup(s)
@@ -294,7 +323,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 
 	// Phase 4: Open extracted and verify
 	func() {
-		s, err := data.OpenDirect(extractDir, logger)
+		s, err := dal.OpenDirect(extractDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -312,7 +341,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 		require.NotNil(t, bval, "compacted boundary should survive tar cycle")
 		require.Equal(t, uint32(1), bval.LedgerId)
 
-		lastIdx, err := s.GetLastAppliedIndex()
+		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastIdx, "lastAppliedIndex should be 0 after compaction")
 	}()
@@ -330,7 +359,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 
 	// Phase 1: Write data, compact, close
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -348,7 +377,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, batch.SetAppliedIndex(5))
+		require.NoError(t, setAppliedIndex(batch, 5))
 		require.NoError(t, batch.Commit())
 
 		err = CompactAllForBackup(s)
@@ -376,15 +405,15 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 	// Phase 3: HardLink staging → checkpoint
 	checkpointDir := filepath.Join(tmpDir, "checkpoints", "0")
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "checkpoints"), 0755))
-	require.NoError(t, data.HardLink(stagingDir, checkpointDir))
+	require.NoError(t, dal.HardLink(stagingDir, checkpointDir))
 
 	// Phase 4: HardLink checkpoint → live (simulating NewStore)
 	liveDir := filepath.Join(tmpDir, "live")
-	require.NoError(t, data.HardLink(checkpointDir, liveDir))
+	require.NoError(t, dal.HardLink(checkpointDir, liveDir))
 
 	// Phase 5: Open live and verify
 	func() {
-		s, err := data.OpenDirect(liveDir, logger)
+		s, err := dal.OpenDirect(liveDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -402,7 +431,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 		require.NotNil(t, bval, "compacted boundary should survive tar + double hardlink")
 		require.Equal(t, uint32(1), bval.LedgerId)
 
-		lastIdx, err := s.GetLastAppliedIndex()
+		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastIdx)
 	}()
@@ -428,7 +457,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 
 	// Phase 1: Write data to a live Pebble DB and create checkpoint
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 
 		batch := s.NewBatch()
@@ -445,7 +474,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, batch.SetAppliedIndex(5))
+		require.NoError(t, setAppliedIndex(batch, 5))
 		require.NoError(t, batch.Commit())
 
 		// Create checkpoint (simulating CreateBackupCheckpoint)
@@ -455,7 +484,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 
 	// Phase 2: Open checkpoint, compact, close (simulating backupLocal compaction)
 	func() {
-		s, err := data.OpenDirect(checkpointDir, logger)
+		s, err := dal.OpenDirect(checkpointDir, logger)
 		require.NoError(t, err)
 
 		err = CompactAllForBackup(s)
@@ -493,14 +522,14 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 	// Phase 5: HardLink staging → checkpoint0 → live (simulating FinalizeRestore + NewStore)
 	checkpoint0 := filepath.Join(tmpDir, "checkpoints", "0")
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "checkpoints"), 0755))
-	require.NoError(t, data.HardLink(stagingDir, checkpoint0))
+	require.NoError(t, dal.HardLink(stagingDir, checkpoint0))
 
 	liveDir := filepath.Join(tmpDir, "live")
-	require.NoError(t, data.HardLink(checkpoint0, liveDir))
+	require.NoError(t, dal.HardLink(checkpoint0, liveDir))
 
 	// Phase 6: Open live and verify
 	func() {
-		s, err := data.OpenDirect(liveDir, logger)
+		s, err := dal.OpenDirect(liveDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -518,7 +547,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 		require.NotNil(t, bval, "compacted boundary should survive full backup→restore pipeline")
 		require.Equal(t, uint32(1), bval.LedgerId)
 
-		lastIdx, err := s.GetLastAppliedIndex()
+		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastIdx)
 	}()
@@ -539,7 +568,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 
 	// Phase 1: Write ledger + boundary data at index 5 (simulating Raft loop flush)
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -560,14 +589,14 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, batch.SetAppliedIndex(5))
+		require.NoError(t, setAppliedIndex(batch, 5))
 		require.NoError(t, batch.Commit())
 		require.NoError(t, s.Flush())
 	}()
 
 	// Phase 2: Compact (simulating backup compaction after checkpoint)
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -577,7 +606,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 
 	// Phase 3: Reopen and verify both ledger AND boundary are compacted to index 0
 	func() {
-		s, err := data.OpenDirect(dbDir, logger)
+		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, s.Close()) }()
 
@@ -595,7 +624,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 		require.Equal(t, uint64(5), bval.NextTransactionId)
 		require.Equal(t, uint64(3), bval.NextLogId)
 
-		lastIdx, err := s.GetLastAppliedIndex()
+		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastIdx)
 	}()

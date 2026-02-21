@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -501,8 +501,8 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg application.TLSConfig) 
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.
-func loadPebbleConfig(cmd *cobra.Command) data.Config {
-	cfg := data.DefaultConfig()
+func loadPebbleConfig(cmd *cobra.Command) dal.Config {
+	cfg := dal.DefaultConfig()
 
 	// Helper to get uint64 with default
 	getUint64 := func(flagName string, defaultValue uint64) uint64 {

@@ -9,7 +9,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
 )
 
@@ -31,7 +31,7 @@ type SealProposer func(periodID uint64, sealingHash []byte)
 // poll until the period is no longer CLOSING (sealed by the leader through Raft).
 type Sealer struct {
 	logger               logging.Logger
-	dataStore            *data.Store
+	dataStore            *dal.Store
 	sealRequestCh        chan SealRequest
 	proposeFn            SealProposer
 	isLeader             func() bool
@@ -43,7 +43,7 @@ type Sealer struct {
 // NewSealer creates a new background sealer.
 func NewSealer(
 	logger logging.Logger,
-	dataStore *data.Store,
+	dataStore *dal.Store,
 	sealRequestCh chan SealRequest,
 	proposeFn SealProposer,
 	isLeader func() bool,
@@ -235,8 +235,8 @@ func computeStateHash(src iteratorSource) ([]byte, error) {
 	hasher := blake3.New()
 
 	iter, err := src.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{data.KeyPrefixAttributes},
-		UpperBound: []byte{data.KeyPrefixAttributes + 1},
+		LowerBound: []byte{dal.KeyPrefixAttributes},
+		UpperBound: []byte{dal.KeyPrefixAttributes + 1},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for state hash: %w", err)

@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	"google.golang.org/grpc/credentials"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/compat/http"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/health"
@@ -30,7 +29,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
@@ -38,6 +37,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -76,8 +76,8 @@ func Module() fx.Option {
 					cfg.RaftConfig.TransportBufferSize,
 				)
 			},
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*data.Store, error) {
-				store, err := data.NewStore(
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
+				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
 					meterProvider.Meter("pebble.runtime_store"),
@@ -119,7 +119,7 @@ func Module() fx.Option {
 			func(
 				cfg Config,
 				logger logging.Logger,
-				store *data.Store,
+				store *dal.Store,
 				meterProvider metric.MeterProvider,
 				c *cache.Cache,
 				attrs *attributes.Attributes,
@@ -148,7 +148,7 @@ func Module() fx.Option {
 					Logger                  logging.Logger
 					Transport               *node.DefaultTransport
 					MeterProvider           metric.MeterProvider
-					Store                   *data.Store
+					Store                   *dal.Store
 					WAL                     *wal.DefaultWAL
 					Spool                   *spool.Default
 					SnapshotFetcherProvider state.SnapshotFetcherProvider
@@ -225,10 +225,10 @@ func Module() fx.Option {
 
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
-			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, signer *receipt.Signer) servicepb.BucketServiceServer {
+			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, signer *receipt.Signer) servicepb.BucketServiceServer {
 				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer)
 			},
-			func(logger logging.Logger, s *data.Store) snapshotpb.SnapshotServiceServer {
+			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)
 			},
 			func(cfg Config) *diskusage.Collector {
@@ -238,7 +238,7 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *data.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+			func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ServiceConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
 				return NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
@@ -269,7 +269,7 @@ func Module() fx.Option {
 				cfg Config,
 				node *node.Node,
 				cache *cache.Cache,
-				store *data.Store,
+				store *dal.Store,
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				meterProvider metric.MeterProvider,
@@ -300,7 +300,7 @@ func Module() fx.Option {
 			},
 			func(
 				logger logging.Logger,
-				store *data.Store,
+				store *dal.Store,
 				machine *state.Machine,
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
@@ -351,7 +351,7 @@ func Module() fx.Option {
 			func(
 				cfg Config,
 				logger logging.Logger,
-				store *data.Store,
+				store *dal.Store,
 				cold coldstorage.ColdStorage,
 				machine *state.Machine,
 				admissionHandler ctrl.Admission,
@@ -406,10 +406,10 @@ func Module() fx.Option {
 				raftNode *node.Node,
 				servicePool *transport.ServiceConnectionPool,
 				admission ctrl.Admission,
-				store *data.Store,
+				store *dal.Store,
 				logger logging.Logger,
 				attrs *attributes.Attributes,
-				) ctrl.Controller {
+			) ctrl.Controller {
 				return NewRoutedController(
 					ctrl.NewDefaultController(admission, store, logger, attrs),
 					raftNode,
@@ -419,11 +419,11 @@ func Module() fx.Option {
 		),
 		fx.Decorate(func(
 			params struct {
-			fx.In
-			Handler       http.Handler
-			MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-			Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-		},
+				fx.In
+				Handler       http.Handler
+				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
+				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+			},
 		) http.Handler {
 			// If InMemoryExporter is available, wrap handler to add metrics endpoint
 			if params.Exporter != nil && params.MeterProvider != nil {
@@ -440,7 +440,7 @@ func Module() fx.Option {
 		fx.Invoke(
 			func(
 				lc fx.Lifecycle,
-				runtime *data.Store,
+				runtime *dal.Store,
 				wal *wal.DefaultWAL,
 				logger logging.Logger,
 			) {

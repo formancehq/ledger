@@ -3,14 +3,12 @@ package ctrl
 import (
 	"fmt"
 	"io"
-	"math/big"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // accountCursor iterates over attribute entries for a ledger using a single
@@ -18,7 +16,7 @@ import (
 // and collecting volumes and metadata in one pass. It holds a ReadHandle for
 // point-in-time consistency and closes it when the cursor is closed.
 type accountCursor struct {
-	handle   *data.ReadHandle
+	handle   *dal.ReadHandle
 	iter     *pebble.Iterator
 	volAcc   *attributes.Accumulator[*raftcmdpb.VolumePair]
 	metaAcc  *attributes.Accumulator[*commonpb.MetadataValue]
@@ -92,14 +90,14 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 
 		var account string
 		switch attrType {
-		case data.AttributePrefixVolume:
-			var vk data.VolumeKey
+		case dal.AttributePrefixVolume:
+			var vk dal.VolumeKey
 			if err := vk.Unmarshal(ck); err != nil {
 				continue
 			}
 			account = vk.Account
-		case data.AttributePrefixMetadata:
-			var mk data.MetadataKey
+		case dal.AttributePrefixMetadata:
+			var mk dal.MetadataKey
 			if err := mk.Unmarshal(ck); err != nil {
 				continue
 			}
@@ -127,11 +125,11 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 		}
 
 		switch attrType {
-		case data.AttributePrefixVolume:
+		case dal.AttributePrefixVolume:
 			if _, err := c.volAcc.Feed(key, value); err != nil {
 				return nil, fmt.Errorf("feeding volume: %w", err)
 			}
-		case data.AttributePrefixMetadata:
+		case dal.AttributePrefixMetadata:
 			if _, err := c.metaAcc.Feed(key, value); err != nil {
 				return nil, fmt.Errorf("feeding metadata: %w", err)
 			}
@@ -139,56 +137,9 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 	}
 }
 
-// buildAccount assembles the current account with accumulated volumes and metadata, then resets state.
+// buildAccount flushes accumulators, assembles the account, and resets state.
 func (c *accountCursor) buildAccount() *commonpb.Account {
-	account := &commonpb.Account{
-		Address:  c.currentAccount,
-		Metadata: &commonpb.MetadataSet{},
-	}
-
-	// Flush volumes
-	volEntries := c.volAcc.Flush()
-	if len(volEntries) > 0 {
-		volumes := make(map[string]*commonpb.VolumesWithBalance, len(volEntries))
-		for _, entry := range volEntries {
-			var vk data.VolumeKey
-			if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
-				continue
-			}
-			input := big.NewInt(0)
-			output := big.NewInt(0)
-			if entry.Value != nil {
-				if entry.Value.InputKnown != nil {
-					input = entry.Value.InputKnown.ToBigInt()
-				}
-				if entry.Value.OutputKnown != nil {
-					output = entry.Value.OutputKnown.ToBigInt()
-				}
-			}
-			volumes[vk.Asset] = &commonpb.VolumesWithBalance{
-				Input:   input.String(),
-				Output:  output.String(),
-				Balance: new(big.Int).Sub(input, output).String(),
-			}
-		}
-		account.Volumes = volumes
-	}
-
-	// Flush metadata
-	metaEntries := c.metaAcc.Flush()
-	if len(metaEntries) > 0 {
-		md := make(metadata.Metadata, len(metaEntries))
-		for _, entry := range metaEntries {
-			var mk data.MetadataKey
-			if err := mk.Unmarshal(entry.CanonicalKey); err == nil && entry.Value != nil {
-				md[mk.Key] = entry.Value.Value
-			}
-		}
-		if len(md) > 0 {
-			account.Metadata = commonpb.MetadataSetFromMap(md)
-		}
-	}
-
+	account := assembleAccount(c.currentAccount, c.volAcc.Flush(), c.metaAcc.Flush())
 	c.hasAccount = false
 	c.currentAccount = ""
 	return account

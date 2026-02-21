@@ -6,18 +6,18 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func createTestStore(t *testing.T) *data.Store {
+func createTestStore(t *testing.T) *dal.Store {
 	tmpDir := t.TempDir()
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	s, err := data.NewStore(tmpDir, logger, meter, data.DefaultConfig())
+	s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -317,4 +317,3 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, int64(0), result.InputKnown.ToBigInt().Int64())
 }
-

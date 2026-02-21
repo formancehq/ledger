@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // managedSink holds an emitter and its sink for a named sink configuration.
@@ -49,7 +49,7 @@ func (n *Notifications) NotifyConfigChanged() {
 // the Raft-replicated events configuration. It creates one Emitter per
 // named sink, each with its own cursor and error status.
 type Manager struct {
-	store         *data.Store
+	store         *dal.Store
 	proposer      Proposer
 	logger        logging.Logger
 	notifications *Notifications
@@ -63,7 +63,7 @@ type Manager struct {
 }
 
 // NewManager creates a new event Manager.
-func NewManager(store *data.Store, proposer Proposer, logger logging.Logger, notifications *Notifications) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, logger logging.Logger, notifications *Notifications) *Manager {
 	return &Manager{
 		store:         store,
 		proposer:      proposer,
@@ -134,7 +134,7 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	sinkCfgs, err := m.store.LoadAllSinkConfigs()
+	sinkCfgs, err := ReadAllSinkConfigs(m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load sink configs: %v", err)
 		return
@@ -238,7 +238,7 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 			Topic:         s.Kafka.Topic,
 			TLS:           s.Kafka.Tls,
 			SASLMechanism: s.Kafka.SaslMechanism,
-			SASLUsername:   s.Kafka.SaslUsername,
+			SASLUsername:  s.Kafka.SaslUsername,
 			SASLPassword:  s.Kafka.SaslPassword,
 			Format:        format,
 		})

@@ -7,21 +7,22 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
 
-func saveSinkConfig(t *testing.T, s *data.Store, config *commonpb.SinkConfig) {
+func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 	t.Helper()
 	batch := s.NewBatch()
-	require.NoError(t, batch.SaveSinkConfig(config))
+	require.NoError(t, state.SaveSinkConfig(batch, config))
 	require.NoError(t, batch.Commit())
 }
 
-func deleteSinkConfig(t *testing.T, s *data.Store, name string) {
+func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 	batch := s.NewBatch()
-	require.NoError(t, batch.DeleteSinkConfig(name))
+	require.NoError(t, state.DeleteSinkConfig(batch, name))
 	require.NoError(t, batch.Commit())
 }
 

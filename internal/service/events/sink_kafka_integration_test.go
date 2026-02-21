@@ -124,7 +124,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("kafka-sink")
+		cursor, err := events.ReadSinkCursor(store,"kafka-sink")
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -201,7 +201,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("kafka-key-sink")
+		cursor, err := events.ReadSinkCursor(store,"kafka-key-sink")
 		return err == nil && cursor >= 1
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -262,7 +262,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("kafka-proto-sink")
+		cursor, err := events.ReadSinkCursor(store,"kafka-proto-sink")
 		return err == nil && cursor >= 1
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process log")
 

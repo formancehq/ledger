@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 type RoutedController struct {
@@ -56,7 +56,7 @@ func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-func (b *RoutedController) ListLedgers(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+func (b *RoutedController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	clusterLeader, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return ctrl.GetTransaction(ctx, ledgerName, transactionID)
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
 	ctrl, err := b.getCtrl()
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	return ctrl.ListTransactions(ctx, ledgerName, pageSize, afterTxID)
 }
 
-func (b *RoutedController) ListPeriods(ctx context.Context) (data.Cursor[*commonpb.Period], error) {
+func (b *RoutedController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
 	// Period state is in-memory on the leader — route to leader
 	ctrl, err := b.getCtrl()
 	if err != nil {
@@ -99,12 +99,12 @@ func (b *RoutedController) ListPeriods(ctx context.Context) (data.Cursor[*common
 	return ctrl.ListPeriods(ctx)
 }
 
-func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
 	// Read from local store - logs are replicated via Raft
 	return b.localController.ListLogs(ctx, afterSequence, pageSize)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	// Read from local store - audit entries are replicated via Raft
 	return b.localController.ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize)
 }
@@ -114,7 +114,7 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return b.localController.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
 	// Read from local store - data is replicated via Raft
 	return b.localController.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
 }

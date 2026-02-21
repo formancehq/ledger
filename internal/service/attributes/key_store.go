@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 )
@@ -120,7 +120,7 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	entry, ok := s.M.Get(id)
 	if !ok {
 		var zero T
-		return zero, id, data.ErrNotFound
+		return zero, id, dal.ErrNotFound
 	}
 	if entry.Tag != tag {
 		var zero T
@@ -136,7 +136,7 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
 
 	entry, ok := s.M.Get(id)
 	if !ok {
-		return id, data.ErrNotFound
+		return id, dal.ErrNotFound
 	}
 	if entry.Tag != tag {
 		return id, newErrCollisionDetected(canonical, entry.Tag, tag)
@@ -216,7 +216,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	for k := range s.deletions {
 		canonical := k.Bytes()
 		_, err := s.KeyStore.Delete(canonical)
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
+		if err != nil && !errors.Is(err, dal.ErrNotFound) {
 			return nil, nil, err
 		}
 		deletions = append(deletions, Deletion[K]{

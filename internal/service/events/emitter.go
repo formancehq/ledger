@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // Proposer proposes commands to the Raft cluster.
@@ -44,7 +44,7 @@ func DefaultEmitterConfig() EmitterConfig {
 // It runs as a background goroutine and is gated by the node's leader status.
 // Each Emitter is associated with a named sink and tracks its own cursor.
 type Emitter struct {
-	store    *data.Store
+	store    *dal.Store
 	sink     Sink
 	sinkName string
 	proposer Proposer
@@ -54,8 +54,8 @@ type Emitter struct {
 	notify  signal.Signal
 	stopCh  chan struct{}
 	stopped chan struct{}
-	mu       sync.Mutex
-	running  bool
+	mu      sync.Mutex
+	running bool
 
 	// Reusable state for proposeSinkUpdate (single-goroutine, no lock needed).
 	proposal   raftcmdpb.Proposal
@@ -63,7 +63,7 @@ type Emitter struct {
 }
 
 // NewEmitter creates a new event emitter for a named sink.
-func NewEmitter(store *data.Store, sink Sink, sinkName string, proposer Proposer, logger logging.Logger, config EmitterConfig) *Emitter {
+func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer, logger logging.Logger, config EmitterConfig) *Emitter {
 	if config.BatchSize <= 0 {
 		config.BatchSize = 64
 	}
@@ -77,8 +77,8 @@ func NewEmitter(store *data.Store, sink Sink, sinkName string, proposer Proposer
 		sinkName: sinkName,
 		proposer: proposer,
 		config:   config,
-		logger: logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
-		notify: signal.New(),
+		logger:   logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
+		notify:   signal.New(),
 	}
 }
 
@@ -120,7 +120,7 @@ func (e *Emitter) Stop() {
 func (e *Emitter) run() {
 	defer close(e.stopped)
 
-	cursor, err := e.store.GetSinkCursor(e.sinkName)
+	cursor, err := ReadSinkCursor(e.store, e.sinkName)
 	if err != nil {
 		e.logger.Errorf("Failed to read sink cursor: %v", err)
 		return
@@ -155,7 +155,7 @@ func (e *Emitter) run() {
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
 func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
-	logsCursor, err := e.store.ListLogsSince(cursor)
+	logsCursor, err := state.ReadLogsSince(e.store, cursor)
 	if err != nil {
 		return cursor, err
 	}

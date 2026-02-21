@@ -124,7 +124,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			"HLC should advance past last timestamp on clock regression")
 
 		// Verify the timestamp was persisted in the store
-		persistedTS, err := dataStore.GetLastAppliedTimestamp()
+		persistedTS, err := ReadLastAppliedTimestamp(dataStore)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1000001), persistedTS)
 	})
@@ -166,7 +166,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.Equal(t, uint64(5000), machine.lastAppliedTimestamp,
 			"HLC should use proposal date when it is ahead")
 
-		persistedTS, err := dataStore.GetLastAppliedTimestamp()
+		persistedTS, err := ReadLastAppliedTimestamp(dataStore)
 		require.NoError(t, err)
 		require.Equal(t, uint64(5000), persistedTS)
 	})

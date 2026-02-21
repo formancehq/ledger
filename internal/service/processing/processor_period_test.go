@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -373,22 +373,22 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:alice"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:alice"},
 		Asset:      "USD",
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(&commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_OPEN}, true)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -440,22 +440,22 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:bob"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:bob"},
 		Asset:      "USD",
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

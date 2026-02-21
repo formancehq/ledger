@@ -5,15 +5,15 @@ import (
 	"maps"
 	"math/big"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/numscript"
 )
 
 // DiscoveryResult holds the results of Numscript dependency discovery.
 // It contains both the volume keys and metadata keys that a script queries.
 type DiscoveryResult struct {
-	Volumes  map[data.VolumeKey]struct{}
-	Metadata map[data.MetadataKey]struct{}
+	Volumes  map[dal.VolumeKey]struct{}
+	Metadata map[dal.MetadataKey]struct{}
 }
 
 // discoveryStore implements numscript.Store to discover which accounts/assets
@@ -28,8 +28,8 @@ type DiscoveryResult struct {
 // This is a temporary workaround until the Numscript library implements static
 // analysis of required inputs (see docs/drafts/numscript-static-inputs-rfc.md).
 type discoveryStore struct {
-	queriedVolumes   map[data.VolumeKey]struct{}
-	queriedMetadata  map[data.MetadataKey]struct{}
+	queriedVolumes   map[dal.VolumeKey]struct{}
+	queriedMetadata  map[dal.MetadataKey]struct{}
 	balancesCalled   bool
 	metadataCalled   bool
 	nonDeterministic *ErrNonDeterministicScript
@@ -47,8 +47,8 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscript.BalanceQ
 		accountBalance := make(numscript.AccountBalance, len(assets))
 		balances[account] = accountBalance
 		for _, asset := range assets {
-			s.queriedVolumes[data.VolumeKey{
-				AccountKey: data.AccountKey{Account: account},
+			s.queriedVolumes[dal.VolumeKey{
+				AccountKey: dal.AccountKey{Account: account},
 				Asset:      asset,
 			}] = struct{}{}
 			accountBalance[asset] = new(big.Int).Set(maxForceBalance)
@@ -68,8 +68,8 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscript.
 	for account, keys := range query {
 		result[account] = make(numscript.AccountMetadata)
 		for _, key := range keys {
-			s.queriedMetadata[data.MetadataKey{
-				AccountKey: data.AccountKey{Account: account},
+			s.queriedMetadata[dal.MetadataKey{
+				AccountKey: dal.AccountKey{Account: account},
 				Key:        key,
 			}] = struct{}{}
 		}
@@ -102,8 +102,8 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	maps.Copy(variablesMap, vars)
 
 	store := &discoveryStore{
-		queriedVolumes:  make(map[data.VolumeKey]struct{}),
-		queriedMetadata: make(map[data.MetadataKey]struct{}),
+		queriedVolumes:  make(map[dal.VolumeKey]struct{}),
+		queriedMetadata: make(map[dal.MetadataKey]struct{}),
 	}
 
 	// Run the script. The discovery store captures source accounts via GetBalances
@@ -118,7 +118,7 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	}
 
 	// Collect volume keys from balance queries (sources) with the real ledgerID
-	volumes := make(map[data.VolumeKey]struct{}, len(store.queriedVolumes))
+	volumes := make(map[dal.VolumeKey]struct{}, len(store.queriedVolumes))
 	for key := range store.queriedVolumes {
 		key.LedgerID = ledgerID
 		volumes[key] = struct{}{}
@@ -127,18 +127,18 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	// Also collect volume keys from postings (both sources and destinations).
 	// GetBalances only captures source accounts; destinations come from postings.
 	for _, posting := range execResult.Postings {
-		volumes[data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: posting.Source},
+		volumes[dal.VolumeKey{
+			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Source},
 			Asset:      posting.Asset,
 		}] = struct{}{}
-		volumes[data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
+		volumes[dal.VolumeKey{
+			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
 			Asset:      posting.Asset,
 		}] = struct{}{}
 	}
 
 	// Collect metadata keys with the real ledgerID
-	metadata := make(map[data.MetadataKey]struct{}, len(store.queriedMetadata))
+	metadata := make(map[dal.MetadataKey]struct{}, len(store.queriedMetadata))
 	for key := range store.queriedMetadata {
 		key.LedgerID = ledgerID
 		metadata[key] = struct{}{}

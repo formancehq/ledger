@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -40,7 +40,7 @@ func (a *Attribute[V]) ensureKeyBuf(n int) {
 // putPrefix writes [KeyPrefixAttributes][canonicalKey][a.prefix] into buf.
 // buf must have at least 2+len(canonicalKey) bytes.
 func (a *Attribute[V]) putPrefix(buf []byte, canonicalKey []byte) {
-	buf[0] = data.KeyPrefixAttributes
+	buf[0] = dal.KeyPrefixAttributes
 	copy(buf[1:], canonicalKey)
 	buf[1+len(canonicalKey)] = a.prefix
 }
@@ -91,7 +91,7 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 // writeEntry writes a base (entryType=0) or diff (entryType=1) entry to the batch.
 // Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes][entryType].
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
-func (a *Attribute[V]) writeEntry(batch *data.Batch, index uint64, canonicalKey []byte, entryType byte, value V) error {
+func (a *Attribute[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte, entryType byte, value V) error {
 	pLen := prefixLen(canonicalKey)
 	keyLen := pLen + 9
 	a.ensureKeyBuf(keyLen)
@@ -111,14 +111,14 @@ func (a *Attribute[V]) writeEntry(batch *data.Batch, index uint64, canonicalKey 
 // SetBase stores a base value for the given canonical key at the specified raft index.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
-func (a *Attribute[V]) SetBase(batch *data.Batch, index uint64, canonicalKey []byte, base V) error {
+func (a *Attribute[V]) SetBase(batch *dal.Batch, index uint64, canonicalKey []byte, base V) error {
 	return a.writeEntry(batch, index, canonicalKey, 0, base)
 }
 
 // AddDiff stores a diff value for the given canonical key at the specified raft index.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
-func (a *Attribute[V]) AddDiff(batch *data.Batch, index uint64, canonicalKey []byte, diff V) error {
+func (a *Attribute[V]) AddDiff(batch *dal.Batch, index uint64, canonicalKey []byte, diff V) error {
 	return a.writeEntry(batch, index, canonicalKey, 1, diff)
 }
 
@@ -130,7 +130,7 @@ const SuffixLen = 10
 // It finds the most recent base with index <= maxIndex and applies all diffs with index <= maxIndex.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) ComputeValue(reader data.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
@@ -201,7 +201,7 @@ func (a *Attribute[V]) ComputeValue(reader data.PebbleReader, index uint64, cano
 // Delete removes all entries (bases and diffs) for the given canonical key at any raft index.
 // This performs a physical deletion, removing all historical data for this key.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
-func (a *Attribute[V]) Delete(batch *data.Batch, canonicalKey []byte) error {
+func (a *Attribute[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
 	upperLen := pLen + 9 // +8 for ^uint64(0) + 1 for 0xFF
 	a.ensureKeyBuf(upperLen)
@@ -217,7 +217,7 @@ func (a *Attribute[V]) Delete(batch *data.Batch, canonicalKey []byte) error {
 // This is used to clean up old data after consolidating into a new base.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own Attribute instance.
-func (a *Attribute[V]) DeleteOldest(batch *data.Batch, index uint64, canonicalKey []byte) error {
+func (a *Attribute[V]) DeleteOldest(batch *dal.Batch, index uint64, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
 	upperLen := pLen + 8
 	a.ensureKeyBuf(upperLen)
@@ -240,7 +240,7 @@ type ScanResult[V proto.Message] struct {
 
 // ScanEntries scans all entries for a canonical key and returns the latest base/diff info.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ScanEntries(reader data.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
 	// Single allocation for both bounds.
 	pLen := prefixLen(canonicalKey)
 	buf := make([]byte, pLen+1)
@@ -400,18 +400,18 @@ func (acc *Accumulator[V]) Flush() []ComputedEntry[V] {
 // This is more efficient than List + ComputeValue per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ComputeAllForPrefix(reader data.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	lowerBound := make([]byte, 1+len(canonicalPrefix))
-	lowerBound[0] = data.KeyPrefixAttributes
+	lowerBound[0] = dal.KeyPrefixAttributes
 	copy(lowerBound[1:], canonicalPrefix)
 
 	var upperBound []byte
 	if incPrefix := IncrementBytes(canonicalPrefix); incPrefix != nil {
 		upperBound = make([]byte, 1+len(incPrefix))
-		upperBound[0] = data.KeyPrefixAttributes
+		upperBound[0] = dal.KeyPrefixAttributes
 		copy(upperBound[1:], incPrefix)
 	} else {
-		upperBound = []byte{data.KeyPrefixAttributes + 1}
+		upperBound = []byte{dal.KeyPrefixAttributes + 1}
 	}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -489,7 +489,7 @@ func IncrementBytes(b []byte) []byte {
 
 // compactKey compacts a single canonical key: computes the final value, deletes all entries,
 // and writes a single base entry at targetIndex.
-func (a *Attribute[V]) compactKey(s *data.Store, batch *data.Batch, targetIndex uint64, canonicalKey []byte) error {
+func (a *Attribute[V]) compactKey(s *dal.Store, batch *dal.Batch, targetIndex uint64, canonicalKey []byte) error {
 	value, err := a.ComputeValue(s, ^uint64(0), canonicalKey)
 	if err != nil {
 		return fmt.Errorf("computing value for key %x: %w", canonicalKey, err)

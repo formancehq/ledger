@@ -8,7 +8,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -16,7 +16,7 @@ import (
 // to build full transactions without a second pass. It holds a ReadHandle for
 // point-in-time consistency and closes it when the cursor is closed.
 type transactionCursor struct {
-	handle     *data.ReadHandle
+	handle     *dal.ReadHandle
 	iter       *pebble.Iterator
 	started    bool
 	pageSize   uint32

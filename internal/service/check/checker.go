@@ -10,7 +10,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
 )
@@ -26,12 +27,12 @@ type expectedTxState struct {
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
 type Checker struct {
-	store *data.Store
+	store *dal.Store
 	attrs *attributes.Attributes
 }
 
 // NewChecker creates a new Checker.
-func NewChecker(store *data.Store, attrs *attributes.Attributes) *Checker {
+func NewChecker(store *dal.Store, attrs *attributes.Attributes) *Checker {
 	return &Checker{
 		store: store,
 		attrs: attrs,
@@ -47,7 +48,7 @@ func NewChecker(store *data.Store, attrs *attributes.Attributes) *Checker {
 // 5. Transaction update consistency
 // 6. Reverted status consistency
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
-	lastSequence, err := c.store.GetLastSequence()
+	lastSequence, err := state.ReadLastSequence(c.store)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
@@ -70,10 +71,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		lastHash         []byte
 		expectedInputs   = make(map[string]*big.Int)         // volumeKey -> cumulative input
 		expectedOutputs  = make(map[string]*big.Int)         // volumeKey -> cumulative output
-		expectedMetadata = make(map[string]string)            // metadataKey -> value
-		deletedMetadata  = make(map[string]struct{})          // metadataKey -> deleted
-		expectedTxStates = make(map[string]*expectedTxState)  // txKey -> expected state
-		ledgerIDs        = make(map[string]uint32)            // ledgerName -> ledgerID
+		expectedMetadata = make(map[string]string)           // metadataKey -> value
+		deletedMetadata  = make(map[string]struct{})         // metadataKey -> deleted
+		expectedTxStates = make(map[string]*expectedTxState) // txKey -> expected state
+		ledgerIDs        = make(map[string]uint32)           // ledgerName -> ledgerID
 		errorCount       int
 	)
 
@@ -83,7 +84,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		log, err := c.store.GetLogBySequence(seq)
+		log, err := state.ReadLogBySequence(c.store, seq)
 		if err != nil {
 			return fmt.Errorf("getting log %d: %w", seq, err)
 		}
@@ -165,7 +166,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var vk data.VolumeKey
+		var vk dal.VolumeKey
 		if err := vk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -218,7 +219,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		var mk data.MetadataKey
+		var mk dal.MetadataKey
 		if err := mk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -248,12 +249,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var tk data.TransactionKey
+		var tk dal.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
 
-		actualUpdates, err := c.store.GetTransactionUpdates(tk.LedgerID, tk.ID)
+		actualUpdates, err := state.ReadTransactionUpdates(c.store, tk.LedgerID, tk.ID)
 		if err != nil {
 			return fmt.Errorf("getting transaction updates for ledger %d tx %d: %w", tk.LedgerID, tk.ID, err)
 		}
@@ -289,7 +290,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var tk data.TransactionKey
+		var tk dal.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -336,7 +337,7 @@ func replayLedgerLog(
 		applyPostings(ledgerID, tx.Postings, expectedInputs, expectedOutputs)
 
 		// Track TransactionInit update
-		txKey := string(data.TransactionKey{LedgerID: ledgerID, ID: tx.Id}.Bytes())
+		txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: tx.Id}.Bytes())
 		state := getOrCreateTxState(expectedTxStates, txKey)
 		state.updates = append(state.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -351,8 +352,8 @@ func replayLedgerLog(
 		for account, metaSet := range p.CreatedTransaction.AccountMetadata {
 			if metaSet != nil {
 				for _, m := range metaSet.Metadata {
-					mk := data.MetadataKey{
-						AccountKey: data.AccountKey{
+					mk := dal.MetadataKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  account,
 						},
@@ -375,7 +376,7 @@ func replayLedgerLog(
 		applyPostings(ledgerID, revertTx.Postings, expectedInputs, expectedOutputs)
 
 		// Track revert update on the original transaction
-		origTxKey := string(data.TransactionKey{LedgerID: ledgerID, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
+		origTxKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
 		origState := getOrCreateTxState(expectedTxStates, origTxKey)
 		origState.reverted = true
 		origState.updates = append(origState.updates, &commonpb.TransactionUpdate{
@@ -390,7 +391,7 @@ func replayLedgerLog(
 		})
 
 		// Track TransactionInit for the revert transaction
-		revertTxKey := string(data.TransactionKey{LedgerID: ledgerID, ID: revertTx.Id}.Bytes())
+		revertTxKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: revertTx.Id}.Bytes())
 		revertState := getOrCreateTxState(expectedTxStates, revertTxKey)
 		revertState.updates = append(revertState.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -409,8 +410,8 @@ func replayLedgerLog(
 		case *commonpb.Target_Account:
 			if p.SavedMetadata.Metadata != nil {
 				for _, m := range p.SavedMetadata.Metadata.Metadata {
-					mk := data.MetadataKey{
-						AccountKey: data.AccountKey{
+					mk := dal.MetadataKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  target.Account.Addr,
 						},
@@ -425,7 +426,7 @@ func replayLedgerLog(
 			}
 		case *commonpb.Target_Transaction:
 			if p.SavedMetadata.Metadata != nil {
-				txKey := string(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
+				txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
 				state := getOrCreateTxState(expectedTxStates, txKey)
 				updates := make([]*commonpb.TransactionUpdateType, len(p.SavedMetadata.Metadata.Metadata))
 				for i, m := range p.SavedMetadata.Metadata.Metadata {
@@ -450,8 +451,8 @@ func replayLedgerLog(
 		}
 		switch target := p.DeletedMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			mk := data.MetadataKey{
-				AccountKey: data.AccountKey{
+			mk := dal.MetadataKey{
+				AccountKey: dal.AccountKey{
 					LedgerID: ledgerID,
 					Account:  target.Account.Addr,
 				},
@@ -461,7 +462,7 @@ func replayLedgerLog(
 			delete(expectedMetadata, key)
 			deletedMetadata[key] = struct{}{}
 		case *commonpb.Target_Transaction:
-			txKey := string(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
+			txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
 			state := getOrCreateTxState(expectedTxStates, txKey)
 			state.updates = append(state.updates, &commonpb.TransactionUpdate{
 				ByLog: seq,
@@ -488,8 +489,8 @@ func applyPostings(
 		amount := posting.Amount.ToBigInt()
 
 		// Source: increase output
-		sourceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{
+		sourceKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  posting.Source,
 			},
@@ -502,8 +503,8 @@ func applyPostings(
 		expectedOutputs[sk].Add(expectedOutputs[sk], amount)
 
 		// Destination: increase input
-		destKey := data.VolumeKey{
-			AccountKey: data.AccountKey{
+		destKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  posting.Destination,
 			},

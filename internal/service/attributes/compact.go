@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // keyCompactor compacts a single canonical key to a base entry at the given index.
 // This interface lets CompactAllForBackup dispatch to the correct typed Attribute[V]
 // without knowing the concrete protobuf type.
 type keyCompactor interface {
-	compactKey(s *data.Store, batch *data.Batch, targetIndex uint64, canonicalKey []byte) error
+	compactKey(s *dal.Store, batch *dal.Batch, targetIndex uint64, canonicalKey []byte) error
 }
 
 // CompactAllForBackup compacts all attribute types in the store to index 0 and resets
@@ -24,20 +24,20 @@ type keyCompactor interface {
 // The caller must ensure that all in-memory state (dirty boundaries, etc.) has been
 // flushed to Pebble before the checkpoint was taken. The backup flow achieves this
 // by running the flush and checkpoint atomically on the Raft loop.
-func CompactAllForBackup(s *data.Store) error {
+func CompactAllForBackup(s *dal.Store) error {
 	attrs := New()
 	batch := s.NewBatch()
 
 	// Build dispatch table: attrType byte → keyCompactor
 	dispatch := map[byte]keyCompactor{
-		data.AttributePrefixVolume:         attrs.Volume,
-		data.AttributePrefixMetadata:       attrs.Metadata,
-		data.AttributePrefixLedgerMetadata: attrs.LedgerMetadata,
-		data.AttributePrefixReverted:       attrs.Reverted,
-		data.AttributePrefixIdempotencyKey: attrs.IdempotencyKeys,
-		data.AttributePrefixReference:      attrs.References,
-		data.AttributePrefixLedger:         attrs.Ledger,
-		data.AttributePrefixBoundary:       attrs.Boundary,
+		dal.AttributePrefixVolume:         attrs.Volume,
+		dal.AttributePrefixMetadata:       attrs.Metadata,
+		dal.AttributePrefixLedgerMetadata: attrs.LedgerMetadata,
+		dal.AttributePrefixReverted:       attrs.Reverted,
+		dal.AttributePrefixIdempotencyKey: attrs.IdempotencyKeys,
+		dal.AttributePrefixReference:      attrs.References,
+		dal.AttributePrefixLedger:         attrs.Ledger,
+		dal.AttributePrefixBoundary:       attrs.Boundary,
 	}
 
 	// Single scan over the entire attribute range
@@ -47,8 +47,8 @@ func CompactAllForBackup(s *data.Store) error {
 	}
 
 	buf := make([]byte, 2)
-	buf[0] = data.KeyPrefixAttributes
-	buf[1] = data.KeyPrefixAttributes + 1
+	buf[0] = dal.KeyPrefixAttributes
+	buf[1] = dal.KeyPrefixAttributes + 1
 
 	iter, err := s.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],
@@ -100,7 +100,7 @@ func CompactAllForBackup(s *data.Store) error {
 	_ = iter.Close()
 
 	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh
-	if err := batch.SetAppliedIndex(0); err != nil {
+	if err := batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, make([]byte, 8)); err != nil {
 		_ = batch.Cancel()
 		return fmt.Errorf("resetting applied index: %w", err)
 	}

@@ -21,7 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -40,7 +40,7 @@ func (NoopEventNotifier) NotifyConfigChanged() {}
 
 type Machine struct {
 	logger    logging.Logger
-	dataStore *data.Store
+	dataStore *dal.Store
 
 	mu sync.Mutex
 
@@ -48,15 +48,15 @@ type Machine struct {
 	Attrs *attributes.Attributes
 
 	Cache           *cache.Cache
-	Volumes         *attributes.KeyStore[data.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata *attributes.KeyStore[data.MetadataKey, *commonpb.MetadataValue]
-	LedgerMetadata  *attributes.KeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
-	Reversions      *attributes.KeyStore[data.TransactionKey, bool]
-	IdempotencyKeys *attributes.KeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References      *attributes.KeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers         *attributes.KeyStore[data.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries      *attributes.KeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs     *attributes.KeyStore[data.SinkConfigKey, *commonpb.SinkConfig]
+	Volumes         *attributes.KeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata *attributes.KeyStore[dal.MetadataKey, *commonpb.MetadataValue]
+	LedgerMetadata  *attributes.KeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue]
+	Reversions      *attributes.KeyStore[dal.TransactionKey, bool]
+	IdempotencyKeys *attributes.KeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References      *attributes.KeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers         *attributes.KeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries      *attributes.KeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs     *attributes.KeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
 
 	nextLedgerID        uint32
 	nextSequenceID      uint64
@@ -124,13 +124,13 @@ type Machine struct {
 	snapshotBuf []byte
 }
 
-func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
-	lastAppliedIndex, err := dataStore.GetLastAppliedIndex()
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
+	lastAppliedIndex, err := ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
 	}
 
-	lastAppliedTimestamp, err := dataStore.GetLastAppliedTimestamp()
+	lastAppliedTimestamp, err := ReadLastAppliedTimestamp(dataStore)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
-	periodsFromStore, err := dataStore.GetPeriods()
+	periodsFromStore, err := ReadAllPeriods(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
@@ -194,12 +194,12 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		}
 	}
 
-	nextPeriodID, err := dataStore.GetNextPeriodID()
+	nextPeriodID, err := ReadNextPeriodID(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
 
-	periodSchedule, err := dataStore.LoadPeriodSchedule()
+	periodSchedule, err := ReadPeriodSchedule(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule from store: %w", err)
 	}
@@ -211,7 +211,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 
 	// Load signing keys from Pebble on startup
 	if ks != nil {
-		signingKeys, err := dataStore.LoadSigningKeys()
+		signingKeys, err := ReadSigningKeys(dataStore)
 		if err != nil {
 			return nil, fmt.Errorf("loading signing keys from store: %w", err)
 		}
@@ -221,13 +221,13 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 	}
 
 	// Load shared runtime flags from Pebble on startup
-	requireSig, err := dataStore.LoadSigningConfig()
+	requireSig, err := ReadSigningConfig(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading signing config from store: %w", err)
 	}
 	sharedState.SetRequireSignatures(requireSig)
 
-	maintenanceMode, err := dataStore.LoadMaintenanceMode()
+	maintenanceMode, err := ReadMaintenanceMode(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
 	}
@@ -250,44 +250,44 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		sharedState:                 sharedState,
 		Attrs:                       attrs,
 		Cache:                       cache,
-		Volumes: attributes.NewKeyStore[data.VolumeKey, *raftcmdpb.VolumePair](
+		Volumes: attributes.NewKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair](
 			attributes.DefaultSeeds,
 			cache.Volumes,
 		),
-		AccountMetadata: attributes.NewKeyStore[data.MetadataKey, *commonpb.MetadataValue](
+		AccountMetadata: attributes.NewKeyStore[dal.MetadataKey, *commonpb.MetadataValue](
 			attributes.DefaultSeeds,
 			cache.AccountMetadata,
 		),
-		LedgerMetadata: attributes.NewKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue](
+		LedgerMetadata: attributes.NewKeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue](
 			attributes.DefaultSeeds,
 			cache.LedgerMetadata,
 		),
-		Reversions: attributes.NewKeyStore[data.TransactionKey, bool](
+		Reversions: attributes.NewKeyStore[dal.TransactionKey, bool](
 			attributes.DefaultSeeds,
 			cache.Reversions,
 		),
-		IdempotencyKeys: attributes.NewKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue](
+		IdempotencyKeys: attributes.NewKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue](
 			attributes.DefaultSeeds,
 			cache.IdempotencyKeys,
 		),
-		References: attributes.NewKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
+		References: attributes.NewKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
 			attributes.DefaultSeeds,
 			cache.References,
 		),
-		Ledgers: attributes.NewKeyStore[data.LedgerKey, *commonpb.LedgerInfo](
+		Ledgers: attributes.NewKeyStore[dal.LedgerKey, *commonpb.LedgerInfo](
 			attributes.DefaultSeeds,
 			cache.Ledgers,
 		),
-		Boundaries: attributes.NewKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries](
+		Boundaries: attributes.NewKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries](
 			attributes.DefaultSeeds,
 			cache.Boundaries,
 		),
-		SinkConfigs: attributes.NewKeyStore[data.SinkConfigKey, *commonpb.SinkConfig](
+		SinkConfigs: attributes.NewKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig](
 			attributes.DefaultSeeds,
 			cache.SinkConfigs,
 		),
-		nextLedgerID:   1,
-		nextSequenceID: 1,
+		nextLedgerID:        1,
+		nextSequenceID:      1,
 		nextAuditSequenceID: 1,
 		allPeriods:          allPeriods,
 		currentOpenPeriod:   currentOpenPeriod,
@@ -301,8 +301,8 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
 		sealRequestCh:     make(chan SealRequest, 1),
 		archiveRequestCh:  make(chan ArchiveRequest, 1),
-		periodSchedule:  periodSchedule,
-		scheduleChanged: signal.New(),
+		periodSchedule:    periodSchedule,
+		scheduleChanged:   signal.New(),
 	}
 
 	return fsm, nil
@@ -314,7 +314,7 @@ func NewMachine(logger logging.Logger, dataStore *data.Store, meter metric.Meter
 // After calling this method, CreateSnapshot will serialize the correct state.
 func (fsm *Machine) RecoverState() error {
 	// Recover nextLedgerID from max existing ledger ID
-	maxID, found, err := fsm.dataStore.GetMaxLedgerID()
+	maxID, found, err := ReadMaxLedgerID(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering max ledger ID: %w", err)
 	}
@@ -323,7 +323,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover nextSequenceID from last log sequence
-	lastSeq, err := fsm.dataStore.GetLastSequence()
+	lastSeq, err := ReadLastSequence(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last sequence: %w", err)
 	}
@@ -332,7 +332,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover lastLogHash from the last log entry
-	lastLog, err := fsm.dataStore.GetLastLog()
+	lastLog, err := ReadLastLog(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last log: %w", err)
 	}
@@ -341,7 +341,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover nextAuditSequenceID from last audit entry
-	lastAuditSeq, err := fsm.dataStore.GetLastAuditSequence()
+	lastAuditSeq, err := ReadLastAuditSequence(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last audit sequence: %w", err)
 	}
@@ -367,7 +367,7 @@ func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
 		return nil
 	}
 
-	db, err := data.OpenDirect(checkpointPath, fsm.logger)
+	db, err := dal.OpenDirect(checkpointPath, fsm.logger)
 	if err != nil {
 		return fmt.Errorf("opening checkpoint for boundary write: %w", err)
 	}
@@ -518,10 +518,10 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	}
 
-	if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
+	if err := SetAppliedIndex(batch, fsm.lastAppliedIndex); err != nil {
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
-	if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
+	if err := SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp); err != nil {
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 	commitStart := time.Now()
@@ -548,16 +548,16 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 // and returns with CheckpointRequired = true. This is shared by CreateCheckpoint
 // (backup checkpoint) and ClosePeriod (seal checkpoint).
 func (fsm *Machine) commitAndRequestCheckpoint(
-	batch *data.Batch,
+	batch *dal.Batch,
 	ret *ApplyEntriesResult,
 	remaining []raftpb.Entry,
 	needsArchiveDispatch bool,
 	onCheckpointDone func(checkpointPath string),
 ) (*ApplyEntriesResult, error) {
-	if err := batch.SetAppliedIndex(fsm.lastAppliedIndex); err != nil {
+	if err := SetAppliedIndex(batch, fsm.lastAppliedIndex); err != nil {
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
-	if err := batch.SetLastAppliedTimestamp(fsm.lastAppliedTimestamp); err != nil {
+	if err := SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp); err != nil {
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 	if err := batch.Commit(); err != nil {
@@ -605,7 +605,7 @@ const volumeCompactionMinDiffs uint32 = 4
 // generation being compacted. Keys with fewer than volumeCompactionMinDiffs
 // writes are skipped — the overhead of a Pebble range-delete tombstone is
 // not worth it for a handful of entries.
-func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) (int64, error) {
+func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) (int64, error) {
 	var compacted int64
 	for keyStr, count := range dirtyKeys {
 		if count < volumeCompactionMinDiffs {
@@ -629,7 +629,7 @@ func (fsm *Machine) compactVolumeDiffs(batch *data.Batch, compactionIndex uint64
 
 // flushBoundaries writes all dirty boundary keys to Pebble and clears the tracking map.
 // Called at generation rotation to batch boundary writes instead of writing on every log entry.
-func (fsm *Machine) flushBoundaries(batch *data.Batch, index uint64) error {
+func (fsm *Machine) flushBoundaries(batch *dal.Batch, index uint64) error {
 	for keyStr, value := range fsm.dirtyBoundaryKeys {
 		canonicalKey := []byte(keyStr)
 		if err := fsm.Attrs.Boundary.SetBase(batch, index, canonicalKey, value); err != nil {
@@ -1001,20 +1001,20 @@ func allOrdersAreMaintenanceMode(orders []*raftcmdpb.Order) bool {
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, bool, error) {
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, bool, error) {
 	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
 	for _, update := range proposal.EventsSinkUpdates {
 		if update.Cursor > 0 {
-			if err := batch.SetSinkCursor(update.SinkName, update.Cursor); err != nil {
+			if err := SetSinkCursor(batch, update.SinkName, update.Cursor); err != nil {
 				return nil, false, false, fmt.Errorf("setting sink cursor: %w", err)
 			}
 		}
 		if update.ClearError {
-			if err := batch.ClearSinkStatus(update.SinkName); err != nil {
+			if err := ClearSinkStatus(batch, update.SinkName); err != nil {
 				return nil, false, false, fmt.Errorf("clearing sink status: %w", err)
 			}
 		} else if update.Error != nil {
-			if err := batch.SetSinkStatus(&commonpb.SinkStatus{
+			if err := SetSinkStatus(batch, &commonpb.SinkStatus{
 				SinkName: update.SinkName,
 				Cursor:   update.Cursor,
 				Error:    update.Error,
@@ -1058,10 +1058,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		fsm.nextPeriodID = 2
 
 		// Persist the bootstrapped period so it survives restarts
-		if err := batch.StorePeriod(fsm.currentOpenPeriod); err != nil {
+		if err := StorePeriod(batch, fsm.currentOpenPeriod); err != nil {
 			return nil, false, false, fmt.Errorf("storing bootstrapped period: %w", err)
 		}
-		if err := batch.StoreNextPeriodID(fsm.nextPeriodID); err != nil {
+		if err := StoreNextPeriodID(batch, fsm.nextPeriodID); err != nil {
 			return nil, false, false, fmt.Errorf("storing next period ID: %w", err)
 		}
 	}
@@ -1084,7 +1084,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				},
 			}
 			fsm.nextAuditSequenceID++
-			if appendErr := batch.AppendAuditEntries(auditEntry); appendErr != nil {
+			if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
 				return nil, false, false, fmt.Errorf("appending audit entry for failure: %w", appendErr)
 			}
 		}
@@ -1125,7 +1125,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			},
 		}
 		fsm.nextAuditSequenceID++
-		if err := batch.AppendAuditEntries(auditEntry); err != nil {
+		if err := AppendAuditEntries(batch, auditEntry); err != nil {
 			return nil, false, false, fmt.Errorf("appending audit entry for success: %w", err)
 		}
 	}
@@ -1366,7 +1366,7 @@ func (fsm *Machine) reloadStateFromStore() error {
 	if fsm.keyStore != nil {
 		fsm.keyStore.Reset()
 
-		signingKeys, err := fsm.dataStore.LoadSigningKeys()
+		signingKeys, err := ReadSigningKeys(fsm.dataStore)
 		if err != nil {
 			return fmt.Errorf("loading signing keys: %w", err)
 		}
@@ -1377,13 +1377,13 @@ func (fsm *Machine) reloadStateFromStore() error {
 
 	fsm.sharedState.Reset()
 
-	requireSig, err := fsm.dataStore.LoadSigningConfig()
+	requireSig, err := ReadSigningConfig(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("loading signing config: %w", err)
 	}
 	fsm.sharedState.SetRequireSignatures(requireSig)
 
-	maintenanceMode, err := fsm.dataStore.LoadMaintenanceMode()
+	maintenanceMode, err := ReadMaintenanceMode(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("loading maintenance mode: %w", err)
 	}

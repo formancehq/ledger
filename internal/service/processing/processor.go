@@ -14,7 +14,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 //go:generate mockgen -source=processor.go -destination=processor_mock_test.go -package=processing -mock_names=Store=MockStore
@@ -31,31 +31,31 @@ type Store interface {
 	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
 	// Volume operations (merged Input+Output)
-	GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error)
-	PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair)
+	GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error)
+	PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
-	GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error)
-	PutAccountMetadata(key data.MetadataKey, value *commonpb.MetadataValue)
-	DeleteAccountMetadata(key data.MetadataKey)
+	GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error)
+	PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue)
+	DeleteAccountMetadata(key dal.MetadataKey)
 
 	// Ledger metadata operations
-	PutLedgerMetadata(key data.LedgerMetadataKey, value *commonpb.MetadataValue)
+	PutLedgerMetadata(key dal.LedgerMetadataKey, value *commonpb.MetadataValue)
 
 	// Transaction reversion status operations
-	GetReverted(key data.TransactionKey) (bool, error)
-	PutReverted(key data.TransactionKey, reverted bool)
+	GetReverted(key dal.TransactionKey) (bool, error)
+	PutReverted(key dal.TransactionKey, reverted bool)
 
 	// Idempotency key operations
-	GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
-	PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
+	GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
+	PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
 	// Transaction reference operations
-	GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
-	PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
+	GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
+	PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
 	// Transaction updates
-	AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate)
+	AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate)
 
 	// Signing key operations
 	AddSigningKey(keyID string, publicKey []byte)
@@ -102,9 +102,9 @@ type Store interface {
 }
 
 type RequestProcessor struct {
-	numscriptCache   *NumscriptCache
-	logHasher        *blake3.Hasher
-	orderHashBuf     []byte // reusable buffer for order hash marshaling
+	numscriptCache *NumscriptCache
+	logHasher      *blake3.Hasher
+	orderHashBuf   []byte // reusable buffer for order hash marshaling
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -126,7 +126,6 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	}, nil
 }
 
-
 // ProcessProposal processes a proposal (batch of orders) and returns the resulting response.
 func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store) (*raftcmdpb.ProposalResponse, error) {
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(proposal.Orders))
@@ -138,9 +137,9 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 		if hasIdempotency {
 			orderHash = p.computeOrderHash(order)
 
-			ikKey := data.IdempotencyKey{Key: order.Idempotency.Key}
+			ikKey := dal.IdempotencyKey{Key: order.Idempotency.Key}
 			storedValue, err := s.GetIdempotencyKey(ikKey)
-			if err != nil && !errors.Is(err, data.ErrNotFound) {
+			if err != nil && !errors.Is(err, dal.ErrNotFound) {
 				return nil, fmt.Errorf("checking idempotency key: %w", err)
 			}
 
@@ -185,7 +184,7 @@ func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, s Store
 		// Store idempotency key if present (reuse orderHash computed above)
 		if hasIdempotency {
 			s.PutIdempotencyKey(
-				data.IdempotencyKey{
+				dal.IdempotencyKey{
 					Key: order.Idempotency.Key,
 				},
 				&commonpb.IdempotencyKeyValue{
@@ -225,7 +224,6 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	hash := blake3.Sum256(p.orderHashBuf[:n])
 	return hash[:]
 }
-
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commonpb.LogPayload, error) {
@@ -370,7 +368,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	// Store initial metadata using LedgerMetadata attributes
 	if order.Metadata != nil {
 		for _, m := range order.Metadata.Metadata {
-			s.PutLedgerMetadata(data.LedgerMetadataKey{
+			s.PutLedgerMetadata(dal.LedgerMetadataKey{
 				LedgerID: ledgerID,
 				Key:      m.Key,
 			}, m.Value)
@@ -459,8 +457,8 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 	switch target := order.Target.Target.(type) {
 	case *commonpb.Target_Account:
 		for _, entry := range order.Metadata.Metadata {
-			s.PutAccountMetadata(data.MetadataKey{
-				AccountKey: data.AccountKey{
+			s.PutAccountMetadata(dal.MetadataKey{
+				AccountKey: dal.AccountKey{
 					LedgerID: ledgerID,
 					Account:  target.Account.Addr,
 				},
@@ -483,7 +481,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 				},
 			}
 		}
-		s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog:   s.GetNextSequenceID(),
 			Updates: updates,
 		})
@@ -509,15 +507,15 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 
 	switch target := order.Target.Target.(type) {
 	case *commonpb.Target_Account:
-		metaKey := data.MetadataKey{
-			AccountKey: data.AccountKey{
+		metaKey := dal.MetadataKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  target.Account.Addr,
 			},
 			Key: order.Key,
 		}
 		if _, err := s.GetAccountMetadata(metaKey); err != nil {
-			if errors.Is(err, data.ErrNotFound) {
+			if errors.Is(err, dal.ErrNotFound) {
 				return nil, &ErrMetadataNotFound{
 					Target: target.Account.Addr,
 					Key:    order.Key,
@@ -532,7 +530,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 		}
 		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
 		// This ensures each transaction update has a unique key in PebbleDB
-		s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog: s.GetNextSequenceID(),
 			Updates: []*commonpb.TransactionUpdateType{{
 				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{
@@ -557,9 +555,9 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.Reference != "" {
-		refKey := data.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference}
+		refKey := dal.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference}
 		existingRef, err := s.GetTransactionReference(refKey)
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
+		if err != nil && !errors.Is(err, dal.ErrNotFound) {
 			return nil, fmt.Errorf("checking transaction reference: %w", err)
 		}
 		if existingRef != nil {
@@ -588,7 +586,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 	boundaries.NextTransactionId = nextTransactionID + 1
 
 	// Store the transaction init update for later indexing
-	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: nextTransactionID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: nextTransactionID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(), // Will be set correctly when committing
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
@@ -628,7 +626,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 	// Store transaction reference if provided
 	if order.Reference != "" {
 		s.PutTransactionReference(
-			data.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference},
+			dal.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}
@@ -665,7 +663,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 }
 
 func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
-	txKey := data.TransactionKey{
+	txKey := dal.TransactionKey{
 		LedgerID: ledgerID,
 		ID:       order.TransactionId,
 	}
@@ -677,7 +675,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 
 	// Check if the transaction is already reverted
 	reverted, err := s.GetReverted(txKey)
-	if err != nil && !errors.Is(err, data.ErrNotFound) {
+	if err != nil && !errors.Is(err, dal.ErrNotFound) {
 		return nil, fmt.Errorf("checking reverted status: %w", err)
 	}
 	if reverted {
@@ -710,7 +708,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 	boundaries.NextTransactionId = revertTxID + 1
 
 	// Add transaction update for the original transaction (mark as reverted)
-	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: order.TransactionId}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: order.TransactionId}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
@@ -722,7 +720,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 	})
 
 	// Add transaction init for the revert transaction
-	s.AddTransactionUpdate(data.TransactionKey{LedgerID: ledgerID, ID: revertTxID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: revertTxID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
@@ -752,8 +750,8 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
 func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{
 			LedgerID: ledgerID,
 			Account:  posting.Source,
 		},
@@ -766,7 +764,7 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 
 	// Get current volume pair for source
 	sourceVol, err := s.GetVolume(sourceKey)
-	if err != nil && !errors.Is(err, data.ErrNotFound) {
+	if err != nil && !errors.Is(err, dal.ErrNotFound) {
 		return err
 	}
 	if sourceVol == nil {
@@ -805,8 +803,8 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{
 			LedgerID: ledgerID,
 			Account:  posting.Destination,
 		},
@@ -814,7 +812,7 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 	}
 
 	destVol, err := s.GetVolume(destKey)
-	if err != nil && !errors.Is(err, data.ErrNotFound) {
+	if err != nil && !errors.Is(err, dal.ErrNotFound) {
 		return err
 	}
 	if destVol == nil {

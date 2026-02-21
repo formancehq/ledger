@@ -7,28 +7,28 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 )
 
 // newTestMachineWithAudit creates a Machine with configurable audit enablement.
-func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *data.Store, *attributes.Attributes) {
+func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	dataStore, err := data.NewStore(t.TempDir(), logger, meter, data.DefaultConfig())
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
@@ -45,13 +45,13 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *data.S
 
 // listAuditEntries collects all audit entries from the store into a slice.
 // Pass afterSequence=0 to return all entries.
-func listAuditEntries(t *testing.T, store *data.Store, afterSequence uint64) []*auditpb.AuditEntry {
+func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*auditpb.AuditEntry {
 	t.Helper()
 	var filter *uint64
 	if afterSequence > 0 {
 		filter = &afterSequence
 	}
-	cursor, err := store.ListAuditEntries(filter)
+	cursor, err := ReadAuditEntries(store, filter)
 	require.NoError(t, err)
 	defer func() { _ = cursor.Close() }()
 

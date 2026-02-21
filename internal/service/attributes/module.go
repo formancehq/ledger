@@ -3,7 +3,7 @@ package attributes
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
 	"go.uber.org/fx"
 )
@@ -38,7 +38,7 @@ func New() *Attributes {
 // NewVolumeAttribute creates a new Volume attribute storing merged Input+Output pairs.
 func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 	return &Attribute[*raftcmdpb.VolumePair]{
-		prefix:   data.AttributePrefixVolume,
+		prefix:   dal.AttributePrefixVolume,
 		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
 		computeFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
 			var inputResult, outputResult, tmp uint256.Int
@@ -73,7 +73,7 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 // NewMetadataAttribute creates a new Metadata attribute for account metadata.
 func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
-		prefix:   data.AttributePrefixMetadata,
+		prefix:   dal.AttributePrefixMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
 			if lastDiff == nil {
@@ -88,7 +88,7 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 // NewLedgerMetadataAttribute creates a new LedgerMetadata attribute for ledger metadata.
 func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
-		prefix:   data.AttributePrefixLedgerMetadata,
+		prefix:   dal.AttributePrefixLedgerMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
 			if lastDiff == nil {
@@ -103,7 +103,7 @@ func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 // NewRevertedAttribute creates a new Reverted attribute for tracking transaction reversion status.
 func NewRevertedAttribute() *Attribute[*commonpb.RevertedValue] {
 	return &Attribute[*commonpb.RevertedValue]{
-		prefix:   data.AttributePrefixReverted,
+		prefix:   dal.AttributePrefixReverted,
 		newValue: func() *commonpb.RevertedValue { return &commonpb.RevertedValue{} },
 		computeFn: func(base *commonpb.RevertedValue, lastDiff *commonpb.RevertedValue) *commonpb.RevertedValue {
 			if lastDiff == nil {
@@ -121,7 +121,7 @@ func NewRevertedAttribute() *Attribute[*commonpb.RevertedValue] {
 // NewIdempotencyKeysAttribute creates a new IdempotencyKeys attribute for storing idempotency key mappings.
 func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 	return &Attribute[*commonpb.IdempotencyKeyValue]{
-		prefix:   data.AttributePrefixIdempotencyKey,
+		prefix:   dal.AttributePrefixIdempotencyKey,
 		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
 		computeFn: func(base *commonpb.IdempotencyKeyValue, lastDiff *commonpb.IdempotencyKeyValue) *commonpb.IdempotencyKeyValue {
 			if base != nil {
@@ -136,7 +136,7 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 // NewReferenceAttribute creates a new Reference attribute for storing transaction reference mappings.
 func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
 	return &Attribute[*commonpb.TransactionReferenceValue]{
-		prefix:   data.AttributePrefixReference,
+		prefix:   dal.AttributePrefixReference,
 		newValue: func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} },
 		computeFn: func(base *commonpb.TransactionReferenceValue, lastDiff *commonpb.TransactionReferenceValue) *commonpb.TransactionReferenceValue {
 			if base != nil {
@@ -151,7 +151,7 @@ func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
 // NewLedgerAttribute creates a new Ledger attribute for storing ledger info.
 func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 	return &Attribute[*commonpb.LedgerInfo]{
-		prefix:   data.AttributePrefixLedger,
+		prefix:   dal.AttributePrefixLedger,
 		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
 		computeFn: func(base *commonpb.LedgerInfo, lastDiff *commonpb.LedgerInfo) *commonpb.LedgerInfo {
 			if lastDiff == nil {
@@ -166,7 +166,7 @@ func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 // NewBoundaryAttribute creates a new Boundary attribute for storing ledger boundaries.
 func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 	return &Attribute[*raftcmdpb.LedgerBoundaries]{
-		prefix:   data.AttributePrefixBoundary,
+		prefix:   dal.AttributePrefixBoundary,
 		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
 		computeFn: func(base *raftcmdpb.LedgerBoundaries, lastDiff *raftcmdpb.LedgerBoundaries) *raftcmdpb.LedgerBoundaries {
 			if lastDiff == nil {

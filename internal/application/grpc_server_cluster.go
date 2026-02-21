@@ -13,22 +13,22 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/diskusage"
 	"google.golang.org/grpc"
 )
 
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
-	node              *node.Node
-	raftTransport     *node.DefaultTransport
-	servicePool       *transport.ServiceConnectionPool
-	collector         *diskusage.Collector
-	store             *data.Store
-	sharedState       *state.SharedState
-	logger            logging.Logger
-	localRaftAddr     string // This node's own Raft advertise address
-	localServiceAddr  string // This node's own gRPC service address
+	node             *node.Node
+	raftTransport    *node.DefaultTransport
+	servicePool      *transport.ServiceConnectionPool
+	collector        *diskusage.Collector
+	store            *dal.Store
+	sharedState      *state.SharedState
+	logger           logging.Logger
+	localRaftAddr    string // This node's own Raft advertise address
+	localServiceAddr string // This node's own gRPC service address
 }
 
 func NewClusterServiceServer(
@@ -36,7 +36,7 @@ func NewClusterServiceServer(
 	raftTransport *node.DefaultTransport,
 	servicePool *transport.ServiceConnectionPool,
 	collector *diskusage.Collector,
-	store *data.Store,
+	store *dal.Store,
 	sharedState *state.SharedState,
 	logger logging.Logger,
 	localRaftAddr string,
@@ -231,7 +231,7 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream grpc.ServerStreamingSer
 	// without raft index conflicts in the attribute storage.
 	impl.logger.Infof("Compacting backup checkpoint for restore compatibility")
 
-	compactStore, err := data.OpenDirect(backupPath, impl.logger)
+	compactStore, err := dal.OpenDirect(backupPath, impl.logger)
 	if err != nil {
 		return fmt.Errorf("opening backup for compaction: %w", err)
 	}

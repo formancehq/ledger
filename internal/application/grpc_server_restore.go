@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -182,7 +182,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 
 	stagingDir := s.stagingDir()
 
-	store, err := data.OpenReadOnly(stagingDir, s.logger)
+	store, err := dal.OpenReadOnly(stagingDir, s.logger)
 	if err != nil {
 		return fmt.Errorf("opening staging store: %w", err)
 	}
@@ -229,7 +229,7 @@ func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorep
 
 	stagingDir := s.stagingDir()
 
-	store, err := data.OpenReadOnly(stagingDir, s.logger)
+	store, err := dal.OpenReadOnly(stagingDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
@@ -273,7 +273,7 @@ func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorep
 		LastAppliedTimestamp: lastAppliedTimestamp,
 		LastSequence:         lastSequence,
 		LedgerCount:          uint32(len(ledgerNames)),
-		LedgerNames:         ledgerNames,
+		LedgerNames:          ledgerNames,
 	}, nil
 }
 
@@ -290,7 +290,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	stagingDir := s.stagingDir()
 
 	// Open staging to read metadata
-	store, err := data.OpenReadOnly(stagingDir, s.logger)
+	store, err := dal.OpenReadOnly(stagingDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
@@ -337,7 +337,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("removing existing checkpoint 0: %w", err)
 	}
 
-	if err := data.HardLink(stagingDir, checkpointPath); err != nil {
+	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return nil, fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 

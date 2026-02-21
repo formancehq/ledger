@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ValidateOrPersistConfig checks that critical configuration parameters have not
@@ -14,13 +14,13 @@ import (
 // and returns an error on mismatch unless force is true.
 //
 // Audit-enabled changes (true -> false) are logged as warnings but do not fail.
-func ValidateOrPersistConfig(store *data.Store, cfg Config, logger logging.Logger, force bool) error {
-	persisted, err := store.LoadPersistedConfig()
+func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger, force bool) error {
+	persisted, err := LoadPersistedConfig(store)
 	if err != nil {
 		return fmt.Errorf("loading persisted config: %w", err)
 	}
 
-	current := &data.PersistedConfig{
+	current := &PersistedConfig{
 		NodeID:       cfg.RaftConfig.NodeID,
 		ClusterID:    cfg.ClusterID,
 		AuditEnabled: cfg.AuditEnabled,
@@ -33,10 +33,10 @@ func ValidateOrPersistConfig(store *data.Store, cfg Config, logger logging.Logge
 	}
 
 	// Subsequent boot: validate critical parameters
-	var mismatches []*data.ConfigMismatchError
+	var mismatches []*ConfigMismatchError
 
 	if persisted.NodeID != current.NodeID {
-		mismatches = append(mismatches, &data.ConfigMismatchError{
+		mismatches = append(mismatches, &ConfigMismatchError{
 			Field:     "node-id",
 			Persisted: strconv.FormatUint(persisted.NodeID, 10),
 			Current:   strconv.FormatUint(current.NodeID, 10),
@@ -44,7 +44,7 @@ func ValidateOrPersistConfig(store *data.Store, cfg Config, logger logging.Logge
 	}
 
 	if persisted.ClusterID != current.ClusterID {
-		mismatches = append(mismatches, &data.ConfigMismatchError{
+		mismatches = append(mismatches, &ConfigMismatchError{
 			Field:     "cluster-id",
 			Persisted: persisted.ClusterID,
 			Current:   current.ClusterID,
@@ -84,9 +84,9 @@ func ValidateOrPersistConfig(store *data.Store, cfg Config, logger logging.Logge
 }
 
 // persistConfig writes the given configuration to Pebble.
-func persistConfig(store *data.Store, cfg *data.PersistedConfig) error {
+func persistConfig(store *dal.Store, cfg *PersistedConfig) error {
 	batch := store.NewBatch()
-	if err := batch.SavePersistedConfig(cfg); err != nil {
+	if err := SavePersistedConfig(batch, cfg); err != nil {
 		_ = batch.Cancel()
 		return fmt.Errorf("saving persisted config: %w", err)
 	}

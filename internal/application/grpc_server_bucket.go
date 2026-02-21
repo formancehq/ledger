@@ -12,9 +12,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/grpc"
 )
 
@@ -22,13 +22,13 @@ type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
 	logger        logging.Logger
 	ctrl          ctrl.Controller
-	store         *data.Store
+	store         *dal.Store
 	attrs         *attributes.Attributes
 	auditEnabled  bool
 	receiptSigner *receipt.Signer
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *data.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
 		logger:        logger,
 		ctrl:          ctrl,
@@ -94,7 +94,7 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 	}
 
 	if req.PageSize > 0 {
-		cursor = data.NewLimitedCursor(cursor, req.PageSize)
+		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
 	}
 
 	return sendCursorToStream(cursor, stream, "period")
@@ -165,7 +165,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 	}
 
 	if req.PageSize > 0 {
-		cursor = data.NewLimitedCursor(cursor, req.PageSize)
+		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
 	}
 
 	return sendCursorToStream(cursor, stream, "ledger")

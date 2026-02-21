@@ -1,4 +1,4 @@
-package data
+package application
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // PersistedConfig stores critical configuration parameters that must not change
@@ -19,9 +20,9 @@ type PersistedConfig struct {
 // ConfigMismatchError is returned when a persisted configuration value differs
 // from the current startup configuration.
 type ConfigMismatchError struct {
-	Field      string
-	Persisted  string
-	Current    string
+	Field     string
+	Persisted string
+	Current   string
 }
 
 func (e *ConfigMismatchError) Error() string {
@@ -33,8 +34,8 @@ func (e *ConfigMismatchError) Error() string {
 
 // LoadPersistedConfig reads the persisted configuration from Pebble.
 // Returns nil if no configuration has been persisted yet (first boot).
-func (s *Store) LoadPersistedConfig() (*PersistedConfig, error) {
-	value, closer, err := s.getDB().Get([]byte{keyPrefixPersistedConfig})
+func LoadPersistedConfig(reader dal.PebbleReader) (*PersistedConfig, error) {
+	value, closer, err := reader.Get([]byte{dal.KeyPrefixPersistedConfig})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -64,18 +65,10 @@ func (b *Batch) DeletePersistedConfig() error {
 }
 
 // SavePersistedConfig writes the persisted configuration to the batch.
-func (b *Batch) SavePersistedConfig(cfg *PersistedConfig) error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
+func SavePersistedConfig(b *dal.Batch, cfg *PersistedConfig) error {
 	value, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling persisted config: %w", err)
 	}
-
-	if err := b.batch.Set([]byte{keyPrefixPersistedConfig}, value, pebble.NoSync); err != nil {
-		return fmt.Errorf("saving persisted config: %w", err)
-	}
-	return nil
+	return b.SetBytes([]byte{dal.KeyPrefixPersistedConfig}, value)
 }

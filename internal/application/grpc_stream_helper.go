@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/grpc"
 )
 
 // sendCursorToStream drains a cursor into a gRPC server stream,
 // closing the cursor when done. The cursor must yield *Res items
 // matching the stream's Send(*Res) signature.
-func sendCursorToStream[Res any](cursor data.Cursor[*Res], stream grpc.ServerStreamingServer[Res], itemName string) error {
+func sendCursorToStream[Res any](cursor dal.Cursor[*Res], stream grpc.ServerStreamingServer[Res], itemName string) error {
 	defer func() {
 		_ = cursor.Close()
 	}()

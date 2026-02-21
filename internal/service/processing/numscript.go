@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/numscript"
 	"github.com/holiman/uint256"
 )
@@ -63,7 +63,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
 	var (
-		scratch   uint256.Int // reused across all postings
+		scratch    uint256.Int // reused across all postings
 		u256Amount uint256.Int
 	)
 	for i, posting := range result.Postings {
@@ -81,15 +81,15 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		}
 
 		// Update source output (money going out)
-		sourceKey := data.VolumeKey{
-			AccountKey: data.AccountKey{
+		sourceKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  posting.Source,
 			},
 			Asset: posting.Asset,
 		}
 		sourceVol, err := s.GetVolume(sourceKey)
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
+		if err != nil && !errors.Is(err, dal.ErrNotFound) {
 			return nil, err
 		}
 		if sourceVol == nil {
@@ -99,15 +99,15 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := data.VolumeKey{
-			AccountKey: data.AccountKey{
+		destKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  posting.Destination,
 			},
 			Asset: posting.Asset,
 		}
 		destVol, err := s.GetVolume(destKey)
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
+		if err != nil && !errors.Is(err, dal.ErrNotFound) {
 			return nil, err
 		}
 		if destVol == nil {
@@ -125,10 +125,10 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 			accountsMeta[account] = make(map[string]string, len(meta))
 			for key, value := range meta {
 				accountsMeta[account][key] = value
-				s.PutAccountMetadata(data.MetadataKey{
-					AccountKey: data.AccountKey{
+				s.PutAccountMetadata(dal.MetadataKey{
+					AccountKey: dal.AccountKey{
 						LedgerID: ledgerID,
-						Account:    account,
+						Account:  account,
 					},
 					Key: key,
 				}, &commonpb.MetadataValue{Value: value})
@@ -180,8 +180,8 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 				continue
 			}
 
-			volumeKey := data.VolumeKey{
-				AccountKey: data.AccountKey{
+			volumeKey := dal.VolumeKey{
+				AccountKey: dal.AccountKey{
 					LedgerID: s.ledgerID,
 					Account:  account,
 				},
@@ -189,7 +189,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 			}
 
 			vol, err := s.store.GetVolume(volumeKey)
-			if err != nil && !errors.Is(err, data.ErrNotFound) {
+			if err != nil && !errors.Is(err, dal.ErrNotFound) {
 				return nil, err
 			}
 
@@ -230,16 +230,16 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		result[account] = accountMeta
 
 		for _, key := range keys {
-			metaKey := data.MetadataKey{
-				AccountKey: data.AccountKey{
+			metaKey := dal.MetadataKey{
+				AccountKey: dal.AccountKey{
 					LedgerID: s.ledgerID,
-					Account:    account,
+					Account:  account,
 				},
 				Key: key,
 			}
 
 			value, err := s.store.GetAccountMetadata(metaKey)
-			if err != nil && !errors.Is(err, data.ErrNotFound) {
+			if err != nil && !errors.Is(err, dal.ErrNotFound) {
 				return nil, err
 			}
 			if value != nil && value.Value != "" {

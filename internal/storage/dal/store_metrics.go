@@ -1,4 +1,4 @@
-package data
+package dal
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"

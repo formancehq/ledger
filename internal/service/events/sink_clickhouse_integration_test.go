@@ -159,7 +159,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("ch-sink")
+		cursor, err := events.ReadSinkCursor(store,"ch-sink")
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -259,7 +259,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("typed-sub")
+		cursor, err := events.ReadSinkCursor(store,"typed-sub")
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process logs")
 

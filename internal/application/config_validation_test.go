@@ -5,17 +5,17 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func newTestStore(t *testing.T) *data.Store {
+func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 	dir := t.TempDir()
 	logger := logging.Testing()
 	meter := noop.Meter{}
-	store, err := data.NewStore(dir, logger, meter, data.DefaultConfig())
+	store, err := dal.NewStore(dir, logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, store.Close())
@@ -29,8 +29,8 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 1},
-		ClusterID:  "test-cluster",
+		RaftConfig:   node.NodeConfig{NodeID: 1},
+		ClusterID:    "test-cluster",
 		AuditEnabled: true,
 	}
 
@@ -38,7 +38,7 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify config was persisted
-	persisted, err := store.LoadPersistedConfig()
+	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, uint64(1), persisted.NodeID)
@@ -52,8 +52,8 @@ func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 42},
-		ClusterID:  "my-cluster",
+		RaftConfig:   node.NodeConfig{NodeID: 42},
+		ClusterID:    "my-cluster",
 		AuditEnabled: true,
 	}
 
@@ -85,7 +85,7 @@ func TestValidateOrPersistConfig_NodeIDMismatch(t *testing.T) {
 	err = ValidateOrPersistConfig(store, cfg, logger, false)
 	require.Error(t, err)
 
-	var mismatchErr *data.ConfigMismatchError
+	var mismatchErr *ConfigMismatchError
 	require.ErrorAs(t, err, &mismatchErr)
 	require.Equal(t, "node-id", mismatchErr.Field)
 	require.Equal(t, "1", mismatchErr.Persisted)
@@ -111,7 +111,7 @@ func TestValidateOrPersistConfig_ClusterIDMismatch(t *testing.T) {
 	err = ValidateOrPersistConfig(store, cfg, logger, false)
 	require.Error(t, err)
 
-	var mismatchErr *data.ConfigMismatchError
+	var mismatchErr *ConfigMismatchError
 	require.ErrorAs(t, err, &mismatchErr)
 	require.Equal(t, "cluster-id", mismatchErr.Field)
 	require.Equal(t, "cluster-a", mismatchErr.Persisted)
@@ -139,7 +139,7 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify config was overwritten
-	persisted, err := store.LoadPersistedConfig()
+	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), persisted.NodeID)
 	require.Equal(t, "cluster-b", persisted.ClusterID)
@@ -166,7 +166,7 @@ func TestValidateOrPersistConfig_AuditDisabledWarning(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify the config was updated
-	persisted, err := store.LoadPersistedConfig()
+	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.False(t, persisted.AuditEnabled)
 }

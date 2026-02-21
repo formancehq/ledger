@@ -11,21 +11,22 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 )
 
-func createTestStore(t *testing.T) *data.Store {
+func createTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	s, err := data.NewStore(t.TempDir(), logger, meter, data.DefaultConfig())
+	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -37,27 +38,27 @@ func createTestStore(t *testing.T) *data.Store {
 // using the same mechanisms as the real state machine.
 type testEngine struct {
 	t         *testing.T
-	store     *data.Store
+	store     *dal.Store
 	attrs     *attributes.Attributes
 	processor *processing.RequestProcessor
 	cache     *cache.Cache
 
 	// In-memory state tracking (mirroring the state machine)
-	nextLedgerID   uint32
-	nextSequenceID uint64
-	lastLogHash    []byte
-	ledgers        map[string]*commonpb.LedgerInfo
-	boundaries     map[string]*raftcmdpb.LedgerBoundaries
-	volumes        map[string]*raftcmdpb.VolumePair
-	metadata       map[string]*commonpb.MetadataValue
-	reverted       map[string]bool
-	idempotency    map[string]*commonpb.IdempotencyKeyValue
-	references     map[string]*commonpb.TransactionReferenceValue
+	nextLedgerID      uint32
+	nextSequenceID    uint64
+	lastLogHash       []byte
+	ledgers           map[string]*commonpb.LedgerInfo
+	boundaries        map[string]*raftcmdpb.LedgerBoundaries
+	volumes           map[string]*raftcmdpb.VolumePair
+	metadata          map[string]*commonpb.MetadataValue
+	reverted          map[string]bool
+	idempotency       map[string]*commonpb.IdempotencyKeyValue
+	references        map[string]*commonpb.TransactionReferenceValue
 	currentOpenPeriod *commonpb.Period
-	closingPeriod    *commonpb.Period
-	nextPeriodID     uint64
-	hasher         *blake3.Hasher
-	raftIndex      uint64
+	closingPeriod     *commonpb.Period
+	nextPeriodID      uint64
+	hasher            *blake3.Hasher
+	raftIndex         uint64
 }
 
 func newTestEngine(t *testing.T) *testEngine {
@@ -133,7 +134,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	batch := e.store.NewBatch()
 	defer func() { _ = batch.Cancel() }()
 
-	err = batch.AppendLogs(logs...)
+	err = state.AppendLogs(batch, logs...)
 	require.NoError(e.t, err)
 
 	// Write only modified volume attributes.
@@ -171,11 +172,11 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	// Write transaction updates to Pebble
 	for keyStr, updates := range store.transactionUpdates {
-		var tk data.TransactionKey
+		var tk dal.TransactionKey
 		err := tk.Unmarshal([]byte(keyStr))
 		require.NoError(e.t, err)
 		for _, update := range updates {
-			err := batch.StoreTransactionUpdate(tk, update)
+			err := state.StoreTransactionUpdate(batch, tk, update)
 			require.NoError(e.t, err)
 		}
 	}
@@ -189,13 +190,13 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	// Write ledger info
 	for _, info := range e.ledgers {
-		err := batch.SaveLedger(info)
+		err := state.SaveLedger(batch, info)
 		require.NoError(e.t, err)
-		err = e.attrs.Ledger.SetBase(batch, e.raftIndex, data.LedgerKey{Name: info.Name}.Bytes(), info)
+		err = e.attrs.Ledger.SetBase(batch, e.raftIndex, dal.LedgerKey{Name: info.Name}.Bytes(), info)
 		require.NoError(e.t, err)
 	}
 
-	err = batch.SetAppliedIndex(e.raftIndex)
+	err = state.SetAppliedIndex(batch, e.raftIndex)
 	require.NoError(e.t, err)
 
 	err = batch.Commit()
@@ -280,91 +281,91 @@ func (s *inMemoryStore) PutBoundaries(ledger string, boundaries *raftcmdpb.Ledge
 	s.engine.boundaries[ledger] = boundaries
 }
 
-func (s *inMemoryStore) GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (s *inMemoryStore) GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	vp, ok := s.engine.volumes[string(key.Bytes())]
 	if !ok {
-		return nil, data.ErrNotFound
+		return nil, dal.ErrNotFound
 	}
 	return proto.CloneOf(vp), nil
 }
 
-func (s *inMemoryStore) PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+func (s *inMemoryStore) PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 	k := string(key.Bytes())
 	s.engine.volumes[k] = value
 	s.modifiedVolumes[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {
+func (s *inMemoryStore) GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error) {
 	v, ok := s.engine.metadata[string(key.Bytes())]
 	if !ok {
-		return nil, data.ErrNotFound
+		return nil, dal.ErrNotFound
 	}
 	return v, nil
 }
 
-func (s *inMemoryStore) PutAccountMetadata(key data.MetadataKey, value *commonpb.MetadataValue) {
+func (s *inMemoryStore) PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue) {
 	k := string(key.Bytes())
 	s.engine.metadata[k] = value
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) DeleteAccountMetadata(key data.MetadataKey) {
+func (s *inMemoryStore) DeleteAccountMetadata(key dal.MetadataKey) {
 	k := string(key.Bytes())
 	delete(s.engine.metadata, k)
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) PutLedgerMetadata(_ data.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
+func (s *inMemoryStore) PutLedgerMetadata(_ dal.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
 
-func (s *inMemoryStore) GetReverted(key data.TransactionKey) (bool, error) {
+func (s *inMemoryStore) GetReverted(key dal.TransactionKey) (bool, error) {
 	reverted, ok := s.engine.reverted[string(key.Bytes())]
 	if !ok {
-		return false, data.ErrNotFound
+		return false, dal.ErrNotFound
 	}
 	return reverted, nil
 }
 
-func (s *inMemoryStore) PutReverted(key data.TransactionKey, reverted bool) {
+func (s *inMemoryStore) PutReverted(key dal.TransactionKey, reverted bool) {
 	k := string(key.Bytes())
 	s.engine.reverted[k] = reverted
 	s.modifiedReverted[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (s *inMemoryStore) GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	v, ok := s.engine.idempotency[key.Key]
 	if !ok {
-		return nil, data.ErrNotFound
+		return nil, dal.ErrNotFound
 	}
 	return v, nil
 }
 
-func (s *inMemoryStore) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (s *inMemoryStore) PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	s.engine.idempotency[key.Key] = value
 }
 
-func (s *inMemoryStore) GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (s *inMemoryStore) GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	v, ok := s.engine.references[string(key.Bytes())]
 	if !ok {
-		return nil, data.ErrNotFound
+		return nil, dal.ErrNotFound
 	}
 	return v, nil
 }
 
-func (s *inMemoryStore) PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (s *inMemoryStore) PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *inMemoryStore) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
+func (s *inMemoryStore) AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
 	k := string(key.Bytes())
 	s.transactionUpdates[k] = append(s.transactionUpdates[k], update)
 }
 
-func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)           {}
-func (s *inMemoryStore) RemoveSigningKey(_ string)                  {}
-func (s *inMemoryStore) SetRequireSignatures(_ bool)                {}
-func (s *inMemoryStore) SetMaintenanceMode(_ bool)                  {}
-func (s *inMemoryStore) SetPeriodSchedule(_ string)                 {}
-func (s *inMemoryStore) DeletePeriodSchedule()                      {}
+func (s *inMemoryStore) AddSigningKey(_ string, _ []byte)                     {}
+func (s *inMemoryStore) RemoveSigningKey(_ string)                            {}
+func (s *inMemoryStore) SetRequireSignatures(_ bool)                          {}
+func (s *inMemoryStore) SetMaintenanceMode(_ bool)                            {}
+func (s *inMemoryStore) SetPeriodSchedule(_ string)                           {}
+func (s *inMemoryStore) DeletePeriodSchedule()                                {}
 func (s *inMemoryStore) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
 func (s *inMemoryStore) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
 func (s *inMemoryStore) RemoveSinkConfig(_ string)                            {}
@@ -584,7 +585,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 }
 
 // collectCheckErrors runs the checker and returns all error events.
-func collectCheckErrors(t *testing.T, store *data.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
+func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attrs)
@@ -804,15 +805,15 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 	log2.Hash = []byte("this-is-a-bad-hash")
 
 	batch := store.NewBatch()
-	require.NoError(t, batch.AppendLogs(log1, log2))
-	require.NoError(t, batch.SaveLedger(log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, batch.SaveLedger(log2.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.AppendLogs(batch, log1, log2))
+	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log2.Payload.GetCreateLedger().Info))
 	require.NoError(t, batch.Commit())
 
 	// Write ledger attributes
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, data.LedgerKey{Name: "test"}.Bytes(), log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, data.LedgerKey{Name: "test2"}.Bytes(), log2.Payload.GetCreateLedger().Info))
+	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, dal.LedgerKey{Name: "test"}.Bytes(), log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, dal.LedgerKey{Name: "test2"}.Bytes(), log2.Payload.GetCreateLedger().Info))
 	require.NoError(t, batch2.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -866,9 +867,9 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	log3.Hash = computeCorrectHash(hasher, log1.Hash, log3)
 
 	batch := store.NewBatch()
-	require.NoError(t, batch.AppendLogs(log1, log3))
-	require.NoError(t, batch.SaveLedger(log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, batch.SaveLedger(log3.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.AppendLogs(batch, log1, log3))
+	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log3.Payload.GetCreateLedger().Info))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1091,7 +1092,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 
 	// Write a spurious transaction update to Pebble for tx 1 (ledger ID 1)
 	batch := engine.store.NewBatch()
-	err := batch.StoreTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, &commonpb.TransactionUpdate{
+	err := state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: 1, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 999,
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
@@ -1138,7 +1139,7 @@ func TestCheckerDetectsRevertedMismatch(t *testing.T) {
 	))
 
 	// Overwrite the reverted status to false in Pebble
-	tkBytes := data.TransactionKey{LedgerID: 1, ID: 1}.Bytes()
+	tkBytes := dal.TransactionKey{LedgerID: 1, ID: 1}.Bytes()
 	batch := engine.store.NewBatch()
 	// Write a later raft index to override the existing base
 	err := engine.attrs.Reverted.SetBase(batch, 1<<61, tkBytes, &commonpb.RevertedValue{Reverted: false})

@@ -120,7 +120,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("http-sink")
+		cursor, err := events.ReadSinkCursor(store,"http-sink")
 		return err == nil && cursor >= 2
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -201,7 +201,7 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("http-hmac-sink")
+		cursor, err := events.ReadSinkCursor(store,"http-hmac-sink")
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -265,7 +265,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := store.GetSinkCursor("http-proto-sink")
+		cursor, err := events.ReadSinkCursor(store,"http-proto-sink")
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 

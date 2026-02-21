@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/holiman/uint256"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/holiman/uint256"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -30,23 +30,23 @@ type maintenanceModeUpdate struct {
 }
 
 type Buffered struct {
-	fsm                 *Machine
-	attrs               *attributes.Attributes
-	Date                *commonpb.Timestamp
-	NextLedgerID        uint32
-	NextSequenceID      uint64
-	LastLogHash         []byte
-	Ledgers             *attributes.DerivedKeyStore[data.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries          *attributes.DerivedKeyStore[data.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	Volumes             *attributes.DerivedKeyStore[data.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata     *attributes.DerivedKeyStore[data.MetadataKey, *commonpb.MetadataValue]
-	LedgerMetadata      *attributes.DerivedKeyStore[data.LedgerMetadataKey, *commonpb.MetadataValue]
-	Reversions          *attributes.DerivedKeyStore[data.TransactionKey, bool]
-	IdempotencyKeys     *attributes.DerivedKeyStore[data.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References          *attributes.DerivedKeyStore[data.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	SinkConfigs         *attributes.DerivedKeyStore[data.SinkConfigKey, *commonpb.SinkConfig]
-	TransactionsUpdates        map[data.TransactionKey][]*commonpb.TransactionUpdate
-	PendingLogs                []*commonpb.Log
+	fsm                          *Machine
+	attrs                        *attributes.Attributes
+	Date                         *commonpb.Timestamp
+	NextLedgerID                 uint32
+	NextSequenceID               uint64
+	LastLogHash                  []byte
+	Ledgers                      *attributes.DerivedKeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries                   *attributes.DerivedKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	Volumes                      *attributes.DerivedKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata              *attributes.DerivedKeyStore[dal.MetadataKey, *commonpb.MetadataValue]
+	LedgerMetadata               *attributes.DerivedKeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue]
+	Reversions                   *attributes.DerivedKeyStore[dal.TransactionKey, bool]
+	IdempotencyKeys              *attributes.DerivedKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References                   *attributes.DerivedKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	SinkConfigs                  *attributes.DerivedKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
+	TransactionsUpdates          map[dal.TransactionKey][]*commonpb.TransactionUpdate
+	PendingLogs                  []*commonpb.Log
 	pendingSigningKeyUpdates     []signingKeyUpdate
 	pendingSigningConfigUpdate   *signingConfigUpdate
 	pendingMaintenanceModeUpdate *maintenanceModeUpdate
@@ -68,7 +68,7 @@ type purgeRange struct {
 	closeSequence uint64
 }
 
-func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
+func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	// Process Ledger updates
 	ledgerUpdates, _, err := b.Ledgers.Merge()
 	if err != nil {
@@ -78,7 +78,7 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		if err := b.attrs.Ledger.SetBase(batch, index, update.CanonicalKey, update.New); err != nil {
 			return fmt.Errorf("failed setting ledger base: %w", err)
 		}
-		if err := batch.SaveLedger(update.New); err != nil {
+		if err := SaveLedger(batch, update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
 		}
 		if err := b.attrs.Ledger.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
@@ -204,14 +204,14 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 
 	for key, updates := range b.TransactionsUpdates {
 		for _, update := range updates {
-			err := batch.StoreTransactionUpdate(key, update)
+			err := StoreTransactionUpdate(batch, key, update)
 			if err != nil {
 				return fmt.Errorf("failed storing transaction update for ledger %d: %w", key.LedgerID, err)
 			}
 		}
 	}
 
-	err = batch.AppendLogs(b.PendingLogs...)
+	err = AppendLogs(batch, b.PendingLogs...)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
@@ -219,14 +219,14 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 	// Apply signing key updates to Pebble batch and in-memory KeyStore
 	for _, update := range b.pendingSigningKeyUpdates {
 		if update.remove {
-			if err := batch.DeleteSigningKey(update.keyID); err != nil {
+			if err := DeleteSigningKey(batch, update.keyID); err != nil {
 				return fmt.Errorf("deleting signing key: %w", err)
 			}
 			if b.fsm.keyStore != nil {
 				b.fsm.keyStore.RemovePublicKey(update.keyID)
 			}
 		} else {
-			if err := batch.SaveSigningKey(update.keyID, update.publicKey); err != nil {
+			if err := SaveSigningKey(batch, update.keyID, update.publicKey); err != nil {
 				return fmt.Errorf("saving signing key: %w", err)
 			}
 			if b.fsm.keyStore != nil {
@@ -235,24 +235,24 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		}
 	}
 	if b.pendingSigningConfigUpdate != nil {
-		if err := batch.SaveSigningConfig(b.pendingSigningConfigUpdate.requireSignatures); err != nil {
+		if err := SaveSigningConfig(batch, b.pendingSigningConfigUpdate.requireSignatures); err != nil {
 			return fmt.Errorf("saving signing config: %w", err)
 		}
 		b.fsm.sharedState.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
 	}
 	if b.pendingMaintenanceModeUpdate != nil {
-		if err := batch.SaveMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled); err != nil {
+		if err := SaveMaintenanceMode(batch, b.pendingMaintenanceModeUpdate.enabled); err != nil {
 			return fmt.Errorf("saving maintenance mode: %w", err)
 		}
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 	if b.pendingPeriodScheduleUpdate != nil {
 		if *b.pendingPeriodScheduleUpdate == "" {
-			if err := batch.DeletePeriodSchedule(); err != nil {
+			if err := BatchDeletePeriodSchedule(batch); err != nil {
 				return fmt.Errorf("deleting period schedule: %w", err)
 			}
 		} else {
-			if err := batch.SavePeriodSchedule(*b.pendingPeriodScheduleUpdate); err != nil {
+			if err := SavePeriodSchedule(batch, *b.pendingPeriodScheduleUpdate); err != nil {
 				return fmt.Errorf("saving period schedule: %w", err)
 			}
 		}
@@ -265,22 +265,22 @@ func (b *Buffered) Merge(index uint64, batch *data.Batch) error {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
 	}
 	for _, update := range sinkUpdates {
-		if err := batch.SaveSinkConfig(update.New); err != nil {
+		if err := SaveSinkConfig(batch, update.New); err != nil {
 			return fmt.Errorf("saving sink config %q: %w", update.Key.Name, err)
 		}
 	}
 	for _, deletion := range sinkDeletions {
-		if err := batch.DeleteSinkConfig(deletion.Key.Name); err != nil {
+		if err := DeleteSinkConfig(batch, deletion.Key.Name); err != nil {
 			return fmt.Errorf("deleting sink config %q: %w", deletion.Key.Name, err)
 		}
 	}
 
 	for _, p := range b.changedPeriods {
-		if err := batch.StorePeriod(p); err != nil {
+		if err := StorePeriod(batch, p); err != nil {
 			return fmt.Errorf("storing period %d: %w", p.Id, err)
 		}
 	}
-	if err := batch.StoreNextPeriodID(b.NextPeriodID); err != nil {
+	if err := StoreNextPeriodID(batch, b.NextPeriodID); err != nil {
 		return fmt.Errorf("storing next period ID: %w", err)
 	}
 
@@ -344,7 +344,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
 		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
-		TransactionsUpdates: make(map[data.TransactionKey][]*commonpb.TransactionUpdate),
+		TransactionsUpdates: make(map[dal.TransactionKey][]*commonpb.TransactionUpdate),
 		allPeriods:          clonedAll,
 		currentOpenPeriod:   clonedOpen,
 		closingPeriod:       clonedClosing,
@@ -355,7 +355,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 // Store interface implementation for Buffered
 
 func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
-	info, err := b.Ledgers.Get(data.LedgerKey{Name: name})
+	info, err := b.Ledgers.Get(dal.LedgerKey{Name: name})
 	if err != nil || info == nil {
 		return nil, false
 	}
@@ -363,11 +363,11 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 }
 
 func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
-	b.Ledgers.Put(data.LedgerKey{Name: name}, info)
+	b.Ledgers.Put(dal.LedgerKey{Name: name}, info)
 }
 
 func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
-	boundaries, err := b.Boundaries.Get(data.LedgerKey{Name: ledger})
+	boundaries, err := b.Boundaries.Get(dal.LedgerKey{Name: ledger})
 	if err != nil || boundaries == nil {
 		return nil, false
 	}
@@ -375,58 +375,58 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 }
 
 func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	b.Boundaries.Put(data.LedgerKey{Name: ledger}, boundaries)
+	b.Boundaries.Put(dal.LedgerKey{Name: ledger}, boundaries)
 }
 
-func (b *Buffered) GetVolume(key data.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (b *Buffered) GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	return b.Volumes.Get(key)
 }
 
-func (b *Buffered) PutVolume(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+func (b *Buffered) PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 	b.Volumes.Put(key, value)
 }
 
-func (b *Buffered) GetAccountMetadata(key data.MetadataKey) (*commonpb.MetadataValue, error) {
+func (b *Buffered) GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error) {
 	return b.AccountMetadata.Get(key)
 }
 
-func (b *Buffered) PutAccountMetadata(key data.MetadataKey, value *commonpb.MetadataValue) {
+func (b *Buffered) PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue) {
 	b.AccountMetadata.Put(key, value)
 }
 
-func (b *Buffered) DeleteAccountMetadata(key data.MetadataKey) {
+func (b *Buffered) DeleteAccountMetadata(key dal.MetadataKey) {
 	b.AccountMetadata.Delete(key)
 }
 
-func (b *Buffered) PutLedgerMetadata(key data.LedgerMetadataKey, value *commonpb.MetadataValue) {
+func (b *Buffered) PutLedgerMetadata(key dal.LedgerMetadataKey, value *commonpb.MetadataValue) {
 	b.LedgerMetadata.Put(key, value)
 }
 
-func (b *Buffered) GetReverted(key data.TransactionKey) (bool, error) {
+func (b *Buffered) GetReverted(key dal.TransactionKey) (bool, error) {
 	return b.Reversions.Get(key)
 }
 
-func (b *Buffered) PutReverted(key data.TransactionKey, reverted bool) {
+func (b *Buffered) PutReverted(key dal.TransactionKey, reverted bool) {
 	b.Reversions.Put(key, reverted)
 }
 
-func (b *Buffered) GetIdempotencyKey(key data.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (b *Buffered) GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	return b.IdempotencyKeys.Get(key)
 }
 
-func (b *Buffered) PutIdempotencyKey(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (b *Buffered) PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	b.IdempotencyKeys.Put(key, value)
 }
 
-func (b *Buffered) GetTransactionReference(key data.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (b *Buffered) GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	return b.References.Get(key)
 }
 
-func (b *Buffered) PutTransactionReference(key data.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (b *Buffered) PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.References.Put(key, value)
 }
 
-func (b *Buffered) AddTransactionUpdate(key data.TransactionKey, update *commonpb.TransactionUpdate) {
+func (b *Buffered) AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
 	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
 }
 
@@ -466,7 +466,7 @@ func (b *Buffered) DeletePeriodSchedule() {
 }
 
 func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
-	cfg, err := b.SinkConfigs.Get(data.SinkConfigKey{Name: name})
+	cfg, err := b.SinkConfigs.Get(dal.SinkConfigKey{Name: name})
 	if err != nil {
 		return nil, nil
 	}
@@ -474,12 +474,12 @@ func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 }
 
 func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
-	b.SinkConfigs.Put(data.SinkConfigKey{Name: config.Name}, config)
+	b.SinkConfigs.Put(dal.SinkConfigKey{Name: config.Name}, config)
 	b.sinkConfigChanged = true
 }
 
 func (b *Buffered) RemoveSinkConfig(name string) {
-	b.SinkConfigs.Delete(data.SinkConfigKey{Name: name})
+	b.SinkConfigs.Delete(dal.SinkConfigKey{Name: name})
 	b.sinkConfigChanged = true
 }
 
@@ -559,7 +559,7 @@ func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int
 // This is a fundamental accounting invariant: every posting moves the same amount from a source
 // account (output) to a destination account (input), so the totals must always balance.
 func checkDoubleEntryInvariant(
-	volumeUpdates []attributes.Update[data.VolumeKey, *raftcmdpb.VolumePair],
+	volumeUpdates []attributes.Update[dal.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	var (
 		inputSum  uint256.Int
@@ -679,18 +679,18 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 }
 
 // executePurge deletes cold-storable data for a single purge range.
-func (b *Buffered) executePurge(batch *data.Batch, pr *purgeRange) error {
+func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Sequence-keyed prefixes (logs, audit): efficient range delete.
-	for _, prefix := range data.ColdSequencePrefixes {
-		start := data.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.startSequence).Build()
-		end := data.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.closeSequence + 1).Build()
+	for _, prefix := range dal.ColdSequencePrefixes {
+		start := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.startSequence).Build()
+		end := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.closeSequence + 1).Build()
 		if err := batch.DeleteRange(start, end, nil); err != nil {
 			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
 		}
 	}
 
 	// Transaction updates: iterate and point-delete by byLog range.
-	if err := batch.PurgeTransactionUpdates(pr.startSequence, pr.closeSequence); err != nil {
+	if err := PurgeTransactionUpdates(batch, pr.startSequence, pr.closeSequence); err != nil {
 		return fmt.Errorf("purging transaction updates [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
 	}
 

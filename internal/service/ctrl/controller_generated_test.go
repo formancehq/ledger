@@ -14,7 +14,7 @@ import (
 	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	data "github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	data "github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	gomock "go.uber.org/mock/gomock"
 )
 

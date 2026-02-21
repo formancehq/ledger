@@ -5,97 +5,131 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// metadataCanonicalPrefix builds the canonical key prefix for all metadata keys
-// of a given account: [ledgerID(4)][account]\x01
-func metadataCanonicalPrefix(ledgerID uint32, account string) []byte {
-	prefix := make([]byte, 4+len(account)+1)
-	binary.BigEndian.PutUint32(prefix, ledgerID)
-	copy(prefix[4:], account)
-	prefix[4+len(account)] = 0x01
-	return prefix
-}
+// assembleAccount builds a commonpb.Account from flushed volume and metadata accumulator entries.
+func assembleAccount(
+	address string,
+	volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair],
+	metaEntries []attributes.ComputedEntry[*commonpb.MetadataValue],
+) *commonpb.Account {
+	account := &commonpb.Account{
+		Address:  address,
+		Metadata: &commonpb.MetadataSet{},
+	}
 
-// volumeCanonicalPrefix builds the canonical key prefix for all volume keys
-// of a given account: [ledgerID(4)][account]\x00
-func volumeCanonicalPrefix(ledgerID uint32, account string) []byte {
-	prefix := make([]byte, 4+len(account)+1)
-	binary.BigEndian.PutUint32(prefix, ledgerID)
-	copy(prefix[4:], account)
-	prefix[4+len(account)] = 0x00
-	return prefix
-}
-
-// GetAccountMetadata retrieves account metadata for multiple accounts from the store for a specific ledger.
-// For each account, it performs a single targeted scan over that account's metadata range
-// using ComputeAllForPrefix, avoiding the global attribute scan.
-func GetAccountMetadata(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, accounts []string) (map[string]metadata.Metadata, error) {
-	result := make(map[string]metadata.Metadata, len(accounts))
-
-	for _, account := range accounts {
-		result[account] = make(metadata.Metadata)
-
-		prefix := metadataCanonicalPrefix(ledgerID, account)
-		entries, err := attrs.Metadata.ComputeAllForPrefix(reader, ^uint64(0), prefix)
-		if err != nil {
-			return nil, fmt.Errorf("computing metadata for account %s: %w", account, err)
-		}
-
-		for _, entry := range entries {
-			var key data.MetadataKey
-			if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-				return nil, fmt.Errorf("parsing metadata key: %w", err)
+	if len(volEntries) > 0 {
+		volumes := make(map[string]*commonpb.VolumesWithBalance, len(volEntries))
+		for _, entry := range volEntries {
+			var vk dal.VolumeKey
+			if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+				continue
 			}
+			input := big.NewInt(0)
+			output := big.NewInt(0)
 			if entry.Value != nil {
-				result[account][key.Key] = entry.Value.Value
+				if entry.Value.InputKnown != nil {
+					input = entry.Value.InputKnown.ToBigInt()
+				}
+				if entry.Value.OutputKnown != nil {
+					output = entry.Value.OutputKnown.ToBigInt()
+				}
 			}
+			volumes[vk.Asset] = &commonpb.VolumesWithBalance{
+				Input:   input.String(),
+				Output:  output.String(),
+				Balance: new(big.Int).Sub(input, output).String(),
+			}
+		}
+		account.Volumes = volumes
+	}
+
+	if len(metaEntries) > 0 {
+		md := make(metadata.Metadata, len(metaEntries))
+		for _, entry := range metaEntries {
+			var mk dal.MetadataKey
+			if err := mk.Unmarshal(entry.CanonicalKey); err == nil && entry.Value != nil {
+				md[mk.Key] = entry.Value.Value
+			}
+		}
+		if len(md) > 0 {
+			account.Metadata = commonpb.MetadataSetFromMap(md)
 		}
 	}
 
-	return result, nil
+	return account
 }
 
-// GetAccountVolumes retrieves all volumes (input, output, balance) for all assets of an account.
-// It performs a single targeted scan over the account's volume range using ComputeAllForPrefix,
-// avoiding the global attribute scan.
-func GetAccountVolumes(reader data.PebbleReader, attrs *attributes.Attributes, ledgerID uint32, account string) (map[string]*commonpb.VolumesWithBalance, error) {
-	result := make(map[string]*commonpb.VolumesWithBalance)
+// scanAccount performs a single forward scan over all Volume and Metadata attributes
+// for one account and returns an assembled Account. The scan range is
+// [0xF1][ledgerID][address]\x00 .. [0xF1][ledgerID][address]\x02, covering both
+// volume (\x00) and metadata (\x01) canonical key separators.
+func scanAccount(
+	reader dal.PebbleReader,
+	attrs *attributes.Attributes,
+	ledgerID uint32,
+	address string,
+) (*commonpb.Account, error) {
+	// Build bounds: [0xF1][ledgerID][address]\x00 .. [0xF1][ledgerID][address]\x02
+	baseLen := 1 + 4 + len(address)
+	buf := make([]byte, baseLen+1)
+	buf[0] = dal.KeyPrefixAttributes
+	binary.BigEndian.PutUint32(buf[1:], ledgerID)
+	copy(buf[5:], address)
 
-	prefix := volumeCanonicalPrefix(ledgerID, account)
-	entries, err := attrs.Volume.ComputeAllForPrefix(reader, ^uint64(0), prefix)
+	lowerBound := make([]byte, baseLen+1)
+	copy(lowerBound, buf)
+	lowerBound[baseLen] = 0x00
+
+	upperBound := make([]byte, baseLen+1)
+	copy(upperBound, buf)
+	upperBound[baseLen] = 0x02
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("computing volumes for account %s: %w", account, err)
+		return nil, fmt.Errorf("creating iterator for account scan: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	volAcc := attrs.Volume.NewAccumulator()
+	metaAcc := attrs.Metadata.NewAccumulator()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading value: %w", err)
+		}
+
+		attrType, ok := attributes.AttrTypeFromKey(key)
+		if !ok {
+			continue
+		}
+
+		switch attrType {
+		case dal.AttributePrefixVolume:
+			if _, err := volAcc.Feed(key, valueBytes); err != nil {
+				return nil, fmt.Errorf("feeding volume: %w", err)
+			}
+		case dal.AttributePrefixMetadata:
+			if _, err := metaAcc.Feed(key, valueBytes); err != nil {
+				return nil, fmt.Errorf("feeding metadata: %w", err)
+			}
+		}
 	}
 
-	for _, entry := range entries {
-		var key data.VolumeKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			return nil, fmt.Errorf("parsing volume key: %w", err)
-		}
-
-		input := big.NewInt(0)
-		output := big.NewInt(0)
-		if entry.Value != nil {
-			if entry.Value.InputKnown != nil {
-				input = entry.Value.InputKnown.ToBigInt()
-			}
-			if entry.Value.OutputKnown != nil {
-				output = entry.Value.OutputKnown.ToBigInt()
-			}
-		}
-		balance := new(big.Int).Sub(input, output)
-
-		result[key.Asset] = &commonpb.VolumesWithBalance{
-			Input:   input.String(),
-			Output:  output.String(),
-			Balance: balance.String(),
-		}
+	if err := iter.Error(); err != nil {
+		return nil, err
 	}
 
-	return result, nil
+	return assembleAccount(address, volAcc.Flush(), metaAcc.Flush()), nil
 }

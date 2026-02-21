@@ -10,19 +10,19 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func createSealerTestStore(t *testing.T) *data.Store {
+func createSealerTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	s, err := data.NewStore(t.TempDir(), logger, meter, data.DefaultConfig())
+	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -35,7 +35,7 @@ type testSealerResult struct {
 	sealingHash []byte
 }
 
-func newTestSealer(t *testing.T, store *data.Store) (*Sealer, *testSealerResult) {
+func newTestSealer(t *testing.T, store *dal.Store) (*Sealer, *testSealerResult) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -52,7 +52,7 @@ func newTestSealer(t *testing.T, store *data.Store) (*Sealer, *testSealerResult)
 
 // createSealCheckpoint creates a seal checkpoint from the store and returns its path.
 // The checkpoint is automatically cleaned up when the test finishes.
-func createSealCheckpoint(t *testing.T, store *data.Store) string {
+func createSealCheckpoint(t *testing.T, store *dal.Store) string {
 	t.Helper()
 
 	checkpointPath, err := store.CreateTemporaryCheckpoint("seal")

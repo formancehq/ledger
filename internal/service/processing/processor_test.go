@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -40,7 +40,7 @@ func TestProcessProposal_WithIdempotencyKey_NewRequest(t *testing.T) {
 	}
 
 	// Idempotency key not found
-	mockStore.EXPECT().GetIdempotencyKey(data.IdempotencyKey{Key: "unique-key-123"}).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(nil, dal.ErrNotFound)
 
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
@@ -54,9 +54,9 @@ func TestProcessProposal_WithIdempotencyKey_NewRequest(t *testing.T) {
 	mockStore.EXPECT().GetLastLogHash().Return(nil)
 	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 	mockStore.EXPECT().PutIdempotencyKey(
-		data.IdempotencyKey{Key: "unique-key-123"},
+		dal.IdempotencyKey{Key: "unique-key-123"},
 		gomock.Any(),
-	).Do(func(key data.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+	).Do(func(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 		require.Equal(t, uint64(100), value.LogSequence)
 		require.NotEmpty(t, value.Hash)
 	})
@@ -105,7 +105,7 @@ func TestProcessProposal_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	}
 
 	// Idempotency key found with matching hash
-	mockStore.EXPECT().GetIdempotencyKey(data.IdempotencyKey{Key: "unique-key-123"}).Return(
+	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(
 		&commonpb.IdempotencyKeyValue{
 			LogSequence: 42,
 			Hash:        expectedHash,
@@ -152,7 +152,7 @@ func TestProcessProposal_WithIdempotencyKey_Conflict(t *testing.T) {
 	}
 
 	// Idempotency key found with DIFFERENT hash (conflict)
-	mockStore.EXPECT().GetIdempotencyKey(data.IdempotencyKey{Key: "unique-key-123"}).Return(
+	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(
 		&commonpb.IdempotencyKeyValue{
 			LogSequence: 42,
 			Hash:        []byte("different-hash"),
@@ -310,7 +310,7 @@ func TestProcessCreateLedger_WithMetadata(t *testing.T) {
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutLedgerMetadata(
-		data.LedgerMetadataKey{LedgerID: 1, Key: "env"},
+		dal.LedgerMetadataKey{LedgerID: 1, Key: "env"},
 		&commonpb.MetadataValue{Value: "production"},
 	)
 
@@ -410,8 +410,8 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutAccountMetadata(
-		data.MetadataKey{
-			AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+		dal.MetadataKey{
+			AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 			Key:        "status",
 		},
 		&commonpb.MetadataValue{Value: "active"},
@@ -468,8 +468,8 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 5}, gomock.Any()).Do(
-		func(key data.TransactionKey, update *commonpb.TransactionUpdate) {
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 5}, gomock.Any()).Do(
+		func(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
 			require.Equal(t, uint64(42), update.ByLog) // Global sequence ID
 			require.Len(t, update.Updates, 1)
 			addMeta := update.Updates[0].GetTransactionModificationAddMetadata()
@@ -518,8 +518,8 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	metaKey := data.MetadataKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	metaKey := dal.MetadataKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -570,13 +570,13 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
-	metaKey := data.MetadataKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	metaKey := dal.MetadataKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Key:        "status",
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, dal.ErrNotFound)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -619,12 +619,12 @@ func TestProcessCreateTransaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "bank"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}
 
@@ -646,20 +646,20 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100
 			require.Equal(t, int64(100), value.OutputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
 			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -706,8 +706,8 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}
 
@@ -759,12 +759,12 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	worldKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
+	worldKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}
 
@@ -787,7 +787,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -880,7 +880,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -940,7 +940,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1007,7 +1007,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1075,7 +1075,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1174,7 +1174,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1223,7 +1223,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	// Test allotment to multiple destinations
 	request := &servicepb.Request{
@@ -1289,7 +1289,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	// Test set_tx_meta
 	request := &servicepb.Request{
@@ -1350,19 +1350,19 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	// Expect account metadata to be set
 	mockStore.EXPECT().PutAccountMetadata(
-		data.MetadataKey{
-			AccountKey: data.AccountKey{LedgerID: 1, Account: "users:alice"},
+		dal.MetadataKey{
+			AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:alice"},
 			Key:        "account_type",
 		},
 		&commonpb.MetadataValue{Value: "savings"},
 	)
 	mockStore.EXPECT().PutAccountMetadata(
-		data.MetadataKey{
-			AccountKey: data.AccountKey{LedgerID: 1, Account: "users:alice"},
+		dal.MetadataKey{
+			AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:alice"},
 			Key:        "created_by",
 		},
 		&commonpb.MetadataValue{Value: "numscript"},
@@ -1425,12 +1425,12 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:123"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "merchant"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "merchant"},
 		Asset:      "USD",
 	}
 
@@ -1451,20 +1451,20 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume, nil)
 	// With force=true, balance check is skipped and output is updated
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100 (50 + 100 = 150)
 			require.Equal(t, int64(150), value.OutputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
 			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1513,12 +1513,12 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
 
-	sourceKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:new"},
+	sourceKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:new"},
 		Asset:      "USD",
 	}
-	destKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "merchant"},
+	destKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "merchant"},
 		Asset:      "USD",
 	}
 
@@ -1530,24 +1530,24 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Source returns ErrNotFound (no volume)
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should use OutputDiff since we don't know the absolute value
 			require.Nil(t, value.OutputKnown)
 			require.Equal(t, int64(100), value.OutputDiff.ToBigInt().Int64())
 		},
 	)
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, data.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(nil, dal.ErrNotFound)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
-		func(key data.VolumeKey, value *raftcmdpb.VolumePair) {
+		func(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should use InputDiff since we don't know the absolute value
 			require.Nil(t, value.InputKnown)
 			require.Equal(t, int64(100), value.InputDiff.ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1597,7 +1597,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	// when force=true (store adapter returns unlimited balance)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(data.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{

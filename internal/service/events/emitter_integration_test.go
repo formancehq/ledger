@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -48,7 +48,7 @@ func (s *recordingSink) getEvents() []*eventspb.Event {
 // In production, the emitter proposes through Raft and the FSM applies the updates;
 // in tests, we short-circuit by writing directly via a batch.
 type directProposer struct {
-	store *data.Store
+	store *dal.Store
 }
 
 func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
@@ -63,7 +63,7 @@ func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state
 	for _, update := range cmd.EventsSinkUpdates {
 		batch := p.store.NewBatch()
 		if update.Cursor > 0 {
-			if err := batch.SetSinkCursor(update.SinkName, update.Cursor); err != nil {
+			if err := state.SetSinkCursor(batch, update.SinkName, update.Cursor); err != nil {
 				_ = batch.Cancel()
 				f := futures.New[state.ApplyResult]()
 				f.Resolve(state.ApplyResult{}, err)
@@ -71,14 +71,14 @@ func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state
 			}
 		}
 		if update.ClearError {
-			if err := batch.ClearSinkStatus(update.SinkName); err != nil {
+			if err := state.ClearSinkStatus(batch, update.SinkName); err != nil {
 				_ = batch.Cancel()
 				f := futures.New[state.ApplyResult]()
 				f.Resolve(state.ApplyResult{}, err)
 				return f, nil
 			}
 		} else if update.Error != nil {
-			if err := batch.SetSinkStatus(&commonpb.SinkStatus{
+			if err := state.SetSinkStatus(batch, &commonpb.SinkStatus{
 				SinkName: update.SinkName,
 				Cursor:   update.Cursor,
 				Error:    update.Error,
@@ -101,30 +101,30 @@ func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state
 	return f, nil
 }
 
-func newTestStore(t *testing.T) *data.Store {
+func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	s, err := data.NewStore(t.TempDir(), logger, meter, data.DefaultConfig())
+	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
 
-func appendTestLogs(t *testing.T, s *data.Store, logs ...*commonpb.Log) {
+func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 	t.Helper()
 	batch := s.NewBatch()
-	require.NoError(t, batch.AppendLogs(logs...))
-	require.NoError(t, batch.SetAppliedIndex(1))
+	require.NoError(t, state.AppendLogs(batch, logs...))
+	require.NoError(t, state.SetAppliedIndex(batch, 1))
 	require.NoError(t, batch.Commit())
 }
 
-func registerLedger(t *testing.T, s *data.Store, name string, id uint32) {
+func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
 	t.Helper()
 	batch := s.NewBatch()
-	require.NoError(t, batch.SaveLedger(&commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:        id,
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
@@ -206,7 +206,7 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 	require.Equal(t, uint64(2), published[1].LogSequence)
 
 	// Verify cursor was advanced
-	cursor, err := store.GetSinkCursor("test-sink")
+	cursor, err := events.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cursor)
 }
@@ -351,7 +351,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	emitter1.Stop()
 
 	// Verify cursor is at 3
-	cursor, err := store.GetSinkCursor("test-sink")
+	cursor, err := events.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), cursor)
 
@@ -395,7 +395,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	require.Equal(t, uint64(4), published[0].LogSequence)
 
 	// Final cursor should be at 4
-	cursor, err = store.GetSinkCursor("test-sink")
+	cursor, err = events.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), cursor)
 }
@@ -611,7 +611,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	}
 
 	// Cursor should be at 10
-	cursor, err := store.GetSinkCursor("test-sink")
+	cursor, err := events.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), cursor)
 }

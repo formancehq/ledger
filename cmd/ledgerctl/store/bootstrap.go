@@ -16,7 +16,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"github.com/pterm/pterm"
 	"github.com/sirupsen/logrus"
@@ -87,7 +88,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	// Open staging as read-only to read metadata.
 	logger := newQuietLogger()
 
-	store, err := data.OpenReadOnly(stagingDir, logger)
+	store, err := dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
 		return fmt.Errorf("opening staging store: %w", err)
 	}
@@ -137,7 +138,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	checkpointPath := filepath.Join(checkpointsDir, "0")
-	if err := data.HardLink(stagingDir, checkpointPath); err != nil {
+	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
@@ -173,18 +174,18 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 }
 
 // readBootstrapPreviewData reads metadata and ledger names from a store.
-func readBootstrapPreviewData(store *data.Store) (lastAppliedIndex, lastAppliedTimestamp uint64, ledgerNames []string, err error) {
-	lastAppliedIndex, err = store.GetLastAppliedIndex()
+func readBootstrapPreviewData(store *dal.Store) (lastAppliedIndex, lastAppliedTimestamp uint64, ledgerNames []string, err error) {
+	lastAppliedIndex, err = state.ReadLastAppliedIndex(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err = store.GetLastAppliedTimestamp()
+	lastAppliedTimestamp, err = state.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	cursor, err := store.ListLedgers()
+	cursor, err := state.ReadLedgers(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -231,7 +232,7 @@ func printBootstrapPreview(lastAppliedIndex, lastAppliedTimestamp uint64, ledger
 
 // runBootstrapValidation runs the integrity checker on a staging directory.
 func runBootstrapValidation(ctx context.Context, stagingDir string, logger logging.Logger) error {
-	store, err := data.OpenReadOnly(stagingDir, logger)
+	store, err := dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
 		return fmt.Errorf("opening staging store for validation: %w", err)
 	}

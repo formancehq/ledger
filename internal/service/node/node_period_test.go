@@ -205,7 +205,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 
 		// Wait for the period to be sealed (CLOSED status with sealing hash)
 		require.Eventually(t, func() bool {
-			periods, err := leader.Store.GetPeriods()
+			periods, err := state.ReadAllPeriods(leader.Store)
 			if err != nil {
 				return false
 			}
@@ -218,7 +218,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
 		// Get the sealed period from leader
-		leaderPeriods, err := leader.Store.GetPeriods()
+		leaderPeriods, err := state.ReadAllPeriods(leader.Store)
 		require.NoError(t, err)
 
 		var leaderSealedPeriod *commonpb.Period
@@ -240,7 +240,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 			}
 
 			require.Eventually(t, func() bool {
-				periods, err := clusterNode.Store.GetPeriods()
+				periods, err := state.ReadAllPeriods(clusterNode.Store)
 				if err != nil {
 					return false
 				}
@@ -252,7 +252,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 				return false
 			}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
-			followerPeriods, err := clusterNode.Store.GetPeriods()
+			followerPeriods, err := state.ReadAllPeriods(clusterNode.Store)
 			require.NoError(t, err)
 
 			var followerSealedPeriod *commonpb.Period
@@ -277,7 +277,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 	// and all CLOSED periods should have matching hashes
 	var expectedPeriods []*commonpb.Period
 	for _, clusterNode := range cluster.nodes {
-		periods, err := clusterNode.Store.GetPeriods()
+		periods, err := state.ReadAllPeriods(clusterNode.Store)
 		require.NoError(t, err)
 
 		if expectedPeriods == nil {
@@ -365,7 +365,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	// This means the maintenance task has created the checkpoint, the sealer has computed
 	// the hash, and the SealPeriod order has been applied.
 	require.Eventually(t, func() bool {
-		periods, err := leader.Store.GetPeriods()
+		periods, err := state.ReadAllPeriods(leader.Store)
 		if err != nil {
 			return false
 		}
@@ -378,7 +378,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
 	// Record the expected sealing hash from the leader
-	leaderPeriods, err := leader.Store.GetPeriods()
+	leaderPeriods, err := state.ReadAllPeriods(leader.Store)
 	require.NoError(t, err)
 	var expectedSealingHash []byte
 	for _, p := range leaderPeriods {
@@ -425,7 +425,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 
 	// Wait for the period to be sealed on the restarted node
 	require.Eventually(t, func() bool {
-		periods, err := restartedNode.Store.GetPeriods()
+		periods, err := state.ReadAllPeriods(restartedNode.Store)
 		if err != nil {
 			return false
 		}
@@ -438,7 +438,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on restarted node", closedPeriodID)
 
 	// Verify the sealing hash matches the expected hash
-	restartedPeriods, err := restartedNode.Store.GetPeriods()
+	restartedPeriods, err := state.ReadAllPeriods(restartedNode.Store)
 	require.NoError(t, err)
 	var recoveredSealingHash []byte
 	for _, p := range restartedPeriods {
@@ -455,7 +455,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	// Verify all nodes agree on the sealing hash
 	for _, clusterNode := range cluster.nodes {
 		require.Eventually(t, func() bool {
-			periods, err := clusterNode.Store.GetPeriods()
+			periods, err := state.ReadAllPeriods(clusterNode.Store)
 			if err != nil {
 				return false
 			}
@@ -467,7 +467,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 			return false
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
-		periods, err := clusterNode.Store.GetPeriods()
+		periods, err := state.ReadAllPeriods(clusterNode.Store)
 		require.NoError(t, err)
 		for _, p := range periods {
 			if p.Id == closedPeriodID {

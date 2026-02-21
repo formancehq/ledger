@@ -8,12 +8,12 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -21,14 +21,14 @@ import (
 )
 
 // newTestMachineWithThreshold creates a Machine with a configurable generation threshold.
-func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Machine, *data.Store, *attributes.Attributes) {
+func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	dataStore, err := data.NewStore(t.TempDir(), logger, meter, data.DefaultConfig())
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
@@ -44,7 +44,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 }
 
 // newTestMachine creates a Machine backed by a real Pebble store for testing.
-func newTestMachine(t *testing.T) (*Machine, *data.Store, *attributes.Attributes) {
+func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 	return newTestMachineWithThreshold(t, 1000)
 }
@@ -296,8 +296,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	}
 
 	getVolumeFromCache := func(account, asset string) (input, output int64) {
-		key := data.VolumeKey{
-			AccountKey: data.AccountKey{
+		key := dal.VolumeKey{
+			AccountKey: dal.AccountKey{
 				LedgerID: ledgerID,
 				Account:  account,
 			},
@@ -305,7 +305,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		}
 
 		pair, _, err := machine.Volumes.Get(key.Bytes())
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
+		if err != nil && !errors.Is(err, dal.ErrNotFound) {
 			t.Fatalf("unexpected error reading cache volumes for %s: %v", account, err)
 		}
 		input = effectiveVolumeInput(pair)
@@ -339,8 +339,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		lastIndex := uint64(4)
 
 		for _, exp := range expectations {
-			key := data.VolumeKey{
-				AccountKey: data.AccountKey{
+			key := dal.VolumeKey{
+				AccountKey: dal.AccountKey{
 					LedgerID: ledgerID,
 					Account:  exp.account,
 				},
@@ -386,8 +386,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"merchant:bob cache output should be 0")
 
 		// Store: same verification
-		canonicalKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "merchant:bob"},
+		canonicalKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "merchant:bob"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -408,8 +408,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"customer:dave cache output should be 330 (batch 3 only), not 660")
 
 		// Store: same verification
-		canonicalKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "customer:dave"},
+		canonicalKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "customer:dave"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -430,8 +430,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"platform:revenue cache input should be 50 (20+30), not 80")
 
 		// Store: same verification
-		canonicalKey := data.VolumeKey{
-			AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "platform:revenue"},
+		canonicalKey := dal.VolumeKey{
+			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "platform:revenue"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -452,13 +452,13 @@ type attributeEntryInfo struct {
 
 // listRawAttributeEntries returns all raw PebbleDB entries for a given attribute prefix and canonical key.
 // This is used by tests to verify the physical state of the store after compaction.
-func listRawAttributeEntries(t *testing.T, store *data.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
+func listRawAttributeEntries(t *testing.T, store *dal.Store, attrPrefix byte, canonicalKey []byte) []attributeEntryInfo {
 	t.Helper()
 
 	// Key layout: [0xF1][CanonicalKey][AttrType][RaftIndex 8B][EntryType 1B]
 	// Build lower bound: [0xF1][CanonicalKey][AttrType]
-	kb := data.NewKeyBuilder()
-	kb.PutByte(data.KeyPrefixAttributes).
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixAttributes).
 		PutBytes(canonicalKey).
 		PutByte(attrPrefix)
 	lowerBound := kb.Snapshot()
@@ -503,13 +503,13 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 
 	machine, dataStore, attrs := newTestMachine(t)
 
-	aliceInputKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:alice"},
+	aliceInputKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 
-	worldOutputKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "world"},
+	worldOutputKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -536,13 +536,13 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	}
 
 	// Verify initial state: 4 diff entries for each key
-	inputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
+	inputEntries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 4, "should have 4 diff entries initially")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "all initial entries should be diffs")
 	}
 
-	outputEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, worldOutputKey)
+	outputEntries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, worldOutputKey)
 	require.Len(t, outputEntries, 4, "should have 4 output diff entries initially")
 
 	// Verify computed values before compaction: latest cumul diff = 400
@@ -573,7 +573,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
+	inputEntries = listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after compaction")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
@@ -581,7 +581,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.Equal(t, uint64(4), inputEntries[0].RaftIndex)
 	require.Equal(t, uint64(5), inputEntries[1].RaftIndex)
 
-	outputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, worldOutputKey)
+	outputEntries = listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, worldOutputKey)
 	require.Len(t, outputEntries, 2, "should have 2 output diffs remaining after compaction")
 
 	// Computed values unchanged: latest cumul diff = 400
@@ -623,7 +623,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	inputEntries = listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceInputKey)
+	inputEntries = listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after second compaction")
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
@@ -647,13 +647,13 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 
 	machine, dataStore, attrs := newTestMachine(t)
 
-	activeKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:active"},
+	activeKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:active"},
 		Asset:      "EUR",
 	}.Bytes()
 
-	dormantKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: 1, Account: "users:dormant"},
+	dormantKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:dormant"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -689,13 +689,13 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Active key: compacted (old diffs removed)
-	activeEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, activeKey)
+	activeEntries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, activeKey)
 	require.Len(t, activeEntries, 2, "active key should have 2 diffs remaining after compaction")
 	require.Equal(t, uint64(4), activeEntries[0].RaftIndex)
 	require.Equal(t, uint64(5), activeEntries[1].RaftIndex)
 
 	// Dormant key: NOT compacted (all 4 diffs preserved)
-	dormantEntries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, dormantKey)
+	dormantEntries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, dormantKey)
 	require.Len(t, dormantEntries, 4, "dormant key should keep all 4 diffs (compaction skipped)")
 
 	// Both computed values are still correct
@@ -714,7 +714,7 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 // may have been evicted from cache due to generation rotation.
 func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerInfo *commonpb.LedgerInfo) *raftcmdpb.PreloadSet {
 	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
-	id, tag := hasher.MakeKey(data.LedgerKey{Name: ledgerName}.Bytes())
+	id, tag := hasher.MakeKey(dal.LedgerKey{Name: ledgerName}.Bytes())
 
 	return &raftcmdpb.PreloadSet{
 		LastPersistedIndex: lastPersistedIndex,
@@ -765,11 +765,11 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	const ledgerID = uint32(1)
 
 	// Capture ledger info from cache for preloads
-	ledgerInfo, _, err := machine.Ledgers.Get(data.LedgerKey{Name: ledgerName}.Bytes())
+	ledgerInfo, _, err := machine.Ledgers.Get(dal.LedgerKey{Name: ledgerName}.Bytes())
 	require.NoError(t, err)
 
-	aliceVolumeKey := data.VolumeKey{
-		AccountKey: data.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
+	aliceVolumeKey := dal.VolumeKey{
+		AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -804,7 +804,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 
 	// Verify that compaction pruned old entries.
 	// 41 diffs initially, 18 pruned (8 at rotation 3 + 10 at rotation 4) = 23 remaining.
-	entries := listRawAttributeEntries(t, dataStore, data.AttributePrefixVolume, aliceVolumeKey)
+	entries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceVolumeKey)
 	require.Equal(t, 23, len(entries),
 		"compaction should have pruned old diffs, leaving 23 entries (diffs at indexes 20-42)")
 

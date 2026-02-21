@@ -11,7 +11,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
@@ -26,14 +27,14 @@ type Admission interface {
 type DefaultController struct {
 	logger    logging.Logger
 	admission Admission
-	store     *data.Store
+	store     *dal.Store
 	attrs     *attributes.Attributes
 }
 
 // NewDefaultController creates a new default controller
 func NewDefaultController(
 	admission Admission,
-	store *data.Store,
+	store *dal.Store,
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 ) *DefaultController {
@@ -46,24 +47,24 @@ func NewDefaultController(
 }
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers
-func (ctrl *DefaultController) ListLedgers(_ context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := data.ReadLedgers(handle)
+	cursor, err := state.ReadLedgers(handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
 	}
 	// Filter out soft-deleted ledgers, close handle when cursor closes
-	filtered := data.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
+	filtered := dal.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
 		return ledger.DeletedAt == nil
 	})
-	return data.NewClosingCursor(filtered, handle), nil
+	return dal.NewClosingCursor(filtered, handle), nil
 }
 
 func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -76,8 +77,8 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName stri
 }
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
-func buildTransaction(reader data.PebbleReader, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
-	updates, err := data.ReadTransactionUpdates(reader, ledgerID, transactionID)
+func buildTransaction(reader dal.PebbleReader, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+	updates, err := state.ReadTransactionUpdates(reader, ledgerID, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
@@ -87,7 +88,7 @@ func buildTransaction(reader data.PebbleReader, ledgerID uint32, transactionID u
 
 // assembleTransaction builds a transaction from a slice of updates and a log reader.
 // The updates must be in chronological order (lowest byLog first).
-func assembleTransaction(reader data.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
+func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
 	var (
 		sequence         uint64
 		reverted         bool
@@ -117,7 +118,7 @@ func assembleTransaction(reader data.PebbleReader, transactionID uint64, updates
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	log, err := data.ReadLogBySequence(reader, sequence)
+	log, err := state.ReadLogBySequence(reader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
@@ -167,10 +168,10 @@ func assembleTransaction(reader data.PebbleReader, transactionID uint64, updates
 
 // ListTransactions returns a cursor over transactions for a ledger (newest first).
 // Uses a single reverse iterator over transaction update keys for efficiency.
-func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -179,8 +180,8 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 	handle := ctrl.store.NewReadHandle()
 
 	// Build iterator bounds for [keyPrefixTransactionUpdate][ledgerID]...[afterTxID or max]
-	kb := data.NewKeyBuilder()
-	kb.PutByte(data.KeyPrefixTransactionUpdate).
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerPrefix(ledgerInfo.Id)
 	lowerBound := kb.Snapshot()
 
@@ -205,17 +206,17 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		iter:       iter,
 		pageSize:   pageSize,
 		lastTxID:   ^uint64(0),
-		txIDOffset: data.TxUpdateTxIDOffset,
+		txIDOffset: dal.TxUpdateTxIDOffset,
 	}, nil
 }
 
 // ListAccounts returns a cursor over accounts for a ledger (alphabetical order).
 // Uses a single forward iterator over the attribute range to discover accounts
 // and collect metadata in one pass.
-func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (data.Cursor[*commonpb.Account], error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -224,8 +225,8 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 	handle := ctrl.store.NewReadHandle()
 
 	// Build lower bound: [0xF1][ledgerID] optionally followed by [afterAddress]\x02 or [prefix]
-	kb := data.NewKeyBuilder()
-	kb.PutByte(data.KeyPrefixAttributes).PutLedgerPrefix(ledgerInfo.Id)
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixAttributes).PutLedgerPrefix(ledgerInfo.Id)
 	if afterAddress != "" {
 		kb.PutString(afterAddress).PutByte(0x02) // skip past both \x00 (Volume) and \x01 (Metadata)
 	} else if prefix != "" {
@@ -234,7 +235,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 	lowerBound := kb.Build()
 
 	// Build upper bound: [0xF1][ledgerID][IncrementBytes(prefix)] or [0xF1][ledgerID+1]
-	kb.PutByte(data.KeyPrefixAttributes)
+	kb.PutByte(dal.KeyPrefixAttributes)
 	if prefix != "" {
 		if incPrefix := attributes.IncrementBytes([]byte(prefix)); incPrefix != nil {
 			kb.PutLedgerPrefix(ledgerInfo.Id).PutBytes(incPrefix)
@@ -265,9 +266,9 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 }
 
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(ledgerName)
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -276,33 +277,13 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	metadataMap, err := GetAccountMetadata(handle, ctrl.attrs, ledgerInfo.Id, []string{address})
-	if err != nil {
-		return nil, fmt.Errorf("getting account metadata: %w", err)
-	}
-
-	volumes, err := GetAccountVolumes(handle, ctrl.attrs, ledgerInfo.Id, address)
-	if err != nil {
-		return nil, fmt.Errorf("getting account volumes: %w", err)
-	}
-
-	account := &commonpb.Account{
-		Address:  address,
-		Metadata: &commonpb.MetadataSet{},
-		Volumes:  volumes,
-	}
-
-	if md, exists := metadataMap[address]; exists {
-		account.Metadata = commonpb.MetadataSetFromMap(md)
-	}
-
-	return account, nil
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.Id, address)
 }
 
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-	ledgerInfo, err := ctrl.store.GetLedgerByName(name)
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, name)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
 		}
 		return nil, err
@@ -311,53 +292,55 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 }
 
 // ListLogs returns a cursor over system logs.
-func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := data.ReadLogsSince(handle, afterSequence)
+	cursor, err := state.ReadLogsSince(handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing logs: %w", err)
 	}
 
-	var result = data.NewClosingCursor(cursor, handle)
+	var result = dal.NewClosingCursor(cursor, handle)
 	if pageSize > 0 {
-		result = data.NewLimitedCursor(result, pageSize)
+		result = dal.NewLimitedCursor(result, pageSize)
 	}
 
 	return result, nil
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := data.ReadAuditEntries(handle, afterSequence)
+	cursor, err := state.ReadAuditEntries(handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	var result = data.NewClosingCursor(cursor, handle)
+	var result = dal.NewClosingCursor(cursor, handle)
 
 	if failuresOnly {
-		result = data.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
+		result = dal.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
 			return entry.GetFailure() != nil
 		})
 	}
 
 	if pageSize > 0 {
-		result = data.NewLimitedCursor(result, pageSize)
+		result = dal.NewLimitedCursor(result, pageSize)
 	}
 
 	return result, nil
 }
 
 // ListPeriods returns a cursor over all non-purged periods from the store.
-func (ctrl *DefaultController) ListPeriods(_ context.Context) (data.Cursor[*commonpb.Period], error) {
-	periods, err := ctrl.store.GetPeriods()
+func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commonpb.Period], error) {
+	handle := ctrl.store.NewReadHandle()
+	cursor, err := state.ReadPeriods(handle)
 	if err != nil {
+		_ = handle.Close()
 		return nil, err
 	}
-	return data.NewSliceCursor(periods), nil
+	return dal.NewClosingCursor(cursor, handle), nil
 }
 
 // Apply applies a list of requests and returns the resulting logs.

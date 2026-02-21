@@ -13,7 +13,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ArchiveRequest contains the data needed to archive a period.
@@ -36,7 +36,7 @@ type ArchiveProposer func(periodID uint64)
 // archiveRequestCh, performs I/O off the Raft critical path, then proposes.
 type Archiver struct {
 	logger           logging.Logger
-	dataStore        *data.Store
+	dataStore        *dal.Store
 	coldStorage      coldstorage.ColdStorage
 	archiveRequestCh chan ArchiveRequest
 	proposeFn        ArchiveProposer
@@ -49,7 +49,7 @@ type Archiver struct {
 // NewArchiver creates a new background archiver.
 func NewArchiver(
 	logger logging.Logger,
-	dataStore *data.Store,
+	dataStore *dal.Store,
 	coldStorage coldstorage.ColdStorage,
 	archiveRequestCh chan ArchiveRequest,
 	proposeFn ArchiveProposer,

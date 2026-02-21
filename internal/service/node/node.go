@@ -535,9 +535,6 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		close(ch)
 		return nil
 	case err := <-node.tasks.err():
-		// Stop remaining tasks to prevent goroutine leaks.
-		// Without this, zombie goroutines keep consuming transport messages,
-		// starving any restarted node of heartbeats.
 		if stopErr := node.tasks.stop(); stopErr != nil {
 			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
 		}
@@ -909,6 +906,10 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				continue
 			}
 			if err := node.rawNode.Step(msg); err != nil {
+				if errors.Is(err, raft.ErrStepPeerNotFound) {
+					node.logger.Debugf("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+					continue
+				}
 				return err
 			}
 		}

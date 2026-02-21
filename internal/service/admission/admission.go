@@ -18,12 +18,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -47,7 +48,7 @@ type Proposer interface {
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
 	cache         *cache.Cache
-	store         *data.Store
+	store         *dal.Store
 	logger        logging.Logger
 	proposer      Proposer
 	attrs         *attributes.Attributes
@@ -94,7 +95,7 @@ func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 
 func NewAdmission(
 	cache *cache.Cache,
-	store *data.Store,
+	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
 	attrs *attributes.Attributes,
@@ -665,7 +666,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if !a.cache.SinkConfigs.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.SinkConfigs.LoadOrWait(id, boundary, func() (*commonpb.SinkConfig, error) {
-				return a.store.LoadSinkConfig(sinkKey.Name)
+				return events.ReadSinkConfig(a.store, sinkKey.Name)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("loading sink config %q from store: %w", sinkKey.Name, err)
@@ -840,7 +841,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs[i] = created
 		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
-			log, fetchErr := a.store.GetLogBySequence(refSeq)
+			log, fetchErr := state.ReadLogBySequence(a.store, refSeq)
 			if fetchErr != nil {
 				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 			}
@@ -949,9 +950,9 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 // - The processor stores deltas (DiffSinceBaseIndex) instead of absolute values
 // However, metadata preloading is still performed for Force transactions since
 // Numscript scripts may still query metadata via meta() calls.
-func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) (map[data.VolumeKey]struct{}, map[data.MetadataKey]struct{}) {
-	neededVolumes := make(map[data.VolumeKey]struct{})
-	neededMetadata := make(map[data.MetadataKey]struct{})
+func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) (map[dal.VolumeKey]struct{}, map[dal.MetadataKey]struct{}) {
+	neededVolumes := make(map[dal.VolumeKey]struct{})
+	neededMetadata := make(map[dal.MetadataKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
@@ -996,16 +997,16 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 
 				for _, posting := range applyData.CreateTransaction.Postings {
 					// Source account needs balance check
-					neededVolumes[data.VolumeKey{
-						AccountKey: data.AccountKey{
+					neededVolumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  posting.Source,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
 					// Destination account needs to be in cache to apply credit
-					neededVolumes[data.VolumeKey{
-						AccountKey: data.AccountKey{
+					neededVolumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  posting.Destination,
 						},
@@ -1019,16 +1020,16 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 				// because we need to verify the original transaction exists and is not already reverted
 				for _, posting := range applyData.RevertTransaction.OriginalPostings {
 					// Original destination becomes source in revert - needs balance check
-					neededVolumes[data.VolumeKey{
-						AccountKey: data.AccountKey{
+					neededVolumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  posting.Destination,
 						},
 						Asset: posting.Asset,
 					}] = struct{}{}
 					// Original source becomes destination in revert - needs to receive credit
-					neededVolumes[data.VolumeKey{
-						AccountKey: data.AccountKey{
+					neededVolumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  posting.Source,
 						},
@@ -1038,8 +1039,8 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 				// Preload the metadata key so processDeleteMetadata can check existence
 				if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
-					neededMetadata[data.MetadataKey{
-						AccountKey: data.AccountKey{
+					neededMetadata[dal.MetadataKey{
+						AccountKey: dal.AccountKey{
 							LedgerID: ledgerID,
 							Account:  target.Account.Addr,
 						},
@@ -1055,8 +1056,8 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 
 // extractNeededTransactions extracts all transaction keys that need their reverted status checked.
 // This is needed for revert operations to verify the transaction hasn't already been reverted.
-func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.TransactionKey]struct{} {
-	neededTransactions := make(map[data.TransactionKey]struct{})
+func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[dal.TransactionKey]struct{} {
+	neededTransactions := make(map[dal.TransactionKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
@@ -1065,7 +1066,7 @@ func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerI
 			switch applyData := orderType.Apply.Data.(type) {
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Need to check if the transaction is already reverted
-				neededTransactions[data.TransactionKey{
+				neededTransactions[dal.TransactionKey{
 					LedgerID: ledgerID,
 					ID:       applyData.RevertTransaction.TransactionId,
 				}] = struct{}{}
@@ -1078,14 +1079,14 @@ func (a *Admission) extractNeededTransactions(orders []*raftcmdpb.Order, ledgerI
 
 // extractNeededLedgers extracts ledger keys that need to be checked for CreateLedger/DeleteLedger orders.
 // Apply orders get their ledger IDs from boundaries instead (which are always in Gen0).
-func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.LedgerKey]struct{} {
-	needed := make(map[data.LedgerKey]struct{})
+func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[dal.LedgerKey]struct{} {
+	needed := make(map[dal.LedgerKey]struct{})
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_CreateLedger:
-			needed[data.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
+			needed[dal.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
 		case *raftcmdpb.Order_DeleteLedger:
-			needed[data.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+			needed[dal.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
 		}
 	}
 	return needed
@@ -1093,12 +1094,12 @@ func (a *Admission) extractNeededLedgers(orders []*raftcmdpb.Order) map[data.Led
 
 // extractNeededBoundaries extracts all boundary keys that need to be preloaded.
 // This is needed for apply operations to access next_transaction_id/next_log_id.
-func (a *Admission) extractNeededBoundaries(orders []*raftcmdpb.Order) map[data.LedgerKey]struct{} {
-	needed := make(map[data.LedgerKey]struct{})
+func (a *Admission) extractNeededBoundaries(orders []*raftcmdpb.Order) map[dal.LedgerKey]struct{} {
+	needed := make(map[dal.LedgerKey]struct{})
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_Apply:
-			needed[data.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
+			needed[dal.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 		}
 	}
 	return needed
@@ -1106,8 +1107,8 @@ func (a *Admission) extractNeededBoundaries(orders []*raftcmdpb.Order) map[data.
 
 // extractNeededReferences extracts all transaction reference keys that need to be checked.
 // Only non-empty references from CreateTransactionOrder are included.
-func (a *Admission) extractNeededReferences(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[data.TransactionReferenceKey]struct{} {
-	neededRefs := make(map[data.TransactionReferenceKey]struct{})
+func (a *Admission) extractNeededReferences(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) map[dal.TransactionReferenceKey]struct{} {
+	neededRefs := make(map[dal.TransactionReferenceKey]struct{})
 
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
@@ -1118,7 +1119,7 @@ func (a *Admission) extractNeededReferences(orders []*raftcmdpb.Order, ledgerIDs
 					continue
 				}
 				ledgerID := ledgerIDs[orderType.Apply.Ledger]
-				neededRefs[data.TransactionReferenceKey{
+				neededRefs[dal.TransactionReferenceKey{
 					LedgerID:  ledgerID,
 					Reference: applyData.CreateTransaction.Reference,
 				}] = struct{}{}
@@ -1131,15 +1132,15 @@ func (a *Admission) extractNeededReferences(orders []*raftcmdpb.Order, ledgerIDs
 
 // extractNeededIdempotencyKeys extracts all idempotency keys that need to be checked.
 // This is needed to verify if an idempotency key has already been used.
-func (a *Admission) extractNeededIdempotencyKeys(orders []*raftcmdpb.Order) map[data.IdempotencyKey]struct{} {
-	neededKeys := make(map[data.IdempotencyKey]struct{})
+func (a *Admission) extractNeededIdempotencyKeys(orders []*raftcmdpb.Order) map[dal.IdempotencyKey]struct{} {
+	neededKeys := make(map[dal.IdempotencyKey]struct{})
 
 	for _, order := range orders {
 		if order.Idempotency == nil || order.Idempotency.Key == "" {
 			continue
 		}
 
-		neededKeys[data.IdempotencyKey{
+		neededKeys[dal.IdempotencyKey{
 			Key: order.Idempotency.Key,
 		}] = struct{}{}
 	}
@@ -1150,14 +1151,14 @@ func (a *Admission) extractNeededIdempotencyKeys(orders []*raftcmdpb.Order) map[
 // extractNeededSinkConfigs extracts all sink config keys that need to be checked.
 // AddEventsSink needs to detect if a sink with that name already exists.
 // RemoveEventsSink needs to verify the sink exists before removal.
-func (a *Admission) extractNeededSinkConfigs(orders []*raftcmdpb.Order) map[data.SinkConfigKey]struct{} {
-	needed := make(map[data.SinkConfigKey]struct{})
+func (a *Admission) extractNeededSinkConfigs(orders []*raftcmdpb.Order) map[dal.SinkConfigKey]struct{} {
+	needed := make(map[dal.SinkConfigKey]struct{})
 	for _, order := range orders {
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_AddEventsSink:
-			needed[data.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
+			needed[dal.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
 		case *raftcmdpb.Order_RemoveEventsSink:
-			needed[data.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+			needed[dal.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
 		}
 	}
 	return needed
@@ -1363,9 +1364,9 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	log, err := a.store.FindTransactionCreationLog(ledgerName, transactionID)
+	log, err := state.FindTransactionCreationLog(a.store, ledgerName, transactionID)
 	if err != nil {
-		if errors.Is(err, data.ErrNotFound) {
+		if errors.Is(err, dal.ErrNotFound) {
 			return nil, &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: transactionID}}
 		}
 		return nil, fmt.Errorf("finding transaction creation log: %w", err)
