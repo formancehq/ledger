@@ -491,17 +491,17 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 
-		result, configChanged, hasArchiveRequests, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
+		result, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
 			return nil, err
 		}
-		if configChanged {
+		if result.ConfigChanged {
 			eventsConfigChanged = true
 		}
-		ret.Results = append(ret.Results, *result)
-		if hasArchiveRequests {
+		if result.HasArchiveRequests {
 			needsArchiveDispatch = true
 		}
+		ret.Results = append(ret.Results, *result)
 
 		// If ClosePeriod was detected, stop processing immediately.
 		// Commit the batch so the ClosePeriod state is persisted,
@@ -1001,17 +1001,17 @@ func allOrdersAreMaintenanceMode(orders []*raftcmdpb.Order) bool {
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, bool, bool, error) {
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
 	for _, update := range proposal.EventsSinkUpdates {
 		if update.Cursor > 0 {
 			if err := SetSinkCursor(batch, update.SinkName, update.Cursor); err != nil {
-				return nil, false, false, fmt.Errorf("setting sink cursor: %w", err)
+				return nil, fmt.Errorf("setting sink cursor: %w", err)
 			}
 		}
 		if update.ClearError {
 			if err := ClearSinkStatus(batch, update.SinkName); err != nil {
-				return nil, false, false, fmt.Errorf("clearing sink status: %w", err)
+				return nil, fmt.Errorf("clearing sink status: %w", err)
 			}
 		} else if update.Error != nil {
 			if err := SetSinkStatus(batch, &commonpb.SinkStatus{
@@ -1019,14 +1019,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				Cursor:   update.Cursor,
 				Error:    update.Error,
 			}); err != nil {
-				return nil, false, false, fmt.Errorf("setting sink status: %w", err)
+				return nil, fmt.Errorf("setting sink status: %w", err)
 			}
 		}
 	}
 
 	// If this proposal only carries sink updates, skip order processing
 	if len(proposal.Orders) == 0 {
-		return &ApplyResult{ProposalID: proposal.Id}, false, false, nil
+		return &ApplyResult{ProposalID: proposal.Id}, nil
 	}
 
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance
@@ -1036,11 +1036,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: processing.ErrMaintenanceMode},
-		}, false, false, nil
+		}, nil
 	}
 
 	if err := fsm.Preload(proposal.Preload); err != nil {
-		return nil, false, false, err
+		return nil, err
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
@@ -1059,10 +1059,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 		// Persist the bootstrapped period so it survives restarts
 		if err := StorePeriod(batch, fsm.currentOpenPeriod); err != nil {
-			return nil, false, false, fmt.Errorf("storing bootstrapped period: %w", err)
+			return nil, fmt.Errorf("storing bootstrapped period: %w", err)
 		}
 		if err := StoreNextPeriodID(batch, fsm.nextPeriodID); err != nil {
-			return nil, false, false, fmt.Errorf("storing next period ID: %w", err)
+			return nil, fmt.Errorf("storing next period ID: %w", err)
 		}
 	}
 
@@ -1085,14 +1085,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 			fsm.nextAuditSequenceID++
 			if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
-				return nil, false, false, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+				return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
 			}
 		}
 
 		return &ApplyResult{
 			ProposalID: proposal.Id,
 			Error:      &processing.BusinessError{Err: err},
-		}, false, false, nil
+		}, nil
 	}
 
 	// Extract created logs for the write buffer (reference sequences are idempotent
@@ -1107,8 +1107,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Add only created logs to buffer and merge
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
+	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	if err := buffer.Merge(raftIndex, batch); err != nil {
-		return nil, false, false, err
+		return nil, err
 	}
 
 	// SUCCESS: write audit entry
@@ -1126,16 +1127,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 		fsm.nextAuditSequenceID++
 		if err := AppendAuditEntries(batch, auditEntry); err != nil {
-			return nil, false, false, fmt.Errorf("appending audit entry for success: %w", err)
+			return nil, fmt.Errorf("appending audit entry for success: %w", err)
 		}
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
 
 	return &ApplyResult{
-		ProposalID: proposal.Id,
-		Logs:       response.Logs,
-	}, configChanged, len(buffer.pendingArchives) > 0, nil
+		ProposalID:         proposal.Id,
+		Logs:               response.Logs,
+		ConfigChanged:      configChanged,
+		HasArchiveRequests: hasArchiveRequests,
+	}, nil
 }
 
 // CreateSnapshot creates a snapshot of the Machine state
@@ -1645,10 +1648,12 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 }
 
 type ApplyResult struct {
-	ProposalID     uint64
-	Logs           []*raftcmdpb.CreatedLogOrReference
-	Error          error
-	CheckpointPath string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
+	ProposalID         uint64
+	Logs               []*raftcmdpb.CreatedLogOrReference
+	Error              error
+	CheckpointPath     string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
+	ConfigChanged      bool   // True when sink configuration changed
+	HasArchiveRequests bool   // True when there are pending archive requests
 }
 
 // ApplyEntriesResult is the structured return value of ApplyEntries.
