@@ -12,9 +12,12 @@ Business:
 * Numscript
 ** Add typed variables
 ** Add typed metadata
+* Events
+** Filter internal events
 
 Tests:
 * Convert K6 tests to GRPC
+* Read heavy with K6
 
 Signing :
 ** when outputting the actions that were signed by a key, also output the key-id that validated the request
@@ -30,3 +33,7 @@ Refactor:
 * Merge connection pools
 * Simplify processor
 * Clean Machine (returns from ApplyEntries)
+* Separate modules in application package
+* Cyclic dependencies in tests
+* Split admission
+* Categorize raft commands
