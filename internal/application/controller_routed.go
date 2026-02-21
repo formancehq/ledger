@@ -15,7 +15,7 @@ import (
 
 type RoutedController struct {
 	*node.Node
-	servicePool     *transport.ServiceConnectionPool
+	servicePool     *transport.ConnectionPool
 	localController ctrl.Controller
 }
 
@@ -121,7 +121,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 
 var _ ctrl.Controller = (*RoutedController)(nil)
 
-func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ServiceConnectionPool) *RoutedController {
+func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {
 	return &RoutedController{
 		Node:            node,
 		servicePool:     servicePool,

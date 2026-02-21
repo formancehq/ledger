@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
@@ -291,12 +292,12 @@ func convertToGRPCError(err error) error {
 // If tlsOpt is non-nil, it is appended to the server options to enable TLS.
 func NewRaftServer(port int, logger logging.Logger, tlsOpt grpc.ServerOption) *RaftServer {
 	opts := []grpc.ServerOption{
-		grpc.InitialWindowSize(16 * 1024 * 1024),
-		grpc.InitialConnWindowSize(64 * 1024 * 1024),
-		grpc.ReadBufferSize(1 * 1024 * 1024),
-		grpc.WriteBufferSize(1 * 1024 * 1024),
-		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
-		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+		grpc.InitialWindowSize(transport.GRPCInitialWindowSize),
+		grpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
+		grpc.ReadBufferSize(transport.GRPCReadBufferSize),
+		grpc.WriteBufferSize(transport.GRPCWriteBufferSize),
+		grpc.MaxRecvMsgSize(transport.GRPCMaxMsgSize),
+		grpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
 	}
 
 	if tlsOpt != nil {
@@ -350,12 +351,12 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt grpc.S
 
 	opts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.InitialWindowSize(16 * 1024 * 1024),
-		grpc.InitialConnWindowSize(64 * 1024 * 1024),
-		grpc.ReadBufferSize(1 * 1024 * 1024),
-		grpc.WriteBufferSize(1 * 1024 * 1024),
-		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
-		grpc.MaxSendMsgSize(64 * 1024 * 1024),
+		grpc.InitialWindowSize(transport.GRPCInitialWindowSize),
+		grpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
+		grpc.ReadBufferSize(transport.GRPCReadBufferSize),
+		grpc.WriteBufferSize(transport.GRPCWriteBufferSize),
+		grpc.MaxRecvMsgSize(transport.GRPCMaxMsgSize),
+		grpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
