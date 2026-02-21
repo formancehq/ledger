@@ -9,7 +9,7 @@ import (
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.
 // It does not manage checkpoints or CURRENT_CHECKPOINT files.
-// The returned Store supports all read methods (GetLastAppliedIndex, ListLedgers, etc.).
+// The returned Store implements PebbleReader and can be passed to free functions in state/ and events/.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	opts := &pebble.Options{
