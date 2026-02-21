@@ -31,7 +31,6 @@ Cold storage:
 
 Refactor:
 * Simplify processor
-* Clean Machine (returns from ApplyEntries)
 * Separate modules in application package
 * Split admission
 * Categorize raft commands (user commands vs system commands)
