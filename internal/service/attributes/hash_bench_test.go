@@ -1,4 +1,4 @@
-package attributes_test
+package attributes
 
 import (
 	"encoding/binary"
@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/zeebo/blake3"
-
-	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 )
 
 // Realistic 5-segment account addresses
@@ -26,7 +24,7 @@ var benchInputs = [][]byte{
 // --- XXH3 (current implementation via KeyHasher) ---
 
 func BenchmarkXXH3_MakeKey(b *testing.B) {
-	kh := attributes.NewKeyHasher(attributes.DefaultSeeds)
+	kh := NewKeyHasher(DefaultSeeds)
 	for _, input := range benchInputs {
 		b.Run(fmt.Sprintf("len=%d", len(input)), func(b *testing.B) {
 			for b.Loop() {
@@ -63,7 +61,7 @@ func newBLAKE3KeyedHasher(masterKey [32]byte) *blake3KeyedHasher {
 	}
 }
 
-func (h *blake3KeyedHasher) makeKey(data []byte) (attributes.U128, uint64) {
+func (h *blake3KeyedHasher) makeKey(data []byte) (U128, uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -79,7 +77,7 @@ func (h *blake3KeyedHasher) makeKey(data []byte) (attributes.U128, uint64) {
 	hi := binary.LittleEndian.Uint64(idSum[8:16])
 	tag := binary.LittleEndian.Uint64(tagSum[0:8])
 
-	return attributes.NewU128(hi, lo), tag
+	return NewU128(hi, lo), tag
 }
 
 var blake3MasterKey = [32]byte{
@@ -108,7 +106,7 @@ type blake3Unkeyed struct {
 	buf    [32]byte
 }
 
-func (h *blake3Unkeyed) makeKey(data []byte) (attributes.U128, uint64) {
+func (h *blake3Unkeyed) makeKey(data []byte) (U128, uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -119,7 +117,7 @@ func (h *blake3Unkeyed) makeKey(data []byte) (attributes.U128, uint64) {
 	lo := binary.LittleEndian.Uint64(sum[0:8])
 	hi := binary.LittleEndian.Uint64(sum[8:16])
 	tag := binary.LittleEndian.Uint64(sum[16:24])
-	return attributes.NewU128(hi, lo), tag
+	return NewU128(hi, lo), tag
 }
 
 func BenchmarkBLAKE3_Unkeyed_MakeKey(b *testing.B) {
@@ -139,7 +137,7 @@ func BenchmarkHashComparison(b *testing.B) {
 	input := []byte("platform:region-eu:merchant-42:wallets:main")
 
 	b.Run("XXH3_Current", func(b *testing.B) {
-		kh := attributes.NewKeyHasher(attributes.DefaultSeeds)
+		kh := NewKeyHasher(DefaultSeeds)
 		for b.Loop() {
 			kh.MakeKey(input)
 		}
