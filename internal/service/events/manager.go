@@ -194,6 +194,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 
 	emitter := NewEmitter(m.store, sink, sc.Name, m.proposer, m.logger, emitterCfg)
 	emitter.Start()
+	<-emitter.Ready()
 	return &managedSink{emitter: emitter, sink: sink, config: sc}
 }
 

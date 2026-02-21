@@ -422,7 +422,6 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
-
 		cfg.RaftConfig.Peers = peers
 	}
 

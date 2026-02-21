@@ -14,7 +14,7 @@ import (
 	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	data "github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	dal "github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -108,10 +108,10 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, ledgerName, transactio
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress, prefix string) (data.Cursor[*commonpb.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress, prefix string) (dal.Cursor[*commonpb.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, prefix)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.Account])
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -123,10 +123,10 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (data.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, afterSequence, failuresOnly, pageSize)
-	ret0, _ := ret[0].(data.Cursor[*auditpb.AuditEntry])
+	ret0, _ := ret[0].(dal.Cursor[*auditpb.AuditEntry])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -138,10 +138,10 @@ func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, afterSequence, failu
 }
 
 // ListLedgers mocks base method.
-func (m *MockController) ListLedgers(ctx context.Context) (data.Cursor[*commonpb.LedgerInfo], error) {
+func (m *MockController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.LedgerInfo])
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -153,10 +153,10 @@ func (mr *MockControllerMockRecorder) ListLedgers(ctx any) *gomock.Call {
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (data.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, afterSequence, pageSize)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.Log])
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -168,10 +168,10 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, pageSize any)
 }
 
 // ListPeriods mocks base method.
-func (m *MockController) ListPeriods(ctx context.Context) (data.Cursor[*commonpb.Period], error) {
+func (m *MockController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPeriods", ctx)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.Period])
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.Period])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -183,10 +183,10 @@ func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (data.Cursor[*commonpb.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID)
-	ret0, _ := ret[0].(data.Cursor[*commonpb.Transaction])
+	ret0, _ := ret[0].(dal.Cursor[*commonpb.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

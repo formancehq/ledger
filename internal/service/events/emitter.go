@@ -54,6 +54,7 @@ type Emitter struct {
 	notify  signal.Signal
 	stopCh  chan struct{}
 	stopped chan struct{}
+	ready   chan struct{}
 	mu      sync.Mutex
 	running bool
 
@@ -82,6 +83,12 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 	}
 }
 
+// Ready returns a channel that is closed when the emitter goroutine has completed
+// its initial catch-up and entered the main select loop.
+func (e *Emitter) Ready() <-chan struct{} {
+	return e.ready
+}
+
 // Notify sends a non-blocking signal that new logs are available.
 func (e *Emitter) Notify() {
 	e.notify.Notify()
@@ -99,6 +106,7 @@ func (e *Emitter) Start() {
 	e.running = true
 	e.stopCh = make(chan struct{})
 	e.stopped = make(chan struct{})
+	e.ready = make(chan struct{})
 
 	go e.run()
 }
@@ -131,6 +139,9 @@ func (e *Emitter) run() {
 	if cursor, err = e.processLogs(cursor); err != nil {
 		e.logger.Errorf("Error during initial catch-up: %v", err)
 	}
+
+	// Signal that the emitter is ready to receive notifications.
+	close(e.ready)
 
 	ticker := time.NewTicker(e.config.BatchDelay)
 	defer ticker.Stop()

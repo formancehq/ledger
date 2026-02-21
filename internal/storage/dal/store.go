@@ -432,6 +432,16 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
 	}
 
+	// Preserve this node's persisted config before replacing the database.
+	// The checkpoint originates from the leader and contains the leader's
+	// config (including its node-id). After restore we must re-write this
+	// node's own identity so that startup config validation passes.
+	var preservedConfig []byte
+	if value, closer, err := s.db.Get([]byte{KeyPrefixPersistedConfig}); err == nil {
+		preservedConfig = append([]byte(nil), value...)
+		_ = closer.Close()
+	}
+
 	// Close the current database
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing current database: %w", err)
@@ -454,6 +464,24 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("reopening database: %w", err)
 	}
 	s.db = db
+
+	// Re-write this node's persisted config into the restored database.
+	// After writing, flush and recreate the checkpoint so the config survives
+	// the next startup (NewStore re-links live from the checkpoint directory).
+	if preservedConfig != nil {
+		if err := s.db.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+			return fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err)
+		}
+		if err := s.db.Flush(); err != nil {
+			return fmt.Errorf("flushing persisted config after checkpoint restore: %w", err)
+		}
+		if err := os.RemoveAll(checkpointDir); err != nil {
+			return fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err)
+		}
+		if err := s.db.Checkpoint(checkpointDir); err != nil {
+			return fmt.Errorf("re-creating checkpoint with preserved config: %w", err)
+		}
+	}
 
 	// Update the current checkpoint file
 	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile))

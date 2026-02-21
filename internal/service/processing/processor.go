@@ -773,14 +773,25 @@ func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalan
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.Source != "world" {
-		if sourceVol.InputKnown == nil {
+		// Compute effective input value. When a preload set InputKnown, it already
+		// includes any prior InputDiff (see putInCacheVolumePair merge). When only
+		// InputDiff is present (force TX volumes still in cache without preload),
+		// the diff IS the total accumulated input.
+		var inputValue uint256.Int
+		if sourceVol.InputKnown != nil {
+			sourceVol.InputKnown.IntoUint256(&inputValue)
+		} else if sourceVol.InputDiff != nil {
+			sourceVol.InputDiff.IntoUint256(&inputValue)
+		} else {
 			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
-		// Overflow-safe balance check: input >= output + amount
-		var inputValue, outputValue, outputPlusAmount uint256.Int
-		sourceVol.InputKnown.IntoUint256(&inputValue)
+
+		// Compute effective output value with the same logic.
+		var outputValue, outputPlusAmount uint256.Int
 		if sourceVol.OutputKnown != nil {
 			sourceVol.OutputKnown.IntoUint256(&outputValue)
+		} else if sourceVol.OutputDiff != nil {
+			sourceVol.OutputDiff.IntoUint256(&outputValue)
 		}
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {

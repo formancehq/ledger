@@ -70,7 +70,7 @@ func GenerateTestCerts(dir string) (*TestCerts, error) {
 		NotBefore:   time.Now().Add(-time.Hour),
 		NotAfter:    time.Now().Add(24 * time.Hour),
 		KeyUsage:    x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
 
 	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)

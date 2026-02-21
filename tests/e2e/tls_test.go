@@ -175,6 +175,7 @@ func setupTLSMultiNodeCluster(
 			// TLS configuration — same cert for all nodes
 			testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
+			testserver.WithTLSCACertFile(certs.CACertFile),
 		}
 	}
 
@@ -391,22 +392,28 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 					ledgers, err := listLedgers(ctx, srv.client)
 					g.Expect(err).To(Succeed())
 					g.Expect(ledgers).To(HaveKey("tls-multi-ledger"))
-				}).Within(5 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed(),
+				}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
 					"ledger should be visible on node %d", i+1)
 			}
 		})
 
 		It("should replicate transactions across TLS nodes", func() {
-			// Create a transaction via node 0
-			resp, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					createTransactionAction("tls-multi-ledger", []*commonpb.Posting{
-						newPosting("world", "bank", big.NewInt(5000), "USD"),
-					}, nil, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp).NotTo(BeNil())
+			// Create a transaction via node 0.
+			// Use Eventually because TLS handshake overhead can delay leader
+			// stabilisation after voter promotions, causing transient "ledger not found".
+			var resp *servicepb.ApplyResponse
+			Eventually(func(g Gomega) {
+				var err error
+				resp, err = servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						createTransactionAction("tls-multi-ledger", []*commonpb.Posting{
+							newPosting("world", "bank", big.NewInt(5000), "USD"),
+						}, nil, nil),
+					},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp).NotTo(BeNil())
+			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Verify the transaction is visible from all nodes
 			for i, srv := range servers {
@@ -418,7 +425,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(txResp).NotTo(BeNil())
 					g.Expect(txResp.Transaction.Postings).To(HaveLen(1))
-				}).Within(5 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed(),
+				}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
 					"transaction should be visible on node %d", i+1)
 			}
 		})

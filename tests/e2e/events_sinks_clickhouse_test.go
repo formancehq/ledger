@@ -113,7 +113,10 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		Eventually(func(g Gomega) {
 			result, err := conn.Query(context.Background(),
 				fmt.Sprintf("SELECT log_sequence, type, ledger, date, toJSONString(data) FROM %s WHERE ledger = 'ch-test' ORDER BY log_sequence", table))
-			g.Expect(err).To(Succeed())
+			if err != nil {
+				g.Expect(err).To(Succeed())
+				return
+			}
 			defer result.Close()
 
 			rows = nil
