@@ -14,6 +14,7 @@ Business:
 ** Add typed metadata
 * Events
 ** Filter internal events
+** Sync S3 + parquet
 * Audit: enabled by the user
 
 Tests:
