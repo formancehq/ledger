@@ -27,6 +27,7 @@ These flags are available for all commands:
 | `--tls-ca-cert` | | Path to CA certificate file (PEM) for server verification |
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
+| `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
 
 ### Request Signing
 
@@ -1478,6 +1479,31 @@ ledger-v3-poc run --node-id 2 --data-dir ./data --unsafe-skip-config-validation
 ```
 
 **Note:** Changes to `audit-enabled` (true -> false) produce a warning but do not prevent startup, since disabling audit is a compliance decision, not a data corruption risk.
+
+---
+
+### Server `--response-signing-key` Flag
+
+Enables Ed25519 response signing. When configured, the server signs every `Log` in `ApplyResponse` messages so clients can verify the response is authentic.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--response-signing-key` | | Path to Ed25519 seed file for response signing (empty = disabled) |
+
+The seed file must contain 32 bytes (raw binary) or 64 hex characters. Generate one with `ledgerctl signing generate-key`.
+
+```bash
+# Generate a keypair for response signing
+ledgerctl signing generate-key ./response-keys
+
+# Start server with response signing
+ledger-v3-poc run --response-signing-key ./response-keys/seed.hex [other flags...]
+
+# Client-side: verify response signatures
+ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
+```
+
+Clients can also discover the server's public key via the `Discovery` RPC.
 
 ---
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -53,12 +54,8 @@ func LoadPersistedConfig(reader dal.PebbleReader) (*PersistedConfig, error) {
 
 // DeletePersistedConfig removes the persisted configuration from the batch.
 // This is used during backup compaction so the backup is portable to any cluster.
-func (b *Batch) DeletePersistedConfig() error {
-	if b.committed {
-		return fmt.Errorf("batch already committed")
-	}
-
-	if err := b.batch.Delete([]byte{keyPrefixPersistedConfig}, pebble.NoSync); err != nil {
+func DeletePersistedConfig(b *dal.Batch) error {
+	if err := b.DeleteKey([]byte{dal.KeyPrefixPersistedConfig}); err != nil {
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}
 	return nil

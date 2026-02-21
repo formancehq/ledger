@@ -42,6 +42,9 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded)")
 	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\")")
 
+	// Add persistent flag for response signature verification.
+	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures")
+
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
 	rootCmd.AddCommand(accounts.NewCommand())

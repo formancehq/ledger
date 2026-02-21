@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -20,22 +21,24 @@ import (
 
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
-	logger        logging.Logger
-	ctrl          ctrl.Controller
-	store         *dal.Store
-	attrs         *attributes.Attributes
-	auditEnabled  bool
-	receiptSigner *receipt.Signer
+	logger         logging.Logger
+	ctrl           ctrl.Controller
+	store          *dal.Store
+	attrs          *attributes.Attributes
+	auditEnabled   bool
+	receiptSigner  *receipt.Signer
+	responseSigner *signing.ResponseSigner
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
-		logger:        logger,
-		ctrl:          ctrl,
-		store:         s,
-		attrs:         attrs,
-		auditEnabled:  auditEnabled,
-		receiptSigner: receiptSigner,
+		logger:         logger,
+		ctrl:           ctrl,
+		store:          s,
+		attrs:          attrs,
+		auditEnabled:   auditEnabled,
+		receiptSigner:  receiptSigner,
+		responseSigner: responseSigner,
 	}
 }
 
@@ -55,6 +58,13 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	if impl.receiptSigner != nil {
 		for _, log := range logs {
 			impl.signReceiptIfNeeded(log)
+		}
+	}
+
+	// Sign response logs with server Ed25519 key (after receipt signing, since receipt is cleared before signing)
+	if impl.responseSigner != nil {
+		for _, log := range logs {
+			log.ResponseSignature = impl.responseSigner.SignLog(log)
 		}
 	}
 
@@ -274,6 +284,17 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *ser
 		return nil, fmt.Errorf("loading period schedule: %w", err)
 	}
 	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
+}
+
+func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
+	resp := &servicepb.DiscoveryResponse{}
+	if impl.responseSigner != nil {
+		resp.ResponseSigning = &servicepb.ResponseSigningInfo{
+			PublicKey: impl.responseSigner.PublicKey(),
+			KeyId:    impl.responseSigner.KeyID(),
+		}
+	}
+	return resp, nil
 }
 
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {

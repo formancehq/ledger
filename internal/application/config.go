@@ -38,6 +38,7 @@ type Config struct {
 	AuditEnabled               bool
 	AdmissionMetrics           bool
 	ReceiptSigningKey          string
+	ResponseSigningKeyFile     string
 	ColdStorageConfig          coldstorage.Config
 	PoolConfig                 transport.PoolConfig
 	TLSConfig                  TLSConfig

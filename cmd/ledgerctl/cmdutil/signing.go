@@ -2,12 +2,10 @@ package cmdutil
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 )
@@ -25,24 +23,50 @@ func LoadSigningKey(cmd *cobra.Command) (string, ed25519.PrivateKey, error) {
 		keyID = "default"
 	}
 
-	// Read the seed file
-	data, err := os.ReadFile(keyPath)
+	seed, err := signing.LoadSeedFromFile(keyPath)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to read signing key file: %w", err)
-	}
-
-	// Try to interpret as hex-encoded seed
-	seed := data
-	trimmed := strings.TrimSpace(string(data))
-	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == ed25519.SeedSize {
-		seed = decoded
-	}
-
-	if len(seed) != ed25519.SeedSize {
-		return "", nil, fmt.Errorf("signing key seed must be %d bytes, got %d", ed25519.SeedSize, len(seed))
+		return "", nil, fmt.Errorf("failed to load signing key: %w", err)
 	}
 
 	return keyID, ed25519.NewKeyFromSeed(seed), nil
+}
+
+// LoadResponseVerifyKey loads the Ed25519 public key for response signature verification.
+// Returns nil if --response-verify-key is not set.
+func LoadResponseVerifyKey(cmd *cobra.Command) (ed25519.PublicKey, error) {
+	keyPath, _ := cmd.Flags().GetString("response-verify-key")
+	if keyPath == "" {
+		return nil, nil
+	}
+
+	pubKey, err := signing.LoadPublicKeyFromFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load response verify key: %w", err)
+	}
+
+	return pubKey, nil
+}
+
+// VerifyResponseSignatures verifies the response signatures on the given logs.
+// If no verify key is configured (--response-verify-key), this is a no-op.
+func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
+	pubKey, err := LoadResponseVerifyKey(cmd)
+	if err != nil {
+		return err
+	}
+	if pubKey == nil {
+		return nil
+	}
+
+	for _, log := range logs {
+		if log.ResponseSignature == nil {
+			return fmt.Errorf("log %d: missing response signature (server may not have response signing enabled)", log.Sequence)
+		}
+		if err := signing.VerifyResponseSignature(log.ResponseSignature, pubKey); err != nil {
+			return fmt.Errorf("log %d: %w", log.Sequence, err)
+		}
+	}
+	return nil
 }
 
 // SignRequests signs each request using the signing key from command flags.

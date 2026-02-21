@@ -126,6 +126,9 @@ func NewRunCommand() *cobra.Command {
 	// Receipt signing key for JWT transaction receipts
 	runCmd.Flags().String("receipt-signing-key", "", "HMAC key for signing JWT transaction receipts (empty = disabled)")
 
+	// Response signing key for Ed25519 response signatures
+	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
+
 	// Cold storage configuration
 	runCmd.Flags().String("cold-storage-driver", "filesystem", "Cold storage driver for period archival (filesystem, s3)")
 	runCmd.Flags().String("cold-storage-path", "", "Base path for cold storage (default: <data-dir>/cold-storage)")
@@ -373,6 +376,9 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	// Receipt signing key
 	cfg.ReceiptSigningKey = getString("receipt-signing-key", "")
+
+	// Response signing key
+	cfg.ResponseSigningKeyFile = getString("response-signing-key", "")
 
 	// Cold storage configuration
 	cfg.ColdStorageConfig.Driver = getString("cold-storage-driver", "filesystem")

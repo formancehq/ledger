@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -106,7 +107,7 @@ func CompactAllForBackup(s *dal.Store) error {
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster
-	if err := batch.DeletePersistedConfig(); err != nil {
+	if err := batch.DeleteKey([]byte{dal.KeyPrefixPersistedConfig}); err != nil {
 		_ = batch.Cancel()
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}

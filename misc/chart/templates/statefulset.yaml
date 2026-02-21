@@ -310,6 +310,11 @@ spec:
         - name: TRACE_SAMPLING_SUCCESS_RATIO
           value: {{ .Values.config.monitoring.traces.sampling.successRatio | default 0.1 | toString | quote }}
         {{- end }}
+        # Response signing configuration
+        {{- if .Values.config.responseSigning.enabled }}
+        - name: RESPONSE_SIGNING_KEY
+          value: "/response-signing/{{ .Values.config.responseSigning.secretKey }}"
+        {{- end }}
         # TLS configuration
         {{- if .Values.config.tls.enabled }}
         - name: TLS_CERT_FILE
@@ -356,12 +361,20 @@ spec:
             {{- if .Values.config.raft.learnerPromotionThreshold }}
             --learner-promotion-threshold {{ .Values.config.raft.learnerPromotionThreshold }} \
             {{- end }}
+            {{- if .Values.config.responseSigning.enabled }}
+            --response-signing-key "$RESPONSE_SIGNING_KEY" \
+            {{- end }}
             $CLUSTER_FLAG
         volumeMounts:
         - name: wal
           mountPath: {{ .Values.config.walDir }}
         - name: data
           mountPath: {{ .Values.config.dataDir }}
+        {{- if .Values.config.responseSigning.enabled }}
+        - name: response-signing
+          mountPath: /response-signing
+          readOnly: true
+        {{- end }}
         {{- if .Values.config.tls.enabled }}
         - name: tls-certs
           mountPath: /tls
@@ -409,11 +422,18 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.config.tls.enabled }}
+      {{- if or .Values.config.tls.enabled .Values.config.responseSigning.enabled }}
       volumes:
+      {{- if .Values.config.responseSigning.enabled }}
+      - name: response-signing
+        secret:
+          secretName: {{ .Values.config.responseSigning.secretName }}
+      {{- end }}
+      {{- if .Values.config.tls.enabled }}
       - name: tls-certs
         secret:
           secretName: {{ .Values.config.tls.secretName }}
+      {{- end }}
       {{- end }}
   volumeClaimTemplates:
   - metadata:

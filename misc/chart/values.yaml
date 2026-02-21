@@ -153,6 +153,16 @@ config:
     # If the secret also contains a ca.crt key, set this to enable CA verification
     caSecretKey: ""
 
+  # Response signing configuration (Ed25519)
+  # When enabled, the server signs every response log with an Ed25519 key.
+  # Clients can verify signatures using the public key obtained via the Discovery RPC.
+  responseSigning:
+    enabled: false
+    # Kubernetes secret containing the Ed25519 seed
+    # The secret must have a key named "seed" containing 32 bytes (raw) or 64 hex chars
+    secretName: ""
+    secretKey: "seed"
+
   # Restore mode: start in restore mode (no Raft, only RestoreService gRPC)
   # When enabled, the server accepts backup uploads and does not join/bootstrap a cluster
   restore: false
