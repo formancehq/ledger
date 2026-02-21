@@ -33,6 +33,5 @@ Refactor:
 * Simplify processor
 * Clean Machine (returns from ApplyEntries)
 * Separate modules in application package
-* Cyclic dependencies in tests
 * Split admission
 * Categorize raft commands

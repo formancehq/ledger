@@ -1,4 +1,4 @@
-package signing_test
+package signing
 
 import (
 	"crypto/ed25519"
@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +20,7 @@ func TestResponseSigner(t *testing.T) {
 	_, err := rand.Read(seed)
 	require.NoError(t, err)
 
-	signer := signing.NewResponseSigner(seed)
+	signer := NewResponseSigner(seed)
 
 	t.Run("key ID is SHA256 fingerprint of public key", func(t *testing.T) {
 		t.Parallel()
@@ -60,7 +59,7 @@ func TestResponseSigner(t *testing.T) {
 		require.NotEmpty(t, sig.SignedPayload)
 
 		// Verify should succeed with the correct public key
-		err := signing.VerifyResponseSignature(sig, signer.PublicKey())
+		err := VerifyResponseSignature(sig, signer.PublicKey())
 		require.NoError(t, err)
 	})
 
@@ -86,7 +85,7 @@ func TestResponseSigner(t *testing.T) {
 		require.NoError(t, err)
 		wrongPubKey := ed25519.NewKeyFromSeed(wrongSeed).Public().(ed25519.PublicKey)
 
-		err = signing.VerifyResponseSignature(sig, wrongPubKey)
+		err = VerifyResponseSignature(sig, wrongPubKey)
 		require.Error(t, err)
 	})
 
@@ -109,13 +108,13 @@ func TestResponseSigner(t *testing.T) {
 		// Tamper with the payload
 		sig.SignedPayload = append(sig.SignedPayload, 0xFF)
 
-		err := signing.VerifyResponseSignature(sig, signer.PublicKey())
+		err := VerifyResponseSignature(sig, signer.PublicKey())
 		require.Error(t, err)
 	})
 
 	t.Run("verify fails with nil signature", func(t *testing.T) {
 		t.Parallel()
-		err := signing.VerifyResponseSignature(nil, signer.PublicKey())
+		err := VerifyResponseSignature(nil, signer.PublicKey())
 		require.Error(t, err)
 	})
 
@@ -165,7 +164,7 @@ func TestLoadSeedFromFile(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "seed.bin")
 		require.NoError(t, os.WriteFile(path, seed, 0600))
 
-		loaded, err := signing.LoadSeedFromFile(path)
+		loaded, err := LoadSeedFromFile(path)
 		require.NoError(t, err)
 		require.Equal(t, seed, loaded)
 	})
@@ -179,7 +178,7 @@ func TestLoadSeedFromFile(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "seed.hex")
 		require.NoError(t, os.WriteFile(path, []byte(hex.EncodeToString(seed)+"\n"), 0600))
 
-		loaded, err := signing.LoadSeedFromFile(path)
+		loaded, err := LoadSeedFromFile(path)
 		require.NoError(t, err)
 		require.Equal(t, seed, loaded)
 	})
@@ -189,7 +188,7 @@ func TestLoadSeedFromFile(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "bad.bin")
 		require.NoError(t, os.WriteFile(path, []byte("too short"), 0600))
 
-		_, err := signing.LoadSeedFromFile(path)
+		_, err := LoadSeedFromFile(path)
 		require.Error(t, err)
 	})
 }
@@ -206,7 +205,7 @@ func TestLoadPublicKeyFromFile(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "pubkey.bin")
 		require.NoError(t, os.WriteFile(path, pubKey, 0644))
 
-		loaded, err := signing.LoadPublicKeyFromFile(path)
+		loaded, err := LoadPublicKeyFromFile(path)
 		require.NoError(t, err)
 		require.Equal(t, pubKey, loaded)
 	})
@@ -220,7 +219,7 @@ func TestLoadPublicKeyFromFile(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "pubkey.hex")
 		require.NoError(t, os.WriteFile(path, []byte(hex.EncodeToString(pubKey)+"\n"), 0644))
 
-		loaded, err := signing.LoadPublicKeyFromFile(path)
+		loaded, err := LoadPublicKeyFromFile(path)
 		require.NoError(t, err)
 		require.Equal(t, pubKey, loaded)
 	})

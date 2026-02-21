@@ -1,4 +1,4 @@
-package state_test
+package state
 
 import (
 	"io"
@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -33,7 +32,7 @@ func newTestStore(t *testing.T) *dal.Store {
 func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
 	t.Helper()
 	batch := s.NewBatch()
-	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
+	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:        id,
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
@@ -45,9 +44,9 @@ func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
 func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
 	batch := s.NewBatch()
-	err := state.AppendLogs(batch, logs...)
+	err := AppendLogs(batch, logs...)
 	require.NoError(t, err)
-	require.NoError(t, state.SetAppliedIndex(batch, lastAppliedIndex))
+	require.NoError(t, SetAppliedIndex(batch, lastAppliedIndex))
 	require.NoError(t, batch.Commit())
 }
 
@@ -203,12 +202,12 @@ func TestReadLogBySequence(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
-	log, err := state.ReadLogBySequence(s, 1)
+	log, err := ReadLogBySequence(s, 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(1), log.Sequence)
 
-	log, err = state.ReadLogBySequence(s, 999)
+	log, err = ReadLogBySequence(s, 999)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
@@ -220,7 +219,7 @@ func TestReadLastSequence(t *testing.T) {
 	registerLedger(t, s, "test-ledger", 1)
 
 	// Test with no logs - should return 0
-	lastSequence, err := state.ReadLastSequence(s)
+	lastSequence, err := ReadLastSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastSequence)
 
@@ -228,7 +227,7 @@ func TestReadLastSequence(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
-	lastSequence, err = state.ReadLastSequence(s)
+	lastSequence, err = ReadLastSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), lastSequence) // Last log has sequence 4
 }
@@ -238,7 +237,7 @@ func TestReadLedgers(t *testing.T) {
 	s := newTestStore(t)
 
 	// Initially no ledgers
-	cursor, err := state.ReadLedgers(s)
+	cursor, err := ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
@@ -246,7 +245,7 @@ func TestReadLedgers(t *testing.T) {
 
 	// Register first ledger
 	registerLedger(t, s, "ledger-1", 1)
-	cursor, err = state.ReadLedgers(s)
+	cursor, err = ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
@@ -256,7 +255,7 @@ func TestReadLedgers(t *testing.T) {
 
 	// Register second ledger
 	registerLedger(t, s, "ledger-2", 2)
-	cursor, err = state.ReadLedgers(s)
+	cursor, err = ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
@@ -269,13 +268,13 @@ func TestGetLedgerByName(t *testing.T) {
 
 	registerLedger(t, s, "my-ledger", 42)
 
-	ledger, err := state.GetLedgerByName(s, "my-ledger")
+	ledger, err := GetLedgerByName(s, "my-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
 	require.Equal(t, "my-ledger", ledger.Name)
 	require.Equal(t, uint32(42), ledger.Id)
 
-	ledger, err = state.GetLedgerByName(s, "non-existing")
+	ledger, err = GetLedgerByName(s, "non-existing")
 	require.Error(t, err)
 	require.Nil(t, ledger)
 }
@@ -295,7 +294,7 @@ func TestReadLastSequenceAfterSnapshot(t *testing.T) {
 	require.Equal(t, uint64(1), checkpointID)
 
 	// Verify data still accessible after snapshot
-	lastSequence, err := state.ReadLastSequence(s)
+	lastSequence, err := ReadLastSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), lastSequence)
 }
@@ -305,34 +304,34 @@ func TestReadLastAppliedIndex(t *testing.T) {
 	s := newTestStore(t)
 
 	// Initial value should be 0
-	lastIndex, err := state.ReadLastAppliedIndex(s)
+	lastIndex, err := ReadLastAppliedIndex(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastIndex)
 
 	// Create batch with index 5
 	batch := s.NewBatch()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:   1,
 		Name: "test",
 	}))
-	require.NoError(t, state.SetAppliedIndex(batch, 5))
+	require.NoError(t, SetAppliedIndex(batch, 5))
 	require.NoError(t, batch.Commit())
 
 	// Verify last applied index updated
-	lastIndex, err = state.ReadLastAppliedIndex(s)
+	lastIndex, err = ReadLastAppliedIndex(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), lastIndex)
 
 	// Create another batch with index 10
 	batch = s.NewBatch()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:   2,
 		Name: "test2",
 	}))
-	require.NoError(t, state.SetAppliedIndex(batch, 10))
+	require.NoError(t, SetAppliedIndex(batch, 10))
 	require.NoError(t, batch.Commit())
 
-	lastIndex, err = state.ReadLastAppliedIndex(s)
+	lastIndex, err = ReadLastAppliedIndex(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), lastIndex)
 }
@@ -348,7 +347,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	)
 	createdAt := commonpb.NewTimestamp(libtime.Now())
 	batch := s.NewBatch()
-	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
+	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:        ledgerID,
 		Name:      ledgerName,
 		CreatedAt: createdAt,
@@ -366,7 +365,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	metadataKey := dal.MetadataKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, &commonpb.MetadataValue{Value: "value"}))
-	require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: ledgerID, ID: 1}, &commonpb.TransactionUpdate{
+	require.NoError(t, StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: ledgerID, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
 			{
@@ -379,7 +378,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger exists and is not deleted
-	cursor, err := state.ReadLedgers(s)
+	cursor, err := ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
@@ -389,7 +388,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	// Soft delete ledger
 	deletedAt := commonpb.NewTimestamp(libtime.Now())
 	batch = s.NewBatch()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
 		Id:        ledgerID,
 		Name:      ledgerName,
 		CreatedAt: createdAt,
@@ -398,7 +397,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger still exists but is marked as deleted
-	cursor, err = state.ReadLedgers(s)
+	cursor, err = ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
@@ -426,11 +425,11 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		periods, err := state.ReadAllPeriods(s)
+		periods, err := ReadAllPeriods(s)
 		require.NoError(t, err)
 		require.Nil(t, periods)
 
-		nextID, err := state.ReadNextPeriodID(s)
+		nextID, err := ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), nextID)
 	})
@@ -443,22 +442,22 @@ func TestReadPeriods(t *testing.T) {
 		t.Cleanup(func() { _ = s.Close() })
 
 		batch := s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			Status: commonpb.PeriodStatus_PERIOD_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
+		require.NoError(t, StoreNextPeriodID(batch, 2))
 		require.NoError(t, batch.Commit())
 
-		periods, err := state.ReadAllPeriods(s)
+		periods, err := ReadAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, uint64(1), periods[0].Id)
 		require.Equal(t, uint64(1000), periods[0].Start.Data)
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[0].Status)
 
-		nextID, err := state.ReadNextPeriodID(s)
+		nextID, err := ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), nextID)
 	})
@@ -472,18 +471,18 @@ func TestReadPeriods(t *testing.T) {
 
 		// Insert periods out of order
 		batch := s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     3,
 			Start:  &commonpb.Timestamp{Data: 3000},
 			Status: commonpb.PeriodStatus_PERIOD_OPEN,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			End:    &commonpb.Timestamp{Data: 2000},
 			Status: commonpb.PeriodStatus_PERIOD_CLOSED,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:            2,
 			Start:         &commonpb.Timestamp{Data: 2000},
 			End:           &commonpb.Timestamp{Data: 3000},
@@ -491,11 +490,11 @@ func TestReadPeriods(t *testing.T) {
 			CloseSequence: 10,
 			SealingHash:   []byte("hash-2"),
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 4))
+		require.NoError(t, StoreNextPeriodID(batch, 4))
 		require.NoError(t, batch.Commit())
 
 		// Verify periods are returned ordered by ID
-		periods, err := state.ReadAllPeriods(s)
+		periods, err := ReadAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 3)
 		require.Equal(t, uint64(1), periods[0].Id)
@@ -509,7 +508,7 @@ func TestReadPeriods(t *testing.T) {
 		require.Equal(t, uint64(10), periods[1].CloseSequence)
 		require.Equal(t, []byte("hash-2"), periods[1].SealingHash)
 
-		nextID, err := state.ReadNextPeriodID(s)
+		nextID, err := ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(4), nextID)
 	})
@@ -523,17 +522,17 @@ func TestReadPeriods(t *testing.T) {
 
 		// Store initial period
 		batch := s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			Status: commonpb.PeriodStatus_PERIOD_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
+		require.NoError(t, StoreNextPeriodID(batch, 2))
 		require.NoError(t, batch.Commit())
 
 		// Update the same period (close it)
 		batch = s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:            1,
 			Start:         &commonpb.Timestamp{Data: 1000},
 			End:           &commonpb.Timestamp{Data: 2000},
@@ -543,7 +542,7 @@ func TestReadPeriods(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		periods, err := state.ReadAllPeriods(s)
+		periods, err := ReadAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].Status)
@@ -560,18 +559,18 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 
 		batch := s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			End:    &commonpb.Timestamp{Data: 2000},
 			Status: commonpb.PeriodStatus_PERIOD_CLOSED,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     2,
 			Start:  &commonpb.Timestamp{Data: 2000},
 			Status: commonpb.PeriodStatus_PERIOD_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 3))
+		require.NoError(t, StoreNextPeriodID(batch, 3))
 		require.NoError(t, batch.Commit())
 
 		// Create snapshot so data survives reopen (writes use NoSync)
@@ -584,13 +583,13 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s2.Close() })
 
-		periods, err := state.ReadAllPeriods(s2)
+		periods, err := ReadAllPeriods(s2)
 		require.NoError(t, err)
 		require.Len(t, periods, 2)
 		require.Equal(t, uint64(1), periods[0].Id)
 		require.Equal(t, uint64(2), periods[1].Id)
 
-		nextID, err := state.ReadNextPeriodID(s2)
+		nextID, err := ReadNextPeriodID(s2)
 		require.NoError(t, err)
 		require.Equal(t, uint64(3), nextID)
 	})
@@ -604,19 +603,19 @@ func TestReadPeriods(t *testing.T) {
 
 		// Set to 5
 		batch := s.NewBatch()
-		require.NoError(t, state.StoreNextPeriodID(batch, 5))
+		require.NoError(t, StoreNextPeriodID(batch, 5))
 		require.NoError(t, batch.Commit())
 
-		nextID, err := state.ReadNextPeriodID(s)
+		nextID, err := ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(5), nextID)
 
 		// Update to 10
 		batch = s.NewBatch()
-		require.NoError(t, state.StoreNextPeriodID(batch, 10))
+		require.NoError(t, StoreNextPeriodID(batch, 10))
 		require.NoError(t, batch.Commit())
 
-		nextID, err = state.ReadNextPeriodID(s)
+		nextID, err = ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(10), nextID)
 	})
@@ -632,25 +631,25 @@ func TestReadPeriods(t *testing.T) {
 
 		// Store periods, nextPeriodID, and logs in the same batch
 		batch := s.NewBatch()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			Status: commonpb.PeriodStatus_PERIOD_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
-		require.NoError(t, state.SetAppliedIndex(batch, 42))
+		require.NoError(t, StoreNextPeriodID(batch, 2))
+		require.NoError(t, SetAppliedIndex(batch, 42))
 		require.NoError(t, batch.Commit())
 
 		// Verify all data was written atomically
-		periods, err := state.ReadAllPeriods(s)
+		periods, err := ReadAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 
-		nextID, err := state.ReadNextPeriodID(s)
+		nextID, err := ReadNextPeriodID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), nextID)
 
-		lastIndex, err := state.ReadLastAppliedIndex(s)
+		lastIndex, err := ReadLastAppliedIndex(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(42), lastIndex)
 	})
@@ -661,11 +660,11 @@ func TestReadSigningKeys(t *testing.T) {
 	s := newTestStore(t)
 
 	t.Run("empty store has no signing keys", func(t *testing.T) {
-		keys, err := state.ReadSigningKeys(s)
+		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Empty(t, keys)
 
-		requireSig, err := state.ReadSigningConfig(s)
+		requireSig, err := ReadSigningConfig(s)
 		require.NoError(t, err)
 		require.False(t, requireSig)
 	})
@@ -679,11 +678,11 @@ func TestReadSigningKeys(t *testing.T) {
 		}
 
 		batch := s.NewBatch()
-		require.NoError(t, state.SaveSigningKey(batch, "key-1", pubKey1))
-		require.NoError(t, state.SaveSigningKey(batch, "key-2", pubKey2))
+		require.NoError(t, SaveSigningKey(batch, "key-1", pubKey1))
+		require.NoError(t, SaveSigningKey(batch, "key-2", pubKey2))
 		require.NoError(t, batch.Commit())
 
-		keys, err := state.ReadSigningKeys(s)
+		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Len(t, keys, 2)
 		require.Equal(t, pubKey1, keys["key-1"])
@@ -692,10 +691,10 @@ func TestReadSigningKeys(t *testing.T) {
 
 	t.Run("delete signing key", func(t *testing.T) {
 		batch := s.NewBatch()
-		require.NoError(t, state.DeleteSigningKey(batch, "key-1"))
+		require.NoError(t, DeleteSigningKey(batch, "key-1"))
 		require.NoError(t, batch.Commit())
 
-		keys, err := state.ReadSigningKeys(s)
+		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Len(t, keys, 1)
 		require.Nil(t, keys["key-1"])
@@ -704,18 +703,18 @@ func TestReadSigningKeys(t *testing.T) {
 
 	t.Run("save and load signing config", func(t *testing.T) {
 		batch := s.NewBatch()
-		require.NoError(t, state.SaveSigningConfig(batch, true))
+		require.NoError(t, SaveSigningConfig(batch, true))
 		require.NoError(t, batch.Commit())
 
-		requireSig, err := state.ReadSigningConfig(s)
+		requireSig, err := ReadSigningConfig(s)
 		require.NoError(t, err)
 		require.True(t, requireSig)
 
 		batch = s.NewBatch()
-		require.NoError(t, state.SaveSigningConfig(batch, false))
+		require.NoError(t, SaveSigningConfig(batch, false))
 		require.NoError(t, batch.Commit())
 
-		requireSig, err = state.ReadSigningConfig(s)
+		requireSig, err = ReadSigningConfig(s)
 		require.NoError(t, err)
 		require.False(t, requireSig)
 	})
@@ -723,20 +722,20 @@ func TestReadSigningKeys(t *testing.T) {
 	t.Run("delete all signing keys", func(t *testing.T) {
 		// Add some keys first
 		batch := s.NewBatch()
-		require.NoError(t, state.SaveSigningKey(batch, "a", make([]byte, 32)))
-		require.NoError(t, state.SaveSigningKey(batch, "b", make([]byte, 32)))
-		require.NoError(t, state.SaveSigningKey(batch, "c", make([]byte, 32)))
+		require.NoError(t, SaveSigningKey(batch, "a", make([]byte, 32)))
+		require.NoError(t, SaveSigningKey(batch, "b", make([]byte, 32)))
+		require.NoError(t, SaveSigningKey(batch, "c", make([]byte, 32)))
 		require.NoError(t, batch.Commit())
 
-		keys, err := state.ReadSigningKeys(s)
+		keys, err := ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Len(t, keys, 4) // key-2 from previous test + a, b, c
 
 		batch = s.NewBatch()
-		require.NoError(t, state.DeleteAllSigningKeys(batch))
+		require.NoError(t, DeleteAllSigningKeys(batch))
 		require.NoError(t, batch.Commit())
 
-		keys, err = state.ReadSigningKeys(s)
+		keys, err = ReadSigningKeys(s)
 		require.NoError(t, err)
 		require.Empty(t, keys)
 	})
@@ -749,7 +748,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		cursor, err := state.ReadLogsSince(s, 0)
+		cursor, err := ReadLogsSince(s, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -764,7 +763,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=0 should return all logs
-		cursor, err := state.ReadLogsSince(s, 0)
+		cursor, err := ReadLogsSince(s, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -781,7 +780,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=2 should return logs 3 and 4
-		cursor, err := state.ReadLogsSince(s, 2)
+		cursor, err := ReadLogsSince(s, 2)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 2)
@@ -798,7 +797,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=4 (last log) should return empty
-		cursor, err := state.ReadLogsSince(s, 4)
+		cursor, err := ReadLogsSince(s, 4)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -812,7 +811,7 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
-		cursor, err := state.ReadLogsSince(s, 999)
+		cursor, err := ReadLogsSince(s, 999)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -827,7 +826,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// Simulate emitter: read all, then read after cursor
-		cursor, err := state.ReadLogsSince(s, 0)
+		cursor, err := ReadLogsSince(s, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -839,7 +838,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 2, moreLogs...)
 
 		// Read only new logs
-		cursor, err = state.ReadLogsSince(s, lastSeq)
+		cursor, err = ReadLogsSince(s, lastSeq)
 		require.NoError(t, err)
 		newLogs := collectLogs(t, cursor)
 		require.Len(t, newLogs, 4) // 4 new logs starting from sequence 5
@@ -908,7 +907,7 @@ func TestReadLogsSince(t *testing.T) {
 		}
 		appendLogs(t, s, 1, mixedLogs...)
 
-		cursor, err := state.ReadLogsSince(s, 0)
+		cursor, err := ReadLogsSince(s, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 3)
