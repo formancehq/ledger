@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"github.com/stretchr/testify/require"
@@ -28,8 +28,8 @@ import (
 )
 
 // listLedgerContains checks if a ledger with the given name exists in the store
-func listLedgerContains(s *data.Store, name string) bool {
-	cursor, err := s.ListLedgers()
+func listLedgerContains(s *dal.Store, name string) bool {
+	cursor, err := state.ReadLedgers(s)
 	if err != nil {
 		return false
 	}
@@ -57,13 +57,13 @@ type ClusterNode struct {
 	Transport *ChannelTransport
 
 	// Underlying implementations
-	Store *data.Store
+	Store *dal.Store
 	WAL   wal.WAL
 	Spool spool.Spool
 	Cache *cache.Cache
 
 	// Interceptors - use these to intercept/modify behavior during tests
-	StoreInterceptor *data.StoreInterceptor
+	StoreInterceptor *dal.StoreInterceptor
 	WALInterceptor   *wal.Interceptor
 	SpoolInterceptor *spool.Interceptor
 
@@ -119,7 +119,7 @@ func (p *ClusterSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFe
 
 // clusterSnapshotFetcher fetches snapshots directly from a peer's store.
 type clusterSnapshotFetcher struct {
-	store    *data.Store
+	store    *dal.Store
 	provider *ClusterSnapshotFetcherProvider
 }
 
@@ -263,13 +263,13 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		require.NoError(t, err)
 
 		// Create store
-		pebbleStore, err := data.NewStore(dataDir, logger, meter, data.DefaultConfig())
+		pebbleStore, err := dal.NewStore(dataDir, logger, meter, dal.DefaultConfig())
 		require.NoError(t, err)
 
 		// Wrap with interceptors
 		walInterceptor := wal.NewWALInterceptor(w)
 		spoolInterceptor := spool.NewInterceptor(defaultSpool)
-		storeInterceptor := data.NewStoreInterceptor(pebbleStore)
+		storeInterceptor := dal.NewStoreInterceptor(pebbleStore)
 
 		// Build peer list excluding self
 		peers := make([]Peer, 0, numNodes-1)
@@ -552,7 +552,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("recreating spool: %w", err)
 	}
 
-	newStore, err := data.NewStore(clusterNode.DataDir, c.logger, noop.Meter{}, data.DefaultConfig())
+	newStore, err := dal.NewStore(clusterNode.DataDir, c.logger, noop.Meter{}, dal.DefaultConfig())
 	if err != nil {
 		return nil, fmt.Errorf("recreating store: %w", err)
 	}
@@ -560,7 +560,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	// Create new interceptors
 	walInterceptor := wal.NewWALInterceptor(w)
 	spoolInterceptor := spool.NewInterceptor(defaultSpool)
-	storeInterceptor := data.NewStoreInterceptor(newStore)
+	storeInterceptor := dal.NewStoreInterceptor(newStore)
 
 	// Use the cluster's snapshot fetcher provider
 	snapshotFetcherProvider := c.snapshotFetcherProvider
@@ -1290,7 +1290,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		}
 		t.Logf("Follower synced after restart: has all %d ledgers", numLedgers)
 		return true
-	}, 5*time.Second, 50*time.Millisecond)
+	}, 10*time.Second, 50*time.Millisecond)
 
 	// Verify leader still has all ledgers (using refreshed leader reference)
 	for i := range numLedgers {

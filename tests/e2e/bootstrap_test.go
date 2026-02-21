@@ -308,7 +308,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		})
 
 		It("should have both ledgers", func() {
-			ledgers, err := getAllLedgersInfo(ctx, client)
+			ledgers, err := listLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(ledgers).To(HaveKey(ledgerName))
 			Expect(ledgers).To(HaveKey(ledger2))
@@ -414,7 +414,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			ledgers, err := getAllLedgersInfo(ctx, client)
+			ledgers, err := listLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(ledgers).To(HaveLen(3))
 		})

@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.etcd.io/etcd/raft/v3"
@@ -99,7 +99,7 @@ type Node struct {
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 	observer                *Observer
 
-	store             *data.Store
+	store             *dal.Store
 	spool             spool.Spool
 	status            *atomic.Int32
 	snapshotThreshold uint64
@@ -134,7 +134,7 @@ type Node struct {
 func NewNode(
 	cfg NodeConfig,
 	transport Transport,
-	store *data.Store,
+	store *dal.Store,
 	logger logging.Logger,
 	meter metric.Meter,
 	spool spool.Spool,
@@ -484,7 +484,7 @@ func NewNode(
 			}
 		}
 
-		storeLastAppliedIndex, err := store.GetLastAppliedIndex()
+		storeLastAppliedIndex, err := state.ReadLastAppliedIndex(store)
 		if err != nil {
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
@@ -535,6 +535,12 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		close(ch)
 		return nil
 	case err := <-node.tasks.err():
+		// Stop remaining tasks to prevent goroutine leaks.
+		// Without this, zombie goroutines keep consuming transport messages,
+		// starving any restarted node of heartbeats.
+		if stopErr := node.tasks.stop(); stopErr != nil {
+			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
+		}
 		return fmt.Errorf("task pool error: %w", err)
 	}
 }
@@ -1007,7 +1013,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 func (node *Node) unspoolAndResume(ctx context.Context) error {
 	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
 
-	lastAppliedIndex, err := node.store.GetLastAppliedIndex()
+	lastAppliedIndex, err := state.ReadLastAppliedIndex(node.store)
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
@@ -1018,7 +1024,7 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 
 	node.status.Store(statusNormal)
 
-	lastAppliedIndex, err = node.store.GetLastAppliedIndex()
+	lastAppliedIndex, err = state.ReadLastAppliedIndex(node.store)
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}

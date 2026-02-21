@@ -10,7 +10,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"google.golang.org/grpc"
@@ -121,7 +123,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
 // by looking up its creation log to extract the period ID.
 func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	log, err := impl.store.FindTransactionCreationLog(ledger, txID)
+	log, err := state.FindTransactionCreationLog(impl.store, ledger, txID)
 	if err != nil {
 		return "", err
 	}
@@ -250,12 +252,12 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
-	sinks, err := impl.store.LoadAllSinkConfigs()
+	sinks, err := events.ReadAllSinkConfigs(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink configs: %w", err)
 	}
 
-	statuses, err := impl.store.LoadAllSinkStatuses()
+	statuses, err := events.ReadAllSinkStatuses(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink statuses: %w", err)
 	}
@@ -267,7 +269,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servic
 }
 
 func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
-	cronExpr, err := impl.store.LoadPeriodSchedule()
+	cronExpr, err := state.ReadPeriodSchedule(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule: %w", err)
 	}

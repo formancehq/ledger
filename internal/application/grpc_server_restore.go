@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
+	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/data"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"google.golang.org/grpc"
@@ -234,22 +235,22 @@ func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorep
 	}
 	defer func() { _ = store.Close() }()
 
-	lastAppliedIndex, err := store.GetLastAppliedIndex()
+	lastAppliedIndex, err := state.ReadLastAppliedIndex(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err := store.GetLastAppliedTimestamp()
+	lastAppliedTimestamp, err := state.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	lastSequence, err := store.GetLastSequence()
+	lastSequence, err := state.ReadLastSequence(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	cursor, err := store.ListLedgers()
+	cursor, err := state.ReadLedgers(store)
 	if err != nil {
 		return nil, fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -294,13 +295,13 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
 
-	lastAppliedIndex, err := store.GetLastAppliedIndex()
+	lastAppliedIndex, err := state.ReadLastAppliedIndex(store)
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err := store.GetLastAppliedTimestamp()
+	lastAppliedTimestamp, err := state.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
