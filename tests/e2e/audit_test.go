@@ -4,9 +4,12 @@ package e2e
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -170,6 +173,132 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))
+	})
+
+	It("Should include order details in audit entries", func() {
+		// Create a ledger — produces a CreateLedger order
+		ledgerForOrders := "audit-orders-test"
+		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{createLedgerAction(ledgerForOrders, nil)},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		Expect(last.Orders).To(HaveLen(1))
+		Expect(last.Orders[0].GetCreateLedger()).NotTo(BeNil())
+		Expect(last.Orders[0].GetCreateLedger().Name).To(Equal(ledgerForOrders))
+
+		// Create a transaction — produces an Apply/CreateTransaction order
+		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				createTransactionAction(ledgerForOrders, []*commonpb.Posting{
+					newPosting("world", "bank", big.NewInt(500), "EUR"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err = collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last = entries[len(entries)-1]
+		Expect(last.Orders).To(HaveLen(1))
+		apply := last.Orders[0].GetApply()
+		Expect(apply).NotTo(BeNil())
+		Expect(apply.Ledger).To(Equal(ledgerForOrders))
+		Expect(apply.GetCreateTransaction()).NotTo(BeNil())
+	})
+
+	It("Should include signing key ID in audit entry orders", func() {
+		// Create a fresh node for signing tests to avoid interfering with other tests
+		sigCtx, sigClient, _ := setupSingleNode(9109, 8109)
+
+		// Generate a keypair
+		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+		Expect(err).To(Succeed())
+
+		const keyID = "audit-test-key"
+
+		// Register the key (bootstrap: first key can be unsigned)
+		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				registerSigningKeyAction(keyID, pubKey),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		// Create a ledger with a signed request
+		signedReq := createLedgerAction("signed-ledger", nil)
+		Expect(signing.Sign(signedReq, keyID, privKey)).To(Succeed())
+		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{signedReq},
+		})
+		Expect(err).To(Succeed())
+
+		// Verify the audit entry contains the signing key
+		entries, err := collectAuditEntries(sigCtx, sigClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		Expect(last.Orders).To(HaveLen(1))
+		sig := last.Orders[0].GetSignature()
+		Expect(sig).NotTo(BeNil())
+		Expect(sig.KeyId).To(Equal(keyID))
+
+		// Verify unsigned orders have no signature
+		firstEntry := entries[0] // RegisterSigningKey (bootstrap, unsigned)
+		Expect(firstEntry.Orders[0].GetSignature()).To(BeNil())
+	})
+
+	It("Should include multiple orders in a batch audit entry", func() {
+		// Submit multiple requests in a single Apply (batch)
+		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				createTransactionAction(ledgerName, []*commonpb.Posting{
+					newPosting("world", "batch:a", big.NewInt(100), "USD"),
+				}, nil, nil),
+				createTransactionAction(ledgerName, []*commonpb.Posting{
+					newPosting("world", "batch:b", big.NewInt(200), "USD"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		Expect(last.Orders).To(HaveLen(2))
+		Expect(last.Orders[0].GetApply()).NotTo(BeNil())
+		Expect(last.Orders[1].GetApply()).NotTo(BeNil())
+	})
+
+	It("Should get a single audit entry by sequence", func() {
+		// Get all entries first
+		allEntries, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+		Expect(allEntries).NotTo(BeEmpty())
+
+		// Get the first entry by sequence
+		target := allEntries[0]
+		entry, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+			Sequence: target.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(entry.Sequence).To(Equal(target.Sequence))
+		Expect(entry.ProposalId).To(Equal(target.ProposalId))
+		Expect(entry.Orders).To(HaveLen(len(target.Orders)))
+	})
+
+	It("Should return NOT_FOUND for non-existent audit entry", func() {
+		_, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+			Sequence: 999999,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.NotFound))
 	})
 
 	It("Should return FAILED_PRECONDITION when audit is disabled", func() {

@@ -26,6 +26,7 @@ type Controller interface {
 
 	// Audit operations
 	ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error)
+	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
 	// Period operations
 	ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error)

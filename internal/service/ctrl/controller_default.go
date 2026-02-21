@@ -332,6 +332,21 @@ func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence
 	return result, nil
 }
 
+// GetAuditEntry returns a single audit entry by sequence number.
+func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	entry, err := state.ReadAuditEntry(handle, sequence)
+	if err != nil {
+		if errors.Is(err, dal.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
+		}
+		return nil, fmt.Errorf("getting audit entry %d: %w", sequence, err)
+	}
+	return entry, nil
+}
+
 // ListPeriods returns a cursor over all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commonpb.Period], error) {
 	handle := ctrl.store.NewReadHandle()

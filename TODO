@@ -18,9 +18,9 @@ Business:
 Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
+* Tests CLI
 
 Signing :
-** when outputting the actions that were signed by a key, also output the key-id that validated the request
 ** have a list of keys
 ** in that list of keys, also map the key that has been used to register the key
 ** when revoking a key, potentially propose to revoke all keys that were registered using this key
@@ -34,3 +34,4 @@ Refactor:
 * Separate modules in application package
 * Split admission
 * Categorize raft commands (user commands vs system commands)
+* Check all commands match a log type payload

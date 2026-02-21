@@ -35,6 +35,8 @@ service BucketService {
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
   // ListAuditEntries streams audit trail entries (success and failure)
   rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
+  // GetAuditEntry returns a single audit entry by sequence number
+  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry);
   // GetEventsSinks returns the current per-sink configurations and statuses
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
   // ListPeriods streams all periods
@@ -424,6 +426,10 @@ message ListAuditEntriesRequest {
   bool failures_only = 2;
   // page_size is the maximum number of audit entries to return (0 = no limit)
   uint32 page_size = 3;
+}
+
+message GetAuditEntryRequest {
+  uint64 sequence = 1;
 }
 
 // ============================================================================

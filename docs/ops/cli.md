@@ -799,7 +799,10 @@ ledgerctl audit list [flags]
 
 **Behavior:**
 - Streams audit entries from the server
-- Each entry shows: sequence number, timestamp, proposal ID, outcome (OK/FAIL), and ledger name
+- Each entry shows: sequence number, timestamp, proposal ID, and outcome (OK/FAIL)
+- Below each entry, all orders are listed in a tree structure with:
+  - Order type and details (ledger name, reference, etc.)
+  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
 - If audit is disabled on the server, a warning message is displayed instead of an error
 
 **Example:**
@@ -822,6 +825,47 @@ ledgerctl audit list --limit 20
 
 # Output as JSON
 ledgerctl audit list --json
+```
+
+**Sample output:**
+
+```
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
+    └─ CreateLedger name=default  key=unsigned
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
+    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
+    └─ CreateTransaction ledger=default  key=admin-key
+```
+
+#### audit get
+
+Get a single audit entry by its sequence number.
+
+```bash
+ledgerctl audit get <sequence> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Retrieves a single audit entry by sequence number
+- Displays the same tree format as `audit list` for the single entry
+- Returns an error if the entry does not exist
+
+**Example:**
+
+```bash
+# Get audit entry #5
+ledgerctl audit get 5
+
+# Get as JSON
+ledgerctl audit get 5 --json
 ```
 
 ---

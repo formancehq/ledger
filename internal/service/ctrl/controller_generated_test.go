@@ -77,6 +77,21 @@ func (mr *MockControllerMockRecorder) GetAccount(ctx, ledgerName, address any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockController)(nil).GetAccount), ctx, ledgerName, address)
 }
 
+// GetAuditEntry mocks base method.
+func (m *MockController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAuditEntry", ctx, sequence)
+	ret0, _ := ret[0].(*auditpb.AuditEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAuditEntry indicates an expected call of GetAuditEntry.
+func (mr *MockControllerMockRecorder) GetAuditEntry(ctx, sequence any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuditEntry", reflect.TypeOf((*MockController)(nil).GetAuditEntry), ctx, sequence)
+}
+
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()

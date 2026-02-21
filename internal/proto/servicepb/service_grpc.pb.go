@@ -31,6 +31,7 @@ const (
 	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
 	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
 	BucketService_ListAuditEntries_FullMethodName  = "/ledger.BucketService/ListAuditEntries"
+	BucketService_GetAuditEntry_FullMethodName     = "/ledger.BucketService/GetAuditEntry"
 	BucketService_GetEventsSinks_FullMethodName    = "/ledger.BucketService/GetEventsSinks"
 	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
 	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
@@ -64,6 +65,8 @@ type BucketServiceClient interface {
 	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
 	// ListAuditEntries streams audit trail entries (success and failure)
 	ListAuditEntries(ctx context.Context, in *ListAuditEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error)
+	// GetAuditEntry returns a single audit entry by sequence number
+	GetAuditEntry(ctx context.Context, in *GetAuditEntryRequest, opts ...grpc.CallOption) (*auditpb.AuditEntry, error)
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
@@ -229,6 +232,16 @@ func (c *bucketServiceClient) ListAuditEntries(ctx context.Context, in *ListAudi
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListAuditEntriesClient = grpc.ServerStreamingClient[auditpb.AuditEntry]
 
+func (c *bucketServiceClient) GetAuditEntry(ctx context.Context, in *GetAuditEntryRequest, opts ...grpc.CallOption) (*auditpb.AuditEntry, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(auditpb.AuditEntry)
+	err := c.cc.Invoke(ctx, BucketService_GetAuditEntry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetEventsSinksResponse)
@@ -323,6 +336,8 @@ type BucketServiceServer interface {
 	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error
 	// ListAuditEntries streams audit trail entries (success and failure)
 	ListAuditEntries(*ListAuditEntriesRequest, grpc.ServerStreamingServer[auditpb.AuditEntry]) error
+	// GetAuditEntry returns a single audit entry by sequence number
+	GetAuditEntry(context.Context, *GetAuditEntryRequest) (*auditpb.AuditEntry, error)
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
@@ -372,6 +387,9 @@ func (UnimplementedBucketServiceServer) CheckStore(*CheckStoreRequest, grpc.Serv
 }
 func (UnimplementedBucketServiceServer) ListAuditEntries(*ListAuditEntriesRequest, grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
 	return status.Errorf(codes.Unimplemented, "method ListAuditEntries not implemented")
+}
+func (UnimplementedBucketServiceServer) GetAuditEntry(context.Context, *GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAuditEntry not implemented")
 }
 func (UnimplementedBucketServiceServer) GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEventsSinks not implemented")
@@ -554,6 +572,24 @@ func _BucketService_ListAuditEntries_Handler(srv interface{}, stream grpc.Server
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListAuditEntriesServer = grpc.ServerStreamingServer[auditpb.AuditEntry]
 
+func _BucketService_GetAuditEntry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAuditEntryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetAuditEntry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetAuditEntry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetAuditEntry(ctx, req.(*GetAuditEntryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_GetEventsSinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetEventsSinksRequest)
 	if err := dec(in); err != nil {
@@ -656,6 +692,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetStoreMetrics",
 			Handler:    _BucketService_GetStoreMetrics_Handler,
+		},
+		{
+			MethodName: "GetAuditEntry",
+			Handler:    _BucketService_GetAuditEntry_Handler,
 		},
 		{
 			MethodName: "GetEventsSinks",

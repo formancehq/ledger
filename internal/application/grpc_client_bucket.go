@@ -131,6 +131,12 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *
 	}), nil
 }
 
+func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+	return g.client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+		Sequence: sequence,
+	})
+}
+
 func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
 	stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
 	if err != nil {

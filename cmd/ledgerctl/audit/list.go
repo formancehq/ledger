@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/pterm/pterm"
@@ -130,46 +130,94 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 		statusText = fmt.Sprintf("[%s] %s", f.ErrorType, f.Message)
 	}
 
-	// Extract ledger names from orders
-	ledgers := extractLedgerNames(entry)
-	ledgerStr := ""
-	if len(ledgers) > 0 {
-		ledgerStr = fmt.Sprintf(" ledger=%s", pterm.Cyan(strings.Join(ledgers, ",")))
-	}
-
-	pterm.Printf("  #%-6d %s  proposal=%-4d %s%s  %s\n",
+	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s\n",
 		entry.Sequence,
 		pterm.Gray(ts),
 		entry.ProposalId,
 		statusIcon,
-		ledgerStr,
 		pterm.Gray(statusText),
 	)
-}
 
-// extractLedgerNames extracts unique ledger names from audit entry orders.
-func extractLedgerNames(entry *auditpb.AuditEntry) []string {
-	seen := make(map[string]struct{})
-	var names []string
+	// Print each order with its details and signing key
+	for i, order := range entry.Orders {
+		orderType, orderDetail := describeOrder(order)
 
-	for _, order := range entry.Orders {
-		var name string
-		if apply := order.GetApply(); apply != nil {
-			name = apply.Ledger
-		} else if create := order.GetCreateLedger(); create != nil {
-			name = create.Name
-		} else if del := order.GetDeleteLedger(); del != nil {
-			name = del.Name
+		keyStr := pterm.Gray("unsigned")
+		if sig := order.GetSignature(); sig != nil && sig.KeyId != "" {
+			keyStr = pterm.Yellow(sig.KeyId)
 		}
-		if name != "" {
-			if _, ok := seen[name]; !ok {
-				seen[name] = struct{}{}
-				names = append(names, name)
-			}
+
+		prefix := "├─"
+		if i == len(entry.Orders)-1 {
+			prefix = "└─"
+		}
+
+		if orderDetail != "" {
+			pterm.Printf("    %s %s %s  key=%s\n", prefix, pterm.Cyan(orderType), pterm.Gray(orderDetail), keyStr)
+		} else {
+			pterm.Printf("    %s %s  key=%s\n", prefix, pterm.Cyan(orderType), keyStr)
 		}
 	}
+}
 
-	return names
+// describeOrder returns a human-readable type and detail string for an order.
+func describeOrder(order *raftcmdpb.Order) (string, string) {
+	switch {
+	case order.GetApply() != nil:
+		apply := order.GetApply()
+		subType, subDetail := describeApplyOrder(apply)
+		return subType, fmt.Sprintf("ledger=%s %s", apply.Ledger, subDetail)
+	case order.GetCreateLedger() != nil:
+		return "CreateLedger", fmt.Sprintf("name=%s", order.GetCreateLedger().Name)
+	case order.GetDeleteLedger() != nil:
+		return "DeleteLedger", fmt.Sprintf("name=%s", order.GetDeleteLedger().Name)
+	case order.GetRegisterSigningKey() != nil:
+		return "RegisterSigningKey", fmt.Sprintf("keyId=%s", order.GetRegisterSigningKey().KeyId)
+	case order.GetRevokeSigningKey() != nil:
+		return "RevokeSigningKey", fmt.Sprintf("keyId=%s", order.GetRevokeSigningKey().KeyId)
+	case order.GetSetSigningConfig() != nil:
+		return "SetSigningConfig", fmt.Sprintf("requireSignatures=%v", order.GetSetSigningConfig().RequireSignatures)
+	case order.GetAddEventsSink() != nil:
+		return "AddEventsSink", ""
+	case order.GetRemoveEventsSink() != nil:
+		return "RemoveEventsSink", fmt.Sprintf("name=%s", order.GetRemoveEventsSink().Name)
+	case order.GetClosePeriod() != nil:
+		return "ClosePeriod", ""
+	case order.GetSealPeriod() != nil:
+		return "SealPeriod", fmt.Sprintf("periodId=%d", order.GetSealPeriod().PeriodId)
+	case order.GetArchivePeriod() != nil:
+		return "ArchivePeriod", fmt.Sprintf("periodId=%d", order.GetArchivePeriod().PeriodId)
+	case order.GetConfirmArchivePeriod() != nil:
+		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().PeriodId)
+	case order.GetSetMaintenanceMode() != nil:
+		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().Enabled)
+	case order.GetSetPeriodSchedule() != nil:
+		return "SetPeriodSchedule", fmt.Sprintf("cron=%s", order.GetSetPeriodSchedule().Cron)
+	case order.GetDeletePeriodSchedule() != nil:
+		return "DeletePeriodSchedule", ""
+	default:
+		return "Unknown", ""
+	}
+}
+
+// describeApplyOrder returns a human-readable sub-type and detail for a LedgerApplyOrder.
+func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
+	switch {
+	case apply.GetCreateTransaction() != nil:
+		tx := apply.GetCreateTransaction()
+		if tx.Reference != "" {
+			return "CreateTransaction", fmt.Sprintf("ref=%s", tx.Reference)
+		}
+		return "CreateTransaction", ""
+	case apply.GetAddMetadata() != nil:
+		return "AddMetadata", ""
+	case apply.GetRevertTransaction() != nil:
+		return "RevertTransaction", ""
+	case apply.GetDeleteMetadata() != nil:
+		return "DeleteMetadata", ""
+	default:
+		return "Apply", ""
+	}
 }
 
 // isAuditDisabledError checks if a gRPC error indicates that audit is disabled.

@@ -419,6 +419,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Apply(ClosePeriod)` | Close the current open period | ✅ |
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
+| `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 

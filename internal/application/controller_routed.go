@@ -109,6 +109,11 @@ func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *
 	return b.localController.ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize)
 }
 
+func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+	// Read from local store - audit entries are replicated via Raft
+	return b.localController.GetAuditEntry(ctx, sequence)
+}
+
 func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// Read from local store - data is replicated via Raft
 	return b.localController.GetAccount(ctx, ledgerName, address)

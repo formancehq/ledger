@@ -446,6 +446,30 @@ func ReadAuditEntries(reader dal.PebbleReader, afterSequence *uint64) (dal.Curso
 	return dal.NewProtoCursor[*auditpb.AuditEntry](iter), nil
 }
 
+// ReadAuditEntry returns a single audit entry by sequence number.
+// Returns dal.ErrNotFound if the entry does not exist.
+func ReadAuditEntry(reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEntry, error) {
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixAudit).PutUInt64(sequence)
+	key := kb.Build()
+
+	value, closer, err := reader.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, dal.ErrNotFound
+		}
+		return nil, fmt.Errorf("reading audit entry %d: %w", sequence, err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	entry := &auditpb.AuditEntry{}
+	if err := proto.Unmarshal(value, entry); err != nil {
+		return nil, fmt.Errorf("unmarshaling audit entry %d: %w", sequence, err)
+	}
+
+	return entry, nil
+}
+
 // ReadSigningKeys loads all signing keys from the given reader.
 // Returns a map of keyID → publicKey (32-byte Ed25519 public key).
 func ReadSigningKeys(reader dal.PebbleReader) (map[string][]byte, error) {
