@@ -18,6 +18,7 @@ Everything you need to contribute to the Ledger v3 project.
 
 | Topic | Document |
 |-------|----------|
+| Typed metadata | [architecture/typed-metadata.md](./architecture/typed-metadata.md) |
 | System overview (start here) | [architecture/overview.md](./architecture/overview.md) |
 | Raft consensus | [architecture/raft-consensus.md](./architecture/raft-consensus.md) |
 | Deterministic FSM | [architecture/deterministic-fsm.md](./architecture/deterministic-fsm.md) |

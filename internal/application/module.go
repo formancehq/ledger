@@ -418,6 +418,24 @@ func Module() fx.Option {
 					machine.ScheduleChanged(),
 				)
 			},
+			func(
+				logger logging.Logger,
+				store *dal.Store,
+				attrs *attributes.Attributes,
+				machine *state.Machine,
+				raftNode *node.Node,
+			) *state.MetadataConverter {
+				return state.NewMetadataConverter(
+					logger,
+					store,
+					attrs,
+					machine.MetadataConvertRequestCh(),
+					NewNodeProposer(raftNode),
+					raftNode.IsLeader,
+					100, // batchSize
+					4,   // poolSize — max concurrent field conversions
+				)
+			},
 			fx.Annotate(func(
 				raftNode *node.Node,
 				servicePool *transport.ConnectionPool,
@@ -766,6 +784,18 @@ func Module() fx.Option {
 					},
 					OnStop: func(_ context.Context) error {
 						scheduler.Stop()
+						return nil
+					},
+				})
+			},
+			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						converter.Start()
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						converter.Stop()
 						return nil
 					},
 				})

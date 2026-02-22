@@ -217,6 +217,18 @@ func (h *logHasher) hashLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		h.writeDiscriminator(4)
 		h.hashDeletedMetadata(v.DeletedMetadata)
+	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		h.writeDiscriminator(5)
+		h.hashSetMetadataFieldType(v.SetMetadataFieldType)
+	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+		h.writeDiscriminator(6)
+		h.hashRemovedMetadataFieldType(v.RemovedMetadataFieldType)
+	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
+		h.writeDiscriminator(7)
+		h.hashConvertMetadataBatchLog(v.ConvertMetadataBatch)
+	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
+		h.writeDiscriminator(8)
+		h.hashMetadataConversionCompleteLog(v.MetadataConversionComplete)
 	default:
 		h.writeDiscriminator(0)
 	}
@@ -317,6 +329,48 @@ func (h *logHasher) hashDeletedMetadata(dm *commonpb.DeletedMetadata) {
 	h.writePresence(true)
 	h.hashTarget(dm.Target)
 	h.writeString(dm.Key)
+}
+
+func (h *logHasher) hashSetMetadataFieldType(l *commonpb.SetMetadataFieldTypeLog) {
+	if l == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint32(uint32(l.TargetType))
+	h.writeString(l.Key)
+	h.writeUint32(uint32(l.Type))
+}
+
+func (h *logHasher) hashRemovedMetadataFieldType(l *commonpb.RemovedMetadataFieldTypeLog) {
+	if l == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint32(uint32(l.TargetType))
+	h.writeString(l.Key)
+}
+
+func (h *logHasher) hashConvertMetadataBatchLog(l *commonpb.ConvertMetadataBatchLog) {
+	if l == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint32(uint32(l.TargetType))
+	h.writeString(l.Key)
+	h.writeUint32(l.Count)
+}
+
+func (h *logHasher) hashMetadataConversionCompleteLog(l *commonpb.MetadataConversionCompleteLog) {
+	if l == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint32(uint32(l.TargetType))
+	h.writeString(l.Key)
 }
 
 func (h *logHasher) hashTarget(t *commonpb.Target) {
@@ -596,7 +650,7 @@ func (h *logHasher) hashMetadataValue(mv *commonpb.MetadataValue) {
 		return
 	}
 	h.writePresence(true)
-	h.writeString(mv.Value)
+	h.writeString(commonpb.MetadataValueToString(mv))
 }
 
 func (h *logHasher) hashTimestamp(ts *commonpb.Timestamp) {

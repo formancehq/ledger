@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -136,7 +137,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrBalanceNotPreloaded{
+	bizErr := &processing.BusinessError{Err: &numscript.ErrBalanceNotPreloaded{
 		Account: "user:003",
 		Asset:   "BTC",
 	}}
@@ -153,7 +154,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrNumscriptParse{Details: "unexpected token at line 3"}}
+	bizErr := &processing.BusinessError{Err: &numscript.ErrNumscriptParse{Details: "unexpected token at line 3"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.InvalidArgument, st.Code())
@@ -172,7 +173,7 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 	}{
 		{"target required", processing.ErrTargetRequired},
 		{"metadata key required", processing.ErrMetadataKeyRequired},
-		{"script required", processing.ErrScriptRequired},
+		{"script required", numscript.ErrScriptRequired},
 	}
 
 	for _, tt := range tests {

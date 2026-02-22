@@ -129,6 +129,11 @@ func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*com
 	return b.localController.ListSigningKeys(ctx)
 }
 
+func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	// Read from local store - schema status is replicated via Raft
+	return b.localController.GetMetadataSchemaStatus(ctx, ledgerName)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

@@ -9,21 +9,16 @@ import (
 
 // MarshalJSON implements json.Marshaler for CreateTransactionPayload
 func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
-	// Convert account metadata to map[string]map[string]string for JSON
-	accountMeta := make(map[string]map[string]string)
-	for k, v := range x.AccountMetadata {
-		accountMeta[k] = commonpb.MetadataSetToMap(v)
-	}
 	return json.Marshal(&struct {
-		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
-		Metadata        map[string]string            `json:"metadata,omitempty"`
-		Timestamp       *commonpb.Timestamp          `json:"timestamp,omitempty"`
-		Reference       string                       `json:"reference,omitempty"`
-		Postings        []*commonpb.Posting          `json:"postings,omitempty"`
-		Script          *commonpb.Script             `json:"script,omitempty"`
+		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+		Metadata        map[string]any            `json:"metadata,omitempty"`
+		Timestamp       *commonpb.Timestamp       `json:"timestamp,omitempty"`
+		Reference       string                    `json:"reference,omitempty"`
+		Postings        []*commonpb.Posting       `json:"postings,omitempty"`
+		Script          *commonpb.Script          `json:"script,omitempty"`
 	}{
-		AccountMetadata: accountMeta,
-		Metadata:        commonpb.MetadataSetToMap(x.Metadata),
+		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.AccountMetadata),
+		Metadata:        commonpb.MetadataSetToAnyMap(x.Metadata),
 		Timestamp:       x.Timestamp,
 		Reference:       x.Reference,
 		Postings:        x.Postings,
@@ -34,15 +29,15 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for RevertTransactionPayload
 func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		TransactionId   uint64            `json:"transactionId,omitempty"`
-		Force           bool              `json:"force,omitempty"`
-		AtEffectiveDate bool              `json:"atEffectiveDate,omitempty"`
-		Metadata        map[string]string `json:"metadata,omitempty"`
+		TransactionId   uint64         `json:"transactionId,omitempty"`
+		Force           bool           `json:"force,omitempty"`
+		AtEffectiveDate bool           `json:"atEffectiveDate,omitempty"`
+		Metadata        map[string]any `json:"metadata,omitempty"`
 	}{
 		TransactionId:   x.TransactionId,
 		Force:           x.Force,
 		AtEffectiveDate: x.AtEffectiveDate,
-		Metadata:        commonpb.MetadataSetToMap(x.Metadata),
+		Metadata:        commonpb.MetadataSetToAnyMap(x.Metadata),
 	})
 }
 
@@ -181,39 +176,49 @@ func GetLedgerApplyActionType(action *LedgerApplyRequest) string {
 // unmarshalSaveMetadataCommand unmarshals JSON into SaveMetadataCommand
 func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCommand, error) {
 	type rawReq struct {
-		TargetType string            `json:"targetType"`
-		TargetID   json.RawValue     `json:"targetId"`
-		Metadata   map[string]string `json:"metadata"`
+		TargetType string         `json:"targetType"`
+		TargetID   json.RawValue  `json:"targetId"`
+		Metadata   map[string]any `json:"metadata"`
 	}
 	var raw rawReq
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
+	ms, err := commonpb.MetadataSetFromAnyMap(raw.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("invalid metadata: %w", err)
+	}
+
 	return &commonpb.SaveMetadataCommand{
 		Target:   commonpb.ParseTarget(raw.TargetType, raw.TargetID),
-		Metadata: commonpb.MetadataSetFromMap(raw.Metadata),
+		Metadata: ms,
 	}, nil
 }
 
 // unmarshalRevertTransactionPayload unmarshals JSON into RevertTransactionPayload
 func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPayload, error) {
 	type rawReq struct {
-		ID              uint64            `json:"id"`
-		Force           bool              `json:"force"`
-		AtEffectiveDate bool              `json:"atEffectiveDate"`
-		Metadata        map[string]string `json:"metadata"`
+		ID              uint64         `json:"id"`
+		Force           bool           `json:"force"`
+		AtEffectiveDate bool           `json:"atEffectiveDate"`
+		Metadata        map[string]any `json:"metadata"`
 	}
 	var raw rawReq
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
+	ms, err := commonpb.MetadataSetFromAnyMap(raw.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("invalid metadata: %w", err)
+	}
+
 	return &RevertTransactionPayload{
 		TransactionId:   raw.ID,
 		Force:           raw.Force,
 		AtEffectiveDate: raw.AtEffectiveDate,
-		Metadata:        commonpb.MetadataSetFromMap(raw.Metadata),
+		Metadata:        ms,
 	}, nil
 }
 

@@ -304,6 +304,10 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKey
 	return sendCursorToStream(cursor, stream, "signing key")
 }
 
+func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.Ledger)
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

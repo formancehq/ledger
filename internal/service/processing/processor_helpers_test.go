@@ -13,8 +13,7 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:     reqType.CreateLedger.Name,
-				Metadata: reqType.CreateLedger.Metadata,
+				Name: reqType.CreateLedger.Name,
 			},
 		}
 	case *servicepb.Request_DeleteLedger:

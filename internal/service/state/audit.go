@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 )
 
 // buildAuditFailure extracts the error type and context from a processing error
@@ -26,9 +27,9 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 		transactionAlreadyReverted   *processing.ErrTransactionAlreadyReverted
 		insufficientFunds            *processing.ErrInsufficientFunds
 		balanceNotFound              *processing.ErrBalanceNotFound
-		balanceNotPreloaded          *processing.ErrBalanceNotPreloaded
-		numscriptParse               *processing.ErrNumscriptParse
-		nonDeterministic             *processing.ErrNonDeterministicScript
+		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
+		numscriptParse               *numscript.ErrNumscriptParse
+		nonDeterministic             *numscript.ErrNonDeterministicScript
 	)
 
 	switch {
@@ -84,7 +85,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	case errors.Is(err, processing.ErrTargetRequired),
 		errors.Is(err, processing.ErrMetadataKeyRequired),
-		errors.Is(err, processing.ErrScriptRequired):
+		errors.Is(err, numscript.ErrScriptRequired):
 		failure.ErrorType = processing.ErrReasonValidation
 
 	default:

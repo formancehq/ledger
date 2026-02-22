@@ -25,7 +25,7 @@ func NewCreateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String("name", "", "Name of the ledger to create")
-	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs (can be repeated)")
+	cmd.Flags().StringArray("schema", nil, "Metadata schema entries in target:key:type format (can be repeated, e.g. account:age:int64)")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -49,7 +49,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	metadata, _ := cmd.Flags().GetStringToString("metadata")
+	schemaEntries, _ := cmd.Flags().GetStringArray("schema")
+	initialSchema, err := parseSchemaEntries(cmd, schemaEntries)
+	if err != nil {
+		return err
+	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
@@ -66,8 +70,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name:     name,
-					Metadata: commonpb.MetadataSetFromMap(metadata),
+					Name:          name,
+					InitialSchema: initialSchema,
 				},
 			},
 		},
@@ -125,5 +129,106 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 	pterm.Printf("Created At: %s\n", createdAt)
 
+	if ledger.MetadataSchema != nil {
+		renderLedgerSchema(ledger.MetadataSchema)
+	}
+
 	return nil
+}
+
+func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+	var schema []*commonpb.SetMetadataFieldTypeCommand
+
+	for _, entry := range entries {
+		target, key, mdType, err := cmdutil.ParseSchemaEntry(entry)
+		if err != nil {
+			return nil, err
+		}
+		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
+			TargetType: target,
+			Key:        key,
+			Type:       mdType,
+		})
+	}
+
+	// If no schema entries from flags, offer wizard mode
+	if len(schema) == 0 && !cmd.Flags().Changed("schema") {
+		wizardSchema, err := schemaWizard()
+		if err != nil {
+			return nil, err
+		}
+		schema = wizardSchema
+	}
+
+	return schema, nil
+}
+
+func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+	addSchema, err := pterm.DefaultInteractiveConfirm.
+		WithDefaultText("Add metadata schema?").
+		WithDefaultValue(false).
+		Show()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read input: %w", err)
+	}
+	if !addSchema {
+		return nil, nil
+	}
+
+	var schema []*commonpb.SetMetadataFieldTypeCommand
+	for {
+		targetStr, err := pterm.DefaultInteractiveSelect.
+			WithOptions(cmdutil.TargetTypeOptions()).
+			WithDefaultText("Select target type").
+			Show()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		target, err := cmdutil.ParseTargetType(targetStr)
+		if err != nil {
+			return nil, err
+		}
+
+		key, err := pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter metadata key name").
+			Show()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		if key == "" {
+			pterm.Warning.Println("Key cannot be empty, skipping.")
+			continue
+		}
+
+		typeStr, err := pterm.DefaultInteractiveSelect.
+			WithOptions(cmdutil.MetadataTypeOptions()).
+			WithDefaultText("Select metadata type").
+			Show()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		mdType, err := cmdutil.ParseMetadataType(typeStr)
+		if err != nil {
+			return nil, err
+		}
+
+		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
+			TargetType: target,
+			Key:        key,
+			Type:       mdType,
+		})
+
+		another, err := pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Add another field?").
+			WithDefaultValue(false).
+			Show()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		if !another {
+			break
+		}
+	}
+
+	return schema, nil
 }

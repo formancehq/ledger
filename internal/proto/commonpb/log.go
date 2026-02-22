@@ -82,6 +82,30 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 					DeletedMetadata: p,
 				},
 			}
+		case *SetMetadataFieldTypeLog:
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_SetMetadataFieldType{
+					SetMetadataFieldType: p,
+				},
+			}
+		case *RemovedMetadataFieldTypeLog:
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_RemovedMetadataFieldType{
+					RemovedMetadataFieldType: p,
+				},
+			}
+		case *ConvertMetadataBatchLog:
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_ConvertMetadataBatch{
+					ConvertMetadataBatch: p,
+				},
+			}
+		case *MetadataConversionCompleteLog:
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_MetadataConversionComplete{
+					MetadataConversionComplete: p,
+				},
+			}
 		}
 	}
 	return nil

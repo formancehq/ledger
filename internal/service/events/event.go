@@ -45,6 +45,14 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 			event.Type = eventspb.EventType_SAVED_METADATA
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			event.Type = eventspb.EventType_DELETED_METADATA
+		case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+			// Schema operations — no dedicated event type, use unspecified
+		case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+			// Schema operations — no dedicated event type, use unspecified
+		case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
+			// Background conversion — no dedicated event type
+		case *commonpb.LedgerLogPayload_MetadataConversionComplete:
+			// Background conversion — no dedicated event type
 		}
 	}
 

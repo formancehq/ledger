@@ -443,7 +443,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		for _, md := range tx.Metadata.Metadata {
 			metadataTable = append(metadataTable, []string{
 				md.Key,
-				md.Value.Value,
+				commonpb.MetadataValueToString(md.Value),
 			})
 		}
 		return pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()

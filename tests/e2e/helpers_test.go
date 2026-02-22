@@ -598,3 +598,98 @@ func setupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 
 	return ctx, grpcClient, clusterClient
 }
+
+// setMetadataFieldTypeAction creates a request to declare a metadata field type.
+func setMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+				Ledger:     ledger,
+				TargetType: targetType,
+				Key:        key,
+				Type:       metadataType,
+			},
+		},
+	}
+}
+
+// removeMetadataFieldTypeAction creates a request to remove a metadata field type declaration.
+func removeMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+				Ledger:     ledger,
+				TargetType: targetType,
+				Key:        key,
+			},
+		},
+	}
+}
+
+// createLedgerWithSchemaAction creates a ledger with an initial metadata schema.
+func createLedgerWithSchemaAction(name string, metadata map[string]string, schema []*commonpb.SetMetadataFieldTypeCommand) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{
+				Name:          name,
+				Metadata:      commonpb.MetadataSetFromMap(metadata),
+				InitialSchema: schema,
+			},
+		},
+	}
+}
+
+// saveTypedAccountMetadataAction creates a request with a typed MetadataSet (not map[string]string).
+func saveTypedAccountMetadataAction(ledgerName, address string, metadata *commonpb.MetadataSet) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: address},
+							},
+						},
+						Metadata: metadata,
+					},
+				},
+			},
+		},
+	}
+}
+
+// saveTypedTransactionMetadataAction creates a request with a typed MetadataSet (not map[string]string).
+func saveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata *commonpb.MetadataSet) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{Id: txID},
+							},
+						},
+						Metadata: metadata,
+					},
+				},
+			},
+		},
+	}
+}
+
+// findMetadataValue looks up a key in a MetadataSet and returns the *MetadataValue (nil if not found).
+func findMetadataValue(ms *commonpb.MetadataSet, key string) *commonpb.MetadataValue {
+	if ms == nil {
+		return nil
+	}
+	for _, md := range ms.Metadata {
+		if md.Key == key {
+			return md.Value
+		}
+	}
+	return nil
+}

@@ -118,12 +118,12 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		transactionUpdates: make(map[string][]*commonpb.TransactionUpdate),
 		modifiedReverted:   make(map[string]struct{}),
 	}
-	resp, err := e.processor.ProcessProposal(proposal, store)
+	resp, err := e.processor.ProcessOrders(proposal.Orders, store)
 	require.NoError(e.t, err)
 
 	// Collect actual logs from the response
 	var logs []*commonpb.Log
-	for _, logOrRef := range resp.Logs {
+	for _, logOrRef := range resp {
 		switch t := logOrRef.Type.(type) {
 		case *raftcmdpb.CreatedLogOrReference_CreatedLog:
 			logs = append(logs, t.CreatedLog)
@@ -315,8 +315,6 @@ func (s *inMemoryStore) DeleteAccountMetadata(key dal.MetadataKey) {
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) PutLedgerMetadata(_ dal.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
-
 func (s *inMemoryStore) GetReverted(key dal.TransactionKey) (bool, error) {
 	reverted, ok := s.engine.reverted[string(key.Bytes())]
 	if !ok {
@@ -449,6 +447,9 @@ func (s *inMemoryStore) SetPurgeRange(_, _, _ uint64) {}
 
 func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
 
+func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
+}
+
 // Helper functions for building orders
 
 func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {
@@ -465,17 +466,6 @@ func createLedgerOrder(name string) *raftcmdpb.Order {
 		Type: &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
 				Name: name,
-			},
-		},
-	}
-}
-
-func createLedgerWithMetadataOrder(name string, metadata map[string]string) *raftcmdpb.Order {
-	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:     name,
-				Metadata: commonpb.MetadataSetFromMap(metadata),
 			},
 		},
 	}
@@ -630,10 +620,7 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 1: Create multiple ledgers ---
 	engine.processAndCommit(createLedgerOrder("trading"))
 	engine.processAndCommit(createLedgerOrder("payments"))
-	engine.processAndCommit(createLedgerWithMetadataOrder("savings", map[string]string{
-		"type": "savings-account",
-		"tier": "premium",
-	}))
+	engine.processAndCommit(createLedgerOrder("savings"))
 
 	// --- Step 2: Fund accounts from world (creates volumes) ---
 	// Trading ledger: fund multiple accounts with multiple assets
@@ -1100,7 +1087,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 				TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
 					Metadata: &commonpb.Metadata{
 						Key:   "spurious",
-						Value: &commonpb.MetadataValue{Value: "data"},
+						Value: commonpb.NewStringValue("data"),
 					},
 				},
 			},

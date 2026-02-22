@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -345,7 +346,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 	t.Run("Validation", func(t *testing.T) {
 		t.Parallel()
-		err := processing.ErrScriptRequired
+		err := numscript.ErrScriptRequired
 		failure := buildAuditFailure(err)
 		require.Equal(t, processing.ErrReasonValidation, failure.ErrorType)
 	})

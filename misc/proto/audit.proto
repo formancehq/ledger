@@ -5,7 +5,7 @@ package audit;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb";
 
 import "common.proto";
-import "raftcmd.proto";
+import "raft_cmd.proto";
 
 // ============================================================================
 // Audit Log

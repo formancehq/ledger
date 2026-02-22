@@ -32,9 +32,15 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var inputMetadata map[string]string
+	var inputMetadata map[string]any
 	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+
+	ms, metaErr := commonpb.MetadataSetFromAnyMap(inputMetadata)
+	if metaErr != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", metaErr))
 		return
 	}
 
@@ -52,7 +58,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 								},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(inputMetadata),
+						Metadata: ms,
 					},
 				},
 			},

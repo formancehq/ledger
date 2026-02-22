@@ -64,6 +64,9 @@ Monotonic timestamp generation using a Hybrid Logical Clock (HLC) in the FSM to 
 ### [Uint256 Wire Format](./uint256-wire-format.md)
 Why monetary amounts use fixed-size Uint256 instead of BigInt.
 
+### [Typed Metadata](./typed-metadata.md)
+Typed metadata values (string, int64, uint64, bool, NullValue), per-ledger metadata schema declaration, type conversion matrix, and hybrid conversion strategy (lazy reads + automatic background batches).
+
 ## Operations-Related Architecture
 
 These documents have been moved to the [Operations Guide](../../ops/) for better discoverability by sysadmins:

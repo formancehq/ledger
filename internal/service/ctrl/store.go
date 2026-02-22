@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -14,10 +13,12 @@ import (
 )
 
 // assembleAccount builds a commonpb.Account from flushed volume and metadata accumulator entries.
+// If schema is non-nil, stored values are lazily converted to match declared types.
 func assembleAccount(
 	address string,
 	volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair],
 	metaEntries []attributes.ComputedEntry[*commonpb.MetadataValue],
+	schema *commonpb.MetadataSchema,
 ) *commonpb.Account {
 	account := &commonpb.Account{
 		Address:  address,
@@ -51,19 +52,42 @@ func assembleAccount(
 	}
 
 	if len(metaEntries) > 0 {
-		md := make(metadata.Metadata, len(metaEntries))
+		mdList := make([]*commonpb.Metadata, 0, len(metaEntries))
 		for _, entry := range metaEntries {
 			var mk dal.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err == nil && entry.Value != nil {
-				md[mk.Key] = entry.Value.Value
+				mdList = append(mdList, &commonpb.Metadata{
+					Key:   mk.Key,
+					Value: entry.Value,
+				})
 			}
 		}
-		if len(md) > 0 {
-			account.Metadata = commonpb.MetadataSetFromMap(md)
+		if len(mdList) > 0 {
+			account.Metadata = &commonpb.MetadataSet{Metadata: mdList}
+			// Lazy read-path conversion: enforce schema types on stored values.
+			if schema != nil {
+				enforceAccountSchema(schema, mdList)
+			}
 		}
 	}
 
 	return account
+}
+
+// enforceAccountSchema converts metadata values to match declared account field types.
+func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
+	if len(schema.AccountFields) == 0 {
+		return
+	}
+	for _, m := range metadata {
+		fieldSchema, ok := schema.AccountFields[m.Key]
+		if !ok || m.Value == nil {
+			continue
+		}
+		if !commonpb.TypeMatches(m.Value, fieldSchema.Type) {
+			m.Value = commonpb.ConvertMetadataValue(m.Value, fieldSchema.Type)
+		}
+	}
 }
 
 // scanAccount performs a single forward scan over all Volume and Metadata attributes
@@ -75,6 +99,7 @@ func scanAccount(
 	attrs *attributes.Attributes,
 	ledgerID uint32,
 	address string,
+	schema *commonpb.MetadataSchema,
 ) (*commonpb.Account, error) {
 	// Build bounds: [0xF1][ledgerID][address]\x00 .. [0xF1][ledgerID][address]\x02
 	baseLen := 1 + 4 + len(address)
@@ -131,5 +156,5 @@ func scanAccount(
 		return nil, err
 	}
 
-	return assembleAccount(address, volAcc.Flush(), metaAcc.Flush()), nil
+	return assembleAccount(address, volAcc.Flush(), metaAcc.Flush(), schema), nil
 }

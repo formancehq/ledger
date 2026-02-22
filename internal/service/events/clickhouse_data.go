@@ -218,6 +218,15 @@ func populateApply(data *clickhouseEventData, apply *commonpb.ApplyLedgerLog) {
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = convertTarget(lp.DeletedMetadata.Target)
 		data.Key = &lp.DeletedMetadata.Key
+
+	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		// Schema operations — no ClickHouse-specific data
+	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+		// Schema operations — no ClickHouse-specific data
+	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
+		// Background conversion — no ClickHouse-specific data
+	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
+		// Background conversion — no ClickHouse-specific data
 	}
 }
 
@@ -261,7 +270,7 @@ func convertMetadataSet(ms *commonpb.MetadataSet) map[string]string {
 	result := make(map[string]string, len(ms.Metadata))
 	for _, entry := range ms.Metadata {
 		if entry.Value != nil {
-			result[entry.Key] = entry.Value.Value
+			result[entry.Key] = commonpb.MetadataValueToString(entry.Value)
 		}
 	}
 	return result

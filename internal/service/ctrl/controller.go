@@ -34,6 +34,9 @@ type Controller interface {
 	// Signing key operations
 	ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error)
 
+	// Schema operations
+	GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 }

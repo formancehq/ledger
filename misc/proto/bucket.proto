@@ -49,6 +49,8 @@ service BucketService {
   rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
   // Discovery returns server capabilities and configuration for clients
   rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
+  // GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+  rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
 }
 
 // ============================================================================
@@ -91,7 +93,7 @@ message ListAccountsRequest {
 
 message CreateLedgerRequest {
   string name = 1;
-  common.MetadataSet metadata = 2;
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
 }
 
 message DeleteLedgerRequest {
@@ -135,6 +137,8 @@ message Request {
     SetMaintenanceModeRequest set_maintenance_mode = 15;
     SetPeriodScheduleRequest set_period_schedule = 16;
     DeletePeriodScheduleRequest delete_period_schedule = 17;
+    SetMetadataFieldTypeRequest set_metadata_field_type = 18;
+    RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
   }
   signature.RequestSignature signature = 5;
 }
@@ -209,6 +213,23 @@ message SetPeriodScheduleRequest {
 
 // DeletePeriodScheduleRequest disables the automatic period rotation schedule.
 message DeletePeriodScheduleRequest {}
+
+// SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
+// Automatically triggers background conversion for that key.
+message SetMetadataFieldTypeRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+  common.MetadataType type = 4;
+}
+
+// RemoveMetadataFieldTypeRequest removes the type declaration for a single metadata key.
+// Values are converted back to string (always succeeds).
+message RemoveMetadataFieldTypeRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+}
 
 message GetPeriodScheduleRequest {}
 
@@ -455,4 +476,22 @@ message GetEventsSinksRequest {}
 message GetEventsSinksResponse {
   repeated common.SinkConfig sinks = 1;
   repeated common.SinkStatus sink_statuses = 2;
+}
+
+// ============================================================================
+// Metadata Conversion Messages
+// ============================================================================
+
+message GetMetadataSchemaStatusRequest {
+  string ledger = 1;
+}
+
+message GetMetadataSchemaStatusResponse {
+  map<string, MetadataFieldStatus> account_fields = 1;
+  map<string, MetadataFieldStatus> transaction_fields = 2;
+}
+
+message MetadataFieldStatus {
+  common.MetadataType declared_type = 1;
+  common.MetadataConversionStatus status = 2;
 }

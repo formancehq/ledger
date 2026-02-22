@@ -104,7 +104,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 				reverted = true
 			}
 			if addMeta := updateType.GetTransactionModificationAddMetadata(); addMeta != nil {
-				metadataToAdd[addMeta.Metadata.Key] = addMeta.Metadata.Value.Value
+				metadataToAdd[addMeta.Metadata.Key] = commonpb.MetadataValueToString(addMeta.Metadata.Value)
 				delete(metadataToDelete, addMeta.Metadata.Key)
 			}
 			if delMeta := updateType.GetTransactionModificationDeleteMetadata(); delMeta != nil {
@@ -261,6 +261,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		iter:     iter,
 		volAcc:   ctrl.attrs.Volume.NewAccumulator(),
 		metaAcc:  ctrl.attrs.Metadata.NewAccumulator(),
+		schema:   ledgerInfo.MetadataSchema,
 		pageSize: pageSize,
 	}, nil
 }
@@ -277,7 +278,7 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.Id, address)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.Id, address, ledgerInfo.MetadataSchema)
 }
 
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -289,6 +290,37 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 		return nil, err
 	}
 	return ledgerInfo, nil
+}
+
+// GetMetadataSchemaStatus returns the conversion status of all declared metadata fields.
+func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	if err != nil {
+		if errors.Is(err, dal.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+
+	resp := &servicepb.GetMetadataSchemaStatusResponse{
+		AccountFields:     make(map[string]*servicepb.MetadataFieldStatus),
+		TransactionFields: make(map[string]*servicepb.MetadataFieldStatus),
+	}
+	if ledgerInfo.MetadataSchema != nil {
+		for key, field := range ledgerInfo.MetadataSchema.AccountFields {
+			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{
+				DeclaredType: field.Type,
+				Status:       field.Status,
+			}
+		}
+		for key, field := range ledgerInfo.MetadataSchema.TransactionFields {
+			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{
+				DeclaredType: field.Type,
+				Status:       field.Status,
+			}
+		}
+	}
+	return resp, nil
 }
 
 // ListLogs returns a cursor over system logs.

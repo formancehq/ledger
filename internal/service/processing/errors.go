@@ -52,7 +52,6 @@ func (e *BusinessError) Unwrap() error {
 var (
 	ErrTargetRequired      = errors.New("target is required")
 	ErrMetadataKeyRequired = errors.New("key is required")
-	ErrScriptRequired      = errors.New("numscript: script is required")
 	ErrAuditDisabled       = errors.New("audit log is disabled on this server")
 	ErrMaintenanceMode     = errors.New("cluster is in maintenance mode: write operations are blocked")
 )
@@ -137,17 +136,6 @@ func (e *ErrBalanceNotFound) Error() string {
 	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
 }
 
-// ErrBalanceNotPreloaded is returned when the balance for an account was not
-// preloaded by the admission layer before script execution.
-type ErrBalanceNotPreloaded struct {
-	Account string
-	Asset   string
-}
-
-func (e *ErrBalanceNotPreloaded) Error() string {
-	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
-}
-
 // ErrSinkAlreadyExists is returned when adding a sink that already exists.
 type ErrSinkAlreadyExists struct {
 	Name string
@@ -176,29 +164,9 @@ func (e *ErrSinkNotFound) Error() string {
 	return fmt.Sprintf("event sink not found: %s", e.Name)
 }
 
-// ErrNumscriptParse is returned when a Numscript program has syntax errors.
-type ErrNumscriptParse struct {
-	Details string
-}
-
-func (e *ErrNumscriptParse) Error() string {
-	return fmt.Sprintf("numscript parse error: %s", e.Details)
-}
-
-// ErrNonDeterministicScript is returned when a Numscript script calls
-// GetBalances or GetAccountsMetadata more than once during discovery.
-// Deterministic scripts must declare all their reads in a single batch.
-type ErrNonDeterministicScript struct {
-	Method string // "GetBalances" or "GetAccountsMetadata"
-}
-
-func (e *ErrNonDeterministicScript) Error() string {
-	return fmt.Sprintf("non-deterministic script: %s called more than once", e.Method)
-}
-
 // Period-related sentinel errors.
 var (
-	ErrNoPeriodOpen      = errors.New("no open period exists")
+	ErrNoPeriodOpen     = errors.New("no open period exists")
 	ErrPeriodAlreadyClosing = errors.New("a period is already in CLOSING state")
 )
 

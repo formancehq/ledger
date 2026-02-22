@@ -112,9 +112,9 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 
 	// Set a base value and some diffs for metadata
 	batch := store.NewBatch()
-	err := attrs.Metadata.SetBase(batch, 5, testKey, &commonpb.MetadataValue{Value: "active"})
+	err := attrs.Metadata.SetBase(batch, 5, testKey, commonpb.NewStringValue("active"))
 	require.NoError(t, err)
-	err = attrs.Metadata.AddDiff(batch, 10, testKey, &commonpb.MetadataValue{Value: "inactive"})
+	err = attrs.Metadata.AddDiff(batch, 10, testKey, commonpb.NewStringValue("inactive"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "inactive", result.Value)
+	require.Equal(t, "inactive", commonpb.MetadataValueToString(result))
 
 	// Delete all entries for this key
 	batch = store.NewBatch()
@@ -153,7 +153,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Set initial value
 	batch := store.NewBatch()
-	err := attrs.Metadata.SetBase(batch, 5, testKey, &commonpb.MetadataValue{Value: "original"})
+	err := attrs.Metadata.SetBase(batch, 5, testKey, commonpb.NewStringValue("original"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Re-add with a new value
 	batch = store.NewBatch()
-	err = attrs.Metadata.AddDiff(batch, 20, testKey, &commonpb.MetadataValue{Value: "new-value"})
+	err = attrs.Metadata.AddDiff(batch, 20, testKey, commonpb.NewStringValue("new-value"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "new-value", result.Value)
+	require.Equal(t, "new-value", commonpb.MetadataValueToString(result))
 }
 
 func TestDeleteNonExistentKey(t *testing.T) {

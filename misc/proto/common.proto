@@ -20,8 +20,21 @@ message Metadata {
   MetadataValue value = 2;
 }
 
+// NullValue represents a metadata value that could not be converted to the
+// declared type. It preserves the original raw value for debugging, but
+// signals to consumers that the value is unusable in its expected type.
+message NullValue {
+  string original = 1;
+}
+
 message MetadataValue {
-  string value = 1;
+  oneof type {
+    string string_value = 1;  // wire-compatible with existing field 1
+    int64 int_value = 2;
+    bool bool_value = 3;
+    NullValue null_value = 4;
+    uint64 uint_value = 5;
+  }
 }
 
 message MetadataSet {
@@ -114,6 +127,11 @@ message AccountsVolumes {
 // Target (for metadata operations)
 // ============================================================================
 
+enum TargetType {
+  TARGET_TYPE_ACCOUNT = 0;
+  TARGET_TYPE_TRANSACTION = 1;
+}
+
 message TargetAccount {
   string addr = 1;
 }
@@ -127,6 +145,44 @@ message Target {
     TargetAccount account = 1;
     TargetTransaction transaction = 2;
   }
+}
+
+// ============================================================================
+// Metadata Schema
+// ============================================================================
+
+enum MetadataType {
+  METADATA_TYPE_STRING = 0;
+  METADATA_TYPE_INT64 = 1;
+  METADATA_TYPE_BOOL = 2;
+  METADATA_TYPE_UINT64 = 3;
+  METADATA_TYPE_INT8 = 4;
+  METADATA_TYPE_INT16 = 5;
+  METADATA_TYPE_INT32 = 6;
+  METADATA_TYPE_UINT8 = 7;
+  METADATA_TYPE_UINT16 = 8;
+  METADATA_TYPE_UINT32 = 9;
+}
+
+enum MetadataConversionStatus {
+  METADATA_CONVERSION_COMPLETE = 0;
+  METADATA_CONVERSION_CONVERTING = 1;
+}
+
+message MetadataFieldSchema {
+  MetadataType type = 1;
+  MetadataConversionStatus status = 2;
+}
+
+message MetadataSchema {
+  map<string, MetadataFieldSchema> account_fields = 1;
+  map<string, MetadataFieldSchema> transaction_fields = 2;
+}
+
+message SetMetadataFieldTypeCommand {
+  TargetType target_type = 1;
+  string key = 2;
+  MetadataType type = 3;
 }
 
 // ============================================================================
@@ -309,7 +365,22 @@ message LedgerLogPayload {
     RevertedTransaction reverted_transaction = 2;
     SavedMetadata saved_metadata = 3;
     DeletedMetadata deleted_metadata = 4;
+    SetMetadataFieldTypeLog set_metadata_field_type = 5;
+    RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
+    ConvertMetadataBatchLog convert_metadata_batch = 7;
+    MetadataConversionCompleteLog metadata_conversion_complete = 8;
   }
+}
+
+message ConvertMetadataBatchLog {
+  TargetType target_type = 1;
+  string key = 2;
+  uint32 count = 3;
+}
+
+message MetadataConversionCompleteLog {
+  TargetType target_type = 1;
+  string key = 2;
 }
 
 message CreatedTransaction {
@@ -331,6 +402,19 @@ message SavedMetadata {
 message DeletedMetadata {
   Target target = 1;
   string key = 2;                           // Metadata key to delete
+}
+
+// SetMetadataFieldTypeLog records a metadata field type declaration.
+message SetMetadataFieldTypeLog {
+  TargetType target_type = 1;
+  string key = 2;
+  MetadataType type = 3;
+}
+
+// RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.
+message RemovedMetadataFieldTypeLog {
+  TargetType target_type = 1;
+  string key = 2;
 }
 
 // ============================================================================
@@ -383,6 +467,7 @@ message LedgerInfo {
   Timestamp created_at = 2;                 // Creation timestamp
   uint32 id = 3;                            // Numeric ledger ID (auto-assigned, max 65535)
   Timestamp deleted_at = 4;                 // Soft delete timestamp (nil if not deleted)
+  MetadataSchema metadata_schema = 5;       // Per-key metadata type declarations
 }
 
 // ============================================================================

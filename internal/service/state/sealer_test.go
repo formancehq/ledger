@@ -76,7 +76,7 @@ func TestSealerDeterministic(t *testing.T) {
 		require.NoError(t, attrs.Volume.SetBase(batch, 1, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 			InputKnown: commonpb.NewUint256FromUint64(uint64(500)),
 		}))
-		require.NoError(t, attrs.Metadata.SetBase(batch, 1, []byte("l\x00a\x00key"), &commonpb.MetadataValue{Value: "val"}))
+		require.NoError(t, attrs.Metadata.SetBase(batch, 1, []byte("l\x00a\x00key"), commonpb.NewStringValue("val")))
 		require.NoError(t, batch.Commit())
 
 		checkpointPath := createSealCheckpoint(t, store)

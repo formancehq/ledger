@@ -41,7 +41,7 @@ func createForceTransaction(node *Node, ledger string, postings []*commonpb.Post
 func saveAccountMetadata(node *Node, ledger, address string, metadata map[string]string) ([]*commonpb.Log, error) {
 	metadataEntries := make([]*commonpb.Metadata, 0, len(metadata))
 	for k, v := range metadata {
-		metadataEntries = append(metadataEntries, &commonpb.Metadata{Key: k, Value: &commonpb.MetadataValue{Value: v}})
+		metadataEntries = append(metadataEntries, &commonpb.Metadata{Key: k, Value: commonpb.NewStringValue(v)})
 	}
 
 	proposal := &raftcmdpb.Proposal{

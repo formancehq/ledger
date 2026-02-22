@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/pterm/pterm"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/status"
@@ -111,13 +112,13 @@ func reconstructError(reason string, metadata map[string]string, message string)
 		}
 
 	case processing.ErrReasonBalanceNotPreloaded:
-		return &processing.ErrBalanceNotPreloaded{
+		return &numscript.ErrBalanceNotPreloaded{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
 		}
 
 	case processing.ErrReasonNumscriptParseError:
-		return &processing.ErrNumscriptParse{Details: metadata["details"]}
+		return &numscript.ErrNumscriptParse{Details: metadata["details"]}
 
 	case processing.ErrReasonValidation:
 		return fmt.Errorf("%s", message)

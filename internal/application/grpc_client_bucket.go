@@ -159,4 +159,10 @@ func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (dal.Cursor[*com
 	}), nil
 }
 
+func (g *BucketGrpcClient) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	return g.client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+		Ledger: ledgerName,
+	})
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)
