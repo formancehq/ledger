@@ -389,6 +389,125 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 	assert.True(t, ok, "keyGen1 should still be accessible")
 }
 
+func TestCache_NewCache_ZeroThresholdReturnsError(t *testing.T) {
+	t.Parallel()
+
+	_, err := New(0, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "generation threshold must be greater than zero")
+}
+
+func TestAttributeCache_Reset(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+
+	key := attributes.NewU128(1, 1)
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 42})
+
+	_, ok := cache.Volumes.Get(key)
+	require.True(t, ok)
+
+	cache.Volumes.Reset()
+
+	_, ok = cache.Volumes.Get(key)
+	assert.False(t, ok, "data should be gone after reset")
+	assert.Equal(t, uint64(0), cache.Volumes.Size())
+}
+
+func TestCache_Reset(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+
+	// Add data and advance generation
+	key := attributes.NewU128(1, 1)
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
+	cache.AccountMetadata.Put(key, attributes.Entry[*commonpb.MetadataValue]{Tag: 2})
+	cache.CheckRotationNeeded(11)
+	require.Equal(t, uint64(1), cache.CurrentGeneration())
+
+	cache.Reset()
+
+	assert.Equal(t, uint64(0), cache.CurrentGeneration())
+	assert.Equal(t, uint64(0), cache.Volumes.Size())
+	assert.Equal(t, uint64(0), cache.AccountMetadata.Size())
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen0)
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
+}
+
+func TestAttributeCache_Iter(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+	ac := cache.Volumes
+
+	// Add data to gen0
+	key1 := attributes.NewU128(1, 1)
+	key2 := attributes.NewU128(2, 2)
+	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 10})
+	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 20})
+
+	// Rotate so key1/key2 are in gen1
+	ac.Rotate()
+
+	// Add key3 to gen0
+	key3 := attributes.NewU128(3, 3)
+	ac.Put(key3, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 30})
+
+	// Iter should yield all 3 entries
+	seen := make(map[uint64]bool)
+	for _, entry := range ac.Iter() {
+		seen[entry.Tag] = true
+	}
+	assert.True(t, seen[10])
+	assert.True(t, seen[20])
+	assert.True(t, seen[30])
+}
+
+func TestAttributeCache_Gen0Gen1_Accessors(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+	ac := cache.Volumes
+
+	require.NotNil(t, ac.Gen0())
+	require.NotNil(t, ac.Gen1())
+
+	// Gen0 and Gen1 should be different instances
+	require.NotSame(t, ac.Gen0(), ac.Gen1())
+}
+
+func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
+	t.Parallel()
+
+	// Create a cache and forcibly set threshold to 0
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+	cache.GenerationThreshold = 0
+
+	rotated, _ := cache.CheckRotationNeeded(100)
+	assert.False(t, rotated)
+}
+
+func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+	cache.GenerationThreshold = 0
+
+	key := attributes.NewU128(1, 1)
+	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
+
+	// Should return false when threshold is 0
+	assert.False(t, cache.Volumes.IsGuaranteedInCache(5, key))
+}
+
 func TestCache_AllAttributeCachesRotate(t *testing.T) {
 	t.Parallel()
 

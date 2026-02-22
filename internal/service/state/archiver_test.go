@@ -1,0 +1,250 @@
+package state
+
+import (
+	"context"
+	"io"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+)
+
+// mockColdStorage is a test-only in-memory implementation of coldstorage.ColdStorage.
+type mockColdStorage struct {
+	mu       sync.Mutex
+	archives map[string]bool // bucketID/periodID -> exists
+}
+
+func newMockColdStorage() *mockColdStorage {
+	return &mockColdStorage{archives: make(map[string]bool)}
+}
+
+func (m *mockColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, _ io.Reader) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := archiveKey(bucketID, periodID)
+	m.archives[key] = true
+	return nil
+}
+
+func (m *mockColdStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := archiveKey(bucketID, periodID)
+	return m.archives[key], nil
+}
+
+func archiveKey(bucketID string, periodID uint64) string {
+	return bucketID + "/" + string(rune(periodID))
+}
+
+func TestArchiverStartStop(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	archiveReqCh := make(chan ArchiveRequest, 1)
+	cs := newMockColdStorage()
+
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) {}, func() bool { return true }, "test-bucket")
+	a.Start()
+	a.Stop()
+	// No deadlock or panic means success
+}
+
+func TestArchiverArchivesAndProposes(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	// Create a real store with some data so buildArchive works
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	// Store a log so IterateColdKVPairs finds something
+	batch := dataStore.NewBatch()
+	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+		Sequence: 1,
+		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Info: &commonpb.LedgerInfo{Id: 1, Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	cs := newMockColdStorage()
+	archiveReqCh := make(chan ArchiveRequest, 1)
+	var proposedPeriodID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		dataStore,
+		cs,
+		archiveReqCh,
+		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func() bool { return true },
+		"test-bucket",
+	)
+	a.Start()
+
+	// Send an archive request
+	archiveReqCh <- ArchiveRequest{
+		PeriodID:      1,
+		StartSequence: 1,
+		CloseSequence: 1,
+	}
+
+	// Wait for the archive to complete
+	require.Eventually(t, func() bool {
+		return proposedPeriodID.Load() == 1
+	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchivePeriod")
+
+	a.Stop()
+
+	// Verify the archive exists in cold storage
+	exists, err := cs.Exists(context.Background(), "test-bucket", 1)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	cs := newMockColdStorage()
+	// Pre-populate: archive already exists
+	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 5, nil))
+
+	archiveReqCh := make(chan ArchiveRequest, 1)
+	var proposedPeriodID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed since archive already exists
+		cs,
+		archiveReqCh,
+		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func() bool { return true }, // is leader
+		"test-bucket",
+	)
+	a.Start()
+
+	// Send request for already-archived period
+	archiveReqCh <- ArchiveRequest{
+		PeriodID:      5,
+		StartSequence: 1,
+		CloseSequence: 10,
+	}
+
+	// Leader should still propose ConfirmArchivePeriod (crash recovery)
+	require.Eventually(t, func() bool {
+		return proposedPeriodID.Load() == 5
+	}, 5*time.Second, 50*time.Millisecond, "leader should propose for already-archived period")
+
+	a.Stop()
+}
+
+func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	cs := newMockColdStorage()
+	// Pre-populate: archive already exists
+	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 7, nil))
+
+	archiveReqCh := make(chan ArchiveRequest, 1)
+	var proposedPeriodID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil,
+		cs,
+		archiveReqCh,
+		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func() bool { return false }, // not leader
+		"test-bucket",
+	)
+	a.Start()
+
+	// Send request
+	archiveReqCh <- ArchiveRequest{
+		PeriodID:      7,
+		StartSequence: 1,
+		CloseSequence: 10,
+	}
+
+	// Follower should not propose - give it a moment to process
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, uint64(0), proposedPeriodID.Load(), "follower should not propose")
+
+	a.Stop()
+}
+
+func TestArchiverNonLeaderRetries(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	cs := newMockColdStorage()
+	archiveReqCh := make(chan ArchiveRequest, 1)
+	var proposedPeriodID atomic.Uint64
+	var isLeader atomic.Bool
+	isLeader.Store(false)
+
+	a := NewArchiver(
+		logger,
+		dataStore,
+		cs,
+		archiveReqCh,
+		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func() bool { return isLeader.Load() },
+		"test-bucket",
+	)
+	a.Start()
+
+	// Send request while not leader
+	archiveReqCh <- ArchiveRequest{
+		PeriodID:      3,
+		StartSequence: 1,
+		CloseSequence: 1,
+	}
+
+	// Wait a bit - should not have proposed yet
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, uint64(0), proposedPeriodID.Load(), "non-leader should not propose yet")
+
+	// Become leader - archiver should eventually succeed
+	isLeader.Store(true)
+
+	// Store a log so buildArchive has data
+	batch := dataStore.NewBatch()
+	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+		Sequence: 1,
+		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Info: &commonpb.LedgerInfo{Id: 1, Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.Eventually(t, func() bool {
+		return proposedPeriodID.Load() == 3
+	}, 10*time.Second, 100*time.Millisecond, "archiver should eventually succeed after becoming leader")
+
+	a.Stop()
+}

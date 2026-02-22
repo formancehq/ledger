@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,6 +151,69 @@ func TestResponseSigner(t *testing.T) {
 		// signed_payload should be identical since receipt is cleared
 		require.Equal(t, sig1.SignedPayload, sig2.SignedPayload)
 	})
+}
+
+func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {
+	t.Parallel()
+
+	seed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(seed)
+	require.NoError(t, err)
+	signer := NewResponseSigner(seed)
+
+	sig := &signaturepb.ResponseSignature{
+		KeyId:         signer.KeyID(),
+		Signature:     make([]byte, ed25519.SignatureSize),
+		SignedPayload: nil,
+	}
+
+	err = VerifyResponseSignature(sig, signer.PublicKey())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty signed_payload")
+}
+
+func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
+	t.Parallel()
+
+	seed := make([]byte, ed25519.SeedSize)
+	_, err := rand.Read(seed)
+	require.NoError(t, err)
+	signer := NewResponseSigner(seed)
+
+	sig := &signaturepb.ResponseSignature{
+		KeyId:         signer.KeyID(),
+		Signature:     []byte("bad"),
+		SignedPayload: []byte("some payload"),
+	}
+
+	err = VerifyResponseSignature(sig, signer.PublicKey())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid response signature length")
+}
+
+func TestLoadPublicKeyFromFile_WrongSize(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bad.bin")
+	require.NoError(t, os.WriteFile(path, []byte("wrong size key data"), 0644))
+
+	_, err := LoadPublicKeyFromFile(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "public key must be")
+}
+
+func TestLoadPublicKeyFromFile_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadPublicKeyFromFile("/nonexistent/pubkey.bin")
+	require.Error(t, err)
+}
+
+func TestLoadSeedFromFile_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadSeedFromFile("/nonexistent/seed.bin")
+	require.Error(t, err)
 }
 
 func TestLoadSeedFromFile(t *testing.T) {

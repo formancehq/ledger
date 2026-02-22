@@ -4,6 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/stretchr/testify/require"
@@ -192,6 +195,150 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestBusinessErrorToGRPCStatus_SinkAlreadyExists(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrSinkAlreadyExists{Name: "my-sink"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.AlreadyExists, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonSinkAlreadyExists, info.Reason)
+	require.Equal(t, "my-sink", info.Metadata["name"])
+}
+
+func TestBusinessErrorToGRPCStatus_SinkNotFound(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrSinkNotFound{Name: "missing-sink"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.NotFound, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonSinkNotFound, info.Reason)
+	require.Equal(t, "missing-sink", info.Metadata["name"])
+}
+
+func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrMetadataNotFound{Target: "account:foo", Key: "role"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.NotFound, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonMetadataNotFound, info.Reason)
+	require.Equal(t, "account:foo", info.Metadata["target"])
+	require.Equal(t, "role", info.Metadata["key"])
+}
+
+func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: processing.ErrNoPeriodOpen}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonNoPeriodOpen, info.Reason)
+}
+
+func TestBusinessErrorToGRPCStatus_PeriodAlreadyClosing(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: processing.ErrPeriodAlreadyClosing}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonPeriodAlreadyClosing, info.Reason)
+}
+
+func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrPeriodNotFound{PeriodID: 7}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.NotFound, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonPeriodNotFound, info.Reason)
+	require.Equal(t, "7", info.Metadata["periodId"])
+}
+
+func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrPeriodNotClosing{PeriodID: 3}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonPeriodNotClosing, info.Reason)
+	require.Equal(t, "3", info.Metadata["periodId"])
+}
+
+func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrInvalidReceipt{Reason: "bad signature"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonInvalidReceipt, info.Reason)
+	require.Equal(t, "bad signature", info.Metadata["reason"])
+}
+
+func TestBusinessErrorToGRPCStatus_MaintenanceMode(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: processing.ErrMaintenanceMode}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.Unavailable, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonMaintenanceMode, info.Reason)
+}
+
+func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: &processing.ErrInvalidCronExpression{
+		Expression: "* * * *",
+		Details:    "expected 5 fields",
+	}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, processing.ErrReasonInvalidCronExpression, info.Reason)
+	require.Equal(t, "* * * *", info.Metadata["expression"])
+	require.Equal(t, "expected 5 fields", info.Metadata["details"])
+}
+
+func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &processing.BusinessError{Err: errors.New("something unexpected")}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.Internal, st.Code())
+	require.Contains(t, st.Message(), "something unexpected")
+	// Default case has no ErrorInfo details
+	require.Empty(t, st.Details())
+}
+
 func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	t.Parallel()
 
@@ -211,6 +358,95 @@ func TestConvertToGRPCError_UnknownError(t *testing.T) {
 
 	// Unknown errors pass through as-is
 	require.Equal(t, err, grpcErr)
+}
+
+func TestConvertToGRPCError_MissingSignature(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(signing.ErrMissingSignature)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestConvertToGRPCError_InvalidSignature(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(signing.ErrInvalidSignature)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.PermissionDenied, st.Code())
+}
+
+func TestConvertToGRPCError_UnknownKeyID(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(signing.ErrUnknownKeyID)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.PermissionDenied, st.Code())
+}
+
+func TestConvertToGRPCError_MaintenanceMode(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(admission.ErrMaintenanceMode)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Unavailable, st.Code())
+}
+
+func TestConvertToGRPCError_NoLeader(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(commonpb.ErrNoLeader)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Unavailable, st.Code())
+}
+
+func TestConvertToGRPCError_NotFoundError(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(commonpb.NewNotFoundError("ledger %s not found", "test"))
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(processing.ErrAuditDisabled)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+}
+
+func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(&processing.ErrPeriodNotClosed{PeriodID: 5})
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+}
+
+func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(&processing.ErrPeriodNotArchiving{PeriodID: 3})
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+}
+
+func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
+	t.Parallel()
+
+	original := status.Error(codes.Internal, "already grpc")
+	grpcErr := convertToGRPCError(original)
+	require.Equal(t, original, grpcErr)
 }
 
 // extractErrorInfo extracts the ErrorInfo detail from a gRPC status.

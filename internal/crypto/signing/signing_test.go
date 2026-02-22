@@ -172,6 +172,52 @@ func TestExtractRequestPreservesContent(t *testing.T) {
 	require.Equal(t, "old-ledger", extracted.GetDeleteLedger().Name)
 }
 
+func TestVerifyInvalidSignatureLength(t *testing.T) {
+	t.Parallel()
+
+	pub, _ := generateTestKeypair(t)
+
+	sig := &signaturepb.RequestSignature{
+		KeyId:         "key-1",
+		Signature:     []byte("too-short"),
+		SignedPayload: []byte("payload"),
+	}
+
+	err := Verify(sig, pub)
+	require.ErrorIs(t, err, ErrInvalidSignature)
+}
+
+func TestExtractRequestNil(t *testing.T) {
+	t.Parallel()
+
+	_, err := ExtractRequest(nil)
+	require.ErrorIs(t, err, ErrMissingSignature)
+}
+
+func TestExtractRequestEmptyPayload(t *testing.T) {
+	t.Parallel()
+
+	sig := &signaturepb.RequestSignature{
+		KeyId:         "key-1",
+		SignedPayload: nil,
+	}
+
+	_, err := ExtractRequest(sig)
+	require.ErrorIs(t, err, ErrInvalidSignature)
+}
+
+func TestExtractRequestInvalidPayload(t *testing.T) {
+	t.Parallel()
+
+	sig := &signaturepb.RequestSignature{
+		KeyId:         "key-1",
+		SignedPayload: []byte("not-valid-proto"),
+	}
+
+	_, err := ExtractRequest(sig)
+	require.Error(t, err)
+}
+
 func TestSignDoesNotMutateOriginalFields(t *testing.T) {
 	t.Parallel()
 

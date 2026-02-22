@@ -259,4 +259,22 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err, "single GetBalances call should be allowed")
 		require.NotEmpty(t, result.Volumes)
 	})
+
+	t.Run("discovers metadata dependencies", func(t *testing.T) {
+		t.Parallel()
+
+		script := `
+			vars {
+				account $dest = meta(@platform, "default_destination")
+			}
+			send [USD/2 100] (
+				source = @world
+				destination = $dest
+			)
+		`
+
+		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		require.NoError(t, err)
+		require.NotEmpty(t, result.Metadata, "should discover metadata dependencies")
+	})
 }
