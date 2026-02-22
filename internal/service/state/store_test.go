@@ -364,7 +364,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	}))
 	metadataKey := dal.MetadataKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
-	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, &commonpb.MetadataValue{Value: "value"}))
+	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
 	require.NoError(t, StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: ledgerID, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{

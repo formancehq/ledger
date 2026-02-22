@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
 )
 
@@ -23,14 +22,14 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for Account
 func (x *Account) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Address       string            `json:"address,omitempty"`
-		Metadata      map[string]string `json:"metadata,omitempty"`
-		FirstUsage    *Timestamp        `json:"firstUsage,omitempty"`
-		InsertionDate *Timestamp        `json:"insertionDate,omitempty"`
-		UpdatedAt     *Timestamp        `json:"updatedAt,omitempty"`
+		Address       string         `json:"address,omitempty"`
+		Metadata      map[string]any `json:"metadata,omitempty"`
+		FirstUsage    *Timestamp     `json:"firstUsage,omitempty"`
+		InsertionDate *Timestamp     `json:"insertionDate,omitempty"`
+		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.Address,
-		Metadata:      MetadataSetToMap(x.Metadata),
+		Metadata:      MetadataSetToAnyMap(x.Metadata),
 		FirstUsage:    x.FirstUsage,
 		InsertionDate: x.InsertionDate,
 		UpdatedAt:     x.UpdatedAt,
@@ -41,17 +40,12 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler for CreatedTransaction
 func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
-	// Convert account metadata to map[string]map[string]string for JSON
-	accountMeta := make(map[string]map[string]string)
-	for k, v := range x.AccountMetadata {
-		accountMeta[k] = MetadataSetToMap(v)
-	}
 	return json.Marshal(&struct {
-		Transaction     *Transaction                 `json:"transaction,omitempty"`
-		AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
+		Transaction     *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
 	}{
 		Transaction:     x.Transaction,
-		AccountMetadata: accountMeta,
+		AccountMetadata: AccountMetadataToAnyMap(x.AccountMetadata),
 	})
 }
 
@@ -69,13 +63,13 @@ func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for SavedMetadata
 func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 	aux := struct {
-		TargetType    string            `json:"targetType,omitempty"`
-		AccountId     string            `json:"accountId,omitempty"`
-		TransactionId uint64            `json:"transactionId,omitempty"`
-		Metadata      map[string]string `json:"metadata,omitempty"`
+		TargetType    string         `json:"targetType,omitempty"`
+		AccountId     string         `json:"accountId,omitempty"`
+		TransactionId uint64         `json:"transactionId,omitempty"`
+		Metadata      map[string]any `json:"metadata,omitempty"`
 	}{
 		TargetType: x.Target.AsConst(),
-		Metadata:   MetadataSetToMap(x.Metadata),
+		Metadata:   MetadataSetToAnyMap(x.Metadata),
 	}
 
 	// Handle oneof target_id
@@ -163,9 +157,9 @@ func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 // Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION)
 func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
-		TargetType string            `json:"targetType"`
-		TargetID   json.RawValue     `json:"targetId"`
-		Metadata   metadata.Metadata `json:"metadata"`
+		TargetType string         `json:"targetType"`
+		TargetID   json.RawValue  `json:"targetId"`
+		Metadata   map[string]any `json:"metadata"`
 	}
 	x := X{}
 	err := json.Unmarshal(data, &x)
@@ -173,7 +167,11 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	sm.Metadata = MetadataSetFromMap(x.Metadata)
+	ms, err := MetadataSetFromAnyMap(x.Metadata)
+	if err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
+	}
+	sm.Metadata = ms
 
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):

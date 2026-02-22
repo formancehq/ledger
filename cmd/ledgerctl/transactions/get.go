@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -167,7 +168,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		for _, md := range tx.Metadata.Metadata {
 			metadataTable = append(metadataTable, []string{
 				md.Key,
-				md.Value.Value,
+				commonpb.MetadataValueToString(md.Value),
 			})
 		}
 		return pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()

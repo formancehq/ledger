@@ -93,34 +93,6 @@ func (mk *MetadataKey) Unmarshal(d []byte) error {
 
 var _ CanonicalBytes = (*MetadataKey)(nil)
 
-// LedgerMetadataKey represents a key for ledger metadata.
-type LedgerMetadataKey struct {
-	LedgerID uint32
-	Key      string
-}
-
-// Bytes returns a canonical byte representation of the ledger metadata key.
-// Format: [ledgerID (4 bytes)][key]
-// No separator needed since ledgerID is fixed-length.
-func (lmk LedgerMetadataKey) Bytes() []byte {
-	ret := make([]byte, 4+len(lmk.Key))
-	binary.BigEndian.PutUint32(ret, lmk.LedgerID)
-	copy(ret[4:], lmk.Key)
-	return ret
-}
-
-// Unmarshal parses canonical bytes into the LedgerMetadataKey.
-func (lmk *LedgerMetadataKey) Unmarshal(d []byte) error {
-	if len(d) < 4 {
-		return fmt.Errorf("invalid ledger metadata key bytes: too short")
-	}
-	lmk.LedgerID = binary.BigEndian.Uint32(d[:4])
-	lmk.Key = string(d[4:])
-	return nil
-}
-
-var _ CanonicalBytes = (*LedgerMetadataKey)(nil)
-
 type TransactionKey struct {
 	LedgerID uint32
 	ID       uint64

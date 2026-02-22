@@ -28,3 +28,4 @@ func (sm *SavedMetadata) Type() int32 {
 func (dm *DeletedMetadata) Type() int32 {
 	return 3 // DeleteMetadataLogType
 }
+

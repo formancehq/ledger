@@ -11,7 +11,7 @@ Business:
 * Mirror mode
 * Numscript
 ** Add typed variables
-** Add typed metadata
+** Add metadata typed variable draft
 * Events
 ** Filter internal events
 ** Sync S3 + parquet

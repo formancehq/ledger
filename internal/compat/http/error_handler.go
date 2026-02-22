@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 )
 
 // handleError handles errors and returns appropriate HTTP responses.
@@ -20,7 +21,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		txReverted     *processing.ErrTransactionAlreadyReverted
 		insufficient   *processing.ErrInsufficientFunds
 		balNotFound    *processing.ErrBalanceNotFound
-		parseErr       *processing.ErrNumscriptParse
+		parseErr       *numscript.ErrNumscriptParse
 		metaNotFound   *processing.ErrMetadataNotFound
 	)
 
@@ -64,7 +65,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.Is(err, processing.ErrTargetRequired),
 		errors.Is(err, processing.ErrMetadataKeyRequired),
-		errors.Is(err, processing.ErrScriptRequired):
+		errors.Is(err, numscript.ErrScriptRequired):
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
 	default:

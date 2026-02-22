@@ -154,7 +154,6 @@ type Cache struct {
 	mu                  sync.Mutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
-	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
 	Reversions          *AttributeCache[bool]
 	IdempotencyKeys     *AttributeCache[*commonpb.IdempotencyKeyValue]
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]
@@ -180,7 +179,6 @@ type Cache struct {
 func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.Volumes.Rotate()
 	c.AccountMetadata.Rotate()
-	c.LedgerMetadata.Rotate()
 	c.Reversions.Rotate()
 	c.IdempotencyKeys.Rotate()
 	c.References.Rotate()
@@ -202,7 +200,6 @@ func (c *Cache) Reset() {
 
 	c.Volumes.Reset()
 	c.AccountMetadata.Reset()
-	c.LedgerMetadata.Reset()
 	c.Reversions.Reset()
 	c.IdempotencyKeys.Reset()
 	c.References.Reset()
@@ -270,8 +267,6 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "volumes")))
 			o.ObserveInt64(sizeGauge, int64(c.AccountMetadata.Size()),
 				metric.WithAttributes(attribute.String("type", "account_metadata")))
-			o.ObserveInt64(sizeGauge, int64(c.LedgerMetadata.Size()),
-				metric.WithAttributes(attribute.String("type", "ledger_metadata")))
 			o.ObserveInt64(sizeGauge, int64(c.Reversions.Size()),
 				metric.WithAttributes(attribute.String("type", "reversions")))
 			o.ObserveInt64(sizeGauge, int64(c.IdempotencyKeys.Size()),
@@ -340,7 +335,6 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	}
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
-	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
 	ret.Reversions = newAttributeCache[bool](ret, "reversions")
 	ret.IdempotencyKeys = newAttributeCache[*commonpb.IdempotencyKeyValue](ret, "idempotency_keys")
 	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")

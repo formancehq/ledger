@@ -13,7 +13,6 @@ import (
 type Attributes struct {
 	Volume          *Attribute[*raftcmdpb.VolumePair]
 	Metadata        *Attribute[*commonpb.MetadataValue]
-	LedgerMetadata  *Attribute[*commonpb.MetadataValue]
 	Reverted        *Attribute[*commonpb.RevertedValue]
 	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
 	References      *Attribute[*commonpb.TransactionReferenceValue]
@@ -26,7 +25,6 @@ func New() *Attributes {
 	return &Attributes{
 		Volume:          NewVolumeAttribute(),
 		Metadata:        NewMetadataAttribute(),
-		LedgerMetadata:  NewLedgerMetadataAttribute(),
 		Reverted:        NewRevertedAttribute(),
 		IdempotencyKeys: NewIdempotencyKeysAttribute(),
 		References:      NewReferenceAttribute(),
@@ -74,21 +72,6 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
 		prefix:   dal.AttributePrefixMetadata,
-		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
-		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
-			if lastDiff == nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
-}
-
-// NewLedgerMetadataAttribute creates a new LedgerMetadata attribute for ledger metadata.
-func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
-	return &Attribute[*commonpb.MetadataValue]{
-		prefix:   dal.AttributePrefixLedgerMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
 			if lastDiff == nil {

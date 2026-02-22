@@ -25,14 +25,20 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Decode request body into metadata
-	var inputMetadata map[string]string
+	// Decode request body into typed metadata (supports string, number, boolean, null)
+	var inputMetadata map[string]any
 	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
-	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	ms, err := commonpb.MetadataSetFromAnyMap(inputMetadata)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
+		return
+	}
+
+	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -46,7 +52,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 								},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(inputMetadata),
+						Metadata: ms,
 					},
 				},
 			},

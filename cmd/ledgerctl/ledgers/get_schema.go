@@ -1,0 +1,136 @@
+package ledgers
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+)
+
+// NewGetSchemaCommand creates the ledgers get-schema command.
+func NewGetSchemaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "get-schema <name>",
+		Aliases: []string{"schema", "gs"},
+		Short:   "Get metadata schema status for a ledger",
+		Long: `Display the metadata schema for a ledger including conversion status.
+
+Shows two tables (Account Fields, Transaction Fields) with columns: KEY, TYPE, STATUS.
+The status shows COMPLETE or CONVERTING.
+
+Examples:
+  ledgerctl ledgers get-schema my-ledger
+  ledgerctl ledgers schema my-ledger
+  ledgerctl ledgers gs my-ledger --json`,
+		Args: cobra.ExactArgs(1),
+		RunE: runGetSchema,
+	}
+
+	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+
+	return cmd
+}
+
+func runGetSchema(cmd *cobra.Command, args []string) error {
+	ledgerName := args[0]
+
+	client, conn, err := cmdutil.GetClient(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := cmdutil.GetContext(cmd)
+	defer cancel()
+
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching schema for %s...", ledgerName))
+
+	resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+		Ledger: ledgerName,
+	})
+	if err != nil {
+		spinner.Fail("Failed to get schema status")
+		return cmdutil.FormatGRPCError("failed to get schema status", err)
+	}
+
+	_ = spinner.Stop()
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(resp)
+	}
+
+	pterm.Println()
+	pterm.Printf("Metadata Schema: %s\n", ledgerName)
+	pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+	hasAccountFields := len(resp.AccountFields) > 0
+	hasTransactionFields := len(resp.TransactionFields) > 0
+
+	if !hasAccountFields && !hasTransactionFields {
+		pterm.Println(pterm.Gray("(no schema defined)"))
+		return nil
+	}
+
+	if hasAccountFields {
+		pterm.Println("Account Fields:")
+		renderSchemaStatusTable(resp.AccountFields)
+		pterm.Println()
+	}
+
+	if hasTransactionFields {
+		pterm.Println("Transaction Fields:")
+		renderSchemaStatusTable(resp.TransactionFields)
+		pterm.Println()
+	}
+
+	return nil
+}
+
+func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
+	table := pterm.TableData{
+		{"KEY", "TYPE", "STATUS"},
+	}
+
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		field := fields[key]
+		status := conversionStatusString(field.Status, field.TotalKeys, field.ConvertedKeys)
+		table = append(table, []string{
+			key,
+			cmdutil.MetadataTypeString(field.DeclaredType),
+			status,
+		})
+	}
+
+	// Ignore render error — best effort display
+	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+}
+
+func conversionStatusString(s commonpb.MetadataConversionStatus, totalKeys, convertedKeys uint64) string {
+	switch s {
+	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE:
+		return pterm.Green("COMPLETE")
+	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING:
+		if totalKeys > 0 {
+			return pterm.Yellow(fmt.Sprintf("CONVERTING (%d/%d)", convertedKeys, totalKeys))
+		}
+		return pterm.Yellow("CONVERTING")
+	default:
+		return s.String()
+	}
+}

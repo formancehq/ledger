@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.27.5
-// source: service.proto
+// source: bucket.proto
 
 package servicepb
 
@@ -21,23 +21,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BucketService_ListLedgers_FullMethodName       = "/ledger.BucketService/ListLedgers"
-	BucketService_GetLedger_FullMethodName         = "/ledger.BucketService/GetLedger"
-	BucketService_GetAccount_FullMethodName        = "/ledger.BucketService/GetAccount"
-	BucketService_GetTransaction_FullMethodName    = "/ledger.BucketService/GetTransaction"
-	BucketService_ListTransactions_FullMethodName  = "/ledger.BucketService/ListTransactions"
-	BucketService_ListAccounts_FullMethodName      = "/ledger.BucketService/ListAccounts"
-	BucketService_Apply_FullMethodName             = "/ledger.BucketService/Apply"
-	BucketService_GetStoreMetrics_FullMethodName   = "/ledger.BucketService/GetStoreMetrics"
-	BucketService_CheckStore_FullMethodName        = "/ledger.BucketService/CheckStore"
-	BucketService_ListAuditEntries_FullMethodName  = "/ledger.BucketService/ListAuditEntries"
-	BucketService_GetAuditEntry_FullMethodName     = "/ledger.BucketService/GetAuditEntry"
-	BucketService_GetEventsSinks_FullMethodName    = "/ledger.BucketService/GetEventsSinks"
-	BucketService_ListPeriods_FullMethodName       = "/ledger.BucketService/ListPeriods"
-	BucketService_ListLogs_FullMethodName          = "/ledger.BucketService/ListLogs"
-	BucketService_GetPeriodSchedule_FullMethodName = "/ledger.BucketService/GetPeriodSchedule"
-	BucketService_ListSigningKeys_FullMethodName   = "/ledger.BucketService/ListSigningKeys"
-	BucketService_Discovery_FullMethodName         = "/ledger.BucketService/Discovery"
+	BucketService_ListLedgers_FullMethodName             = "/ledger.BucketService/ListLedgers"
+	BucketService_GetLedger_FullMethodName               = "/ledger.BucketService/GetLedger"
+	BucketService_GetAccount_FullMethodName              = "/ledger.BucketService/GetAccount"
+	BucketService_GetTransaction_FullMethodName          = "/ledger.BucketService/GetTransaction"
+	BucketService_ListTransactions_FullMethodName        = "/ledger.BucketService/ListTransactions"
+	BucketService_ListAccounts_FullMethodName            = "/ledger.BucketService/ListAccounts"
+	BucketService_Apply_FullMethodName                   = "/ledger.BucketService/Apply"
+	BucketService_GetStoreMetrics_FullMethodName         = "/ledger.BucketService/GetStoreMetrics"
+	BucketService_CheckStore_FullMethodName              = "/ledger.BucketService/CheckStore"
+	BucketService_ListAuditEntries_FullMethodName        = "/ledger.BucketService/ListAuditEntries"
+	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
+	BucketService_GetEventsSinks_FullMethodName          = "/ledger.BucketService/GetEventsSinks"
+	BucketService_ListPeriods_FullMethodName             = "/ledger.BucketService/ListPeriods"
+	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
+	BucketService_GetPeriodSchedule_FullMethodName       = "/ledger.BucketService/GetPeriodSchedule"
+	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
+	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
+	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -80,6 +81,8 @@ type BucketServiceClient interface {
 	ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
+	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+	GetMetadataSchemaStatus(ctx context.Context, in *GetMetadataSchemaStatusRequest, opts ...grpc.CallOption) (*GetMetadataSchemaStatusResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -332,6 +335,16 @@ func (c *bucketServiceClient) Discovery(ctx context.Context, in *DiscoveryReques
 	return out, nil
 }
 
+func (c *bucketServiceClient) GetMetadataSchemaStatus(ctx context.Context, in *GetMetadataSchemaStatusRequest, opts ...grpc.CallOption) (*GetMetadataSchemaStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMetadataSchemaStatusResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetMetadataSchemaStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -372,6 +385,8 @@ type BucketServiceServer interface {
 	ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
+	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+	GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -432,6 +447,9 @@ func (UnimplementedBucketServiceServer) ListSigningKeys(*ListSigningKeysRequest,
 }
 func (UnimplementedBucketServiceServer) Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Discovery not implemented")
+}
+func (UnimplementedBucketServiceServer) GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMetadataSchemaStatus not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -704,6 +722,24 @@ func _BucketService_Discovery_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_GetMetadataSchemaStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMetadataSchemaStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetMetadataSchemaStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetMetadataSchemaStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetMetadataSchemaStatus(ctx, req.(*GetMetadataSchemaStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -746,6 +782,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Discovery",
 			Handler:    _BucketService_Discovery_Handler,
+		},
+		{
+			MethodName: "GetMetadataSchemaStatus",
+			Handler:    _BucketService_GetMetadataSchemaStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -790,5 +830,5 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "service.proto",
+	Metadata: "bucket.proto",
 }

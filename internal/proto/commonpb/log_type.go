@@ -42,6 +42,14 @@ func (lt LogType) String() string {
 		return "REVERTED_TRANSACTION"
 	case DeleteMetadataLogType:
 		return "DELETE_METADATA"
+	case SetMetadataFieldTypeLogType:
+		return "SET_METADATA_FIELD_TYPE"
+	case RemovedMetadataFieldTypeLogType:
+		return "REMOVED_METADATA_FIELD_TYPE"
+	case ConvertMetadataBatchLogType:
+		return "CONVERT_METADATA_BATCH"
+	case MetadataConversionCompleteLogType:
+		return "METADATA_CONVERSION_COMPLETE"
 	}
 
 	return ""
@@ -57,6 +65,14 @@ func LogTypeFromString(logType string) LogType {
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
 		return DeleteMetadataLogType
+	case "SET_METADATA_FIELD_TYPE":
+		return SetMetadataFieldTypeLogType
+	case "REMOVED_METADATA_FIELD_TYPE":
+		return RemovedMetadataFieldTypeLogType
+	case "CONVERT_METADATA_BATCH":
+		return ConvertMetadataBatchLogType
+	case "METADATA_CONVERSION_COMPLETE":
+		return MetadataConversionCompleteLogType
 	}
 
 	panic("invalid log type")
@@ -76,6 +92,14 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 		return SetMetadataLogType
 	case *LedgerLogPayload_DeletedMetadata:
 		return DeleteMetadataLogType
+	case *LedgerLogPayload_SetMetadataFieldType:
+		return SetMetadataFieldTypeLogType
+	case *LedgerLogPayload_RemovedMetadataFieldType:
+		return RemovedMetadataFieldTypeLogType
+	case *LedgerLogPayload_ConvertMetadataBatch:
+		return ConvertMetadataBatchLogType
+	case *LedgerLogPayload_MetadataConversionComplete:
+		return MetadataConversionCompleteLogType
 	default:
 		return 0
 	}

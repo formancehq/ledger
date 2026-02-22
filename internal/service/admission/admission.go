@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -966,7 +967,7 @@ func (a *Admission) extractNeededVolumesAndMetadata(orders []*raftcmdpb.Order, l
 				if applyData.CreateTransaction.Script != nil &&
 					applyData.CreateTransaction.Script.Plain != "" &&
 					len(applyData.CreateTransaction.Postings) == 0 {
-					discovered, err := processing.DiscoverNumscriptDependencies(
+					discovered, err := numscript.DiscoverNumscriptDependencies(
 						applyData.CreateTransaction.Script.Plain,
 						applyData.CreateTransaction.Script.Vars,
 						ledgerID,
@@ -1172,8 +1173,8 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:     reqType.CreateLedger.Name,
-				Metadata: reqType.CreateLedger.Metadata,
+				Name:          reqType.CreateLedger.Name,
+				InitialSchema: reqType.CreateLedger.InitialSchema,
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -1265,6 +1266,31 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_DeletePeriodSchedule:
 		order.Type = &raftcmdpb.Order_DeletePeriodSchedule{
 			DeletePeriodSchedule: &raftcmdpb.DeletePeriodScheduleOrder{},
+		}
+	case *servicepb.Request_SetMetadataFieldType:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.SetMetadataFieldType.Ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+						TargetType: reqType.SetMetadataFieldType.TargetType,
+						Key:        reqType.SetMetadataFieldType.Key,
+						Type:       reqType.SetMetadataFieldType.Type,
+					},
+				},
+			},
+		}
+	case *servicepb.Request_RemoveMetadataFieldType:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.RemoveMetadataFieldType.Ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+						TargetType: reqType.RemoveMetadataFieldType.TargetType,
+						Key:        reqType.RemoveMetadataFieldType.Key,
+					},
+				},
+			},
 		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)

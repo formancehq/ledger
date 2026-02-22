@@ -65,7 +65,7 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 										},
 										Metadata: &commonpb.MetadataSet{
 											Metadata: []*commonpb.Metadata{
-												{Key: "type", Value: &commonpb.MetadataValue{Value: "transfer"}},
+												{Key: "type", Value: commonpb.NewStringValue("transfer")},
 											},
 										},
 										Reference:  "tx-ref-001",

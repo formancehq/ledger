@@ -297,6 +297,94 @@ type ComputedEntry[V proto.Message] struct {
 	Value        V
 }
 
+// accumulatorBase holds the shared base/diff computation state used by both
+// Accumulator (slice-based) and streamingAccumulator (callback-based).
+type accumulatorBase[V proto.Message] struct {
+	attr             *Attribute[V]
+	currentCanonical string
+	baseValue        V
+	baseIndex        uint64
+	lastDiff         V
+}
+
+// feed processes a raw Pebble key-value pair, updating base/diff state.
+// When a canonical key boundary is crossed, it computes the result for the
+// previous key and returns it as prev (non-nil). The caller must handle prev
+// before the next call.
+func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool, prev *ComputedEntry[V], err error) {
+	if len(pebbleKey) <= 1+SuffixLen {
+		return false, nil, nil
+	}
+
+	attrType := pebbleKey[len(pebbleKey)-SuffixLen]
+	if attrType != ab.attr.prefix {
+		return false, nil, nil
+	}
+
+	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
+	raftIndex := binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-9 : len(pebbleKey)-1])
+	entryType := pebbleKey[len(pebbleKey)-1]
+
+	if canonical != ab.currentCanonical {
+		// Compute the previous canonical key's result before resetting.
+		if ab.currentCanonical != "" {
+			computed := ab.attr.computeFn(ab.baseValue, ab.lastDiff)
+			if (any)(computed) != nil {
+				prev = &ComputedEntry[V]{
+					CanonicalKey: []byte(ab.currentCanonical),
+					Value:        computed,
+				}
+			}
+		}
+		ab.currentCanonical = canonical
+		var zero V
+		ab.baseValue = zero
+		ab.baseIndex = 0
+		ab.lastDiff = zero
+	}
+
+	v := ab.attr.newValue()
+	if err := unmarshalProto(pebbleValue, v); err != nil {
+		return false, nil, fmt.Errorf("unmarshaling value: %w", err)
+	}
+
+	switch entryType {
+	case 0: // base
+		ab.baseValue = v
+		ab.baseIndex = raftIndex
+		var zero V
+		ab.lastDiff = zero
+	case 1: // diff
+		if (any)(ab.baseValue) == nil || raftIndex > ab.baseIndex {
+			ab.lastDiff = v
+		}
+	}
+
+	return true, prev, nil
+}
+
+// flush computes and returns the entry for the current canonical key (if any),
+// then resets the accumulator state.
+func (ab *accumulatorBase[V]) flush() *ComputedEntry[V] {
+	if ab.currentCanonical == "" {
+		return nil
+	}
+	computed := ab.attr.computeFn(ab.baseValue, ab.lastDiff)
+	key := ab.currentCanonical
+	ab.currentCanonical = ""
+	var zero V
+	ab.baseValue = zero
+	ab.lastDiff = zero
+	ab.baseIndex = 0
+	if (any)(computed) != nil {
+		return &ComputedEntry[V]{
+			CanonicalKey: []byte(key),
+			Value:        computed,
+		}
+	}
+	return nil
+}
+
 // Accumulator collects attribute entries fed in Pebble key order and computes
 // final values per unique canonical key. It tracks base/diff state and flushes
 // the computed value when a canonical key boundary is crossed.
@@ -304,17 +392,13 @@ type ComputedEntry[V proto.Message] struct {
 // Usage: create via NewAccumulator, call Feed for each Pebble key-value pair,
 // call Flush when a logical group boundary is reached (e.g., a different entity).
 type Accumulator[V proto.Message] struct {
-	attr             *Attribute[V]
-	currentCanonical string
-	baseValue        V
-	baseIndex        uint64
-	lastDiff         V
-	pending          []ComputedEntry[V]
+	accumulatorBase[V]
+	pending []ComputedEntry[V]
 }
 
 // NewAccumulator creates an Accumulator for this attribute type.
 func (a *Attribute[V]) NewAccumulator() *Accumulator[V] {
-	return &Accumulator[V]{attr: a}
+	return &Accumulator[V]{accumulatorBase: accumulatorBase[V]{attr: a}}
 }
 
 // Prefix returns the attribute type prefix byte.
@@ -326,81 +410,41 @@ func (acc *Accumulator[V]) Prefix() byte {
 // Returns true if the entry matched this accumulator's attribute type and was consumed.
 // Entries must be fed in Pebble key order for correct computation.
 func (acc *Accumulator[V]) Feed(pebbleKey, pebbleValue []byte) (bool, error) {
-	if len(pebbleKey) <= 1+SuffixLen {
+	matched, prev, err := acc.feed(pebbleKey, pebbleValue)
+	if err != nil {
+		return false, err
+	}
+	if !matched {
 		return false, nil
 	}
-
-	attrType := pebbleKey[len(pebbleKey)-SuffixLen]
-	if attrType != acc.attr.prefix {
-		return false, nil
+	if prev != nil {
+		acc.pending = append(acc.pending, *prev)
 	}
-
-	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
-	raftIndex := binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-9 : len(pebbleKey)-1])
-	entryType := pebbleKey[len(pebbleKey)-1]
-
-	if canonical != acc.currentCanonical {
-		acc.flushCurrent()
-		acc.currentCanonical = canonical
-		var zero V
-		acc.baseValue = zero
-		acc.baseIndex = 0
-		acc.lastDiff = zero
-	}
-
-	v := acc.attr.newValue()
-	if err := unmarshalProto(pebbleValue, v); err != nil {
-		return false, fmt.Errorf("unmarshaling value: %w", err)
-	}
-
-	switch entryType {
-	case 0: // base
-		acc.baseValue = v
-		acc.baseIndex = raftIndex
-		var zero V
-		acc.lastDiff = zero
-	case 1: // diff
-		if (any)(acc.baseValue) == nil || raftIndex > acc.baseIndex {
-			acc.lastDiff = v
-		}
-	}
-
 	return true, nil
-}
-
-func (acc *Accumulator[V]) flushCurrent() {
-	if acc.currentCanonical == "" {
-		return
-	}
-	computed := acc.attr.computeFn(acc.baseValue, acc.lastDiff)
-	if (any)(computed) != nil {
-		acc.pending = append(acc.pending, ComputedEntry[V]{
-			CanonicalKey: []byte(acc.currentCanonical),
-			Value:        computed,
-		})
-	}
 }
 
 // Flush computes any pending value and returns all accumulated results.
 // Resets the accumulator for the next group.
 func (acc *Accumulator[V]) Flush() []ComputedEntry[V] {
-	acc.flushCurrent()
+	if entry := acc.flush(); entry != nil {
+		acc.pending = append(acc.pending, *entry)
+	}
 	results := acc.pending
 	acc.pending = nil
-	acc.currentCanonical = ""
-	var zero V
-	acc.baseValue = zero
-	acc.lastDiff = zero
-	acc.baseIndex = 0
 	return results
 }
 
-// ComputeAllForPrefix computes the final value for all canonical keys sharing the
-// given prefix. It performs a single forward scan using an Accumulator internally.
-// This is more efficient than List + ComputeValue per key, as it uses one iterator
-// scoped to just the prefix range instead of the entire attribute space.
+// ForEachInPrefix streams computed entries for all canonical keys sharing the
+// given prefix. Instead of accumulating results in memory, it calls fn for each
+// computed entry at canonical key boundaries. This is O(1) memory (excluding
+// the callback's own allocations) vs O(N) for ComputeAllForPrefix.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ForEachInPrefix(
+	reader dal.PebbleReader,
+	maxIndex uint64,
+	canonicalPrefix []byte,
+	fn func(entry ComputedEntry[V]) error,
+) error {
 	lowerBound := make([]byte, 1+len(canonicalPrefix))
 	lowerBound[0] = dal.KeyPrefixAttributes
 	copy(lowerBound[1:], canonicalPrefix)
@@ -419,11 +463,11 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uin
 		UpperBound: upperBound,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for prefix scan: %w", err)
+		return fmt.Errorf("creating iterator for prefix scan: %w", err)
 	}
 	defer func() { _ = iter.Close() }()
 
-	acc := a.NewAccumulator()
+	ab := accumulatorBase[V]{attr: a}
 	minKeyLen := 1 + SuffixLen
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -432,7 +476,6 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uin
 			continue
 		}
 
-		// Filter by maxIndex before feeding
 		raftIndex := binary.BigEndian.Uint64(key[len(key)-9 : len(key)-1])
 		if raftIndex > maxIndex {
 			continue
@@ -440,19 +483,49 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uin
 
 		valueBytes, err := iter.ValueAndErr()
 		if err != nil {
-			return nil, fmt.Errorf("reading value: %w", err)
+			return fmt.Errorf("reading value: %w", err)
 		}
 
-		if _, err := acc.Feed(key, valueBytes); err != nil {
-			return nil, err
+		_, prev, err := ab.feed(key, valueBytes)
+		if err != nil {
+			return err
+		}
+		if prev != nil {
+			if err := fn(*prev); err != nil {
+				return err
+			}
 		}
 	}
 
 	if err := iter.Error(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return acc.Flush(), nil
+	// Flush the last canonical key.
+	if entry := ab.flush(); entry != nil {
+		if err := fn(*entry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ComputeAllForPrefix computes the final value for all canonical keys sharing the
+// given prefix. It performs a single forward scan using ForEachInPrefix internally.
+// This is more efficient than List + ComputeValue per key, as it uses one iterator
+// scoped to just the prefix range instead of the entire attribute space.
+// Thread-safe: allocates its own buffer for concurrent access.
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+	var results []ComputedEntry[V]
+	err := a.ForEachInPrefix(reader, maxIndex, canonicalPrefix, func(entry ComputedEntry[V]) error {
+		results = append(results, entry)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // AttrTypeFromKey extracts the attribute type prefix byte from a Pebble attribute key.

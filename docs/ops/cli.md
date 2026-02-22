@@ -95,6 +95,10 @@ ledgerctl ledgers get <name> [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
+**Behavior:**
+- Displays ledger ID, name, and creation timestamp
+- If the ledger has a metadata schema, it is displayed as tables (Account Fields, Transaction Fields) with KEY and TYPE columns
+
 **Example:**
 
 ```bash
@@ -117,8 +121,15 @@ ledgerctl ledgers create [flags]
 |------|---------|-------------|
 | `--name` | | Name of the ledger to create |
 | `--metadata` | | Metadata key=value pairs |
+| `--schema` | | Metadata schema in `target:key:type` format (repeatable) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+
+**Schema format:** `target:key:type` where target is `account` or `transaction`, and type is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
+
+**Behavior:**
+- In interactive mode (no `--schema` flags), prompts "Add metadata schema?" and loops through target/key/type selection
+- If the ledger is created with a schema, the schema is displayed in the output
 
 **Example:**
 
@@ -129,7 +140,13 @@ ledgerctl ledgers create --name my-ledger
 # Create with metadata
 ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --metadata env=prod
 
-# Interactive mode (will prompt for name)
+# Create with typed metadata schema
+ledgerctl ledgers create --name my-ledger --schema account:age:int64 --schema account:active:bool
+
+# Create with both metadata and schema
+ledgerctl ledgers create --name my-ledger --metadata env=prod --schema transaction:priority:uint64
+
+# Interactive mode (will prompt for name, metadata schema)
 ledgerctl ledgers create
 ```
 
@@ -163,6 +180,117 @@ ledgerctl ledgers delete my-ledger -y
 
 # Interactive mode (will prompt for ledger selection)
 ledgerctl ledgers delete
+```
+
+#### ledgers set-metadata-type
+
+Declare a typed metadata field on a ledger. Once set, all new metadata values for this key must conform to the declared type. Existing untyped values will be converted in the background.
+
+**Aliases:** `set-type`, `smt`
+
+```bash
+ledgerctl ledgers set-metadata-type [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--target` | | Target type: `account` or `transaction` |
+| `--key` | | Metadata key name |
+| `--type` | | Metadata type: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32` |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- If `--ledger` is not provided and only one ledger exists, it will be used automatically
+- If multiple ledgers exist, you will be prompted to select one
+- Missing flags will be prompted interactively
+
+**Example:**
+
+```bash
+# Set a field type with all flags
+ledgerctl ledgers set-metadata-type --ledger my-ledger --target account --key age --type int64
+
+# Set a transaction field type
+ledgerctl ledgers smt --ledger my-ledger --target transaction --key priority --type uint64
+
+# Interactive mode (will prompt for all inputs)
+ledgerctl ledgers set-metadata-type
+```
+
+#### ledgers remove-metadata-type
+
+Remove a typed metadata field declaration from a ledger. After removal, the key will accept values of any type again.
+
+**Aliases:** `rm-type`, `rmt`
+
+```bash
+ledgerctl ledgers remove-metadata-type [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--target` | | Target type: `account` or `transaction` |
+| `--key` | | Metadata key name to remove |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- If `--ledger` is not provided and only one ledger exists, it will be used automatically
+- If multiple ledgers exist, you will be prompted to select one
+- Prompts for confirmation before removing (use `-y` to skip)
+- Missing flags will be prompted interactively
+
+**Example:**
+
+```bash
+# Remove a field type
+ledgerctl ledgers remove-metadata-type --ledger my-ledger --target account --key age
+
+# Remove without confirmation
+ledgerctl ledgers rmt --ledger my-ledger --target account --key age -y
+
+# Interactive mode
+ledgerctl ledgers remove-metadata-type
+```
+
+#### ledgers get-schema
+
+Display the metadata schema for a ledger including conversion status. Shows two tables (Account Fields, Transaction Fields) with KEY, TYPE, and STATUS columns.
+
+**Aliases:** `schema`, `gs`
+
+```bash
+ledgerctl ledgers get-schema <name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Shows account and transaction field types with their conversion status (COMPLETE or CONVERTING)
+- If no schema is defined, displays "(no schema defined)"
+
+**Example:**
+
+```bash
+# Get schema status
+ledgerctl ledgers get-schema my-ledger
+
+# Output as JSON
+ledgerctl ledgers get-schema my-ledger --json
+
+# Using alias
+ledgerctl ledgers schema my-ledger
 ```
 
 ---

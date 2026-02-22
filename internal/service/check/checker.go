@@ -231,7 +231,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		actualStr := ""
 		if actualValue != nil {
-			actualStr = actualValue.Value
+			actualStr = commonpb.MetadataValueToString(actualValue)
 		}
 
 		if expectedValue != actualStr {
@@ -361,7 +361,7 @@ func replayLedgerLog(
 					}
 					key := string(mk.Bytes())
 					if m.Value != nil {
-						expectedMetadata[key] = m.Value.Value
+						expectedMetadata[key] = commonpb.MetadataValueToString(m.Value)
 						delete(deletedMetadata, key)
 					}
 				}
@@ -419,7 +419,7 @@ func replayLedgerLog(
 					}
 					key := string(mk.Bytes())
 					if m.Value != nil {
-						expectedMetadata[key] = m.Value.Value
+						expectedMetadata[key] = commonpb.MetadataValueToString(m.Value)
 						delete(deletedMetadata, key)
 					}
 				}
@@ -475,6 +475,15 @@ func replayLedgerLog(
 				}},
 			})
 		}
+
+	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		// Schema operations — no state to track for integrity checks
+	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+		// Schema operations — no state to track for integrity checks
+	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
+		// Background conversion — no state to track for integrity checks
+	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
+		// Background conversion — no state to track for integrity checks
 	}
 }
 

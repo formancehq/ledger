@@ -68,6 +68,9 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 			r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)                                            // GET /{ledgerName}/accounts/{address}
 			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)                         // POST /{ledgerName}/accounts/{address}/metadata
 			r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)               // DELETE /{ledgerName}/accounts/{address}/metadata/{key}
+			r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)                                          // GET /{ledgerName}/metadata-schema
+			r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)                        // PUT /{ledgerName}/metadata-schema/{targetType}/{key}
+			r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)                  // DELETE /{ledgerName}/metadata-schema/{targetType}/{key}
 			r.Post("/{ledgerName}/bulk", server.handleBulk)                                                               // POST /{ledgerName}/bulk
 			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                                              // For compat
 			r.Get("/", server.handleListAllLedgers)                                                                       // GET / - must be last

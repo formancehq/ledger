@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,8 +32,8 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		transactionAlreadyReverted   *processing.ErrTransactionAlreadyReverted
 		insufficientFunds            *processing.ErrInsufficientFunds
 		balanceNotFound              *processing.ErrBalanceNotFound
-		balanceNotPreloaded          *processing.ErrBalanceNotPreloaded
-		numscriptParse               *processing.ErrNumscriptParse
+		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
+		numscriptParse               *numscript.ErrNumscriptParse
 		sinkAlreadyExists            *processing.ErrSinkAlreadyExists
 		sinkNotFound                 *processing.ErrSinkNotFound
 		metadataNotFound             *processing.ErrMetadataNotFound
@@ -157,7 +158,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.Is(inner, processing.ErrTargetRequired),
 		errors.Is(inner, processing.ErrMetadataKeyRequired),
-		errors.Is(inner, processing.ErrScriptRequired):
+		errors.Is(inner, numscript.ErrScriptRequired):
 		code = codes.InvalidArgument
 		reason = processing.ErrReasonValidation
 

@@ -1,11 +1,11 @@
-package processing
+package numscript
 
 import (
 	"container/list"
 	"context"
 	"sync"
 
-	"github.com/formancehq/numscript"
+	numscriptlib "github.com/formancehq/numscript"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -34,13 +34,13 @@ type lruEntry struct {
 
 // parsedScript wraps a parsed Numscript program with any parsing errors.
 type parsedScript struct {
-	program numscript.ParseResult
+	program numscriptlib.ParseResult
 	err     error
 }
 
-// newNumscriptCache creates a new NumscriptCache with the given maximum size.
+// NewNumscriptCache creates a new NumscriptCache with the given maximum size.
 // If maxSize <= 0, it defaults to 1024.
-func newNumscriptCache(maxSize int) *NumscriptCache {
+func NewNumscriptCache(maxSize int) *NumscriptCache {
 	if maxSize <= 0 {
 		maxSize = 1024
 	}
@@ -71,7 +71,7 @@ func (c *NumscriptCache) computeHash(script string) [32]byte {
 // On cache hit the entry is moved to the front (most recently used).
 // On cache miss the script is parsed, added to the front, and the least recently
 // used entry is evicted if the cache is at capacity.
-func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error) {
+func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, error) {
 	hash := c.computeHash(script)
 
 	// Try to get from cache
@@ -82,13 +82,13 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 	}
 
 	// Parse the script
-	parsed := numscript.Parse(script)
+	parsed := numscriptlib.Parse(script)
 
 	// Check for parsing errors
 	var parseErr error
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 		parseErr = &ErrNumscriptParse{
-			Details: numscript.ParseErrorsToString(errs, parsed.GetSource()),
+			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),
 		}
 	}
 
@@ -117,8 +117,8 @@ func (c *NumscriptCache) GetOrParse(script string) (numscript.ParseResult, error
 	return parsed, parseErr
 }
 
-// initCacheMetrics initializes the cache metrics on the NumscriptCache.
-func (c *NumscriptCache) initCacheMetrics(m metric.Meter) error {
+// InitCacheMetrics initializes the cache metrics on the NumscriptCache.
+func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	size, err := m.Int64Gauge(
 		"numscript.cache.size",
 		metric.WithDescription("Number of scripts in the Numscript cache"),

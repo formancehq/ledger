@@ -62,8 +62,8 @@ generate-proto:
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
         misc/proto/cluster.proto \
-        misc/proto/service.proto \
-        misc/proto/raftcmd.proto \
+        misc/proto/bucket.proto \
+        misc/proto/raft_cmd.proto \
         misc/proto/snapshot.proto \
         misc/proto/audit.proto \
         misc/proto/signature.proto \

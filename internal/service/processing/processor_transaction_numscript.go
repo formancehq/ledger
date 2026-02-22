@@ -8,30 +8,21 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/numscript"
+	numscriptlib "github.com/formancehq/numscript"
 	"github.com/holiman/uint256"
 )
 
 type numscriptPostingProducer struct {
-	cache        *NumscriptCache
+	cache        *numscript.NumscriptCache
 	featureFlags map[string]struct{}
+	ledgerName   string
 }
 
-// numscriptFeatureFlags contains all experimental Numscript features that are enabled by default.
-var numscriptFeatureFlags = map[string]struct{}{
-	"experimental-account-interpolation":    {},
-	"experimental-asset-colors":             {},
-	"experimental-get-amount-function":      {},
-	"experimental-get-asset-function":       {},
-	"experimental-mid-script-function-call": {},
-	"experimental-oneof":                    {},
-	"experimental-overdraft-function":       {},
-}
-
-func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.Script == nil || order.Script.Plain == "" {
-		return nil, ErrScriptRequired
+		return nil, numscript.ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
@@ -41,7 +32,7 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 	}
 
 	// Build variables map from script vars
-	vars := make(numscript.VariablesMap)
+	vars := make(numscriptlib.VariablesMap)
 	for k, v := range order.Script.Vars {
 		vars[k] = v
 	}
@@ -49,9 +40,10 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:    s,
-		ledgerID: ledgerID,
-		force:    order.Force,
+		store:      s,
+		ledgerID:   ledgerID,
+		force:      order.Force,
+		ledgerName: p.ledgerName,
 	}
 
 	// Execute the script with all feature flags enabled
@@ -117,31 +109,37 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 		s.PutVolume(destKey, destVol)
 	}
 
-	// Apply account metadata from script execution and collect for return
-	var accountsMeta map[string]map[string]string
+	// Apply account metadata from script execution and collect for return.
+	// Build typed []*commonpb.Metadata directly to avoid map[string]string roundtrip.
+	var accountsMeta map[string][]*commonpb.Metadata
 	if len(result.AccountsMetadata) > 0 {
-		accountsMeta = make(map[string]map[string]string, len(result.AccountsMetadata))
+		accountsMeta = make(map[string][]*commonpb.Metadata, len(result.AccountsMetadata))
 		for account, meta := range result.AccountsMetadata {
-			accountsMeta[account] = make(map[string]string, len(meta))
+			mdList := make([]*commonpb.Metadata, 0, len(meta))
 			for key, value := range meta {
-				accountsMeta[account][key] = value
+				mv := commonpb.NewStringValue(value)
+				mdList = append(mdList, &commonpb.Metadata{Key: key, Value: mv})
 				s.PutAccountMetadata(dal.MetadataKey{
 					AccountKey: dal.AccountKey{
 						LedgerID: ledgerID,
 						Account:  account,
 					},
 					Key: key,
-				}, &commonpb.MetadataValue{Value: value})
+				}, mv)
 			}
+			accountsMeta[account] = mdList
 		}
 	}
 
-	// Convert transaction metadata from Numscript values to strings
-	var txMeta map[string]string
+	// Convert transaction metadata from Numscript values to typed []*commonpb.Metadata.
+	var txMeta []*commonpb.Metadata
 	if len(result.Metadata) > 0 {
-		txMeta = make(map[string]string, len(result.Metadata))
+		txMeta = make([]*commonpb.Metadata, 0, len(result.Metadata))
 		for key, value := range result.Metadata {
-			txMeta[key] = value.String()
+			txMeta = append(txMeta, &commonpb.Metadata{
+				Key:   key,
+				Value: commonpb.NewStringValue(value.String()),
+			})
 		}
 	}
 
@@ -154,29 +152,26 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface
 type numscriptStoreAdapter struct {
-	store    Store
-	ledgerID uint32
-	force    bool // When true, return unlimited balances to bypass balance checks
+	store      InMemoryStore
+	ledgerID   uint32
+	force      bool   // When true, return unlimited balances to bypass balance checks
+	ledgerName string // For lazy schema lookup during opportunistic conversion
 }
 
-// maxForceBalance is returned for all accounts when force mode is enabled.
-// This effectively allows any amount to be sent from any account.
-var maxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
-
-func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.BalanceQuery) (numscript.Balances, error) {
-	balances := make(numscript.Balances)
+func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
+	balances := make(numscriptlib.Balances)
 
 	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
 
 	for account, assets := range query {
-		accountBalance := make(numscript.AccountBalance)
+		accountBalance := make(numscriptlib.AccountBalance)
 		balances[account] = accountBalance
 
 		for _, asset := range assets {
 			// When force mode is enabled, return unlimited balance for all accounts
 			// This bypasses all balance checks in Numscript execution
 			if s.force {
-				accountBalance[asset] = new(big.Int).Set(maxForceBalance)
+				accountBalance[asset] = new(big.Int).Set(numscript.MaxForceBalance)
 				continue
 			}
 
@@ -195,7 +190,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 
 			// Volumes must be preloaded by the admission layer.
 			if vol == nil || (vol.InputKnown == nil && vol.InputDiff == nil) {
-				return nil, &ErrBalanceNotPreloaded{Account: account, Asset: asset}
+				return nil, &numscript.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
@@ -222,11 +217,11 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscript.B
 	return balances, nil
 }
 
-func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
-	result := make(numscript.AccountsMetadata)
+func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	result := make(numscriptlib.AccountsMetadata)
 
 	for account, keys := range query {
-		accountMeta := make(numscript.AccountMetadata)
+		accountMeta := make(numscriptlib.AccountMetadata)
 		result[account] = accountMeta
 
 		for _, key := range keys {
@@ -242,8 +237,24 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 			if err != nil && !errors.Is(err, dal.ErrNotFound) {
 				return nil, err
 			}
-			if value != nil && value.Value != "" {
-				accountMeta[key] = value.Value
+			if value != nil {
+				// Opportunistically convert to declared schema type and write back.
+				// The schema is looked up lazily from the Store to avoid impacting
+				// tests that don't set up the GetLedger expectation.
+				if s.ledgerName != "" {
+					if info, ok := s.store.GetLedger(s.ledgerName); ok && info.MetadataSchema != nil {
+						if fields := info.MetadataSchema.AccountFields; fields != nil {
+							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.Type) {
+								value = commonpb.ConvertMetadataValue(value, fieldSchema.Type)
+								s.store.PutAccountMetadata(metaKey, value)
+							}
+						}
+					}
+				}
+				str := commonpb.MetadataValueToString(value)
+				if str != "" {
+					accountMeta[key] = str
+				}
 			}
 		}
 	}

@@ -50,7 +50,6 @@ type Machine struct {
 	Cache           *cache.Cache
 	Volumes         *attributes.KeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata *attributes.KeyStore[dal.MetadataKey, *commonpb.MetadataValue]
-	LedgerMetadata  *attributes.KeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue]
 	Reversions      *attributes.KeyStore[dal.TransactionKey, bool]
 	IdempotencyKeys *attributes.KeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
 	References      *attributes.KeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
@@ -107,6 +106,11 @@ type Machine struct {
 	// archiveRequestCh receives archive requests when an ArchivePeriod order is applied.
 	// The Archiver reads from this channel to perform background archival to cold storage.
 	archiveRequestCh chan ArchiveRequest
+
+	// metadataConvertRequestCh receives conversion requests when a SetMetadataFieldType
+	// log is applied. The MetadataConverter reads from this channel to perform
+	// background conversion of existing account metadata values.
+	metadataConvertRequestCh chan MetadataConvertRequest
 
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
@@ -258,10 +262,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 			attributes.DefaultSeeds,
 			cache.AccountMetadata,
 		),
-		LedgerMetadata: attributes.NewKeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultSeeds,
-			cache.LedgerMetadata,
-		),
 		Reversions: attributes.NewKeyStore[dal.TransactionKey, bool](
 			attributes.DefaultSeeds,
 			cache.Reversions,
@@ -298,11 +298,12 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 			make(map[string]uint32),
 			make(map[string]uint32),
 		},
-		dirtyBoundaryKeys: make(map[string]*raftcmdpb.LedgerBoundaries),
-		sealRequestCh:     make(chan SealRequest, 1),
-		archiveRequestCh:  make(chan ArchiveRequest, 1),
-		periodSchedule:    periodSchedule,
-		scheduleChanged:   signal.New(),
+		dirtyBoundaryKeys:        make(map[string]*raftcmdpb.LedgerBoundaries),
+		sealRequestCh:            make(chan SealRequest, 1),
+		archiveRequestCh:         make(chan ArchiveRequest, 1),
+		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
+		periodSchedule:           periodSchedule,
+		scheduleChanged:          signal.New(),
 	}
 
 	return fsm, nil
@@ -423,6 +424,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	}
 	eventsConfigChanged := false
 	needsArchiveDispatch := false
+	var pendingConvertRequests []MetadataConvertRequest
 
 	for i, entry := range entries {
 		if entry.Index <= fsm.lastAppliedIndex {
@@ -502,6 +504,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			needsArchiveDispatch = true
 		}
 		ret.Results = append(ret.Results, *result)
+		pendingConvertRequests = append(pendingConvertRequests, result.MetadataConvertRequests...)
 
 		// If ClosePeriod was detected, stop processing immediately.
 		// Commit the batch so the ClosePeriod state is persisted,
@@ -533,6 +536,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
+	}
+	for _, req := range pendingConvertRequests {
+		select {
+		case fsm.metadataConvertRequestCh <- req:
+		default:
+		}
 	}
 
 	// Notify event Manager that new logs are available.
@@ -1070,7 +1079,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer := NewBuffer(effectiveDate, fsm)
 
 	// Process the proposal
-	response, err := fsm.processor.ProcessProposal(proposal, buffer)
+	logs, err := fsm.processor.ProcessOrders(proposal.Orders, buffer)
 	if err != nil {
 		// FAILURE: write audit entry and return business error
 		if fsm.auditEnabled {
@@ -1098,7 +1107,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Extract created logs for the write buffer (reference sequences are idempotent
 	// responses that don't produce new logs)
 	var createdLogs []*commonpb.Log
-	for _, logOrRef := range response.Logs {
+	for _, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			createdLogs = append(createdLogs, created)
 		}
@@ -1121,7 +1130,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			Orders:     proposal.Orders,
 			Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{
-					LogSequences: extractLogSequencesFromLogsOrRefs(response.Logs),
+					LogSequences: extractLogSequencesFromLogsOrRefs(logs),
 				},
 			},
 		}
@@ -1134,10 +1143,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
 
 	return &ApplyResult{
-		ProposalID:         proposal.Id,
-		Logs:               response.Logs,
-		ConfigChanged:      configChanged,
-		HasArchiveRequests: hasArchiveRequests,
+		ProposalID:              proposal.Id,
+		Logs:                    logs,
+		ConfigChanged:           configChanged,
+		HasArchiveRequests:      hasArchiveRequests,
+		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 	}, nil
 }
 
@@ -1194,8 +1204,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 	var (
 		baseIndex           uint64
 		volumeStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 		boundaryStore       kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
 		referenceStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
@@ -1205,7 +1214,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		baseIndex = cache.BaseIndex.Gen0
 		volumeStore = cache.Volumes.Gen0()
 		metadataStore = cache.AccountMetadata.Gen0()
-		ledgerMetadataStore = cache.LedgerMetadata.Gen0()
+
 		ledgerStore = cache.Ledgers.Gen0()
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
@@ -1213,7 +1222,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		baseIndex = cache.BaseIndex.Gen1
 		volumeStore = cache.Volumes.Gen1()
 		metadataStore = cache.AccountMetadata.Gen1()
-		ledgerMetadataStore = cache.LedgerMetadata.Gen1()
+
 		ledgerStore = cache.Ledgers.Gen1()
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
@@ -1223,7 +1232,6 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		BaseIndex:      baseIndex,
 		Volumes:        make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
 		Metadata:       make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
-		LedgerMetadata: make([]*raftcmdpb.MetadataAttributeEntry, 0, ledgerMetadataStore.Size()),
 		Ledgers:        make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
 		Boundaries:     make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
 		References:     make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
@@ -1256,18 +1264,6 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 			Value: entry.Data,
 		}
 		snapshot.Metadata = append(snapshot.Metadata, ksEntry)
-	}
-
-	// Serialize LedgerMetadata KeyStore
-	for u128, entry := range ledgerMetadataStore.Iter() {
-		ksEntry := &raftcmdpb.MetadataAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
-			Value: entry.Data,
-		}
-		snapshot.LedgerMetadata = append(snapshot.LedgerMetadata, ksEntry)
 	}
 
 	// Serialize Ledgers KeyStore
@@ -1403,8 +1399,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 
 	var (
 		volumeStore         kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerMetadataStore kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore         kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 		boundaryStore       kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
 		referenceStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
@@ -1414,7 +1409,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		cache.BaseIndex.Gen0 = snapshot.BaseIndex
 		volumeStore = cache.Volumes.Gen0()
 		metadataStore = cache.AccountMetadata.Gen0()
-		ledgerMetadataStore = cache.LedgerMetadata.Gen0()
+
 		ledgerStore = cache.Ledgers.Gen0()
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
@@ -1422,7 +1417,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		cache.BaseIndex.Gen1 = snapshot.BaseIndex
 		volumeStore = cache.Volumes.Gen1()
 		metadataStore = cache.AccountMetadata.Gen1()
-		ledgerMetadataStore = cache.LedgerMetadata.Gen1()
+
 		ledgerStore = cache.Ledgers.Gen1()
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
@@ -1447,15 +1442,6 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	for _, ksEntry := range snapshot.Metadata {
 		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
 		metadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
-			Tag:  ksEntry.Id.Tag,
-			Data: ksEntry.Value,
-		})
-	}
-
-	// Deserialize LedgerMetadata KeyStore
-	for _, ksEntry := range snapshot.LedgerMetadata {
-		u128 := attributes.U128FromBytes(ksEntry.Id.Id)
-		ledgerMetadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
 			Tag:  ksEntry.Id.Tag,
 			Data: ksEntry.Value,
 		})
@@ -1569,6 +1555,12 @@ func (fsm *Machine) ArchiveRequestCh() chan ArchiveRequest {
 	return fsm.archiveRequestCh
 }
 
+// MetadataConvertRequestCh returns the channel used to dispatch metadata
+// conversion requests to the MetadataConverter.
+func (fsm *Machine) MetadataConvertRequestCh() chan MetadataConvertRequest {
+	return fsm.metadataConvertRequestCh
+}
+
 // dispatchArchiveRequests sends archive requests for all ARCHIVING periods
 // to the archiver channel. Called internally after batch commit on all nodes.
 // The Archiver itself skips execution when the node is not the leader.
@@ -1587,12 +1579,59 @@ func (fsm *Machine) dispatchArchiveRequests() {
 	}
 }
 
+// dispatchMetadataConversionRequests iterates all ledgers and dispatches
+// conversion requests for metadata fields still in CONVERTING status.
+// Called on leadership acquisition to recover incomplete conversions.
+func (fsm *Machine) dispatchMetadataConversionRequests() {
+	handle := fsm.dataStore.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	cursor, err := ReadLedgers(handle)
+	if err != nil {
+		fsm.logger.Errorf("Failed to read ledgers for metadata conversion recovery: %v", err)
+		return
+	}
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		info, err := cursor.Next()
+		if err != nil {
+			break
+		}
+		if info.MetadataSchema == nil || info.DeletedAt != nil {
+			continue
+		}
+		fsm.dispatchConvertingFields(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.MetadataSchema.AccountFields)
+		fsm.dispatchConvertingFields(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.MetadataSchema.TransactionFields)
+	}
+}
+
+func (fsm *Machine) dispatchConvertingFields(info *commonpb.LedgerInfo, targetType commonpb.TargetType, fields map[string]*commonpb.MetadataFieldSchema) {
+	for key, field := range fields {
+		if field.Status == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING {
+			select {
+			case fsm.metadataConvertRequestCh <- MetadataConvertRequest{
+				LedgerName: info.Name,
+				TargetType: targetType,
+				Key:        key,
+				Type:       field.Type,
+			}:
+			default:
+			}
+		}
+	}
+}
+
 // OnLeadershipAcquired is called when this node becomes the Raft leader.
 // It performs recovery actions that only the leader should handle.
 func (fsm *Machine) OnLeadershipAcquired() {
 	// Recover periods stuck in ARCHIVING state: if the previous leader crashed
 	// mid-archive, the new leader retries automatically.
 	fsm.dispatchArchiveRequests()
+
+	// Recover metadata fields stuck in CONVERTING status: if the previous leader
+	// crashed mid-conversion, the new leader retries automatically.
+	fsm.dispatchMetadataConversionRequests()
 }
 
 // AllPeriods returns all non-purged periods kept in memory.
@@ -1648,12 +1687,13 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 }
 
 type ApplyResult struct {
-	ProposalID         uint64
-	Logs               []*raftcmdpb.CreatedLogOrReference
-	Error              error
-	CheckpointPath     string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
-	ConfigChanged      bool   // True when sink configuration changed
-	HasArchiveRequests bool   // True when there are pending archive requests
+	ProposalID              uint64
+	Logs                    []*raftcmdpb.CreatedLogOrReference
+	Error                   error
+	CheckpointPath          string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
+	ConfigChanged           bool   // True when sink configuration changed
+	HasArchiveRequests      bool   // True when there are pending archive requests
+	MetadataConvertRequests []MetadataConvertRequest
 }
 
 // ApplyEntriesResult is the structured return value of ApplyEntries.

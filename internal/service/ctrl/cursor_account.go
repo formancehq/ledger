@@ -20,6 +20,7 @@ type accountCursor struct {
 	iter     *pebble.Iterator
 	volAcc   *attributes.Accumulator[*raftcmdpb.VolumePair]
 	metaAcc  *attributes.Accumulator[*commonpb.MetadataValue]
+	schema   *commonpb.MetadataSchema // lazy read-path conversion
 	pageSize uint32
 	count    uint32
 	started  bool
@@ -139,7 +140,7 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 
 // buildAccount flushes accumulators, assembles the account, and resets state.
 func (c *accountCursor) buildAccount() *commonpb.Account {
-	account := assembleAccount(c.currentAccount, c.volAcc.Flush(), c.metaAcc.Flush())
+	account := assembleAccount(c.currentAccount, c.volAcc.Flush(), c.metaAcc.Flush(), c.schema)
 	c.hasAccount = false
 	c.currentAccount = ""
 	return account

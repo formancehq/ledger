@@ -107,6 +107,21 @@ func (mr *MockControllerMockRecorder) GetLedgerByName(ctx, name any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByName", reflect.TypeOf((*MockController)(nil).GetLedgerByName), ctx, name)
 }
 
+// GetMetadataSchemaStatus mocks base method.
+func (m *MockController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMetadataSchemaStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetMetadataSchemaStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMetadataSchemaStatus indicates an expected call of GetMetadataSchemaStatus.
+func (mr *MockControllerMockRecorder) GetMetadataSchemaStatus(ctx, ledgerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetadataSchemaStatus", reflect.TypeOf((*MockController)(nil).GetMetadataSchemaStatus), ctx, ledgerName)
+}
+
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	m.ctrl.T.Helper()

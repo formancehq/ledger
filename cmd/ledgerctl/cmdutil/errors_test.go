@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -144,7 +145,7 @@ func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
 	bizErr := BusinessErrorFromGRPC(grpcErr)
 	require.NotNil(t, bizErr)
 
-	var parseErr *processing.ErrNumscriptParse
+	var parseErr *numscript.ErrNumscriptParse
 	require.True(t, errors.As(bizErr, &parseErr))
 	require.Equal(t, "unexpected token", parseErr.Details)
 }
@@ -192,8 +193,8 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"transaction already reverted", &processing.ErrTransactionAlreadyReverted{TransactionID: 100}},
 		{"insufficient funds", &processing.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "10", Balance: "5"}},
 		{"balance not found", &processing.ErrBalanceNotFound{Account: "a", Asset: "USD"}},
-		{"balance not preloaded", &processing.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
-		{"numscript parse error", &processing.ErrNumscriptParse{Details: "bad syntax"}},
+		{"balance not preloaded", &numscript.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
+		{"numscript parse error", &numscript.ErrNumscriptParse{Details: "bad syntax"}},
 	}
 
 	for _, tt := range tests {
@@ -247,10 +248,10 @@ func serverSideConvert(bizErr *processing.BusinessError) *status.Status {
 	case *processing.ErrBalanceNotFound:
 		code, reason = codes.FailedPrecondition, processing.ErrReasonBalanceNotFound
 		metadata = map[string]string{"account": e.Account, "asset": e.Asset}
-	case *processing.ErrBalanceNotPreloaded:
+	case *numscript.ErrBalanceNotPreloaded:
 		code, reason = codes.FailedPrecondition, processing.ErrReasonBalanceNotPreloaded
 		metadata = map[string]string{"account": e.Account, "asset": e.Asset}
-	case *processing.ErrNumscriptParse:
+	case *numscript.ErrNumscriptParse:
 		code, reason = codes.InvalidArgument, processing.ErrReasonNumscriptParseError
 		metadata = map[string]string{"details": e.Details}
 	default:

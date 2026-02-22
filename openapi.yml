@@ -347,11 +347,13 @@ paths:
             schema:
               type: object
               additionalProperties:
-                type: string
-              description: Metadata key-value pairs
+                $ref: '#/components/schemas/MetadataValue'
+              description: Metadata key-value pairs (supports typed values)
               example:
                 account_type: asset
                 label: Bank Account
+                active: true
+                balance_threshold: 1000
       responses:
         '204':
           description: Account metadata saved successfully
@@ -398,11 +400,12 @@ paths:
             schema:
               type: object
               additionalProperties:
-                type: string
-              description: Metadata key-value pairs
+                $ref: '#/components/schemas/MetadataValue'
+              description: Metadata key-value pairs (supports typed values)
               example:
                 reason: correction
                 source: support
+                priority: 1
       responses:
         '204':
           description: Transaction metadata saved successfully
@@ -565,6 +568,157 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/metadata-schema:
+    get:
+      summary: Get metadata schema status
+      description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status.
+      operationId: getMetadataSchemaStatus
+      tags:
+        - Metadata Schema
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+      responses:
+        '200':
+          description: Metadata schema status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetadataSchemaStatusResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{ledgerName}/metadata-schema/{targetType}/{key}:
+    put:
+      summary: Set metadata field type
+      description: |
+        Declares or changes the expected type for a metadata key on a ledger.
+        Once set, all new metadata values for this key are converted to the declared type.
+        Existing values are converted in the background.
+      operationId: setMetadataFieldType
+      tags:
+        - Metadata Schema
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: targetType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - account
+              - transaction
+          description: Target type (account or transaction)
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Metadata key name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetMetadataTypeRequest'
+      responses:
+        '204':
+          description: Metadata field type set successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Remove metadata field type
+      description: |
+        Removes the type declaration for a metadata key on a ledger.
+        Existing typed values are converted back to strings.
+      operationId: removeMetadataFieldType
+      tags:
+        - Metadata Schema
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: targetType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - account
+              - transaction
+          description: Target type (account or transaction)
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Metadata key name
+      responses:
+        '204':
+          description: Metadata field type removed successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -645,14 +799,23 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    MetadataValue:
+      description: A typed metadata value (string, integer, boolean, or null)
+      nullable: true
+      oneOf:
+        - type: string
+        - type: integer
+          format: int64
+        - type: boolean
+
     CreateLedgerRequest:
       type: object
       properties:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Optional metadata for the ledger
+            $ref: '#/components/schemas/MetadataValue'
+          description: Optional metadata for the ledger (supports typed values)
 
     CreateLedgerResponse:
       type: object
@@ -693,8 +856,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Metadata for the ledger
+            $ref: '#/components/schemas/MetadataValue'
+          description: Metadata for the ledger (supports typed values)
         createdAt:
           type: string
           format: date-time
@@ -708,8 +871,8 @@ components:
           additionalProperties:
             type: object
             additionalProperties:
-              type: string
-          description: Metadata for accounts involved in the transaction
+              $ref: '#/components/schemas/MetadataValue'
+          description: Metadata for accounts involved in the transaction (supports typed values)
         timestamp:
           type: string
           format: date-time
@@ -717,8 +880,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Transaction metadata
+            $ref: '#/components/schemas/MetadataValue'
+          description: Transaction metadata (supports typed values)
         reference:
           type: string
           description: Transaction reference
@@ -816,8 +979,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Metadata to add
+            $ref: '#/components/schemas/MetadataValue'
+          description: Metadata to add (supports typed values)
 
     RevertTransactionRequest:
       type: object
@@ -839,8 +1002,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Metadata for the revert transaction
+            $ref: '#/components/schemas/MetadataValue'
+          description: Metadata for the revert transaction (supports typed values)
 
     RevertTransactionRequestBody:
       type: object
@@ -856,8 +1019,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Metadata for the revert transaction
+            $ref: '#/components/schemas/MetadataValue'
+          description: Metadata for the revert transaction (supports typed values)
 
     DeleteMetadataRequest:
       type: object
@@ -933,8 +1096,8 @@ components:
               additionalProperties:
                 type: object
                 additionalProperties:
-                  type: string
-              description: Metadata for accounts involved in the transaction
+                  $ref: '#/components/schemas/MetadataValue'
+              description: Metadata for accounts involved in the transaction (typed values)
 
     GetTransactionResponse:
       type: object
@@ -963,8 +1126,8 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
-          description: Account metadata
+            $ref: '#/components/schemas/MetadataValue'
+          description: Account metadata (typed values)
         volumes:
           type: object
           additionalProperties:
@@ -1002,7 +1165,7 @@ components:
         metadata:
           type: object
           additionalProperties:
-            type: string
+            $ref: '#/components/schemas/MetadataValue'
         timestamp:
           type: string
           format: date-time
@@ -1261,6 +1424,87 @@ components:
         isPaused:
           type: boolean
           description: Whether this node is paused
+
+    MetadataSchemaStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - accountFields
+            - transactionFields
+          properties:
+            accountFields:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/MetadataFieldStatus'
+              description: Account metadata field statuses
+            transactionFields:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/MetadataFieldStatus'
+              description: Transaction metadata field statuses
+
+    MetadataFieldStatus:
+      type: object
+      required:
+        - declaredType
+        - status
+        - totalKeys
+        - convertedKeys
+      properties:
+        declaredType:
+          type: string
+          enum:
+            - string
+            - int64
+            - bool
+            - uint64
+            - int8
+            - int16
+            - int32
+            - uint8
+            - uint16
+            - uint32
+          description: Declared type for this metadata field
+        status:
+          type: string
+          enum:
+            - COMPLETE
+            - CONVERTING
+          description: Conversion status for this field
+        totalKeys:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Total number of instances of this key
+        convertedKeys:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of already-converted instances
+
+    SetMetadataTypeRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - string
+            - int64
+            - bool
+            - uint64
+            - int8
+            - int16
+            - int32
+            - uint8
+            - uint16
+            - uint32
+          description: Metadata type to set for the field
 
     ErrorResponse:
       type: object

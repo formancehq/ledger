@@ -2,11 +2,8 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,25 +16,11 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse optional metadata from request body
-	var metadata map[string]string
-	if r.Body != nil && r.ContentLength > 0 {
-		var body struct {
-			Metadata map[string]string `json:"metadata"`
-		}
-		if err := json.UnmarshalRead(r.Body, &body); err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-			return
-		}
-		metadata = body.Metadata
-	}
-
 	// Create ledger via Apply
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
-				Name:     ledgerName,
-				Metadata: commonpb.MetadataSetFromMap(metadata),
+				Name: ledgerName,
 			},
 		},
 	})

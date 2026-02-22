@@ -31,35 +31,35 @@ type maintenanceModeUpdate struct {
 }
 
 type Buffered struct {
-	fsm                          *Machine
-	attrs                        *attributes.Attributes
-	Date                         *commonpb.Timestamp
-	NextLedgerID                 uint32
-	NextSequenceID               uint64
-	LastLogHash                  []byte
-	Ledgers                      *attributes.DerivedKeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries                   *attributes.DerivedKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	Volumes                      *attributes.DerivedKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata              *attributes.DerivedKeyStore[dal.MetadataKey, *commonpb.MetadataValue]
-	LedgerMetadata               *attributes.DerivedKeyStore[dal.LedgerMetadataKey, *commonpb.MetadataValue]
-	Reversions                   *attributes.DerivedKeyStore[dal.TransactionKey, bool]
-	IdempotencyKeys              *attributes.DerivedKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References                   *attributes.DerivedKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	SinkConfigs                  *attributes.DerivedKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
-	TransactionsUpdates          map[dal.TransactionKey][]*commonpb.TransactionUpdate
-	PendingLogs                  []*commonpb.Log
-	pendingSigningKeyUpdates     []signingKeyUpdate
-	pendingSigningConfigUpdate   *signingConfigUpdate
-	pendingMaintenanceModeUpdate *maintenanceModeUpdate
-	pendingPeriodScheduleUpdate  *string
-	sinkConfigChanged            bool
-	allPeriods                   map[uint64]*commonpb.Period
-	currentOpenPeriod            *commonpb.Period
-	closingPeriod                *commonpb.Period
-	changedPeriods               []*commonpb.Period
-	NextPeriodID                 uint64
-	purgeRanges                  []purgeRange
-	pendingArchives              []ArchiveRequest
+	fsm                            *Machine
+	attrs                          *attributes.Attributes
+	Date                           *commonpb.Timestamp
+	NextLedgerID                   uint32
+	NextSequenceID                 uint64
+	LastLogHash                    []byte
+	Ledgers                        *attributes.DerivedKeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries                     *attributes.DerivedKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	Volumes                        *attributes.DerivedKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata                *attributes.DerivedKeyStore[dal.MetadataKey, *commonpb.MetadataValue]
+	Reversions                     *attributes.DerivedKeyStore[dal.TransactionKey, bool]
+	IdempotencyKeys                *attributes.DerivedKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References                     *attributes.DerivedKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	SinkConfigs                    *attributes.DerivedKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
+	TransactionsUpdates            map[dal.TransactionKey][]*commonpb.TransactionUpdate
+	PendingLogs                    []*commonpb.Log
+	pendingSigningKeyUpdates       []signingKeyUpdate
+	pendingSigningConfigUpdate     *signingConfigUpdate
+	pendingMaintenanceModeUpdate   *maintenanceModeUpdate
+	pendingPeriodScheduleUpdate    *string
+	sinkConfigChanged              bool
+	allPeriods                     map[uint64]*commonpb.Period
+	currentOpenPeriod              *commonpb.Period
+	closingPeriod                  *commonpb.Period
+	changedPeriods                 []*commonpb.Period
+	NextPeriodID                   uint64
+	purgeRanges                    []purgeRange
+	pendingArchives                []ArchiveRequest
+	pendingMetadataConvertRequests []MetadataConvertRequest
 }
 
 // purgeRange identifies a period's sequence range to delete from Pebble during Merge().
@@ -144,16 +144,6 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	ledgerMetadataUpdates, _, err := b.LedgerMetadata.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge ledger metadata: %w", err)
-	}
-	for _, update := range ledgerMetadataUpdates {
-		err := b.attrs.LedgerMetadata.AddDiff(batch, index, update.CanonicalKey, update.New)
-		if err != nil {
-			return fmt.Errorf("failed adding diff for ledger metadata: %v", err)
-		}
-	}
 
 	// Process Reversions updates
 	reversionUpdates, _, err := b.Reversions.Merge()
@@ -340,7 +330,6 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		LastLogHash:         fsm.lastLogHash,
 		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, (*raftcmdpb.VolumePair).CloneVT),
 		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
-		LedgerMetadata:      attributes.NewDerivedKeyStore(fsm.LedgerMetadata, (*commonpb.MetadataValue).CloneVT),
 		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
@@ -397,10 +386,6 @@ func (b *Buffered) PutAccountMetadata(key dal.MetadataKey, value *commonpb.Metad
 
 func (b *Buffered) DeleteAccountMetadata(key dal.MetadataKey) {
 	b.AccountMetadata.Delete(key)
-}
-
-func (b *Buffered) PutLedgerMetadata(key dal.LedgerMetadataKey, value *commonpb.MetadataValue) {
-	b.LedgerMetadata.Put(key, value)
 }
 
 func (b *Buffered) GetReverted(key dal.TransactionKey) (bool, error) {
@@ -733,5 +718,19 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	return nil
 }
 
-// Ensure Buffered implements Store
-var _ processing.Store = (*Buffered)(nil)
+func (b *Buffered) AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) {
+	b.pendingMetadataConvertRequests = append(b.pendingMetadataConvertRequests, MetadataConvertRequest{
+		LedgerName: ledgerName,
+		TargetType: targetType,
+		Key:        key,
+		Type:       metadataType,
+	})
+}
+
+// MetadataConvertRequests returns the accumulated metadata conversion requests.
+func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
+	return b.pendingMetadataConvertRequests
+}
+
+// Ensure Buffered implements InMemoryStore
+var _ processing.InMemoryStore = (*Buffered)(nil)

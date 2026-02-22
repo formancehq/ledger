@@ -93,7 +93,6 @@ var (
 
 	AttributePrefixVolume         = byte('V')
 	AttributePrefixMetadata       = byte('M')
-	AttributePrefixLedgerMetadata = byte('L')
 	AttributePrefixReverted       = byte('R')
 	AttributePrefixIdempotencyKey = byte('K')
 	AttributePrefixReference      = byte('F')

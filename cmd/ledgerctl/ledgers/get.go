@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -73,5 +75,54 @@ func runGet(cmd *cobra.Command, args []string) error {
 	}
 	pterm.Printf("Created At: %s\n", createdAt)
 
+	if ledger.MetadataSchema != nil {
+		renderLedgerSchema(ledger.MetadataSchema)
+	}
+
 	return nil
+}
+
+func renderLedgerSchema(schema *commonpb.MetadataSchema) {
+	hasAccount := len(schema.AccountFields) > 0
+	hasTransaction := len(schema.TransactionFields) > 0
+
+	if !hasAccount && !hasTransaction {
+		return
+	}
+
+	pterm.Println()
+	pterm.Println("Metadata Schema:")
+	pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+	if hasAccount {
+		pterm.Println("  Account Fields:")
+		renderFieldSchemaTable(schema.AccountFields)
+	}
+
+	if hasTransaction {
+		pterm.Println("  Transaction Fields:")
+		renderFieldSchemaTable(schema.TransactionFields)
+	}
+}
+
+func renderFieldSchemaTable(fields map[string]*commonpb.MetadataFieldSchema) {
+	table := pterm.TableData{
+		{"  KEY", "TYPE"},
+	}
+
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		table = append(table, []string{
+			"  " + key,
+			cmdutil.MetadataTypeString(fields[key].Type),
+		})
+	}
+
+	// Ignore render error — best effort display
+	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }

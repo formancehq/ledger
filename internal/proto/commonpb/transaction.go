@@ -231,20 +231,20 @@ func (tx *Transaction) VolumeUpdates() []*AccountsVolumes {
 // MarshalJSON implements json.Marshaler for Transaction
 func (tx *Transaction) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Postings   []*Posting        `json:"postings"`
-		Metadata   metadata.Metadata `json:"metadata"`
-		Timestamp  *time.Time        `json:"timestamp,omitempty"`
-		Reference  string            `json:"reference,omitempty"`
-		ID         *uint64           `json:"id,omitempty"`
-		InsertedAt *time.Time        `json:"insertedAt,omitempty"`
-		UpdatedAt  *time.Time        `json:"updatedAt,omitempty"`
-		RevertedAt *time.Time        `json:"revertedAt,omitempty"`
-		Reverted   bool              `json:"reverted"`
+		Postings   []*Posting     `json:"postings"`
+		Metadata   map[string]any `json:"metadata"`
+		Timestamp  *time.Time     `json:"timestamp,omitempty"`
+		Reference  string         `json:"reference,omitempty"`
+		ID         *uint64        `json:"id,omitempty"`
+		InsertedAt *time.Time     `json:"insertedAt,omitempty"`
+		UpdatedAt  *time.Time     `json:"updatedAt,omitempty"`
+		RevertedAt *time.Time     `json:"revertedAt,omitempty"`
+		Reverted   bool           `json:"reverted"`
 	}
 
 	aux := Aux{
 		Postings:  tx.Postings,
-		Metadata:  MetadataSetToMap(tx.Metadata),
+		Metadata:  MetadataSetToAnyMap(tx.Metadata),
 		Reference: tx.Reference,
 		Reverted:  tx.IsReverted(),
 	}
