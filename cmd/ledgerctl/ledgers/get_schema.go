@@ -109,7 +109,7 @@ func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
 
 	for _, key := range keys {
 		field := fields[key]
-		status := conversionStatusString(field.Status)
+		status := conversionStatusString(field.Status, field.TotalKeys, field.ConvertedKeys)
 		table = append(table, []string{
 			key,
 			cmdutil.MetadataTypeString(field.DeclaredType),
@@ -121,11 +121,14 @@ func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }
 
-func conversionStatusString(s commonpb.MetadataConversionStatus) string {
+func conversionStatusString(s commonpb.MetadataConversionStatus, totalKeys, convertedKeys uint64) string {
 	switch s {
 	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE:
 		return pterm.Green("COMPLETE")
 	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING:
+		if totalKeys > 0 {
+			return pterm.Yellow(fmt.Sprintf("CONVERTING (%d/%d)", convertedKeys, totalKeys))
+		}
 		return pterm.Yellow("CONVERTING")
 	default:
 		return s.String()

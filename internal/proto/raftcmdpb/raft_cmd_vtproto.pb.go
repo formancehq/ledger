@@ -580,6 +580,8 @@ func (m *ConvertMetadataBatchOrder) CloneVT() *ConvertMetadataBatchOrder {
 	r.TargetType = m.TargetType
 	r.Key = m.Key
 	r.ExpectedType = m.ExpectedType
+	r.TotalKeys = m.TotalKeys
+	r.ConvertedKeysSoFar = m.ConvertedKeysSoFar
 	if rhs := m.Entries; rhs != nil {
 		tmpContainer := make([]*ConvertMetadataEntry, len(rhs))
 		for k, v := range rhs {
@@ -2488,6 +2490,12 @@ func (this *ConvertMetadataBatchOrder) EqualVT(that *ConvertMetadataBatchOrder) 
 				return false
 			}
 		}
+	}
+	if this.TotalKeys != that.TotalKeys {
+		return false
+	}
+	if this.ConvertedKeysSoFar != that.ConvertedKeysSoFar {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -5150,6 +5158,16 @@ func (m *ConvertMetadataBatchOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ConvertedKeysSoFar != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ConvertedKeysSoFar))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.TotalKeys != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalKeys))
+		i--
+		dAtA[i] = 0x28
 	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
@@ -8079,6 +8097,12 @@ func (m *ConvertMetadataBatchOrder) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.TotalKeys != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalKeys))
+	}
+	if m.ConvertedKeysSoFar != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ConvertedKeysSoFar))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -11818,6 +11842,44 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalKeys", wireType)
+			}
+			m.TotalKeys = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalKeys |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConvertedKeysSoFar", wireType)
+			}
+			m.ConvertedKeysSoFar = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ConvertedKeysSoFar |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

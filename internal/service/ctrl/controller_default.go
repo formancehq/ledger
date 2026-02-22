@@ -309,14 +309,18 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 	if ledgerInfo.MetadataSchema != nil {
 		for key, field := range ledgerInfo.MetadataSchema.AccountFields {
 			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType: field.Type,
-				Status:       field.Status,
+				DeclaredType:  field.Type,
+				Status:        field.Status,
+				TotalKeys:     field.TotalKeys,
+				ConvertedKeys: field.ConvertedKeys,
 			}
 		}
 		for key, field := range ledgerInfo.MetadataSchema.TransactionFields {
 			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType: field.Type,
-				Status:       field.Status,
+				DeclaredType:  field.Type,
+				Status:        field.Status,
+				TotalKeys:     field.TotalKeys,
+				ConvertedKeys: field.ConvertedKeys,
 			}
 		}
 	}

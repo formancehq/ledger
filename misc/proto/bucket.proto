@@ -494,4 +494,6 @@ message GetMetadataSchemaStatusResponse {
 message MetadataFieldStatus {
   common.MetadataType declared_type = 1;
   common.MetadataConversionStatus status = 2;
+  uint64 total_keys = 3;
+  uint64 converted_keys = 4;
 }

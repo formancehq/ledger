@@ -268,7 +268,6 @@ Numscript remains **string-only**. The typed metadata system bridges via convers
 
 ## Future Work
 
-- **Progress tracking:** Add `converted_keys`/`total_keys` fields to `MetadataFieldStatus` for conversion progress reporting.
 - **Transaction metadata background conversion:** Currently only account metadata triggers Layer 2 conversion; transaction metadata relies on Layer 1 lazy conversion.
 - **Generation rotation optimization:** Opportunistic conversion during `rotateLocked()` to reduce lazy conversion overhead.
 - **HTTP schema endpoint:** Expose `GetMetadataSchemaStatus` via HTTP REST.

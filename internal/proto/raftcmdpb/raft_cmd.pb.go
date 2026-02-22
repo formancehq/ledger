@@ -1287,13 +1287,15 @@ func (*LedgerApplyOrder_ConvertMetadataBatch) isLedgerApplyOrder_Data() {}
 func (*LedgerApplyOrder_ConversionComplete) isLedgerApplyOrder_Data() {}
 
 type ConvertMetadataBatchOrder struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	TargetType    commonpb.TargetType     `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	Key           string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	ExpectedType  commonpb.MetadataType   `protobuf:"varint,3,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
-	Entries       []*ConvertMetadataEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState  `protogen:"open.v1"`
+	TargetType         commonpb.TargetType     `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	Key                string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	ExpectedType       commonpb.MetadataType   `protobuf:"varint,3,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
+	Entries            []*ConvertMetadataEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
+	TotalKeys          uint64                  `protobuf:"varint,5,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
+	ConvertedKeysSoFar uint64                  `protobuf:"varint,6,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ConvertMetadataBatchOrder) Reset() {
@@ -1352,6 +1354,20 @@ func (x *ConvertMetadataBatchOrder) GetEntries() []*ConvertMetadataEntry {
 		return x.Entries
 	}
 	return nil
+}
+
+func (x *ConvertMetadataBatchOrder) GetTotalKeys() uint64 {
+	if x != nil {
+		return x.TotalKeys
+	}
+	return 0
+}
+
+func (x *ConvertMetadataBatchOrder) GetConvertedKeysSoFar() uint64 {
+	if x != nil {
+		return x.ConvertedKeysSoFar
+	}
+	return 0
 }
 
 type ConvertMetadataEntry struct {
@@ -3725,13 +3741,16 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1aremove_metadata_field_type\x18\a \x01(\v2\".raft.RemoveMetadataFieldTypeOrderH\x00R\x17removeMetadataFieldType\x12W\n" +
 	"\x16convert_metadata_batch\x18\b \x01(\v2\x1f.raft.ConvertMetadataBatchOrderH\x00R\x14convertMetadataBatch\x12X\n" +
 	"\x13conversion_complete\x18\t \x01(\v2%.raft.MetadataConversionCompleteOrderH\x00R\x12conversionCompleteB\x06\n" +
-	"\x04data\"\xd3\x01\n" +
+	"\x04data\"\xa5\x02\n" +
 	"\x19ConvertMetadataBatchOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x129\n" +
 	"\rexpected_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\x124\n" +
-	"\aentries\x18\x04 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\"{\n" +
+	"\aentries\x18\x04 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\x12\x1d\n" +
+	"\n" +
+	"total_keys\x18\x05 \x01(\x04R\ttotalKeys\x121\n" +
+	"\x15converted_keys_so_far\x18\x06 \x01(\x04R\x12convertedKeysSoFar\"{\n" +
 	"\x14ConvertMetadataEntry\x12#\n" +
 	"\rcanonical_key\x18\x01 \x01(\fR\fcanonicalKey\x12>\n" +
 	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\"\xa3\x01\n" +

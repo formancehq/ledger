@@ -172,6 +172,8 @@ enum MetadataConversionStatus {
 message MetadataFieldSchema {
   MetadataType type = 1;
   MetadataConversionStatus status = 2;
+  uint64 total_keys = 3;
+  uint64 converted_keys = 4;
 }
 
 message MetadataSchema {

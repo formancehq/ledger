@@ -55,6 +55,11 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 		}
 	}
 
+	// Persist conversion progress in the schema.
+	fieldSchema.TotalKeys = order.TotalKeys
+	fieldSchema.ConvertedKeys = order.ConvertedKeysSoFar
+	s.PutLedger(ledgerName, info)
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_ConvertMetadataBatch{
 			ConvertMetadataBatch: &commonpb.ConvertMetadataBatchLog{
@@ -93,6 +98,7 @@ func (p *RequestProcessor) processMetadataConversionComplete(
 	}
 
 	fieldSchema.Status = commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE
+	fieldSchema.ConvertedKeys = fieldSchema.TotalKeys
 	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{

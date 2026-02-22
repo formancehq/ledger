@@ -125,6 +125,8 @@ message ConvertMetadataBatchOrder {
   string key = 2;
   common.MetadataType expected_type = 3;
   repeated ConvertMetadataEntry entries = 4;
+  uint64 total_keys = 5;
+  uint64 converted_keys_so_far = 6;
 }
 
 message ConvertMetadataEntry {
