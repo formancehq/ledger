@@ -732,5 +732,5 @@ func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
 	return b.pendingMetadataConvertRequests
 }
 
-// Ensure Buffered implements Store
-var _ processing.Store = (*Buffered)(nil)
+// Ensure Buffered implements InMemoryStore
+var _ processing.InMemoryStore = (*Buffered)(nil)

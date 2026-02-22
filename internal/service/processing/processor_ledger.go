@@ -5,7 +5,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	_, ok := s.GetLedger(order.Name)
 	if ok {
 		return nil, &ErrLedgerAlreadyExists{Name: order.Name}
@@ -34,7 +34,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	l, ok := s.GetLedger(order.Name)
 	if !ok {
 		return nil, &ErrLedgerNotFound{Name: order.Name}

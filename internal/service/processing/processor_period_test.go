@@ -15,7 +15,7 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -64,7 +64,7 @@ func TestProcessClosePeriod_NoPeriodOpen(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -81,7 +81,7 @@ func TestProcessClosePeriod_AlreadyClosing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -108,7 +108,7 @@ func TestProcessSealPeriod_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestProcessSealPeriod_PeriodNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -170,7 +170,7 @@ func TestProcessSealPeriod_PeriodNotClosing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -202,7 +202,7 @@ func TestProcessArchivePeriod_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -236,7 +236,7 @@ func TestProcessArchivePeriod_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -257,7 +257,7 @@ func TestProcessArchivePeriod_NotClosed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -283,7 +283,7 @@ func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -317,7 +317,7 @@ func TestProcessConfirmArchivePeriod_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -338,7 +338,7 @@ func TestProcessConfirmArchivePeriod_NotArchiving(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

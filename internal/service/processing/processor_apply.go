@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	boundaries, ok := s.GetBoundaries(apply.Ledger)
 	if !ok {
 		return nil, &ErrLedgerNotFound{Name: apply.Ledger}

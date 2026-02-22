@@ -14,7 +14,7 @@ import (
 // applyPosting applies a single posting by updating volumes.
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
-func applyPosting(s Store, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
+func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
 	sourceKey := dal.VolumeKey{
 		AccountKey: dal.AccountKey{
 			LedgerID: ledgerID,

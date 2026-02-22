@@ -6,11 +6,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-//go:generate mockgen -source=store.go -destination=store_mock_test.go -package=processing -mock_names=Store=MockStore
+//go:generate mockgen -source=store.go -destination=store_mock_test.go -package=processing -mock_names=InMemoryStore=MockInMemoryStore
 
-// Store is the interface used by RequestProcessor to access data.
+// InMemoryStore is the interface used by RequestProcessor to access data.
 // It abstracts the underlying storage mechanism (e.g., Buffered).
-type Store interface {
+type InMemoryStore interface {
 	// Ledger operations
 	GetLedger(name string) (*commonpb.LedgerInfo, bool)
 	PutLedger(name string, info *commonpb.LedgerInfo)

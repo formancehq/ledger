@@ -41,7 +41,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s Store) ([]*raftcmdpb.CreatedLogOrReference, error) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, error) {
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
 
 	for i, order := range orders {
@@ -138,7 +138,7 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore) (*commonpb.LogPayload, error) {
 	switch orderType := order.Type.(type) {
 	case *raftcmdpb.Order_Apply:
 		return p.processApply(orderType.Apply, s)

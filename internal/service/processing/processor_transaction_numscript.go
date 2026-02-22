@@ -17,9 +17,10 @@ import (
 type numscriptPostingProducer struct {
 	cache        *numscript.NumscriptCache
 	featureFlags map[string]struct{}
+	ledgerName   string
 }
 
-func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.Script == nil || order.Script.Plain == "" {
 		return nil, numscript.ErrScriptRequired
 	}
@@ -39,9 +40,10 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:    s,
-		ledgerID: ledgerID,
-		force:    order.Force,
+		store:      s,
+		ledgerID:   ledgerID,
+		force:      order.Force,
+		ledgerName: p.ledgerName,
 	}
 
 	// Execute the script with all feature flags enabled
@@ -150,9 +152,10 @@ func (p *numscriptPostingProducer) produce(s Store, ledgerID uint32, order *raft
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface
 type numscriptStoreAdapter struct {
-	store    Store
-	ledgerID uint32
-	force    bool // When true, return unlimited balances to bypass balance checks
+	store      InMemoryStore
+	ledgerID   uint32
+	force      bool   // When true, return unlimited balances to bypass balance checks
+	ledgerName string // For lazy schema lookup during opportunistic conversion
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -235,6 +238,19 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 				return nil, err
 			}
 			if value != nil {
+				// Opportunistically convert to declared schema type and write back.
+				// The schema is looked up lazily from the Store to avoid impacting
+				// tests that don't set up the GetLedger expectation.
+				if s.ledgerName != "" {
+					if info, ok := s.store.GetLedger(s.ledgerName); ok && info.MetadataSchema != nil {
+						if fields := info.MetadataSchema.AccountFields; fields != nil {
+							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.Type) {
+								value = commonpb.ConvertMetadataValue(value, fieldSchema.Type)
+								s.store.PutAccountMetadata(metaKey, value)
+							}
+						}
+					}
+				}
 				str := commonpb.MetadataValueToString(value)
 				if str != "" {
 					accountMeta[key] = str

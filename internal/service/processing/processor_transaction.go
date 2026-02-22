@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ledgerName string, order *raftcmdpb.CreateTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ledgerName string, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.Reference != "" {
 		refKey := dal.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.Reference}
@@ -29,7 +29,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerID uint32, boundaries 
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.Script != nil && order.Script.Plain != "" {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, featureFlags: numscript.FeatureFlags}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, featureFlags: numscript.FeatureFlags, ledgerName: ledgerName}
 	} else {
 		producer = &stdPostingProducer{}
 	}
@@ -161,12 +161,12 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
+	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
 }
 
 type stdPostingProducer struct{}
 
-func (p *stdPostingProducer) produce(s Store, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	for _, posting := range order.Postings {
 		// Skip balance check when Force is true
 		if err := applyPosting(s, ledgerID, posting, order.Force); err != nil {

@@ -220,6 +220,16 @@ The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned
 
 ## HTTP API
 
+### REST Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (field types + conversion progress) |
+| `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
+| `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
+
+The `targetType` path parameter accepts `account` or `transaction`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
+
 ### JSON Type Inference
 
 When no schema is declared for a key, the HTTP layer infers the type from JSON:
@@ -266,6 +276,9 @@ Numscript remains **string-only**. The typed metadata system bridges via convers
 | `internal/service/processing/processor_convert_metadata.go` | Batch conversion, conversion complete |
 | `internal/service/state/metadata_converter.go` | Background conversion worker (Layer 2) |
 | `internal/service/ctrl/store.go` | Lazy read-time conversion (Layer 1) |
+| `internal/compat/http/handlers_get_metadata_schema.go` | HTTP: GET metadata schema status |
+| `internal/compat/http/handlers_set_metadata_type.go` | HTTP: PUT set metadata field type |
+| `internal/compat/http/handlers_remove_metadata_type.go` | HTTP: DELETE remove metadata field type |
 | `cmd/ledgerctl/ledgers/set_metadata_type.go` | CLI: set-metadata-type |
 | `cmd/ledgerctl/ledgers/remove_metadata_type.go` | CLI: remove-metadata-type |
 | `cmd/ledgerctl/ledgers/get_schema.go` | CLI: get-schema |
@@ -279,6 +292,5 @@ Therefore transaction metadata uses **read-time enforcement only** (Layer 1). Th
 ## Future Work
 
 - **Generation rotation optimization:** Opportunistic conversion during `rotateLocked()` to reduce lazy conversion overhead.
-- **HTTP schema endpoint:** Expose `GetMetadataSchemaStatus` via HTTP REST.
 - **Numscript typed literals:** Extend Numscript parser for typed literals natively (coordinated with "typed variables" work).
 - **ClickHouse evolution:** Evolve from `Map(String, String)` to `Map(String, Variant(...))` when advanced read queries land.

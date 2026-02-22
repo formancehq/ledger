@@ -11,7 +11,7 @@ import (
 func (p *RequestProcessor) processConvertMetadataBatch(
 	ledgerName string,
 	order *raftcmdpb.ConvertMetadataBatchOrder,
-	s Store,
+	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
@@ -74,7 +74,7 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 func (p *RequestProcessor) processMetadataConversionComplete(
 	ledgerName string,
 	order *raftcmdpb.MetadataConversionCompleteOrder,
-	s Store,
+	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {

@@ -16,7 +16,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -65,7 +65,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -92,7 +92,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -127,7 +127,7 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

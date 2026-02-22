@@ -13,7 +13,7 @@ var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | 
 
 // processSetPeriodSchedule handles the SetPeriodSchedule order.
 // It validates the cron expression and stores it in the FSM state.
-func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodScheduleOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	if _, err := CronParser.Parse(order.Cron); err != nil {
 		return nil, &ErrInvalidCronExpression{
 			Expression: order.Cron,
@@ -34,7 +34,7 @@ func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodSc
 
 // processDeletePeriodSchedule handles the DeletePeriodSchedule order.
 // It removes the period schedule from the FSM state.
-func (p *RequestProcessor) processDeletePeriodSchedule(s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeletePeriodSchedule(s InMemoryStore) (*commonpb.LogPayload, error) {
 	s.DeletePeriodSchedule()
 
 	return &commonpb.LogPayload{

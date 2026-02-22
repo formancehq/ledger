@@ -5,7 +5,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	s.AddSigningKey(order.KeyId, order.PublicKey, order.ParentKeyId)
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RegisterSigningKey{
@@ -18,7 +18,7 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 	}, nil
 }
 
-func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	var cascaded []string
 	if order.Cascade {
 		// BFS to find all descendants for cascade revocation
@@ -48,7 +48,7 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 	}, nil
 }
 
-func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	s.SetRequireSignatures(order.RequireSignatures)
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetSigningConfig{

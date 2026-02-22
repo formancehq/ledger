@@ -7,7 +7,7 @@ import (
 
 // processClosePeriod handles the ClosePeriod order.
 // It transitions the current OPEN period to CLOSING and creates a new OPEN period.
-func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	currentPeriod, ok := s.GetCurrentOpenPeriod()
 	if !ok {
 		return nil, ErrNoPeriodOpen
@@ -46,7 +46,7 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s S
 
 // processSealPeriod handles the SealPeriod order.
 // It transitions a CLOSING period to CLOSED and sets the sealing hash.
-func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	closingPeriod, ok := s.GetClosingPeriod()
 	if !ok || closingPeriod.Id != order.PeriodId {
 		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}
@@ -73,7 +73,7 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 // processArchivePeriod handles the ArchivePeriod order.
 // It transitions the period from CLOSED → ARCHIVING and returns an ArchivePeriodLog
 // to signal the background Archiver (leader-only dispatch happens in Node).
-func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	period, ok := s.GetPeriodByID(order.PeriodId)
 	if !ok {
 		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}
@@ -101,7 +101,7 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 
 // processConfirmArchivePeriod handles the ConfirmArchivePeriod order.
 // It transitions an ARCHIVING period to ARCHIVED and signals a purge of logs and audit entries.
-func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	period, ok := s.GetPeriodByID(order.PeriodId)
 	if !ok {
 		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}

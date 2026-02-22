@@ -127,6 +127,9 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - `DELETE /{ledgerName}/accounts/{address}/metadata/{key}` - Delete account metadata
 - `POST /{ledgerName}/transactions/{transactionId}/metadata` - Save transaction metadata
 - `DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}` - Delete transaction metadata
+- `GET /{ledgerName}/metadata-schema` - Get metadata schema status (field types and conversion progress)
+- `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
+- `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
 
 ### 4. Bulk Operations
 
@@ -368,6 +371,9 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/stats` | ❌ | ✅ | Ledger statistics |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `GET /` | ✅ | ✅ | List all ledgers |
+| `GET /{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
+| `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
+| `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 
 ---
 

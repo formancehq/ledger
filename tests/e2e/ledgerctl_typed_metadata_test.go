@@ -261,13 +261,17 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should verify the field was removed but the other remains", func() {
-			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.AccountFields).NotTo(HaveKey("temp_field"))
-			Expect(resp.AccountFields).To(HaveKey("keep_field"))
-			Expect(resp.AccountFields["keep_field"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			// Removal triggers background conversion to STRING then deletion —
+			// wait for it to complete.
+			Eventually(func(g Gomega) {
+				resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.AccountFields).NotTo(HaveKey("temp_field"))
+				g.Expect(resp.AccountFields).To(HaveKey("keep_field"))
+				g.Expect(resp.AccountFields["keep_field"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

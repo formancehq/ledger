@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	existing, err := s.GetSinkConfig(order.Config.Name)
 	if err != nil {
 		return nil, fmt.Errorf("checking existing sink %q: %w", order.Config.Name, err)
@@ -26,7 +26,7 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 	}, nil
 }
 
-func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, s Store) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	existing, err := s.GetSinkConfig(order.Name)
 	if err != nil {
 		return nil, fmt.Errorf("checking existing sink %q: %w", order.Name, err)

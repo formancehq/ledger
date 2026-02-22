@@ -251,7 +251,7 @@ func (e *testEngine) consolidateVolumePair(key string) {
 	vp.OutputDiff = nil
 }
 
-// inMemoryStore implements processing.Store using the testEngine's in-memory state.
+// inMemoryStore implements processing.InMemoryStore using the testEngine's in-memory state.
 type inMemoryStore struct {
 	engine           *testEngine
 	date             *commonpb.Timestamp

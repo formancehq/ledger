@@ -109,12 +109,11 @@ func newGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 // Helper functions for creating gRPC requests
 
 // createLedgerAction creates an action for creating a new ledger
-func createLedgerAction(name string, metadata map[string]string) *servicepb.Request {
+func createLedgerAction(name string, _ map[string]string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
-				Name:     name,
-				Metadata: commonpb.MetadataSetFromMap(metadata),
+				Name: name,
 			},
 		},
 	}
@@ -627,12 +626,11 @@ func removeMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType
 }
 
 // createLedgerWithSchemaAction creates a ledger with an initial metadata schema.
-func createLedgerWithSchemaAction(name string, metadata map[string]string, schema []*commonpb.SetMetadataFieldTypeCommand) *servicepb.Request {
+func createLedgerWithSchemaAction(name string, _ map[string]string, schema []*commonpb.SetMetadataFieldTypeCommand) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name:          name,
-				Metadata:      commonpb.MetadataSetFromMap(metadata),
 				InitialSchema: schema,
 			},
 		},

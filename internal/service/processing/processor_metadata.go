@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ledgerName string, order *raftcmdpb.SaveMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ledgerName string, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, ErrTargetRequired
 	}
@@ -68,7 +68,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, ErrTargetRequired
 	}

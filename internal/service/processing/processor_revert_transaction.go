@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Store) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	txKey := dal.TransactionKey{
 		LedgerID: ledgerID,
 		ID:       order.TransactionId,

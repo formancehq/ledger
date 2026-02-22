@@ -16,7 +16,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -80,7 +80,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -130,7 +130,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -173,7 +173,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -221,7 +221,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -294,7 +294,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	processor2, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore2 := NewMockStore(ctrl)
+	mockStore2 := NewMockInMemoryStore(ctrl)
 	var capturedHashes2 [][]byte
 
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {

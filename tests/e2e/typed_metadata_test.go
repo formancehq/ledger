@@ -65,11 +65,15 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.AccountFields).NotTo(HaveKey("age"))
+			// Removal triggers a background conversion to STRING then deletes
+			// the field on completion — wait for it to be fully removed.
+			Eventually(func(g Gomega) {
+				resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.AccountFields).NotTo(HaveKey("age"))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

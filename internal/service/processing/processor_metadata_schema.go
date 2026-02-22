@@ -8,7 +8,7 @@ import (
 func (p *RequestProcessor) processSetMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.SetMetadataFieldTypeOrder,
-	s Store,
+	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
@@ -58,22 +58,28 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 func (p *RequestProcessor) processRemoveMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
-	s Store,
+	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	if info.MetadataSchema != nil {
-		switch order.TargetType {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			delete(info.MetadataSchema.AccountFields, order.Key)
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			delete(info.MetadataSchema.TransactionFields, order.Key)
-		}
-		s.PutLedger(ledgerName, info)
+	if info.MetadataSchema == nil {
+		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
+
+	// Delete the field from the schema immediately. Existing stored typed
+	// values (e.g., int_value) remain in Pebble; without a schema declaration,
+	// reads return them as-is (no conversion enforced).
+	switch order.TargetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		delete(info.MetadataSchema.AccountFields, order.Key)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		delete(info.MetadataSchema.TransactionFields, order.Key)
+	}
+
+	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{

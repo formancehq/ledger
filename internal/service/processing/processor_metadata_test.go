@@ -17,7 +17,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -76,7 +76,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -131,7 +131,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -185,7 +185,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

@@ -17,7 +17,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -106,7 +106,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -158,7 +158,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -227,7 +227,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -259,7 +259,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 
 // setupNumscriptVolumeMocks sets up the common volume mock expectations for Numscript tests.
 // All Numscript tests use flexible (AnyTimes) volume mocking with zero balances.
-func setupNumscriptVolumeMocks(mockStore *MockStore) {
+func setupNumscriptVolumeMocks(mockStore *MockInMemoryStore) {
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
 		InputKnown:  commonpb.NewUint256FromUint64(0),
 		OutputKnown: commonpb.NewUint256FromUint64(0),
@@ -273,7 +273,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -335,7 +335,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -403,7 +403,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -471,7 +471,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -531,7 +531,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -571,7 +571,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -622,7 +622,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -689,7 +689,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -751,7 +751,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -833,7 +833,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -922,7 +922,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -998,7 +998,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1062,7 +1062,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1113,7 +1113,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1159,7 +1159,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1227,7 +1227,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockStore(ctrl)
+	mockStore := NewMockInMemoryStore(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
