@@ -1,7 +1,9 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -34,6 +36,7 @@ Examples:
 		RunE: runMaintenance,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -90,6 +93,13 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 		spinner.Success("Maintenance mode enabled")
 	} else {
 		spinner.Success("Maintenance mode disabled")
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"maintenanceMode": enabled})
 	}
 
 	return nil

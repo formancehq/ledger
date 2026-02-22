@@ -14,26 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/stretchr/testify/require"
-	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
 )
-
-// startTestClickHouse starts a ClickHouse container via testcontainers and returns the DSN.
-func startTestClickHouse(t *testing.T) string {
-	t.Helper()
-	ctx := context.Background()
-
-	container, err := chmodule.Run(ctx, "clickhouse/clickhouse-server:24-alpine")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, container.Terminate(context.Background()))
-	})
-
-	dsn, err := container.ConnectionString(ctx)
-	require.NoError(t, err)
-
-	return dsn
-}
 
 // openTestClickHouseConn opens a ClickHouse connection with the required settings
 // for querying the structured JSON column.
@@ -104,7 +85,7 @@ func queryClickHouseEvents(t *testing.T, dsn, table string) []struct {
 func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	t.Parallel()
 
-	dsn := startTestClickHouse(t)
+	dsn := sharedClickHouseDSN
 	const table = "ledger_events"
 
 	store := newTestStore(t)
@@ -204,7 +185,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	t.Parallel()
 
-	dsn := startTestClickHouse(t)
+	dsn := sharedClickHouseDSN
 	const table = "ledger_events_typed"
 
 	store := newTestStore(t)
@@ -305,7 +286,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 func TestClickHouseSinkIntegration_AutoCreateTable(t *testing.T) {
 	t.Parallel()
 
-	dsn := startTestClickHouse(t)
+	dsn := sharedClickHouseDSN
 	const table = "auto_created_table"
 
 	sink, err := events.NewClickHouseSink(context.Background(), events.ClickHouseSinkConfig{

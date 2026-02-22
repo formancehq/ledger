@@ -4,7 +4,6 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -196,9 +195,8 @@ func TestSealerRetryOnFailure(t *testing.T) {
 		CheckpointPath: realPath,
 	}
 
-	// Restore the checkpoint after a short delay so the retry succeeds
+	// Restore the checkpoint so the retry succeeds
 	go func() {
-		time.Sleep(50 * time.Millisecond)
 		_ = os.Rename(hiddenPath, realPath)
 	}()
 

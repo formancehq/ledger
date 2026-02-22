@@ -2,8 +2,10 @@ package signing
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -14,13 +16,17 @@ import (
 
 // NewListKeysCommand creates the signing list-keys command.
 func NewListKeysCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "list-keys",
 		Aliases: []string{"ls", "list"},
 		Short:   "List all registered signing keys",
 		Long:    "List all registered signing keys and their parent relationships",
 		RunE:    runListKeys,
 	}
+
+	cmd.Flags().Bool("json", false, "Output as JSON")
+
+	return cmd
 }
 
 func runListKeys(cmd *cobra.Command, _ []string) error {
@@ -48,6 +54,13 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("receiving signing key: %w", err)
 		}
 		keys = append(keys, key)
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(keys)
 	}
 
 	if len(keys) == 0 {

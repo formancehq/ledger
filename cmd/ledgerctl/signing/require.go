@@ -1,7 +1,9 @@
 package signing
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -30,6 +32,7 @@ Examples:
 		RunE: runRequire,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -86,6 +89,13 @@ func runRequire(cmd *cobra.Command, args []string) error {
 		spinner.Success("Mandatory signatures enabled")
 	} else {
 		spinner.Success("Mandatory signatures disabled")
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"requireSignatures": require})
 	}
 
 	return nil

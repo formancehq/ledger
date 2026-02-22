@@ -1,7 +1,9 @@
 package signing
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -27,6 +29,7 @@ Examples:
 
 	cmd.Flags().String("key-id", "", "Key ID to revoke (required)")
 	cmd.Flags().Bool("cascade", false, "Also revoke all descendant keys")
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -73,6 +76,13 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Revoked")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"keyId": keyID, "revoked": true})
+	}
 
 	pterm.Println()
 	pterm.Printf("Key ID: %s (revoked)\n", pterm.Gray(keyID))

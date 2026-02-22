@@ -1,7 +1,6 @@
 package events_test
 
 import (
-	"context"
 	"math/big"
 	"testing"
 	"time"
@@ -13,27 +12,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/kafka"
 	"google.golang.org/protobuf/encoding/protojson"
 )
-
-// startTestKafka starts a Kafka container via testcontainers and returns the broker addresses.
-func startTestKafka(t *testing.T) []string {
-	t.Helper()
-	ctx := context.Background()
-
-	container, err := kafka.Run(ctx, "confluentinc/confluent-local:7.6.1")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, container.Terminate(context.Background()))
-	})
-
-	brokers, err := container.Brokers(ctx)
-	require.NoError(t, err)
-
-	return brokers
-}
 
 // consumeKafkaMessages reads up to expectedCount messages from a Kafka topic within a timeout.
 func consumeKafkaMessages(t *testing.T, brokers []string, topic string, expectedCount int, timeout time.Duration) []*sarama.ConsumerMessage {
@@ -68,7 +48,7 @@ func consumeKafkaMessages(t *testing.T, brokers []string, topic string, expected
 func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	t.Parallel()
 
-	brokers := startTestKafka(t)
+	brokers := sharedKafkaBrokers
 	const topic = "ledger-events"
 
 	store := newTestStore(t)
@@ -155,7 +135,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	t.Parallel()
 
-	brokers := startTestKafka(t)
+	brokers := sharedKafkaBrokers
 	const topic = "ledger-keys"
 
 	store := newTestStore(t)
@@ -216,7 +196,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	t.Parallel()
 
-	brokers := startTestKafka(t)
+	brokers := sharedKafkaBrokers
 	const topic = "ledger-proto"
 
 	store := newTestStore(t)

@@ -44,11 +44,10 @@ func TestPeriodSchedulerEmptySchedule(t *testing.T) {
 	)
 	ps.Start()
 
-	// Wait a bit to ensure nothing fires
-	time.Sleep(200 * time.Millisecond)
+	// Verify nothing fires
+	require.Never(t, func() bool { return called.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "empty schedule should never fire")
 
 	ps.Stop()
-	require.Equal(t, int32(0), called.Load(), "empty schedule should never fire")
 }
 
 func TestPeriodSchedulerInvalidCron(t *testing.T) {
@@ -67,11 +66,10 @@ func TestPeriodSchedulerInvalidCron(t *testing.T) {
 	)
 	ps.Start()
 
-	// Wait a bit to ensure nothing fires
-	time.Sleep(200 * time.Millisecond)
+	// Verify nothing fires
+	require.Never(t, func() bool { return called.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "invalid cron should never fire")
 
 	ps.Stop()
-	require.Equal(t, int32(0), called.Load(), "invalid cron should never fire")
 }
 
 func TestPeriodSchedulerScheduleChanged(t *testing.T) {
@@ -97,13 +95,13 @@ func TestPeriodSchedulerScheduleChanged(t *testing.T) {
 	sig.Notify()
 
 	// Allow the signal to be processed
-	time.Sleep(100 * time.Millisecond)
+	require.Never(t, func() bool { return false }, 100*time.Millisecond, 50*time.Millisecond)
 
 	// Changing to empty should clear the timer
 	schedule.Store("")
 	sig.Notify()
 
-	time.Sleep(100 * time.Millisecond)
+	require.Never(t, func() bool { return false }, 100*time.Millisecond, 50*time.Millisecond)
 
 	ps.Stop()
 	// No panic or deadlock = success
@@ -127,8 +125,7 @@ func TestPeriodSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 	ps.Start()
 
 	// Even with a fast-firing cron, non-leaders should not propose
-	time.Sleep(300 * time.Millisecond)
+	require.Never(t, func() bool { return called.Load() > 0 }, 300*time.Millisecond, 10*time.Millisecond, "non-leader should not propose")
 
 	ps.Stop()
-	require.Equal(t, int32(0), called.Load(), "non-leader should not propose")
 }

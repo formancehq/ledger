@@ -1,7 +1,9 @@
 package transactions
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -154,6 +156,17 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	}
 
 	spinner.Success("Metadata set")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		result := map[string]any{
+			"transactionId": txID,
+			"metadata":      metadata,
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(result)
+	}
 
 	// Display what was set
 	pterm.Println()

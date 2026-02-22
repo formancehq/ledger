@@ -1,6 +1,9 @@
 package periods
 
 import (
+	"encoding/json"
+	"os"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
@@ -17,6 +20,7 @@ func NewDeleteScheduleCommand() *cobra.Command {
 		RunE:  runDeleteSchedule,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -54,6 +58,13 @@ func runDeleteSchedule(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Period schedule deleted")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"deleted": true})
+	}
 
 	return nil
 }

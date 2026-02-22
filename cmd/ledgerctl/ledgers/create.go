@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // NewCreateCommand creates the ledgers create command.
@@ -36,6 +37,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
 
 	if name == "" {
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return fmt.Errorf("ledger name is required (use --name flag)")
+		}
 		result, err := pterm.DefaultInteractiveTextInput.
 			WithDefaultText("Enter ledger name").
 			Show()
@@ -151,8 +155,8 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 		})
 	}
 
-	// If no schema entries from flags, offer wizard mode
-	if len(schema) == 0 && !cmd.Flags().Changed("schema") {
+	// If no schema entries from flags, offer wizard mode (only in interactive terminals)
+	if len(schema) == 0 && !cmd.Flags().Changed("schema") && term.IsTerminal(int(os.Stdin.Fd())) {
 		wizardSchema, err := schemaWizard()
 		if err != nil {
 			return nil, err

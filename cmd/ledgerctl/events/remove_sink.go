@@ -1,7 +1,9 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -27,6 +29,7 @@ Examples:
 	}
 
 	cmd.Flags().String("name", "", "Name of the sink to remove (required)")
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -71,6 +74,13 @@ func runRemoveSink(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Removed")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"name": name, "removed": true})
+	}
 
 	pterm.Println()
 	pterm.Printf("Sink: %s (removed)\n", pterm.Gray(name))

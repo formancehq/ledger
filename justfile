@@ -32,7 +32,7 @@ install-client:
 
 # Run tests
 test:
-    go test ./... -tags it,e2e
+    go test ./... -tags it,e2e -timeout 20m
 
 # Clean build artifacts
 clean:

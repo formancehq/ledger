@@ -1,7 +1,9 @@
 package periods
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -11,12 +13,16 @@ import (
 
 // NewCloseCommand creates the periods close command.
 func NewCloseCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "close",
 		Short: "Close the current open period",
 		Long:  "Close the current open period and open a new one. A background seal process will compute the sealing hash.",
 		RunE:  runClose,
 	}
+
+	cmd.Flags().Bool("json", false, "Output as JSON")
+
+	return cmd
 }
 
 func runClose(cmd *cobra.Command, _ []string) error {
@@ -40,6 +46,13 @@ func runClose(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("closing period: %w", err)
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(resp)
 	}
 
 	if len(resp.Logs) > 0 {

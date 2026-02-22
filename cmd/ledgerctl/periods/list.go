@@ -1,8 +1,10 @@
 package periods
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -15,12 +17,16 @@ import (
 
 // NewListCommand creates the periods list command.
 func NewListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all periods",
 		Long:  "List all accounting periods with their status",
 		RunE:  runList,
 	}
+
+	cmd.Flags().Bool("json", false, "Output as JSON")
+
+	return cmd
 }
 
 func runList(cmd *cobra.Command, _ []string) error {
@@ -48,6 +54,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("receiving period: %w", err)
 		}
 		periods = append(periods, period)
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(periods)
 	}
 
 	if len(periods) == 0 {

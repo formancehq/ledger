@@ -1,7 +1,9 @@
 package accounts
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -143,6 +145,17 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	}
 
 	spinner.Success("Metadata set")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		result := map[string]any{
+			"address":  address,
+			"metadata": metadata,
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(result)
+	}
 
 	pterm.Println()
 	pterm.Printf("Account: %s\n", pterm.Cyan(address))

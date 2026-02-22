@@ -21,7 +21,6 @@ Business:
 Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
-* Tests CLI
 
 Cold storage:
 * Add S3/Parquet support

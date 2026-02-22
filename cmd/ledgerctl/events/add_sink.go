@@ -1,7 +1,9 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -67,6 +69,7 @@ Examples:
 	cmd.Flags().String("format", "json", "Event serialization format (json or protobuf)")
 	cmd.Flags().Int32("batch-size", 0, "Max events per batch (default: 64)")
 	cmd.Flags().Int64("batch-delay-ms", 0, "Max delay before flush in ms (default: 10)")
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -212,6 +215,13 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Added")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(config)
+	}
 
 	pterm.Println()
 	pterm.Printf("Sink:   %s\n", pterm.Cyan(name))

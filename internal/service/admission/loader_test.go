@@ -128,8 +128,8 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 		}()
 	}
 
-	// Give waiters time to start waiting
-	time.Sleep(50 * time.Millisecond)
+	// Wait to confirm no extra loads are triggered while first load is in progress
+	require.Never(t, func() bool { return loadCount.Load() > 1 }, 50*time.Millisecond, 10*time.Millisecond)
 
 	// Release the first load
 	close(loadContinue)
@@ -215,8 +215,15 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 		close(waiterDone)
 	}()
 
-	// Give waiter time to start waiting
-	time.Sleep(50 * time.Millisecond)
+	// Wait to confirm waiter hasn't completed yet (it should be blocked)
+	require.Never(t, func() bool {
+		select {
+		case <-waiterDone:
+			return true
+		default:
+			return false
+		}
+	}, 50*time.Millisecond, 10*time.Millisecond)
 
 	// Release the first load (which will fail)
 	close(loadContinue)

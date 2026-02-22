@@ -1,7 +1,9 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -21,6 +23,7 @@ func NewStatusCommand() *cobra.Command {
 		RunE:    runStatus,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Uint32("node-id", 0, "Query specific node by ID (0 = route to leader)")
 
@@ -48,6 +51,13 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get cluster state", err)
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(state)
 	}
 
 	// Display cluster status

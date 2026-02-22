@@ -3,6 +3,7 @@ package signing
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -41,6 +42,7 @@ Examples:
 	cmd.Flags().String("key-id", "", "Unique identifier for the key (required)")
 	cmd.Flags().String("public-key", "", "Ed25519 public key as hex-encoded string (32 bytes)")
 	cmd.Flags().String("public-key-file", "", "Path to file containing Ed25519 public key (raw 32 bytes or hex-encoded)")
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -91,6 +93,13 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Registered")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(map[string]any{"keyId": keyID, "publicKey": hex.EncodeToString(pubKey)})
+	}
 
 	pterm.Println()
 	pterm.Printf("Key ID:     %s\n", pterm.Cyan(keyID))

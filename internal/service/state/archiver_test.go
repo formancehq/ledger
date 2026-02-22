@@ -185,9 +185,8 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 		CloseSequence: 10,
 	}
 
-	// Follower should not propose - give it a moment to process
-	time.Sleep(200 * time.Millisecond)
-	require.Equal(t, uint64(0), proposedPeriodID.Load(), "follower should not propose")
+	// Follower should not propose
+	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "follower should not propose")
 
 	a.Stop()
 }
@@ -227,9 +226,8 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		CloseSequence: 1,
 	}
 
-	// Wait a bit - should not have proposed yet
-	time.Sleep(200 * time.Millisecond)
-	require.Equal(t, uint64(0), proposedPeriodID.Load(), "non-leader should not propose yet")
+	// Should not have proposed yet
+	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "non-leader should not propose yet")
 
 	// Become leader - archiver should eventually succeed
 	isLeader.Store(true)

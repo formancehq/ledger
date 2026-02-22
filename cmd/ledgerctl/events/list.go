@@ -1,7 +1,9 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -27,6 +29,7 @@ Examples:
 		RunE: runList,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -45,6 +48,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
+	}
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(resp)
 	}
 
 	if len(resp.Sinks) == 0 {

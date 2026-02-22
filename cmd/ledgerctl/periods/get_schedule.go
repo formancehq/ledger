@@ -1,6 +1,9 @@
 package periods
 
 import (
+	"encoding/json"
+	"os"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
@@ -17,6 +20,7 @@ func NewGetScheduleCommand() *cobra.Command {
 		RunE:  runGetSchedule,
 	}
 
+	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -40,10 +44,19 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get period schedule", err)
 	}
 
+	_ = spinner.Stop()
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(resp)
+	}
+
 	if resp.Cron == "" {
-		spinner.Success("No period schedule configured (automatic rotation disabled)")
+		pterm.Success.Println("No period schedule configured (automatic rotation disabled)")
 	} else {
-		spinner.Success("Period schedule: " + resp.Cron)
+		pterm.Success.Println("Period schedule: " + resp.Cron)
 	}
 
 	return nil

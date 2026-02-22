@@ -17,7 +17,7 @@ func (f *Future[T]) Resolve(value T, err error) {
 	f.done = true
 	f.err = err
 	f.value = value
-	f.cond.Signal()
+	f.cond.Broadcast()
 	f.mu.Unlock()
 }
 

@@ -532,6 +532,220 @@ set_account_meta(@user, "account_type", "true")
 		})
 	})
 
+	Context("Small Integer Types Conversion", Ordered, func() {
+		const ledgerName = "typed-meta-small-ints"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_int8",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_int16",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_int32",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_uint8",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_uint16",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "field_uint32",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should convert string values to correct proto types", func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					saveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
+						"field_int8":   "-42",
+						"field_int16":  "1000",
+						"field_int32":  "100000",
+						"field_uint8":  "200",
+						"field_uint16": "50000",
+						"field_uint32": "3000000000",
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: "small-ints",
+			})
+			Expect(err).To(Succeed())
+
+			// Signed types -> int_value
+			int8Val := findMetadataValue(account.Metadata, "field_int8")
+			Expect(int8Val).NotTo(BeNil())
+			iv8, ok := int8Val.Type.(*commonpb.MetadataValue_IntValue)
+			Expect(ok).To(BeTrue(), "expected int_value for int8, got %T", int8Val.Type)
+			Expect(iv8.IntValue).To(Equal(int64(-42)))
+
+			int16Val := findMetadataValue(account.Metadata, "field_int16")
+			Expect(int16Val).NotTo(BeNil())
+			iv16, ok := int16Val.Type.(*commonpb.MetadataValue_IntValue)
+			Expect(ok).To(BeTrue(), "expected int_value for int16, got %T", int16Val.Type)
+			Expect(iv16.IntValue).To(Equal(int64(1000)))
+
+			int32Val := findMetadataValue(account.Metadata, "field_int32")
+			Expect(int32Val).NotTo(BeNil())
+			iv32, ok := int32Val.Type.(*commonpb.MetadataValue_IntValue)
+			Expect(ok).To(BeTrue(), "expected int_value for int32, got %T", int32Val.Type)
+			Expect(iv32.IntValue).To(Equal(int64(100000)))
+
+			// Unsigned types -> uint_value
+			uint8Val := findMetadataValue(account.Metadata, "field_uint8")
+			Expect(uint8Val).NotTo(BeNil())
+			uv8, ok := uint8Val.Type.(*commonpb.MetadataValue_UintValue)
+			Expect(ok).To(BeTrue(), "expected uint_value for uint8, got %T", uint8Val.Type)
+			Expect(uv8.UintValue).To(Equal(uint64(200)))
+
+			uint16Val := findMetadataValue(account.Metadata, "field_uint16")
+			Expect(uint16Val).NotTo(BeNil())
+			uv16, ok := uint16Val.Type.(*commonpb.MetadataValue_UintValue)
+			Expect(ok).To(BeTrue(), "expected uint_value for uint16, got %T", uint16Val.Type)
+			Expect(uv16.UintValue).To(Equal(uint64(50000)))
+
+			uint32Val := findMetadataValue(account.Metadata, "field_uint32")
+			Expect(uint32Val).NotTo(BeNil())
+			uv32, ok := uint32Val.Type.(*commonpb.MetadataValue_UintValue)
+			Expect(ok).To(BeTrue(), "expected uint_value for uint32, got %T", uint32Val.Type)
+			Expect(uv32.UintValue).To(Equal(uint64(3000000000)))
+		})
+
+		It("Should return correct strings via ToMap()", func() {
+			account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: "small-ints",
+			})
+			Expect(err).To(Succeed())
+
+			m := account.Metadata.ToMap()
+			Expect(m["field_int8"]).To(Equal("-42"))
+			Expect(m["field_int16"]).To(Equal("1000"))
+			Expect(m["field_int32"]).To(Equal("100000"))
+			Expect(m["field_uint8"]).To(Equal("200"))
+			Expect(m["field_uint16"]).To(Equal("50000"))
+			Expect(m["field_uint32"]).To(Equal("3000000000"))
+		})
+	})
+
+	Context("Initial Schema with All Types", Ordered, func() {
+		const ledgerName = "typed-meta-all-types"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_string",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_bool",
+							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_int8",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_int16",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_int32",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_int64",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_uint8",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_uint16",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_uint32",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "f_uint64",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should have all 10 fields present with correct types and COMPLETE status", func() {
+			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(Succeed())
+
+			expectedFields := map[string]commonpb.MetadataType{
+				"f_string": commonpb.MetadataType_METADATA_TYPE_STRING,
+				"f_bool":   commonpb.MetadataType_METADATA_TYPE_BOOL,
+				"f_int8":   commonpb.MetadataType_METADATA_TYPE_INT8,
+				"f_int16":  commonpb.MetadataType_METADATA_TYPE_INT16,
+				"f_int32":  commonpb.MetadataType_METADATA_TYPE_INT32,
+				"f_int64":  commonpb.MetadataType_METADATA_TYPE_INT64,
+				"f_uint8":  commonpb.MetadataType_METADATA_TYPE_UINT8,
+				"f_uint16": commonpb.MetadataType_METADATA_TYPE_UINT16,
+				"f_uint32": commonpb.MetadataType_METADATA_TYPE_UINT32,
+				"f_uint64": commonpb.MetadataType_METADATA_TYPE_UINT64,
+			}
+
+			Expect(resp.AccountFields).To(HaveLen(len(expectedFields)))
+			for key, expectedType := range expectedFields {
+				Expect(resp.AccountFields).To(HaveKey(key))
+				Expect(resp.AccountFields[key].DeclaredType).To(Equal(expectedType),
+					"field %s: expected type %v", key, expectedType)
+				Expect(resp.AccountFields[key].Status).To(Equal(
+					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE),
+					"field %s: expected COMPLETE status", key)
+			}
+		})
+	})
+
 	Context("Typed Values via gRPC (Direct Proto Values)", Ordered, func() {
 		const ledgerName = "typed-meta-direct-proto"
 
