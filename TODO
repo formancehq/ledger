@@ -16,6 +16,7 @@ Business:
 ** Filter internal events
 ** Sync S3 + parquet
 * Audit: enabled by the user
+* Check/document idempotency
 
 Tests:
 * Convert K6 tests to GRPC
@@ -31,3 +32,4 @@ Refactor:
 * Split admission
 * Categorize raft commands (user commands vs system commands)
 * Check all commands match a log type payload
+* Decoupler wal write / state machine processing
