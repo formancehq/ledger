@@ -39,10 +39,10 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 
 	s.PutLedger(ledgerName, info)
 
-	// Account metadata needs background conversion of existing values.
-	if order.TargetType == commonpb.TargetType_TARGET_TYPE_ACCOUNT {
-		s.AddMetadataConvertRequest(ledgerName, order.TargetType, order.Key, order.Type)
-	}
+	// Both account and transaction metadata need the conversion lifecycle.
+	// Account metadata triggers background scan+convert; transaction metadata
+	// completes immediately (read-time enforcement handles existing data).
+	s.AddMetadataConvertRequest(ledgerName, order.TargetType, order.Key, order.Type)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{

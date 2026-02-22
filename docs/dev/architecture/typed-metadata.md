@@ -149,7 +149,11 @@ Any read that encounters a value whose stored type doesn't match the declared sc
 
 This layer guarantees that **reads always return the declared type** (or `NullValue`) regardless of the store's current state.
 
-**Implementation:** `enforceAccountSchema()` in `internal/service/ctrl/store.go` calls `commonpb.TypeMatches()` and `commonpb.ConvertMetadataValue()`.
+**Implementation:**
+- Account metadata: `enforceAccountSchema()` in `internal/service/ctrl/store.go`
+- Transaction metadata: `enforceTransactionSchema()` in `internal/service/ctrl/controller_default.go`, applied during `assembleTransaction` which replays append-only update logs on every read
+
+Both call `commonpb.TypeMatches()` and `commonpb.ConvertMetadataValue()`.
 
 ### Layer 2: Automatic Batched Conversion
 
@@ -266,9 +270,14 @@ Numscript remains **string-only**. The typed metadata system bridges via convers
 | `cmd/ledgerctl/ledgers/remove_metadata_type.go` | CLI: remove-metadata-type |
 | `cmd/ledgerctl/ledgers/get_schema.go` | CLI: get-schema |
 
+### Transaction Metadata
+
+Transaction metadata is stored as append-only `TransactionUpdate` entries replayed on every read (`assembleTransaction`). Unlike account metadata (standalone Pebble attributes), background conversion would add new entries but old ones are still read — providing no performance benefit.
+
+Therefore transaction metadata uses **read-time enforcement only** (Layer 1). The conversion lifecycle still runs for status consistency: when `SetMetadataFieldType` is called for a transaction field, the converter immediately proposes completion (CONVERTING → COMPLETE) without scanning.
+
 ## Future Work
 
-- **Transaction metadata background conversion:** Currently only account metadata triggers Layer 2 conversion; transaction metadata relies on Layer 1 lazy conversion.
 - **Generation rotation optimization:** Opportunistic conversion during `rotateLocked()` to reduce lazy conversion overhead.
 - **HTTP schema endpoint:** Expose `GetMetadataSchemaStatus` via HTTP REST.
 - **Numscript typed literals:** Extend Numscript parser for typed literals natively (coordinated with "typed variables" work).

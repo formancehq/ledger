@@ -73,26 +73,44 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName stri
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return buildTransaction(handle, ledgerInfo.Id, transactionID)
+	return buildTransaction(handle, ledgerInfo.Id, transactionID, ledgerInfo.MetadataSchema)
 }
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
-func buildTransaction(reader dal.PebbleReader, ledgerID uint32, transactionID uint64) (*commonpb.Transaction, error) {
+func buildTransaction(reader dal.PebbleReader, ledgerID uint32, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
 	updates, err := state.ReadTransactionUpdates(reader, ledgerID, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
 
-	return assembleTransaction(reader, transactionID, updates)
+	return assembleTransaction(reader, transactionID, updates, schema)
+}
+
+// enforceTransactionSchema converts transaction metadata values in-place
+// according to the ledger's declared metadata schema. Mirrors enforceAccountSchema.
+func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
+	if schema == nil || len(schema.TransactionFields) == 0 {
+		return
+	}
+	for _, m := range metadata {
+		fieldSchema, ok := schema.TransactionFields[m.Key]
+		if !ok || m.Value == nil {
+			continue
+		}
+		if !commonpb.TypeMatches(m.Value, fieldSchema.Type) {
+			m.Value = commonpb.ConvertMetadataValue(m.Value, fieldSchema.Type)
+		}
+	}
 }
 
 // assembleTransaction builds a transaction from a slice of updates and a log reader.
 // The updates must be in chronological order (lowest byLog first).
-func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
+// If schema is non-nil, read-time type enforcement is applied to the final metadata.
+func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
 	var (
 		sequence         uint64
 		reverted         bool
-		metadataToAdd    = make(map[string]string)
+		metadataToAdd    = make(map[string]*commonpb.MetadataValue)
 		metadataToDelete = make(map[string]struct{})
 	)
 	for _, update := range updates {
@@ -104,7 +122,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 				reverted = true
 			}
 			if addMeta := updateType.GetTransactionModificationAddMetadata(); addMeta != nil {
-				metadataToAdd[addMeta.Metadata.Key] = commonpb.MetadataValueToString(addMeta.Metadata.Value)
+				metadataToAdd[addMeta.Metadata.Key] = addMeta.Metadata.Value
 				delete(metadataToDelete, addMeta.Metadata.Key)
 			}
 			if delMeta := updateType.GetTransactionModificationDeleteMetadata(); delMeta != nil {
@@ -150,17 +168,30 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 
 	tx.Reverted = reverted
 	if len(metadataToAdd) > 0 || len(metadataToDelete) > 0 {
-		existingMeta := tx.Metadata.ToMap()
-		if existingMeta == nil {
-			existingMeta = make(map[string]string)
+		// Build a map from existing metadata (preserving typed values).
+		existing := make(map[string]*commonpb.MetadataValue)
+		if tx.Metadata != nil {
+			for _, m := range tx.Metadata.Metadata {
+				existing[m.Key] = m.Value
+			}
 		}
 		for key, value := range metadataToAdd {
-			existingMeta[key] = value
+			existing[key] = value
 		}
 		for key := range metadataToDelete {
-			delete(existingMeta, key)
+			delete(existing, key)
 		}
-		tx.Metadata = commonpb.MetadataSetFromMap(existingMeta)
+		// Rebuild the MetadataSet from typed values.
+		mdList := make([]*commonpb.Metadata, 0, len(existing))
+		for key, value := range existing {
+			mdList = append(mdList, &commonpb.Metadata{Key: key, Value: value})
+		}
+		tx.Metadata = &commonpb.MetadataSet{Metadata: mdList}
+	}
+
+	// Apply read-time schema enforcement for transaction metadata.
+	if tx.Metadata != nil {
+		enforceTransactionSchema(schema, tx.Metadata.Metadata)
 	}
 
 	return tx, nil
@@ -207,6 +238,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		pageSize:   pageSize,
 		lastTxID:   ^uint64(0),
 		txIDOffset: dal.TxUpdateTxIDOffset,
+		schema:     ledgerInfo.MetadataSchema,
 	}, nil
 }
 

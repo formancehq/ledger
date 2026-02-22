@@ -23,6 +23,7 @@ type transactionCursor struct {
 	count      uint32
 	lastTxID   uint64
 	txIDOffset int
+	schema     *commonpb.MetadataSchema
 
 	// pending holds an already-read update when we overshoot into the next txID's territory
 	pendingTxID   uint64
@@ -108,7 +109,7 @@ func (c *transactionCursor) Next() (*commonpb.Transaction, error) {
 // buildFromUpdates reverses updates (collected in reverse order) and assembles the transaction.
 func (c *transactionCursor) buildFromUpdates(txID uint64, updates []*commonpb.TransactionUpdate) (*commonpb.Transaction, error) {
 	slices.Reverse(updates)
-	return assembleTransaction(c.handle, txID, updates)
+	return assembleTransaction(c.handle, txID, updates, c.schema)
 }
 
 func (c *transactionCursor) Close() error {

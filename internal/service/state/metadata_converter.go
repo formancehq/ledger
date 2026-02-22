@@ -322,6 +322,16 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	logFields["ledgerId"] = ledgerInfo.Id
+
+	// Transaction metadata uses read-time enforcement (assembleTransaction replays
+	// append-only update logs on every read). No background scan needed — just
+	// propose completion to transition CONVERTING → COMPLETE.
+	if req.TargetType == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+		mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type)
+		mc.logger.WithFields(logFields).Infof("Transaction metadata conversion complete (read-time enforcement)")
+		return nil
+	}
+
 	mc.logger.WithFields(logFields).Infof("Starting metadata conversion")
 
 	// Build the canonical prefix for this ledger: 4-byte big-endian ledger ID.
