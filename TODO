@@ -4,7 +4,6 @@ API:
 * ACL system / authentication
 
 Business:
-* Flow control
 * Chart of account
 * Mirror mode
 * Numscript
@@ -22,9 +21,13 @@ Refactor:
 * Check all commands match a log type payload
 * Decoupler wal write / state machine processing
 * Leader reads
+* Rework packages
 
 Later:
 * Events
 ** Sync S3 + parquet
-Cold storage:
-* Add S3/Parquet support
+* Cold storage:
+** Add S3/Parquet support
+* API
+** Explore Checkpoint + exposed api to read at PIT
+* Flow control
