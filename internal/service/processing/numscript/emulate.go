@@ -26,7 +26,7 @@ type DiscoveryResult struct {
 // in the nonDeterministic field and checked after execution.
 //
 // This is a temporary workaround until the Numscript library implements static
-// analysis of required inputs (see docs/drafts/numscript-static-inputs-rfc.md).
+// analysis of required inputs (see docs/drafts/numscript/numscript-static-inputs-rfc.md).
 type discoveryStore struct {
 	queriedVolumes   map[dal.VolumeKey]struct{}
 	queriedMetadata  map[dal.MetadataKey]struct{}

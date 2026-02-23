@@ -10,8 +10,11 @@ Summary of key problems and limitations from Ledger v2 that have been addressed 
 ### [System Limitations](../sales/limitations.md)
 Current system limitations based on ID types: maximum ledgers, transactions, and logs.
 
-### [Numscript Static Inputs RFC](./numscript-static-inputs-rfc.md)
-RFC for static inputs in Numscript transactions.
+### [Numscript RFCs](./numscript/)
+Draft RFCs for Numscript evolution:
+- [Static Inputs RFC](./numscript/numscript-static-inputs-rfc.md) — Static input declaration contract
+- [WASM Compilation RFC](./numscript/numscript-wasm-compilation-rfc.md) — WASM compilation pipeline
+- [Typed Metadata RFC](./numscript/numscript-typed-metadata-rfc.md) — Typed metadata integration
 
 ### [Advanced Concepts](./advanced-concepts.md)
 Exploratory documentation on advanced features and concepts.
