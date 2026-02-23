@@ -141,8 +141,9 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		},
 		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.String("id", fmt.Sprint(tx.ID)),
-				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
+				attribute.String("transaction.id", fmt.Sprint(tx.ID)),
+				attribute.String("transaction.timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
+				attribute.String("transaction.reference", tx.Reference),
 			)
 		},
 	))
