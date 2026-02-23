@@ -27,11 +27,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListAllLedgersResponse'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}:
     get:
@@ -41,12 +37,7 @@ paths:
       tags:
         - Ledgers
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to retrieve
+        - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
           description: Ledger retrieved successfully
@@ -55,19 +46,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetLedgerResponse'
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
     post:
       summary: Create a new ledger
       description: |
@@ -77,19 +60,8 @@ paths:
       tags:
         - Ledgers
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to create
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -104,11 +76,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateLedgerResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '409':
           description: Ledger already exists
           content:
@@ -118,11 +86,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete a ledger
       description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster.
@@ -130,36 +94,17 @@ paths:
       tags:
         - Ledgers
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to delete
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '2XX':
           description: Ledger deleted successfully
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/transactions:
     post:
@@ -169,19 +114,8 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -196,19 +130,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateTransactionResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/transactions/{transactionId}:
     get:
@@ -218,19 +144,8 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: transactionId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-          description: Transaction ID
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TransactionId'
       responses:
         '200':
           description: Transaction retrieved successfully
@@ -239,19 +154,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetTransactionResponse'
         '404':
-          description: Transaction not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/accounts:
     get:
@@ -259,11 +166,7 @@ paths:
       description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination
       operationId: listAccounts
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/LedgerName'
         - name: pageSize
           in: query
           description: Maximum number of accounts to return (0 = no limit)
@@ -293,11 +196,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/Account'
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /{ledgerName}/accounts/{address}:
     get:
@@ -307,18 +206,8 @@ paths:
       tags:
         - Accounts
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: address
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Account address
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/AccountAddress'
       responses:
         '200':
           description: Account retrieved successfully
@@ -327,19 +216,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetAccountResponse'
         '404':
-          description: Account not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/accounts/{address}/metadata:
     post:
@@ -349,25 +230,9 @@ paths:
       tags:
         - Accounts
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: address
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Account address
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/AccountAddress'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -386,19 +251,11 @@ paths:
         '204':
           description: Account metadata saved successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/transactions/{transactionId}/metadata:
     post:
@@ -408,26 +265,9 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: transactionId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-          description: Transaction ID
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TransactionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -445,19 +285,11 @@ paths:
         '204':
           description: Transaction metadata saved successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
@@ -467,48 +299,19 @@ paths:
       tags:
         - Accounts
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: address
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Account address
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key to delete
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/AccountAddress'
+        - $ref: '#/components/parameters/MetadataKey'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '204':
           description: Account metadata deleted successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
@@ -518,49 +321,19 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: transactionId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-          description: Transaction ID
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key to delete
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TransactionId'
+        - $ref: '#/components/parameters/MetadataKey'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '204':
           description: Transaction metadata deleted successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/transactions/{transactionId}/revert:
     post:
@@ -570,26 +343,9 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: transactionId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-          description: Transaction ID to revert
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 256
-          description: Idempotency key for the request
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TransactionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -604,19 +360,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/RevertedTransactionResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/metadata-schema:
     get:
@@ -626,12 +374,7 @@ paths:
       tags:
         - Metadata Schema
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
+        - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
           description: Metadata schema status retrieved successfully
@@ -640,19 +383,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/MetadataSchemaStatusResponse'
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/metadata-schema/{targetType}/{key}:
     put:
@@ -665,21 +400,8 @@ paths:
       tags:
         - Metadata Schema
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: targetType
-          in: path
-          required: true
-          schema:
-            type: string
-            enum:
-              - account
-              - transaction
-          description: Target type (account or transaction)
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TargetType'
         - name: key
           in: path
           required: true
@@ -696,25 +418,13 @@ paths:
         '204':
           description: Metadata field type set successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Remove metadata field type
       description: |
@@ -724,21 +434,8 @@ paths:
       tags:
         - Metadata Schema
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: targetType
-          in: path
-          required: true
-          schema:
-            type: string
-            enum:
-              - account
-              - transaction
-          description: Target type (account or transaction)
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TargetType'
         - name: key
           in: path
           required: true
@@ -749,25 +446,13 @@ paths:
         '204':
           description: Metadata field type removed successfully
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}/_bulk:
     post:
@@ -777,12 +462,7 @@ paths:
       tags:
         - Transactions
       parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
+        - $ref: '#/components/parameters/LedgerName'
         - name: continueOnFailure
           in: query
           schema:
@@ -811,11 +491,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '413':
           description: Request entity too large
           content:
@@ -825,13 +501,63 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
 
 components:
+  parameters:
+    LedgerName:
+      name: ledgerName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Name of the ledger
+
+    TransactionId:
+      name: transactionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Transaction ID
+
+    AccountAddress:
+      name: address
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Account address
+
+    MetadataKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Metadata key
+
+    TargetType:
+      name: targetType
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - account
+          - transaction
+      description: Target type (account or transaction)
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 256
+      description: Idempotency key for the request
+
   responses:
     ServiceUnavailable:
       description: Service unavailable (no leader available)
@@ -843,6 +569,27 @@ components:
             format: int32
             minimum: 1
             example: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
       content:
         application/json:
           schema:
@@ -1569,4 +1316,3 @@ components:
         errorMessage:
           type: string
           description: Human-readable error message
-
