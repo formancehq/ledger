@@ -6,7 +6,6 @@ API:
 
 Business:
 * Flow control
-* Mode not atomic
 * Chart of account
 * Mirror mode
 * Numscript
@@ -15,7 +14,6 @@ Business:
 * Events
 ** Filter internal events
 ** Sync S3 + parquet
-* Audit: enabled by the user
 * Check/document idempotency
 
 Tests:
