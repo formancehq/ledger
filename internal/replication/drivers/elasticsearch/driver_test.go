@@ -3,7 +3,6 @@
 package elasticsearch
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
@@ -25,7 +24,7 @@ func TestElasticSearchDriver(t *testing.T) {
 	dockerPool := docker.NewPool(t, logging.Testing())
 	srv := elastictesting.CreateServer(dockerPool, elastictesting.WithTimeout(2*time.Minute))
 
-	ctx := context.TODO()
+	ctx := t.Context()
 	esConfig := Config{
 		Endpoint: srv.Endpoint(),
 	}

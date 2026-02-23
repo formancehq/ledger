@@ -3,7 +3,6 @@
 package ledger_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"math/big"
@@ -30,6 +29,8 @@ func TestLogsInsert(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	t.Run("check hash against core", func(t *testing.T) {
+		t.Parallel()
+
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		store := newLedgerStore(t)
 		log1 := ledger.NewLog(ledger.CreatedTransaction{
@@ -75,6 +76,8 @@ func TestLogsInsert(t *testing.T) {
 	})
 
 	t.Run("duplicate IK", func(t *testing.T) {
+		t.Parallel()
+
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		store := newLedgerStore(t)
 		logTx := ledger.NewLog(ledger.CreatedTransaction{
@@ -101,6 +104,8 @@ func TestLogsInsert(t *testing.T) {
 	})
 
 	t.Run("hash consistency over high concurrency", func(t *testing.T) {
+		t.Parallel()
+
 		errGroup, _ := errgroup.WithContext(ctx)
 		store := newLedgerStore(t)
 		const countLogs = 50
@@ -196,7 +201,7 @@ func TestLogsReadWithIdempotencyKey(t *testing.T) {
 	err := store.InsertLog(ctx, &log)
 	require.NoError(t, err)
 
-	lastLog, err := store.ReadLogWithIdempotencyKey(context.Background(), "test")
+	lastLog, err := store.ReadLogWithIdempotencyKey(t.Context(), "test")
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 	require.Equal(t, log, *lastLog)
@@ -219,14 +224,14 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{})
+	cursor, err := store.Logs().Paginate(t.Context(), common.InitialPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(t.Context(), common.InitialPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -234,7 +239,7 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(t.Context(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.And(
@@ -250,7 +255,7 @@ func TestLogsList(t *testing.T) {
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(t.Context(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.Lt("id", 3),

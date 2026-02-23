@@ -120,6 +120,8 @@ func (p parseVisitor) isOverdraftUnbounded(overdraftCtx parser.ISourceAccountOve
 // VisitSource returns the resource addresses of all the accounts,
 // the addresses of accounts already emptied,
 // and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
+//
+//nolint:gocyclo // AST visitor pattern, each branch handles a distinct source node type
 func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), isAll bool) (map[machine.Address]struct{}, map[machine.Address]struct{}, *FallbackAccount, *CompileError) {
 	neededAccounts := map[machine.Address]struct{}{}
 	emptiedAccounts := map[machine.Address]struct{}{}

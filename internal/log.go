@@ -265,7 +265,7 @@ var _ Memento = (*CreatedTransaction)(nil)
 
 type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
-	TargetID   any               `json:"targetId"`
+	TargetID   any               `json:"targetId"` //nolint:tagliatelle
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
@@ -285,7 +285,7 @@ var _ LogPayload = (*SavedMetadata)(nil)
 func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
-		TargetID   json.RawMessage   `json:"targetId"`
+		TargetID   json.RawMessage   `json:"targetId"` //nolint:tagliatelle
 		Metadata   metadata.Metadata `json:"metadata"`
 	}
 	x := X{}
@@ -317,7 +317,7 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 
 type DeletedMetadata struct {
 	TargetType string `json:"targetType"`
-	TargetID   any    `json:"targetId"`
+	TargetID   any    `json:"targetId"` //nolint:tagliatelle
 	Key        string `json:"key"`
 }
 
@@ -337,7 +337,7 @@ var _ LogPayload = (*DeletedMetadata)(nil)
 func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string          `json:"targetType"`
-		TargetID   json.RawMessage `json:"targetId"`
+		TargetID   json.RawMessage `json:"targetId"` //nolint:tagliatelle
 		Key        string          `json:"key"`
 	}
 	x := X{}

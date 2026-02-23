@@ -78,6 +78,7 @@ type T interface {
 	Cleanup(func())
 }
 
+//nolint:unparam // variadic opts kept for test flexibility
 func newLedgerStore(t T, opts ...func(cfg *ledger.Configuration)) *ledgerstore.Store {
 	t.Helper()
 

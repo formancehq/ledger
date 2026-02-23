@@ -1,7 +1,6 @@
 package drivers
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -62,7 +61,7 @@ func TestBatcher(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	driver := NewMockDriver(ctrl)
 	logger := logging.Testing()
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	log := NewLogWithLedger("module1", ledger.Log{})
 

@@ -260,6 +260,8 @@ func TestManagerStop(t *testing.T) {
 	t.Parallel()
 
 	t.Run("nominal", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := logging.TestingContext()
 		ctrl := gomock.NewController(t)
 		storage := NewMockStorage(ctrl)
@@ -343,6 +345,8 @@ func TestManagerStop(t *testing.T) {
 		require.NoError(t, manager.Stop(ctx))
 	})
 	t.Run("error on driver initialization", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := logging.TestingContext()
 		ctrl := gomock.NewController(t)
 		storage := NewMockStorage(ctrl)

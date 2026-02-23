@@ -141,7 +141,7 @@ func BenchmarkRead(b *testing.B) {
 		b.Fatalf("Failed to decode configuration file: %s", err)
 	}
 
-	env := env.Factory.Create(context.Background(), b)
+	env := env.Factory.Create(b.Context(), b)
 	ctx := logging.TestingContext()
 
 	for _, query := range cfg.Queries {

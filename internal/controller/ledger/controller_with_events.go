@@ -27,6 +27,7 @@ func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listen
 	}
 }
 
+//nolint:unparam // ctx is propagated recursively to parent handlers
 func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
 	if !c.hasTx {
 		fn()
