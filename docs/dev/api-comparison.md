@@ -340,11 +340,12 @@ ledgerctl periods list
 
 ### 4. Idempotency
 
-**POC:** 
+**POC:**
 - Supported via `Idempotency-Key` header (HTTP) or `idempotency_key` field (gRPC)
 - System-level scope (not per-ledger)
 - Hash-based content verification (BLAKE3)
 - Stored in generation-based cache and persisted to Pebble
+- Maximum key length: 256 characters (validated at admission)
 
 **Original:** Same mechanism.
 

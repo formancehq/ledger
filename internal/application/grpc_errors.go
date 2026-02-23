@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -158,7 +159,8 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.Is(inner, processing.ErrTargetRequired),
 		errors.Is(inner, processing.ErrMetadataKeyRequired),
-		errors.Is(inner, numscript.ErrScriptRequired):
+		errors.Is(inner, numscript.ErrScriptRequired),
+		errors.Is(inner, admission.ErrIdempotencyKeyTooLong):
 		code = codes.InvalidArgument
 		reason = processing.ErrReasonValidation
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 )
@@ -65,7 +66,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.Is(err, processing.ErrTargetRequired),
 		errors.Is(err, processing.ErrMetadataKeyRequired),
-		errors.Is(err, numscript.ErrScriptRequired):
+		errors.Is(err, numscript.ErrScriptRequired),
+		errors.Is(err, admission.ErrIdempotencyKeyTooLong):
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
 	default:

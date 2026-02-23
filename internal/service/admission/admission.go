@@ -925,6 +925,11 @@ func isRegisterSigningKeyRequest(req *servicepb.Request) bool {
 	return ok
 }
 
+const maxIdempotencyKeyLength = 256
+
+// ErrIdempotencyKeyTooLong is returned when an idempotency key exceeds the maximum length.
+var ErrIdempotencyKeyTooLong = errors.New("idempotency key exceeds maximum length of 256 characters")
+
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
 var ErrMaintenanceMode = fmt.Errorf("cluster is in maintenance mode: write operations are blocked")
 
@@ -1304,6 +1309,9 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 
 	// Set idempotency key if provided (hash will be computed in processor from payload)
 	if req.IdempotencyKey != "" {
+		if len(req.IdempotencyKey) > maxIdempotencyKeyLength {
+			return nil, &processing.BusinessError{Err: ErrIdempotencyKeyTooLong}
+		}
 		order.Idempotency = &commonpb.Idempotency{
 			Key: req.IdempotencyKey,
 		}

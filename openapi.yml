@@ -83,6 +83,13 @@ paths:
           schema:
             type: string
           description: Name of the ledger to create
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       requestBody:
         required: true
         content:
@@ -129,6 +136,13 @@ paths:
           schema:
             type: string
           description: Name of the ledger to delete
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       responses:
         '2XX':
           description: Ledger deleted successfully
@@ -161,6 +175,13 @@ paths:
           schema:
             type: string
           description: Name of the ledger
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       requestBody:
         required: true
         content:
@@ -340,6 +361,13 @@ paths:
           schema:
             type: string
           description: Account address
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       requestBody:
         required: true
         content:
@@ -393,6 +421,13 @@ paths:
             type: integer
             format: int64
           description: Transaction ID
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       requestBody:
         required: true
         content:
@@ -450,6 +485,13 @@ paths:
           schema:
             type: string
           description: Metadata key to delete
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       responses:
         '204':
           description: Account metadata deleted successfully
@@ -495,6 +537,13 @@ paths:
           schema:
             type: string
           description: Metadata key to delete
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Idempotency key for the request
       responses:
         '204':
           description: Transaction metadata deleted successfully
@@ -539,6 +588,7 @@ paths:
           required: false
           schema:
             type: string
+            maxLength: 256
           description: Idempotency key for the request
       requestBody:
         required: false
@@ -949,6 +999,7 @@ components:
           description: The type of operation to perform
         ik:
           type: string
+          maxLength: 256
           description: Idempotency key for this operation
         data:
           oneOf:

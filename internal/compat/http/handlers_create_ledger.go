@@ -18,6 +18,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Create ledger via Apply
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: ledgerName,

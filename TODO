@@ -14,7 +14,6 @@ Business:
 * Events
 ** Filter internal events
 ** Sync S3 + parquet
-* Check/document idempotency
 
 Tests:
 * Convert K6 tests to GRPC

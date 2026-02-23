@@ -17,6 +17,7 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_DeleteLedger{
 			DeleteLedger: &servicepb.DeleteLedgerRequest{
 				Name: ledgerName,

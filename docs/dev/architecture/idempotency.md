@@ -117,6 +117,16 @@ All write operations support idempotency keys:
 | Delete ledger | `DELETE /{ledger}` | ✅ |
 | Bulk operations | `POST /{ledger}/_bulk` | ✅ (per action) |
 
+## Key Validation
+
+Idempotency keys are validated at admission time:
+
+| Rule | Limit | Error |
+|------|-------|-------|
+| Maximum length | 256 characters | `VALIDATION` (HTTP 400 / gRPC `INVALID_ARGUMENT`) |
+
+Keys exceeding 256 characters are rejected before reaching Raft consensus. This limit applies to both the `Idempotency-Key` HTTP header and the `idempotency_key` gRPC field, as well as the `ik` field in bulk operations.
+
 ## Storage Architecture
 
 ### Cache Layer

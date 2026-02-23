@@ -1379,3 +1379,77 @@ func TestChiLogEntry_Panic_WithSpan(t *testing.T) {
 	// Should not panic and should record the error on the span
 	entry.Panic(fmt.Errorf("test panic"), []byte("stack trace data"))
 }
+
+// --------------------------------------------------------------------------
+// handlers_create_ledger.go: Idempotency-Key propagation
+// --------------------------------------------------------------------------
+
+func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
+	t.Parallel()
+
+	var capturedRequest *servicepb.Request
+	backend := &mockBackend{
+		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+			capturedRequest = requests[0]
+			return []*commonpb.Log{
+				{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_CreateLedger{
+							CreateLedger: &commonpb.CreateLedgerLog{
+								Info: &commonpb.LedgerInfo{Name: "test"},
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/test", nil, map[string]string{
+		"ledgerName": "test",
+	})
+	r.Header.Set("Idempotency-Key", "create-ledger-ik-123")
+
+	srv.handleCreateLedger(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, capturedRequest)
+	require.Equal(t, "create-ledger-ik-123", capturedRequest.IdempotencyKey)
+}
+
+// --------------------------------------------------------------------------
+// handlers_delete_ledger.go: Idempotency-Key propagation
+// --------------------------------------------------------------------------
+
+func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
+	t.Parallel()
+
+	var capturedRequest *servicepb.Request
+	backend := &mockBackend{
+		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+			capturedRequest = requests[0]
+			return []*commonpb.Log{
+				{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_DeleteLedger{},
+					},
+				},
+			}, nil
+		},
+	}
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodDelete, "/test", nil, map[string]string{
+		"ledgerName": "test",
+	})
+	r.Header.Set("Idempotency-Key", "delete-ledger-ik-456")
+
+	srv.handleDeleteLedger(w, r)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.NotNil(t, capturedRequest)
+	require.Equal(t, "delete-ledger-ik-456", capturedRequest.IdempotencyKey)
+}

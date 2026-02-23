@@ -3,6 +3,7 @@ package admission
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"strings"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -992,6 +993,96 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		_, hasMerchant := volumes[merchantKey]
 		require.True(t, hasBank, "should use explicit posting source")
 		require.True(t, hasMerchant, "should use explicit posting destination")
+	})
+}
+
+func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accepts idempotency key within max length", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		req := &servicepb.Request{
+			IdempotencyKey: "valid-key-123",
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		order, err := adm.requestToOrder(req)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+		require.NotNil(t, order.Idempotency)
+		require.Equal(t, "valid-key-123", order.Idempotency.Key)
+	})
+
+	t.Run("accepts idempotency key at exactly max length", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		// 256 characters exactly
+		key := strings.Repeat("a", 256)
+
+		req := &servicepb.Request{
+			IdempotencyKey: key,
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		order, err := adm.requestToOrder(req)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+		require.NotNil(t, order.Idempotency)
+		require.Equal(t, key, order.Idempotency.Key)
+	})
+
+	t.Run("rejects idempotency key exceeding max length", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		// 257 characters - one over the limit
+		key := strings.Repeat("a", 257)
+
+		req := &servicepb.Request{
+			IdempotencyKey: key,
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		_, err := adm.requestToOrder(req)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrIdempotencyKeyTooLong)
+	})
+
+	t.Run("no idempotency key is accepted", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm := createTestAdmission(t, store)
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test",
+				},
+			},
+		}
+
+		order, err := adm.requestToOrder(req)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+		require.Nil(t, order.Idempotency)
 	})
 }
 
