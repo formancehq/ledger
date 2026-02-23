@@ -421,7 +421,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	if schema != nil {
+	if schema != nil && len(schema.Transactions) > 0 {
 		if parameters.Input.Template == "" {
 			err := newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("transactions on this ledger must use a template"))
 			if ctrl.schemaEnforcementMode == SchemaEnforcementStrict {
@@ -438,6 +438,8 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		} else {
 			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
 		}
+	} else if parameters.Input.Template != "" {
+		return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("can only use templates on a schema with transaction definitions"))
 	}
 
 	m, err := ctrl.getParser(parameters.Input.Runtime).Parse(parameters.Input.Plain)

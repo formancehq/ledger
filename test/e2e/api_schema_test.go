@@ -93,9 +93,7 @@ var _ = Context("Ledger schema API tests", func() {
 										DotPattern: pointer.For("^[0-9]{3}$"),
 										DotRules:   &components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
-											"foo": {
-												Default: pointer.For("test"),
-											},
+											"foo": {},
 										},
 									},
 								},
@@ -108,7 +106,6 @@ var _ = Context("Ledger schema API tests", func() {
 								},
 							},
 						},
-						Transactions: transactionTemplates,
 					},
 				})
 				Expect(err).To(BeNil())
@@ -119,13 +116,18 @@ var _ = Context("Ledger schema API tests", func() {
 					Version: "v2.0.0",
 					V2SchemaData: components.V2SchemaData{
 						Chart: map[string]components.V2ChartSegment{
+							"world": {
+								DotSelf: &components.DotSelf{},
+							},
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
 										DotPattern: pointer.For("^[0-9]{3}$"),
 										DotRules:   &components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
-											"foo": {},
+											"foo": {
+												Default: pointer.For("test"),
+											},
 										},
 									},
 								},
@@ -149,13 +151,18 @@ var _ = Context("Ledger schema API tests", func() {
 					Version: "v3.0.0",
 					V2SchemaData: components.V2SchemaData{
 						Chart: map[string]components.V2ChartSegment{
+							"world": {
+								DotSelf: &components.DotSelf{},
+							},
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
 										DotPattern: pointer.For("^[0-9]{3}$"),
 										DotRules:   &components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
-											"foo": {},
+											"foo": {
+												Default: pointer.For("test"),
+											},
 										},
 									},
 								},
@@ -228,19 +235,21 @@ var _ = Context("Ledger schema API tests", func() {
 			})
 
 			When("testing transaction creation with schema validation", func() {
-				It("should create transaction with v1.0.0 schema", func(specContext SpecContext) {
-					schemaVersion := "v1.0.0"
+				It("should accept free-form transactions when no template is defined", func(specContext SpecContext) {
+					postings := []components.V2Posting{
+						{
+							Amount:      big.NewInt(100),
+							Asset:       "COIN",
+							Destination: "users:042",
+							Source:      "world",
+						},
+					}
 					res, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
-						SchemaVersion: &schemaVersion,
+						SchemaVersion: pointer.For("v1.0.0"),
 						V2PostTransaction: components.V2PostTransaction{
-							Force: pointer.For(true),
-							Script: &components.V2PostTransactionScript{
-								Template: pointer.For("WORLD_TO_BANK"),
-								Vars: map[string]string{
-									"b": "bank:001",
-								},
-							},
+							Force:    pointer.For(true),
+							Postings: postings,
 						},
 					})
 					Expect(err).To(BeNil())
@@ -249,10 +258,10 @@ var _ = Context("Ledger schema API tests", func() {
 						ID:     res.V2CreateTransactionResponse.Data.ID,
 					})
 					Expect(err).To(BeNil())
-					Expect(getTxRes.V2GetTransactionResponse.Data.Template).To(Equal(pointer.For("WORLD_TO_BANK")))
+					Expect(getTxRes.V2GetTransactionResponse.Data.Postings).To(Equal(postings))
 				})
 
-				It("should create transaction with v2.0.0 schema", func(specContext SpecContext) {
+				It("should create transaction with a template", func(specContext SpecContext) {
 					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
@@ -313,7 +322,7 @@ var _ = Context("Ledger schema API tests", func() {
 				})
 
 				It("should insert default metadata", func(specContext SpecContext) {
-					schemaVersion := "v1.0.0"
+					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
@@ -358,7 +367,7 @@ var _ = Context("Ledger schema API tests", func() {
 				})
 
 				It("should not overwrite existing metadata", func(specContext SpecContext) {
-					schemaVersion := "v1.0.0"
+					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
@@ -445,7 +454,7 @@ var _ = Context("Ledger schema API tests", func() {
 				})
 
 				It("should fail with a postings transaction", func(specContext SpecContext) {
-					schemaVersion := "v1.0.0"
+					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
@@ -471,7 +480,7 @@ var _ = Context("Ledger schema API tests", func() {
 				})
 
 				It("should fail with an ad-hoc script transaction", func(specContext SpecContext) {
-					schemaVersion := "v1.0.0"
+					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
@@ -480,8 +489,8 @@ var _ = Context("Ledger schema API tests", func() {
 							Script: pointer.For(components.V2PostTransactionScript{
 								Plain: pointer.For(`
 								send [EUR/2] (
-									source = $users:001
-									destination = $bank:001
+									source = @users:001
+									destination = @bank:001
 								)`),
 							}),
 						},
@@ -493,7 +502,7 @@ var _ = Context("Ledger schema API tests", func() {
 			When("testing logs contain schema version", func() {
 				It("should include schema version in transaction logs", func(specContext SpecContext) {
 					// Create a transaction with schema version
-					schemaVersion := "v1.0.0"
+					schemaVersion := "v2.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
@@ -526,7 +535,7 @@ var _ = Context("Ledger schema API tests", func() {
 					}
 					Expect(transactionLog).ToNot(BeNil())
 					Expect(transactionLog.SchemaVersion).ToNot(BeNil())
-					Expect(*transactionLog.SchemaVersion).To(Equal("v1.0.0"))
+					Expect(*transactionLog.SchemaVersion).To(Equal("v2.0.0"))
 				})
 			})
 
