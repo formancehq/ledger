@@ -12,7 +12,6 @@ Business:
 ** Add typed variables
 ** Add metadata typed variable draft
 * Events
-** Filter internal events
 ** Sync S3 + parquet
 
 Tests:
