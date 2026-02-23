@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -86,7 +85,7 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 			event := LogToEvent(log)
 
 			// Schema operations produce EVENT_TYPE_UNSPECIFIED
-			require.Equal(t, eventspb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
+			require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
 			require.Equal(t, "test-ledger", event.Ledger)
 			require.Equal(t, uint64(100), event.LogSequence)
 		})
@@ -112,7 +111,7 @@ func TestLogToEvent_RegisterSigningKey(t *testing.T) {
 
 	// Signing key operations don't match any Apply sub-case,
 	// they fall through to the top-level switch without matching Apply.
-	require.Equal(t, eventspb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
+	require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
 }
 
 func TestLogToEvent_AddedEventsSink(t *testing.T) {
@@ -130,5 +129,5 @@ func TestLogToEvent_AddedEventsSink(t *testing.T) {
 	}
 
 	event := LogToEvent(log)
-	require.Equal(t, eventspb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
+	require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.Type)
 }

@@ -198,10 +198,10 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 
 	published := sink.getEvents()
 	require.Len(t, published, 2)
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, published[0].Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, published[0].Type)
 	require.Equal(t, "orders", published[0].Ledger)
 	require.Equal(t, uint64(1), published[0].LogSequence)
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, published[1].Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[1].Type)
 	require.Equal(t, "orders", published[1].Ledger)
 	require.Equal(t, uint64(2), published[1].LogSequence)
 
@@ -268,7 +268,7 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process after notification")
 
 	published := sink.getEvents()
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, published[0].Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
 	require.Equal(t, "payments", published[0].Ledger)
 }
 
@@ -391,7 +391,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	published := sink2.getEvents()
 	require.Len(t, published, 1)
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, published[0].Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
 	require.Equal(t, uint64(4), published[0].LogSequence)
 
 	// Final cursor should be at 4
@@ -538,13 +538,13 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	published := sink.getEvents()
 	require.Len(t, published, 6)
 
-	expectedTypes := []eventspb.EventType{
-		eventspb.EventType_CREATED_LEDGER,
-		eventspb.EventType_COMMITTED_TRANSACTION,
-		eventspb.EventType_REVERTED_TRANSACTION,
-		eventspb.EventType_SAVED_METADATA,
-		eventspb.EventType_DELETED_METADATA,
-		eventspb.EventType_DELETED_LEDGER,
+	expectedTypes := []commonpb.EventType{
+		commonpb.EventType_CREATED_LEDGER,
+		commonpb.EventType_COMMITTED_TRANSACTION,
+		commonpb.EventType_REVERTED_TRANSACTION,
+		commonpb.EventType_SAVED_METADATA,
+		commonpb.EventType_DELETED_METADATA,
+		commonpb.EventType_DELETED_LEDGER,
 	}
 
 	for i, expected := range expectedTypes {
@@ -614,6 +614,98 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	cursor, err := events.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), cursor)
+}
+
+func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	sink := &recordingSink{}
+	proposer := &directProposer{store: store}
+	logger := logging.Testing()
+
+	registerLedger(t, store, "test", 1)
+	now := libtime.Now()
+
+	// Write logs covering 3 event types
+	appendTestLogs(t, store,
+		// 1: CREATED_LEDGER
+		&commonpb.Log{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerLog{
+						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+					},
+				},
+			},
+		},
+		// 2: COMMITTED_TRANSACTION
+		&commonpb.Log{
+			Sequence: 2,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "test",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+										WithID(1).WithTimestamp(now),
+								},
+							},
+						}).WithID(1).WithDate(now),
+					},
+				},
+			},
+		},
+		// 3: SAVED_METADATA
+		&commonpb.Log{
+			Sequence: 3,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "test",
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &commonpb.SavedMetadata{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_Account{
+											Account: &commonpb.TargetAccount{Addr: "bank"},
+										},
+									},
+									Metadata: commonpb.MetadataSetFromMap(map[string]string{"k": "v"}),
+								},
+							},
+						}).WithID(2).WithDate(now),
+					},
+				},
+			},
+		},
+	)
+
+	// Configure emitter to only accept COMMITTED_TRANSACTION events
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 10
+	cfg.EventTypes = map[commonpb.EventType]struct{}{
+		commonpb.EventType_COMMITTED_TRANSACTION: {},
+	}
+	emitter := events.NewEmitter(store, sink, "filter-sink", proposer, logger, cfg)
+	emitter.Start()
+
+	require.Eventually(t, func() bool {
+		cursor, err := events.ReadSinkCursor(store, "filter-sink")
+		return err == nil && cursor >= 3
+	}, 5*time.Second, 10*time.Millisecond, "emitter should advance cursor past all logs")
+
+	emitter.Stop()
+
+	// Only COMMITTED_TRANSACTION should be published; CREATED_LEDGER and SAVED_METADATA are filtered out
+	published := sink.getEvents()
+	require.Len(t, published, 1)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
+	require.Equal(t, uint64(2), published[0].LogSequence)
 }
 
 func TestEmitterIntegration_StartStopIdempotent(t *testing.T) {

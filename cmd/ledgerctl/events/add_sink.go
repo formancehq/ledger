@@ -48,7 +48,11 @@ Examples:
   ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger
 
   # Add an HTTP webhook sink with HMAC signature
-  ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret`,
+  ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
+
+  # Add a NATS sink that only receives transaction events
+  ledgerctl events add-sink --name txn-only --nats-url nats://localhost:4222 --nats-topic txns \
+    --event-types COMMITTED_TRANSACTION,REVERTED_TRANSACTION`,
 		Args: cobra.NoArgs,
 		RunE: runAddSink,
 	}
@@ -69,6 +73,7 @@ Examples:
 	cmd.Flags().String("format", "json", "Event serialization format (json or protobuf)")
 	cmd.Flags().Int32("batch-size", 0, "Max events per batch (default: 64)")
 	cmd.Flags().Int64("batch-delay-ms", 0, "Max delay before flush in ms (default: 10)")
+	cmd.Flags().String("event-types", "", "Comma-separated event types to filter (e.g. COMMITTED_TRANSACTION,REVERTED_TRANSACTION). Empty = all events")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -133,6 +138,15 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		Format:       format,
 		BatchSize:    batchSize,
 		BatchDelayMs: batchDelayMs,
+	}
+
+	eventTypesStr, _ := cmd.Flags().GetString("event-types")
+	if eventTypesStr != "" {
+		eventTypes, err := parseEventTypes(eventTypesStr)
+		if err != nil {
+			return err
+		}
+		config.EventTypes = eventTypes
 	}
 
 	var sinkType string
@@ -243,6 +257,53 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	pterm.Printf("Format: %s\n", format)
+	pterm.Printf("Events: %s\n", formatEventTypes(config.EventTypes))
 
 	return nil
+}
+
+// validEventTypes maps event type names (excluding UNSPECIFIED) to their proto values.
+var validEventTypes = func() map[string]commonpb.EventType {
+	m := make(map[string]commonpb.EventType, len(commonpb.EventType_name)-1)
+	for v, name := range commonpb.EventType_name {
+		if commonpb.EventType(v) == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
+			continue
+		}
+		m[name] = commonpb.EventType(v)
+	}
+	return m
+}()
+
+// parseEventTypes parses a comma-separated list of event type names into proto enum values.
+func parseEventTypes(s string) ([]commonpb.EventType, error) {
+	parts := strings.Split(s, ",")
+	result := make([]commonpb.EventType, 0, len(parts))
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		if name == "" {
+			continue
+		}
+		et, ok := validEventTypes[strings.ToUpper(name)]
+		if !ok {
+			var valid []string
+			for n := range validEventTypes {
+				valid = append(valid, n)
+			}
+			return nil, fmt.Errorf("unknown event type %q; valid types: %s", name, strings.Join(valid, ", "))
+		}
+		result = append(result, et)
+	}
+	return result, nil
+}
+
+// formatEventTypes returns a human-readable string for the event types filter.
+func formatEventTypes(types []commonpb.EventType) string {
+	if len(types) == 0 {
+		return "all"
+	}
+	names := make([]string, len(types))
+	for i, et := range types {
+		names[i] = et.String()
+	}
+	return strings.Join(names, ", ")
 }

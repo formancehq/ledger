@@ -185,6 +185,12 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	if sc.BatchDelayMs > 0 {
 		emitterCfg.BatchDelay = time.Duration(sc.BatchDelayMs) * time.Millisecond
 	}
+	if len(sc.EventTypes) > 0 {
+		emitterCfg.EventTypes = make(map[commonpb.EventType]struct{}, len(sc.EventTypes))
+		for _, et := range sc.EventTypes {
+			emitterCfg.EventTypes[et] = struct{}{}
+		}
+	}
 
 	sink, err := m.createSink(sc)
 	if err != nil {

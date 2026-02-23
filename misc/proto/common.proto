@@ -293,6 +293,20 @@ message SetAuditConfigLog {
   bool enabled = 1;
 }
 
+// ============================================================================
+// Event Types
+// ============================================================================
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  COMMITTED_TRANSACTION = 1;
+  REVERTED_TRANSACTION = 2;
+  SAVED_METADATA = 3;
+  DELETED_METADATA = 4;
+  CREATED_LEDGER = 5;
+  DELETED_LEDGER = 6;
+}
+
 // SinkConfig wraps a single sink configuration with per-sink settings.
 message SinkConfig {
   string name = 1;  // Stable identifier for per-sink cursor and status keys
@@ -305,6 +319,7 @@ message SinkConfig {
   string format = 3;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 4;       // Max events per batch (default: 64)
   int64 batch_delay_ms = 5;   // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 9;  // Empty = all events (default)
 }
 
 // SinkStatus tracks per-sink operational state (replicated via Raft).

@@ -14,7 +14,7 @@ func TestEventToClickHouseJSON_NilLog(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "test",
 		LogSequence: 1,
 		Log:         nil,
@@ -34,7 +34,7 @@ func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "test",
 		LogSequence: 1,
 		Log: &commonpb.Log{
@@ -61,7 +61,7 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_CREATED_LEDGER,
+		Type:        commonpb.EventType_CREATED_LEDGER,
 		Ledger:      "orders",
 		LogSequence: 1,
 		Log: &commonpb.Log{
@@ -94,7 +94,7 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_DELETED_LEDGER,
+		Type:        commonpb.EventType_DELETED_LEDGER,
 		Ledger:      "old-ledger",
 		LogSequence: 2,
 		Log: &commonpb.Log{
@@ -125,7 +125,7 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "payments",
 		LogSequence: 3,
 		Log: &commonpb.Log{
@@ -205,7 +205,7 @@ func TestEventToClickHouseJSON_RevertedTransaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_REVERTED_TRANSACTION,
+		Type:        commonpb.EventType_REVERTED_TRANSACTION,
 		Ledger:      "payments",
 		LogSequence: 4,
 		Log: &commonpb.Log{
@@ -260,7 +260,7 @@ func TestEventToClickHouseJSON_SavedMetadata_Account(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_SAVED_METADATA,
+		Type:        commonpb.EventType_SAVED_METADATA,
 		Ledger:      "orders",
 		LogSequence: 5,
 		Log: &commonpb.Log{
@@ -311,7 +311,7 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_DELETED_METADATA,
+		Type:        commonpb.EventType_DELETED_METADATA,
 		Ledger:      "orders",
 		LogSequence: 6,
 		Log: &commonpb.Log{
@@ -357,7 +357,7 @@ func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 7,
 		Log: &commonpb.Log{
 			Sequence: 7,
@@ -387,7 +387,7 @@ func TestEventToClickHouseJSON_RevokeSigningKey(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 8,
 		Log: &commonpb.Log{
 			Sequence: 8,
@@ -414,7 +414,7 @@ func TestEventToClickHouseJSON_SetSigningConfig(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 9,
 		Log: &commonpb.Log{
 			Sequence: 9,
@@ -441,7 +441,7 @@ func TestEventToClickHouseJSON_AddedEventsSink(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 10,
 		Log: &commonpb.Log{
 			Sequence: 10,
@@ -470,7 +470,7 @@ func TestEventToClickHouseJSON_RemovedEventsSink(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 11,
 		Log: &commonpb.Log{
 			Sequence: 11,

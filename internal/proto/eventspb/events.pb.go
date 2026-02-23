@@ -22,71 +22,10 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type EventType int32
-
-const (
-	EventType_EVENT_TYPE_UNSPECIFIED EventType = 0
-	EventType_COMMITTED_TRANSACTION  EventType = 1
-	EventType_REVERTED_TRANSACTION   EventType = 2
-	EventType_SAVED_METADATA         EventType = 3
-	EventType_DELETED_METADATA       EventType = 4
-	EventType_CREATED_LEDGER         EventType = 5
-	EventType_DELETED_LEDGER         EventType = 6
-)
-
-// Enum value maps for EventType.
-var (
-	EventType_name = map[int32]string{
-		0: "EVENT_TYPE_UNSPECIFIED",
-		1: "COMMITTED_TRANSACTION",
-		2: "REVERTED_TRANSACTION",
-		3: "SAVED_METADATA",
-		4: "DELETED_METADATA",
-		5: "CREATED_LEDGER",
-		6: "DELETED_LEDGER",
-	}
-	EventType_value = map[string]int32{
-		"EVENT_TYPE_UNSPECIFIED": 0,
-		"COMMITTED_TRANSACTION":  1,
-		"REVERTED_TRANSACTION":   2,
-		"SAVED_METADATA":         3,
-		"DELETED_METADATA":       4,
-		"CREATED_LEDGER":         5,
-		"DELETED_LEDGER":         6,
-	}
-)
-
-func (x EventType) Enum() *EventType {
-	p := new(EventType)
-	*p = x
-	return p
-}
-
-func (x EventType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (EventType) Descriptor() protoreflect.EnumDescriptor {
-	return file_events_proto_enumTypes[0].Descriptor()
-}
-
-func (EventType) Type() protoreflect.EnumType {
-	return &file_events_proto_enumTypes[0]
-}
-
-func (x EventType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use EventType.Descriptor instead.
-func (EventType) EnumDescriptor() ([]byte, []int) {
-	return file_events_proto_rawDescGZIP(), []int{0}
-}
-
 // Event represents a domain event derived from a committed global log entry.
 type Event struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          EventType              `protobuf:"varint,1,opt,name=type,proto3,enum=events.EventType" json:"type,omitempty"`
+	Type          commonpb.EventType     `protobuf:"varint,1,opt,name=type,proto3,enum=common.EventType" json:"type,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
 	LogSequence   uint64                 `protobuf:"varint,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
@@ -125,11 +64,11 @@ func (*Event) Descriptor() ([]byte, []int) {
 	return file_events_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Event) GetType() EventType {
+func (x *Event) GetType() commonpb.EventType {
 	if x != nil {
 		return x.Type
 	}
-	return EventType_EVENT_TYPE_UNSPECIFIED
+	return commonpb.EventType(0)
 }
 
 func (x *Event) GetLedger() string {
@@ -166,19 +105,11 @@ const file_events_proto_rawDesc = "" +
 	"\n" +
 	"\fevents.proto\x12\x06events\x1a\fcommon.proto\"\xaf\x01\n" +
 	"\x05Event\x12%\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x11.events.EventTypeR\x04type\x12\x16\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x11.common.EventTypeR\x04type\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12!\n" +
 	"\flog_sequence\x18\x04 \x01(\x04R\vlogSequence\x12\x1d\n" +
-	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03log*\xae\x01\n" +
-	"\tEventType\x12\x1a\n" +
-	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15COMMITTED_TRANSACTION\x10\x01\x12\x18\n" +
-	"\x14REVERTED_TRANSACTION\x10\x02\x12\x12\n" +
-	"\x0eSAVED_METADATA\x10\x03\x12\x14\n" +
-	"\x10DELETED_METADATA\x10\x04\x12\x12\n" +
-	"\x0eCREATED_LEDGER\x10\x05\x12\x12\n" +
-	"\x0eDELETED_LEDGER\x10\x06B=Z;github.com/formancehq/ledger-v3-poc/internal/proto/eventspbb\x06proto3"
+	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB=Z;github.com/formancehq/ledger-v3-poc/internal/proto/eventspbb\x06proto3"
 
 var (
 	file_events_proto_rawDescOnce sync.Once
@@ -192,16 +123,15 @@ func file_events_proto_rawDescGZIP() []byte {
 	return file_events_proto_rawDescData
 }
 
-var file_events_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_events_proto_goTypes = []any{
-	(EventType)(0),             // 0: events.EventType
-	(*Event)(nil),              // 1: events.Event
+	(*Event)(nil),              // 0: events.Event
+	(commonpb.EventType)(0),    // 1: common.EventType
 	(*commonpb.Timestamp)(nil), // 2: common.Timestamp
 	(*commonpb.Log)(nil),       // 3: common.Log
 }
 var file_events_proto_depIdxs = []int32{
-	0, // 0: events.Event.type:type_name -> events.EventType
+	1, // 0: events.Event.type:type_name -> common.EventType
 	2, // 1: events.Event.date:type_name -> common.Timestamp
 	3, // 2: events.Event.log:type_name -> common.Log
 	3, // [3:3] is the sub-list for method output_type
@@ -221,14 +151,13 @@ func file_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_events_proto_rawDesc), len(file_events_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_events_proto_goTypes,
 		DependencyIndexes: file_events_proto_depIdxs,
-		EnumInfos:         file_events_proto_enumTypes,
 		MessageInfos:      file_events_proto_msgTypes,
 	}.Build()
 	File_events_proto = out.File

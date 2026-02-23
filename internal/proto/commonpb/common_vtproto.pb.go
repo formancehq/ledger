@@ -953,6 +953,11 @@ func (m *SinkConfig) CloneVT() *SinkConfig {
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isSinkConfig_Type }).CloneVT()
 	}
+	if rhs := m.EventTypes; rhs != nil {
+		tmpContainer := make([]EventType, len(rhs))
+		copy(tmpContainer, rhs)
+		r.EventTypes = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3314,6 +3319,15 @@ func (this *SinkConfig) EqualVT(that *SinkConfig) bool {
 	}
 	if this.BatchDelayMs != that.BatchDelayMs {
 		return false
+	}
+	if len(this.EventTypes) != len(that.EventTypes) {
+		return false
+	}
+	for i, vx := range this.EventTypes {
+		vy := that.EventTypes[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -6888,6 +6902,27 @@ func (m *SinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.EventTypes) > 0 {
+		var pksize2 int
+		for _, num := range m.EventTypes {
+			pksize2 += protohelpers.SizeOfVarint(uint64(num))
+		}
+		i -= pksize2
+		j1 := i
+		for _, num1 := range m.EventTypes {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA[j1] = uint8(num)
+			j1++
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(pksize2))
+		i--
+		dAtA[i] = 0x4a
+	}
 	if m.BatchDelayMs != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BatchDelayMs))
 		i--
@@ -9997,6 +10032,13 @@ func (m *SinkConfig) SizeVT() (n int) {
 	}
 	if m.BatchDelayMs != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.BatchDelayMs))
+	}
+	if len(m.EventTypes) > 0 {
+		l = 0
+		for _, e := range m.EventTypes {
+			l += protohelpers.SizeOfVarint(uint64(e))
+		}
+		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16609,6 +16651,75 @@ func (m *SinkConfig) UnmarshalVT(dAtA []byte) error {
 				m.Type = &SinkConfig_Http{Http: v}
 			}
 			iNdEx = postIndex
+		case 9:
+			if wireType == 0 {
+				var v EventType
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= EventType(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.EventTypes = append(m.EventTypes, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				if elementCount != 0 && len(m.EventTypes) == 0 {
+					m.EventTypes = make([]EventType, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v EventType
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= EventType(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.EventTypes = append(m.EventTypes, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field EventTypes", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

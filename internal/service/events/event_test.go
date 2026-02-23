@@ -14,7 +14,7 @@ func TestLogToEvent(t *testing.T) {
 	tests := []struct {
 		name         string
 		log          *commonpb.Log
-		expectedType eventspb.EventType
+		expectedType commonpb.EventType
 		expectedName string
 	}{
 		{
@@ -33,7 +33,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_CREATED_LEDGER,
+			expectedType: commonpb.EventType_CREATED_LEDGER,
 			expectedName: "orders",
 		},
 		{
@@ -51,7 +51,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_DELETED_LEDGER,
+			expectedType: commonpb.EventType_DELETED_LEDGER,
 			expectedName: "orders",
 		},
 		{
@@ -77,7 +77,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_COMMITTED_TRANSACTION,
+			expectedType: commonpb.EventType_COMMITTED_TRANSACTION,
 			expectedName: "payments",
 		},
 		{
@@ -104,7 +104,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_REVERTED_TRANSACTION,
+			expectedType: commonpb.EventType_REVERTED_TRANSACTION,
 			expectedName: "payments",
 		},
 		{
@@ -134,7 +134,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_SAVED_METADATA,
+			expectedType: commonpb.EventType_SAVED_METADATA,
 			expectedName: "orders",
 		},
 		{
@@ -165,7 +165,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: eventspb.EventType_DELETED_METADATA,
+			expectedType: commonpb.EventType_DELETED_METADATA,
 			expectedName: "orders",
 		},
 	}
@@ -188,7 +188,7 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
 		Date:        &commonpb.Timestamp{Data: 1000},
@@ -205,7 +205,7 @@ func TestSerializeEvent_Proto(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
 		Date:        &commonpb.Timestamp{Data: 1000},
@@ -226,7 +226,7 @@ func TestSerializeEvent_Proto(t *testing.T) {
 func TestSerializeEvent_UnsupportedFormat(t *testing.T) {
 	t.Parallel()
 
-	event := &eventspb.Event{Type: eventspb.EventType_COMMITTED_TRANSACTION}
+	event := &eventspb.Event{Type: commonpb.EventType_COMMITTED_TRANSACTION}
 
 	_, err := SerializeEvent(event, Format("xml"))
 	require.Error(t, err)

@@ -132,7 +132,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	// Verify CREATED_LEDGER event
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(reqs[0].Body, &evt1))
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, evt1.Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
 	require.Equal(t, "orders", evt1.Ledger)
 	require.Equal(t, uint64(1), evt1.LogSequence)
 	require.Equal(t, "application/json", reqs[0].ContentType)
@@ -143,7 +143,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	// Verify COMMITTED_TRANSACTION event
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(reqs[1].Body, &evt2))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt2.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
 	require.Equal(t, "orders", evt2.Ledger)
 	require.Equal(t, uint64(2), evt2.LogSequence)
 	require.Equal(t, "committed_transaction", reqs[1].EventType)
@@ -278,7 +278,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(reqs[0].Body))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
 	require.Equal(t, "payments", evt.Ledger)
 	require.Equal(t, uint64(1), evt.LogSequence)
 	require.NotNil(t, evt.Log, "event should carry the full Log")
@@ -302,7 +302,7 @@ func TestHTTPSinkIntegration_ServerError(t *testing.T) {
 
 	// Publish directly (not through emitter) to verify error propagation
 	evt := &eventspb.Event{
-		Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "test",
 		LogSequence: 1,
 	}

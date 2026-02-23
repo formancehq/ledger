@@ -175,14 +175,14 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify CREATED_LEDGER event (JSON)
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[0].Data(), &evt1))
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, evt1.Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
 	require.Equal(t, "orders", evt1.Ledger)
 	require.Equal(t, uint64(1), evt1.LogSequence)
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[1].Data(), &evt2))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt2.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
 	require.Equal(t, "orders", evt2.Ledger)
 	require.Equal(t, uint64(2), evt2.LogSequence)
 
@@ -267,7 +267,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf and verify
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Data()))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
 	require.Equal(t, "payments", evt.Ledger)
 	require.Equal(t, uint64(1), evt.LogSequence)
 	require.NotNil(t, evt.Log, "event should carry the full Log")
@@ -403,9 +403,9 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(ordersMsgs[0].Data(), &ordEvt1))
 	require.NoError(t, protojson.Unmarshal(ordersMsgs[1].Data(), &ordEvt2))
 
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, ordEvt1.Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, ordEvt1.Type)
 	require.Equal(t, "orders", ordEvt1.Ledger)
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, ordEvt2.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, ordEvt2.Type)
 	require.Equal(t, "orders", ordEvt2.Ledger)
 
 	// Verify "payments" consumer gets exactly 2 events
@@ -415,8 +415,8 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(paymentsMsgs[0].Data(), &payEvt1))
 	require.NoError(t, protojson.Unmarshal(paymentsMsgs[1].Data(), &payEvt2))
 
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, payEvt1.Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, payEvt1.Type)
 	require.Equal(t, "payments", payEvt1.Ledger)
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, payEvt2.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, payEvt2.Type)
 	require.Equal(t, "payments", payEvt2.Ledger)
 }

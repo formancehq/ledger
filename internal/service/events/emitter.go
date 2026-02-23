@@ -29,6 +29,7 @@ type EmitterConfig struct {
 	BatchSize  int
 	BatchDelay time.Duration
 	Format     Format
+	EventTypes map[commonpb.EventType]struct{} // nil or empty = all events
 }
 
 // DefaultEmitterConfig returns the default emitter configuration.
@@ -173,6 +174,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 	defer func() { _ = logsCursor.Close() }()
 
 	batch := make([]*eventspb.Event, 0, e.config.BatchSize)
+	lastPersistedCursor := cursor
 
 	for {
 		log, err := logsCursor.Next()
@@ -185,9 +187,16 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 
 		event := LogToEvent(log)
 		// Skip internal logs (e.g. AddedEventsSink) that don't produce domain events.
-		if event.Type == eventspb.EventType_EVENT_TYPE_UNSPECIFIED {
+		if event.Type == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
 			cursor = log.Sequence
 			continue
+		}
+		// Apply per-sink event type filter (empty = all events).
+		if len(e.config.EventTypes) > 0 {
+			if _, ok := e.config.EventTypes[event.Type]; !ok {
+				cursor = log.Sequence
+				continue
+			}
 		}
 		batch = append(batch, event)
 
@@ -196,6 +205,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 				return cursor, err
 			}
 			cursor = batch[len(batch)-1].LogSequence
+			lastPersistedCursor = cursor
 			batch = batch[:0]
 		}
 	}
@@ -205,7 +215,22 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 		if err := e.publishBatch(batch); err != nil {
 			return cursor, err
 		}
-		cursor = batch[len(batch)-1].LogSequence
+		lastPersistedCursor = batch[len(batch)-1].LogSequence
+		if cursor < lastPersistedCursor {
+			cursor = lastPersistedCursor
+		}
+	}
+
+	// If cursor advanced past the last persisted position (due to filtered or
+	// skipped logs after the last published event), persist the cursor so we
+	// don't re-process these logs on restart.
+	if cursor > lastPersistedCursor {
+		if err := e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+			SinkName: e.sinkName,
+			Cursor:   cursor,
+		}); err != nil {
+			return cursor, err
+		}
 	}
 
 	return cursor, nil

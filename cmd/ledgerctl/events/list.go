@@ -100,6 +100,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			{"Format", format},
 			{"Batch Size", fmt.Sprintf("%d", batchSize)},
 			{"Batch Delay", fmt.Sprintf("%dms", batchDelayMs)},
+			{"Event Types", formatEventTypes(sink.EventTypes)},
 		}
 
 		// Sink type

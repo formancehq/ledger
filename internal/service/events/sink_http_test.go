@@ -58,7 +58,7 @@ func TestHTTPSink_Publish_Success(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 			Date:        &commonpb.Timestamp{Data: 1000},
@@ -93,7 +93,7 @@ func TestHTTPSink_Publish_WithSignature(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},
@@ -124,7 +124,7 @@ func TestHTTPSink_Publish_ProtoFormat(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},
@@ -151,7 +151,7 @@ func TestHTTPSink_Publish_ErrorStatus(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        eventspb.EventType_COMMITTED_TRANSACTION,
+			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},

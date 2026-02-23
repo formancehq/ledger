@@ -213,7 +213,7 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Type |= EventType(b&0x7F) << shift
+				m.Type |= commonpb.EventType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

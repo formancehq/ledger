@@ -116,14 +116,14 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify CREATED_LEDGER event (JSON)
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[0].Value, &evt1))
-	require.Equal(t, eventspb.EventType_CREATED_LEDGER, evt1.Type)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
 	require.Equal(t, "orders", evt1.Ledger)
 	require.Equal(t, uint64(1), evt1.LogSequence)
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[1].Value, &evt2))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt2.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
 	require.Equal(t, "orders", evt2.Ledger)
 	require.Equal(t, uint64(2), evt2.LogSequence)
 
@@ -253,7 +253,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf and verify
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Value))
-	require.Equal(t, eventspb.EventType_COMMITTED_TRANSACTION, evt.Type)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
 	require.Equal(t, "payments", evt.Ledger)
 	require.Equal(t, uint64(1), evt.LogSequence)
 	require.NotNil(t, evt.Log, "event should carry the full Log")

@@ -25,11 +25,11 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 
 	switch p := log.Payload.Type.(type) {
 	case *commonpb.LogPayload_CreateLedger:
-		event.Type = eventspb.EventType_CREATED_LEDGER
+		event.Type = commonpb.EventType_CREATED_LEDGER
 		event.Ledger = p.CreateLedger.Info.Name
 		event.Date = p.CreateLedger.Info.CreatedAt
 	case *commonpb.LogPayload_DeleteLedger:
-		event.Type = eventspb.EventType_DELETED_LEDGER
+		event.Type = commonpb.EventType_DELETED_LEDGER
 		event.Ledger = p.DeleteLedger.Info.Name
 		event.Date = p.DeleteLedger.Info.DeletedAt
 	case *commonpb.LogPayload_Apply:
@@ -38,13 +38,13 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 
 		switch p.Apply.Log.Data.Payload.(type) {
 		case *commonpb.LedgerLogPayload_CreatedTransaction:
-			event.Type = eventspb.EventType_COMMITTED_TRANSACTION
+			event.Type = commonpb.EventType_COMMITTED_TRANSACTION
 		case *commonpb.LedgerLogPayload_RevertedTransaction:
-			event.Type = eventspb.EventType_REVERTED_TRANSACTION
+			event.Type = commonpb.EventType_REVERTED_TRANSACTION
 		case *commonpb.LedgerLogPayload_SavedMetadata:
-			event.Type = eventspb.EventType_SAVED_METADATA
+			event.Type = commonpb.EventType_SAVED_METADATA
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
-			event.Type = eventspb.EventType_DELETED_METADATA
+			event.Type = commonpb.EventType_DELETED_METADATA
 		case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 			// Schema operations — no dedicated event type, use unspecified
 		case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:

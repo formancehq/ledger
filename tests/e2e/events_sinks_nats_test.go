@@ -148,10 +148,10 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 			var evt eventspb.Event
 			Expect(protojson.Unmarshal(msg.Data(), &evt)).To(Succeed())
 
-			if evt.Type == eventspb.EventType_CREATED_LEDGER && evt.Ledger == "nats-test" {
+			if evt.Type == commonpb.EventType_CREATED_LEDGER && evt.Ledger == "nats-test" {
 				foundCreatedLedger = true
 			}
-			if evt.Type == eventspb.EventType_COMMITTED_TRANSACTION && evt.Ledger == "nats-test" {
+			if evt.Type == commonpb.EventType_COMMITTED_TRANSACTION && evt.Ledger == "nats-test" {
 				foundCommittedTx = true
 			}
 		}

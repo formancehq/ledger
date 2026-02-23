@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/stretchr/testify/require"
 )
@@ -14,8 +15,8 @@ func TestNoopSink_Publish(t *testing.T) {
 	sink := &NoopSink{}
 
 	events := []*eventspb.Event{
-		{Type: eventspb.EventType_COMMITTED_TRANSACTION, Ledger: "test", LogSequence: 1},
-		{Type: eventspb.EventType_SAVED_METADATA, Ledger: "test", LogSequence: 2},
+		{Type: commonpb.EventType_COMMITTED_TRANSACTION, Ledger: "test", LogSequence: 1},
+		{Type: commonpb.EventType_SAVED_METADATA, Ledger: "test", LogSequence: 2},
 	}
 
 	err := sink.Publish(context.Background(), events)
