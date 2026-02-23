@@ -11,6 +11,7 @@ Business:
 * Numscript
 * Fetch all the production
 ** Add typed variables
+* Chart of accounts
 * ledgerctl:
 ** Add self update
 ** Profiles
