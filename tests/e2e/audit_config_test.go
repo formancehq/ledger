@@ -9,11 +9,8 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // setAuditConfigAction creates a SetAuditConfig request.
@@ -45,17 +42,10 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 			ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 		})
 
-		It("should start with audit disabled by default", func() {
-			_, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
-			Expect(err).To(HaveOccurred())
-
-			st, ok := status.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
-
-			info := extractGRPCErrorInfo(err)
-			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAuditDisabled))
+		It("should start with audit disabled by default (no entries)", func() {
+			entries, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
+			Expect(err).To(Succeed())
+			Expect(entries).To(BeEmpty(), "no audit entries should exist before audit is enabled")
 		})
 
 		It("should enable audit logging via SetAuditConfig", func() {

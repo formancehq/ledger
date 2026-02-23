@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -236,18 +235,10 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
-	if !impl.sharedState.AuditEnabled() {
-		return nil, processing.ErrAuditDisabled
-	}
-
 	return impl.ctrl.GetAuditEntry(ctx, req.Sequence)
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
-	if !impl.sharedState.AuditEnabled() {
-		return processing.ErrAuditDisabled
-	}
-
 	cursor, err := impl.ctrl.ListAuditEntries(stream.Context(), req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)

@@ -1121,12 +1121,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
+	// Capture audit state before Merge, which may toggle sharedState via SetAuditConfig.
+	// We record the audit entry if audit was enabled before OR after, so that
+	// SetAuditConfig(true) and SetAuditConfig(false) both record themselves.
+	auditBefore := fsm.sharedState.AuditEnabled()
 	if err := buffer.Merge(raftIndex, batch); err != nil {
 		return nil, err
 	}
+	auditAfter := fsm.sharedState.AuditEnabled()
 
 	// SUCCESS: write audit entry
-	if fsm.sharedState.AuditEnabled() {
+	if auditBefore || auditAfter {
 		auditEntry := &auditpb.AuditEntry{
 			Sequence:   fsm.nextAuditSequenceID,
 			Timestamp:  effectiveDate,
