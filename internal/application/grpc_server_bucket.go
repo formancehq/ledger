@@ -26,18 +26,18 @@ type BucketServiceServerImpl struct {
 	ctrl           ctrl.Controller
 	store          *dal.Store
 	attrs          *attributes.Attributes
-	auditEnabled   bool
+	sharedState    *state.SharedState
 	receiptSigner  *receipt.Signer
 	responseSigner *signing.ResponseSigner
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, auditEnabled bool, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
 		logger:         logger,
 		ctrl:           ctrl,
 		store:          s,
 		attrs:          attrs,
-		auditEnabled:   auditEnabled,
+		sharedState:    sharedState,
 		receiptSigner:  receiptSigner,
 		responseSigner: responseSigner,
 	}
@@ -236,7 +236,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
-	if !impl.auditEnabled {
+	if !impl.sharedState.AuditEnabled() {
 		return nil, processing.ErrAuditDisabled
 	}
 
@@ -244,7 +244,7 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
-	if !impl.auditEnabled {
+	if !impl.sharedState.AuditEnabled() {
 		return processing.ErrAuditDisabled
 	}
 

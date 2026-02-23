@@ -156,12 +156,7 @@ func WithDebug(v bool) testservice.InstrumentationFunc {
 	}
 }
 
-func WithAuditEnabled(v bool) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--audit-enabled", fmt.Sprintf("%t", v))
-		return nil
-	}
-}
+
 
 func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {

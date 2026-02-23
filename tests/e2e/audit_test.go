@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -61,8 +60,22 @@ var _ = Describe("Audit Log", Ordered, func() {
 	BeforeAll(func() {
 		ctx, client, _ = setupSingleNode(httpPort, grpcPort)
 
-		// Create the test ledger (generates 1 audit entry)
+		// Enable audit logging via RPC (audit starts disabled by default)
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				{
+					Type: &servicepb.Request_SetAuditConfig{
+						SetAuditConfig: &servicepb.SetAuditConfigRequest{
+							Enabled: true,
+						},
+					},
+				},
+			},
+		})
+		Expect(err).To(Succeed())
+
+		// Create the test ledger (generates 1 audit entry)
+		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
 		})
 		Expect(err).To(Succeed())
@@ -216,9 +229,23 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a fresh node for signing tests to avoid interfering with other tests
 		sigCtx, sigClient, _ := setupSingleNode(9109, 8109)
 
-		// Generate a keypair
-		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+		// Enable audit logging on the fresh node
+		_, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				{
+					Type: &servicepb.Request_SetAuditConfig{
+						SetAuditConfig: &servicepb.SetAuditConfigRequest{
+							Enabled: true,
+						},
+					},
+				},
+			},
+		})
 		Expect(err).To(Succeed())
+
+		// Generate a keypair
+		pubKey, privKey, genErr := ed25519.GenerateKey(rand.Reader)
+		Expect(genErr).To(Succeed())
 
 		const keyID = "audit-test-key"
 
@@ -248,9 +275,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(sig).NotTo(BeNil())
 		Expect(sig.KeyId).To(Equal(keyID))
 
-		// Verify unsigned orders have no signature
-		firstEntry := entries[0] // RegisterSigningKey (bootstrap, unsigned)
-		Expect(firstEntry.Orders[0].GetSignature()).To(BeNil())
+		// Verify unsigned orders have no signature (first entry after SetAuditConfig is RegisterSigningKey)
+		// entries[0] = SetAuditConfig, entries[1] = RegisterSigningKey
+		Expect(len(entries)).To(BeNumerically(">=", 2))
+		regEntry := entries[1]
+		Expect(regEntry.Orders[0].GetSignature()).To(BeNil())
 	})
 
 	It("Should include multiple orders in a batch audit entry", func() {
@@ -301,21 +330,6 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
 	})
 
-	It("Should return FAILED_PRECONDITION when audit is disabled", func() {
-		// The cluster was started with audit enabled (default).
-		// A full test would require a separate node with --audit-enabled=false.
-		Skip("Requires separate node setup with audit disabled")
-
-		_, err := collectAuditEntries(ctx, client, &servicepb.ListAuditEntriesRequest{})
-		Expect(err).To(HaveOccurred())
-
-		st, ok := status.FromError(err)
-		Expect(ok).To(BeTrue())
-		Expect(st.Code()).To(Equal(codes.FailedPrecondition))
-
-		info := extractGRPCErrorInfo(err)
-		Expect(info).NotTo(BeNil())
-		Expect(info.Reason).To(Equal(processing.ErrReasonAuditDisabled))
-		Expect(info.Domain).To(Equal("ledger"))
-	})
+	// The "FAILED_PRECONDITION when audit is disabled" test is covered in
+	// audit_config_test.go which tests the full SetAuditConfig lifecycle.
 })

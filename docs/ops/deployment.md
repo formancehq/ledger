@@ -579,7 +579,6 @@ The server persists critical configuration parameters in Pebble (key prefix `0xF
 |-----------|----------------|---------------------|
 | `node-id` | Cluster confusion — node becomes invisible | **Fatal error** |
 | `cluster-id` | Breaks inter-node communication | **Fatal error** |
-| `audit-enabled` | Compliance gap if disabled | **Warning** (non-fatal) |
 
 #### Edge Cases
 

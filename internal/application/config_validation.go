@@ -12,8 +12,6 @@ import (
 // changed since the last boot. On first boot (no persisted config), it persists
 // the current values. On subsequent boots, it compares node-id and cluster-id
 // and returns an error on mismatch unless force is true.
-//
-// Audit-enabled changes (true -> false) are logged as warnings but do not fail.
 func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger, force bool) error {
 	persisted, err := LoadPersistedConfig(store)
 	if err != nil {
@@ -21,9 +19,8 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	}
 
 	current := &PersistedConfig{
-		NodeID:       cfg.RaftConfig.NodeID,
-		ClusterID:    cfg.ClusterID,
-		AuditEnabled: cfg.AuditEnabled,
+		NodeID:    cfg.RaftConfig.NodeID,
+		ClusterID: cfg.ClusterID,
 	}
 
 	if persisted == nil {
@@ -51,14 +48,6 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		})
 	}
 
-	// Audit-enabled: warn but do not fail
-	if persisted.AuditEnabled && !current.AuditEnabled {
-		logger.WithFields(map[string]any{
-			"persisted": true,
-			"current":   false,
-		}).Infof("WARNING: audit-enabled changed from true to false — audit trail will have a gap")
-	}
-
 	if len(mismatches) > 0 {
 		if force {
 			for _, m := range mismatches {
@@ -73,11 +62,6 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		}
 		// Return the first mismatch as a fatal error
 		return mismatches[0]
-	}
-
-	// Update persisted config to reflect any non-critical changes (e.g. audit-enabled)
-	if persisted.AuditEnabled != current.AuditEnabled {
-		return persistConfig(store, current)
 	}
 
 	return nil

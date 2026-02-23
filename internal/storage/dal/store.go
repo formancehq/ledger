@@ -89,6 +89,7 @@ var (
 	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
 	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
+	KeyPrefixAuditConfig          byte = 0xEE // [KeyPrefixAuditConfig] -> audit config byte (0x00=false, 0x01=true)
 	KeyPrefixPeriodSchedule       byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
 
 	AttributePrefixVolume         = byte('V')

@@ -35,7 +35,6 @@ type Config struct {
 	PebbleConfig               dal.Config
 	HealthConfig               HealthConfig
 	ClusterID                  string
-	AuditEnabled               bool
 	AdmissionMetrics           bool
 	ReceiptSigningKey          string
 	ResponseSigningKeyFile     string

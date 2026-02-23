@@ -52,6 +52,9 @@ type InMemoryStore interface {
 	// Maintenance mode operations
 	SetMaintenanceMode(enabled bool)
 
+	// Audit config operations
+	SetAuditEnabled(enabled bool)
+
 	// Period schedule operations
 	SetPeriodSchedule(cron string)
 	DeletePeriodSchedule()

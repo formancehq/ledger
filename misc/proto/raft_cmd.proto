@@ -44,6 +44,7 @@ message Order {
     SetMaintenanceModeOrder set_maintenance_mode = 15;
     SetPeriodScheduleOrder set_period_schedule = 16;
     DeletePeriodScheduleOrder delete_period_schedule = 17;
+    SetAuditConfigOrder set_audit_config = 18;
   }
   signature.RequestSignature signature = 5;
 }
@@ -96,6 +97,10 @@ message SetPeriodScheduleOrder {
 }
 
 message DeletePeriodScheduleOrder {}
+
+message SetAuditConfigOrder {
+  bool enabled = 1;
+}
 
 message CreateLedgerOrder {
   string name = 1;

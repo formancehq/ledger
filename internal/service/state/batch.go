@@ -150,6 +150,19 @@ func SaveMaintenanceMode(b *dal.Batch, enabled bool) error {
 	return nil
 }
 
+// SaveAuditConfig stores the audit enabled flag in the batch.
+func SaveAuditConfig(b *dal.Batch, enabled bool) error {
+	value := []byte{0x00}
+	if enabled {
+		value[0] = 0x01
+	}
+
+	if err := b.SetBytes([]byte{dal.KeyPrefixAuditConfig}, value); err != nil {
+		return fmt.Errorf("saving audit config: %w", err)
+	}
+	return nil
+}
+
 // SavePeriodSchedule stores the period schedule cron expression in the batch.
 func SavePeriodSchedule(b *dal.Batch, cron string) error {
 	if err := b.SetBytes([]byte{dal.KeyPrefixPeriodSchedule}, []byte(cron)); err != nil {

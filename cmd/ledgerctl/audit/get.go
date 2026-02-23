@@ -51,7 +51,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		if isAuditDisabledError(err) {
 			pterm.Warning.Println("Audit log is disabled on this server.")
-			pterm.Println(pterm.Gray("Start the server with --audit-enabled=true to enable audit logging."))
+			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
 			return nil
 		}
 		return cmdutil.FormatGRPCError("failed to get audit entry", err)

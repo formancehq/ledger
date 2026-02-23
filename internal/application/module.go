@@ -137,7 +137,6 @@ func Module() fx.Option {
 					cfg.RaftConfig.RotationThreshold,
 					ks,
 					ss,
-					cfg.AuditEnabled,
 					notifications,
 					cfg.NumscriptCacheSize,
 				)
@@ -241,8 +240,8 @@ func Module() fx.Option {
 
 				return NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
-			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, signer *receipt.Signer, respSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
-				return NewBucketServiceServer(logger, ctrl, s, attrs, cfg.AuditEnabled, signer, respSigner)
+			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
+				return NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner)
 			},
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return NewSnapshotServiceServer(logger, s)

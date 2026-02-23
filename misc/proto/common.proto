@@ -232,6 +232,7 @@ message LogPayload {
     SetMaintenanceModeLog set_maintenance_mode = 13;
     SetPeriodScheduleLog set_period_schedule = 14;
     DeletePeriodScheduleLog delete_period_schedule = 15;
+    SetAuditConfigLog set_audit_config = 16;
   }
 }
 
@@ -286,6 +287,11 @@ message SetPeriodScheduleLog {
 
 // DeletePeriodScheduleLog records the removal of the period schedule.
 message DeletePeriodScheduleLog {}
+
+// SetAuditConfigLog records an audit configuration change.
+message SetAuditConfigLog {
+  bool enabled = 1;
+}
 
 // SinkConfig wraps a single sink configuration with per-sink settings.
 message SinkConfig {

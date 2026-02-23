@@ -16,8 +16,12 @@ Set Shell zsh
 Sleep 300ms
 
 # ============================================================================
-# Setup - create a ledger with data to generate audit entries
+# Setup - enable audit logging then create a ledger with data
 # ============================================================================
+
+Type "ledgerctl audit enable"
+Enter
+Sleep 1500ms
 
 Type "ledgerctl ledgers create --name demo-audit"
 Enter

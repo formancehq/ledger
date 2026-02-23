@@ -525,6 +525,18 @@ func (mr *MockInMemoryStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockInMemoryStore)(nil).RemoveSinkConfig), name)
 }
 
+// SetAuditEnabled mocks base method.
+func (m *MockInMemoryStore) SetAuditEnabled(enabled bool) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetAuditEnabled", enabled)
+}
+
+// SetAuditEnabled indicates an expected call of SetAuditEnabled.
+func (mr *MockInMemoryStoreMockRecorder) SetAuditEnabled(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAuditEnabled", reflect.TypeOf((*MockInMemoryStore)(nil).SetAuditEnabled), enabled)
+}
+
 // SetClosingPeriod mocks base method.
 func (m *MockInMemoryStore) SetClosingPeriod(period *commonpb.Period) {
 	m.ctrl.T.Helper()

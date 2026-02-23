@@ -74,7 +74,6 @@ type Machine struct {
 	lastAppliedTimestamp        uint64
 	snapshotIndex               uint64
 	generationRotationThreshold uint64
-	auditEnabled                bool
 
 	// Period schedule cron expression (empty = disabled)
 	periodSchedule  string
@@ -128,7 +127,7 @@ type Machine struct {
 	snapshotBuf []byte
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, auditEnabled bool, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
@@ -237,6 +236,12 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	}
 	sharedState.SetMaintenanceMode(maintenanceMode)
 
+	auditEnabled, err := ReadAuditConfig(dataStore)
+	if err != nil {
+		return nil, fmt.Errorf("loading audit config from store: %w", err)
+	}
+	sharedState.SetAuditEnabled(auditEnabled)
+
 	fsm := &Machine{
 		logger:                      logger,
 		dataStore:                   dataStore,
@@ -248,7 +253,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		rotationKeysCompacted:       rotationKeysCompacted,
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
-		auditEnabled:                auditEnabled,
 		eventNotifier:               eventNotifier,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
@@ -1082,7 +1086,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	logs, err := fsm.processor.ProcessOrders(proposal.Orders, buffer)
 	if err != nil {
 		// FAILURE: write audit entry and return business error
-		if fsm.auditEnabled {
+		if fsm.sharedState.AuditEnabled() {
 			auditEntry := &auditpb.AuditEntry{
 				Sequence:   fsm.nextAuditSequenceID,
 				Timestamp:  effectiveDate,
@@ -1122,7 +1126,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// SUCCESS: write audit entry
-	if fsm.auditEnabled {
+	if fsm.sharedState.AuditEnabled() {
 		auditEntry := &auditpb.AuditEntry{
 			Sequence:   fsm.nextAuditSequenceID,
 			Timestamp:  effectiveDate,
@@ -1387,6 +1391,12 @@ func (fsm *Machine) reloadStateFromStore() error {
 		return fmt.Errorf("loading maintenance mode: %w", err)
 	}
 	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
+
+	auditEnabled, err := ReadAuditConfig(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("loading audit config: %w", err)
+	}
+	fsm.sharedState.SetAuditEnabled(auditEnabled)
 
 	return nil
 }

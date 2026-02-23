@@ -49,7 +49,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| Audit log disable/enable | ✅ | ❌ | `--audit-enabled` flag |
+| Audit log disable/enable | ✅ | ❌ | `ledgerctl audit enable/disable` (dynamic via RPC) |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Security** |

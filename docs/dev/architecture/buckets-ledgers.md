@@ -421,7 +421,7 @@ The system supports an optional audit trail that records every proposal (success
 
 ### Configuration
 
-Audit logging is controlled by the `--audit-enabled` flag (default: `true`). When disabled, no audit entries are written and the `ListAuditEntries` RPC returns `FAILED_PRECONDITION`.
+Audit logging is controlled dynamically via the `SetAuditConfig` RPC (accessible via `ledgerctl audit enable/disable`). Audit starts **disabled** by default. When disabled, no audit entries are written and the `ListAuditEntries` RPC returns `FAILED_PRECONDITION`.
 
 ### Audit Entry Structure
 

@@ -575,3 +575,21 @@ func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
 	}
 	return value[0] == 0x01, nil
 }
+
+// ReadAuditConfig loads the audit enabled flag from the given reader.
+// Returns false if the config key does not exist (audit disabled by default).
+func ReadAuditConfig(reader dal.PebbleReader) (bool, error) {
+	value, closer, err := reader.Get([]byte{dal.KeyPrefixAuditConfig})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("loading audit config: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	if len(value) == 0 {
+		return false, nil
+	}
+	return value[0] == 0x01, nil
+}

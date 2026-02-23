@@ -79,7 +79,7 @@ Key rules:
 
 ## Configuration Safety Checks
 
-The server persists critical config (`node-id`, `cluster-id`, `audit-enabled`) in Pebble (key prefix `0xFE`) on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal; `audit-enabled` mismatch is a warning. Use `--unsafe-skip-config-validation` to bypass (dangerous). See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
+The server persists critical config (`node-id`, `cluster-id`) in Pebble (key prefix `0xFE`) on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
 
 Key files: `internal/storage/data/persisted_config.go`, `internal/application/config_validation.go`, `internal/application/module.go`.
 

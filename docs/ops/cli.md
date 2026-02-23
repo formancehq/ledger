@@ -904,6 +904,56 @@ View the replicated audit log. The audit log captures every proposal (success an
 
 **Aliases:** `a`
 
+#### audit enable
+
+Enable audit logging on the server. When enabled, all Raft proposals are recorded in the audit log.
+
+```bash
+ledgerctl audit enable [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+| `--signing-key` | | Path to Ed25519 seed file for request signing |
+
+**Example:**
+
+```bash
+# Enable audit logging
+ledgerctl audit enable
+
+# Enable with signed request
+ledgerctl audit enable --signing-key /path/to/seed
+```
+
+#### audit disable
+
+Disable audit logging on the server. When disabled, proposals are no longer recorded in the audit log.
+
+```bash
+ledgerctl audit disable [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+| `--signing-key` | | Path to Ed25519 seed file for request signing |
+
+**Example:**
+
+```bash
+# Disable audit logging
+ledgerctl audit disable
+
+# Disable with signed request
+ledgerctl audit disable --signing-key /path/to/seed
+```
+
 #### audit list
 
 List audit log entries via gRPC streaming.
@@ -1665,7 +1715,7 @@ Skips the startup configuration safety checks that prevent accidental changes to
 |------|---------|-------------|
 | `--unsafe-skip-config-validation` | `false` | Skip startup configuration safety checks (DANGEROUS) |
 
-On first boot, the server persists `node-id`, `cluster-id`, and `audit-enabled` into Pebble. On subsequent boots, the server compares these values against the current flags and refuses to start if `node-id` or `cluster-id` differ. This prevents silent data corruption from accidentally pointing a node at the wrong data directory or changing identity.
+On first boot, the server persists `node-id` and `cluster-id` into Pebble. On subsequent boots, the server compares these values against the current flags and refuses to start if they differ. This prevents silent data corruption from accidentally pointing a node at the wrong data directory or changing identity.
 
 **When to use this flag:**
 - After intentionally changing `node-id` or `cluster-id` (e.g., migrating data between clusters)
@@ -1678,8 +1728,6 @@ ledger-v3-poc run --node-id 2 --data-dir ./data  # ERROR if data was created wit
 # Override with explicit flag
 ledger-v3-poc run --node-id 2 --data-dir ./data --unsafe-skip-config-validation
 ```
-
-**Note:** Changes to `audit-enabled` (true -> false) produce a warning but do not prevent startup, since disabling audit is a compliance decision, not a data corruption risk.
 
 ---
 

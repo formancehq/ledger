@@ -223,6 +223,15 @@ func (m *Order_DeletePeriodSchedule) CloneVT() isOrder_Type {
 	return r
 }
 
+func (m *Order_SetAuditConfig) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_SetAuditConfig)(nil)
+	}
+	r := new(Order_SetAuditConfig)
+	r.SetAuditConfig = m.SetAuditConfig.CloneVT()
+	return r
+}
+
 func (m *AddEventsSinkOrder) CloneVT() *AddEventsSinkOrder {
 	if m == nil {
 		return (*AddEventsSinkOrder)(nil)
@@ -434,6 +443,23 @@ func (m *DeletePeriodScheduleOrder) CloneVT() *DeletePeriodScheduleOrder {
 }
 
 func (m *DeletePeriodScheduleOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SetAuditConfigOrder) CloneVT() *SetAuditConfigOrder {
+	if m == nil {
+		return (*SetAuditConfigOrder)(nil)
+	}
+	r := new(SetAuditConfigOrder)
+	r.Enabled = m.Enabled
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetAuditConfigOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1939,6 +1965,31 @@ func (this *Order_DeletePeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
+func (this *Order_SetAuditConfig) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SetAuditConfig)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetAuditConfig, that.SetAuditConfig; p != q {
+		if p == nil {
+			p = &SetAuditConfigOrder{}
+		}
+		if q == nil {
+			q = &SetAuditConfigOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AddEventsSinkOrder) EqualVT(that *AddEventsSinkOrder) bool {
 	if this == that {
 		return true
@@ -2168,6 +2219,25 @@ func (this *DeletePeriodScheduleOrder) EqualVT(that *DeletePeriodScheduleOrder) 
 
 func (this *DeletePeriodScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*DeletePeriodScheduleOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SetAuditConfigOrder) EqualVT(that *SetAuditConfigOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Enabled != that.Enabled {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetAuditConfigOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetAuditConfigOrder)
 	if !ok {
 		return false
 	}
@@ -4336,6 +4406,27 @@ func (m *Order_DeletePeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Order_SetAuditConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_SetAuditConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetAuditConfig != nil {
+		size, err := m.SetAuditConfig.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x92
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AddEventsSinkOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -4832,6 +4923,49 @@ func (m *DeletePeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetAuditConfigOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetAuditConfigOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetAuditConfigOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Enabled {
+		i--
+		if m.Enabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -7759,6 +7893,18 @@ func (m *Order_DeletePeriodSchedule) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Order_SetAuditConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetAuditConfig != nil {
+		l = m.SetAuditConfig.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AddEventsSinkOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7925,6 +8071,19 @@ func (m *DeletePeriodScheduleOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SetAuditConfigOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Enabled {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -10083,6 +10242,47 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Order_DeletePeriodSchedule{DeletePeriodSchedule: v}
 			}
 			iNdEx = postIndex
+		case 18:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetAuditConfig", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_SetAuditConfig); ok {
+				if err := oneof.SetAuditConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetAuditConfigOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_SetAuditConfig{SetAuditConfig: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -11076,6 +11276,77 @@ func (m *DeletePeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: DeletePeriodScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetAuditConfigOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetAuditConfigOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetAuditConfigOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Enabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Enabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

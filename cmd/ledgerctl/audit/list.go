@@ -65,7 +65,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		if isAuditDisabledError(err) {
 			pterm.Warning.Println("Audit log is disabled on this server.")
-			pterm.Println(pterm.Gray("Start the server with --audit-enabled=true to enable audit logging."))
+			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
 			return nil
 		}
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
@@ -80,7 +80,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			if isAuditDisabledError(err) {
 				pterm.Warning.Println("Audit log is disabled on this server.")
-				pterm.Println(pterm.Gray("Start the server with --audit-enabled=true to enable audit logging."))
+				pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
 				return nil
 			}
 			return cmdutil.FormatGRPCError("receiving audit entry", err)
@@ -191,6 +191,8 @@ func describeOrder(order *raftcmdpb.Order) (string, string) {
 		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().PeriodId)
 	case order.GetSetMaintenanceMode() != nil:
 		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().Enabled)
+	case order.GetSetAuditConfig() != nil:
+		return "SetAuditConfig", fmt.Sprintf("enabled=%v", order.GetSetAuditConfig().Enabled)
 	case order.GetSetPeriodSchedule() != nil:
 		return "SetPeriodSchedule", fmt.Sprintf("cron=%s", order.GetSetPeriodSchedule().Cron)
 	case order.GetDeletePeriodSchedule() != nil:

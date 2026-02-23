@@ -139,6 +139,7 @@ message Request {
     DeletePeriodScheduleRequest delete_period_schedule = 17;
     SetMetadataFieldTypeRequest set_metadata_field_type = 18;
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
+    SetAuditConfigRequest set_audit_config = 20;
   }
   signature.RequestSignature signature = 5;
 }
@@ -229,6 +230,11 @@ message RemoveMetadataFieldTypeRequest {
   string ledger = 1;
   common.TargetType target_type = 2;
   string key = 3;
+}
+
+// SetAuditConfigRequest enables or disables audit logging.
+message SetAuditConfigRequest {
+  bool enabled = 1;   // Whether audit logging is active
 }
 
 message GetPeriodScheduleRequest {}

@@ -117,9 +117,6 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("health-clock-skew-threshold", 500*time.Millisecond, "Maximum allowed clock skew between nodes (0 to disable)")
 	runCmd.Flags().String("cluster-id", "", "Cluster ID for inter-node communication validation")
 
-	// Audit configuration flags
-	runCmd.Flags().Bool("audit-enabled", true, "Enable audit log (records all proposals in Pebble)")
-
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
 
@@ -367,9 +364,6 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	cfg.HealthConfig.ClockSkewThreshold = getDuration("health-clock-skew-threshold", 500*time.Millisecond)
 
 	cfg.ClusterID = getString("cluster-id", "")
-
-	// Audit configuration
-	cfg.AuditEnabled = getBool("audit-enabled", true)
 
 	// Admission metrics
 	cfg.AdmissionMetrics = getBool("admission-metrics", false)

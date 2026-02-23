@@ -363,6 +363,7 @@ func (s *inMemoryStore) RemoveSigningKey(_ string)                            {}
 func (s *inMemoryStore) GetSigningKeyChildren(_ string) []string              { return nil }
 func (s *inMemoryStore) SetRequireSignatures(_ bool)                          {}
 func (s *inMemoryStore) SetMaintenanceMode(_ bool)                            {}
+func (s *inMemoryStore) SetAuditEnabled(_ bool)                               {}
 func (s *inMemoryStore) SetPeriodSchedule(_ string)                           {}
 func (s *inMemoryStore) DeletePeriodSchedule()                                {}
 func (s *inMemoryStore) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }

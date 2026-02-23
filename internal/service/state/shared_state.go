@@ -8,6 +8,7 @@ type SharedState struct {
 	mu                sync.RWMutex
 	maintenanceMode   bool
 	requireSignatures bool
+	auditEnabled      bool
 }
 
 // NewSharedState creates a new SharedState with default values.
@@ -43,10 +44,25 @@ func (s *SharedState) SetRequireSignatures(require bool) {
 	s.requireSignatures = require
 }
 
+// AuditEnabled returns whether audit logging is active.
+func (s *SharedState) AuditEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.auditEnabled
+}
+
+// SetAuditEnabled sets whether audit logging is active.
+func (s *SharedState) SetAuditEnabled(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.auditEnabled = enabled
+}
+
 // Reset clears all shared state. Used during snapshot restore.
 func (s *SharedState) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.maintenanceMode = false
 	s.requireSignatures = false
+	s.auditEnabled = false
 }

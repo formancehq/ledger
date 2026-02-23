@@ -1257,6 +1257,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Enabled: reqType.SetMaintenanceMode.Enabled,
 			},
 		}
+	case *servicepb.Request_SetAuditConfig:
+		order.Type = &raftcmdpb.Order_SetAuditConfig{
+			SetAuditConfig: &raftcmdpb.SetAuditConfigOrder{
+				Enabled: reqType.SetAuditConfig.Enabled,
+			},
+		}
 	case *servicepb.Request_SetPeriodSchedule:
 		order.Type = &raftcmdpb.Order_SetPeriodSchedule{
 			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{

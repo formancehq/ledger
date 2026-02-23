@@ -29,9 +29,8 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig:   node.NodeConfig{NodeID: 1},
-		ClusterID:    "test-cluster",
-		AuditEnabled: true,
+		RaftConfig: node.NodeConfig{NodeID: 1},
+		ClusterID:  "test-cluster",
 	}
 
 	err := ValidateOrPersistConfig(store, cfg, logger, false)
@@ -43,7 +42,6 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	require.NotNil(t, persisted)
 	require.Equal(t, uint64(1), persisted.NodeID)
 	require.Equal(t, "test-cluster", persisted.ClusterID)
-	require.True(t, persisted.AuditEnabled)
 }
 
 func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
@@ -52,9 +50,8 @@ func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig:   node.NodeConfig{NodeID: 42},
-		ClusterID:    "my-cluster",
-		AuditEnabled: true,
+		RaftConfig: node.NodeConfig{NodeID: 42},
+		ClusterID:  "my-cluster",
 	}
 
 	// First boot
@@ -145,28 +142,3 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.Equal(t, "cluster-b", persisted.ClusterID)
 }
 
-func TestValidateOrPersistConfig_AuditDisabledWarning(t *testing.T) {
-	t.Parallel()
-	store := newTestStore(t)
-	logger := logging.Testing()
-
-	cfg := Config{
-		RaftConfig:   node.NodeConfig{NodeID: 1},
-		ClusterID:    "test-cluster",
-		AuditEnabled: true,
-	}
-
-	// First boot with audit enabled
-	err := ValidateOrPersistConfig(store, cfg, logger, false)
-	require.NoError(t, err)
-
-	// Second boot with audit disabled — should warn but not fail
-	cfg.AuditEnabled = false
-	err = ValidateOrPersistConfig(store, cfg, logger, false)
-	require.NoError(t, err)
-
-	// Verify the config was updated
-	persisted, err := LoadPersistedConfig(store)
-	require.NoError(t, err)
-	require.False(t, persisted.AuditEnabled)
-}
