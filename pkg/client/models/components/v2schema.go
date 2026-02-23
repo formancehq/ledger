@@ -16,7 +16,7 @@ type V2Schema struct {
 	// Chart of account
 	Chart map[string]V2ChartSegment `json:"chart"`
 	// Transaction templates
-	Transactions map[string]V2TransactionTemplate `json:"transactions"`
+	Transactions map[string]V2TransactionTemplate `json:"transactions,omitempty"`
 	// Query templates
 	Queries map[string]V2QueryTemplate `json:"queries,omitempty"`
 }
@@ -55,7 +55,7 @@ func (o *V2Schema) GetChart() map[string]V2ChartSegment {
 
 func (o *V2Schema) GetTransactions() map[string]V2TransactionTemplate {
 	if o == nil {
-		return map[string]V2TransactionTemplate{}
+		return nil
 	}
 	return o.Transactions
 }

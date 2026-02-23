@@ -279,11 +279,6 @@ func main() {
                     },
                 },
             },
-            Transactions: map[string]components.V2TransactionTemplate{
-                "key": components.V2TransactionTemplate{
-                    Script: "<value>",
-                },
-            },
             Queries: map[string]components.V2QueryTemplate{
                 "key": components.V2QueryTemplate{
                     Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
