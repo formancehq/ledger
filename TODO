@@ -1,6 +1,5 @@
 API:
 * Checkpoint + exposed api to read at PIT
-* Eventual consistency (read your writes)
 * Clean HTTP layer / GRPC proxy
 * ACL system / authentication
 
@@ -10,16 +9,10 @@ Business:
 * Mirror mode
 * Numscript
 ** Add typed variables
-** Add metadata typed variable draft
-* Events
-** Sync S3 + parquet
 
 Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
-
-Cold storage:
-* Add S3/Parquet support
 
 Refactor:
 * Simplify processor
@@ -28,3 +21,10 @@ Refactor:
 * Categorize raft commands (user commands vs system commands)
 * Check all commands match a log type payload
 * Decoupler wal write / state machine processing
+* Leader reads
+
+Later:
+* Events
+** Sync S3 + parquet
+Cold storage:
+* Add S3/Parquet support
