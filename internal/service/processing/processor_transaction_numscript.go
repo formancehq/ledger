@@ -17,10 +17,10 @@ import (
 type numscriptPostingProducer struct {
 	cache        *numscript.NumscriptCache
 	featureFlags map[string]struct{}
-	ledgerName   string
+	ledger       string
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.Script == nil || order.Script.Plain == "" {
 		return nil, numscript.ErrScriptRequired
 	}
@@ -40,10 +40,9 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:      s,
-		ledgerID:   ledgerID,
-		force:      order.Force,
-		ledgerName: p.ledgerName,
+		store:  s,
+		ledger: ledger,
+		force:  order.Force,
 	}
 
 	// Execute the script with all feature flags enabled
@@ -75,8 +74,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		// Update source output (money going out)
 		sourceKey := dal.VolumeKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.Source,
+				Ledger:  ledger,
+				Account: posting.Source,
 			},
 			Asset: posting.Asset,
 		}
@@ -93,8 +92,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		// Update destination input (money coming in)
 		destKey := dal.VolumeKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.Destination,
+				Ledger:  ledger,
+				Account: posting.Destination,
 			},
 			Asset: posting.Asset,
 		}
@@ -121,8 +120,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 				mdList = append(mdList, &commonpb.Metadata{Key: key, Value: mv})
 				s.PutAccountMetadata(dal.MetadataKey{
 					AccountKey: dal.AccountKey{
-						LedgerID: ledgerID,
-						Account:  account,
+						Ledger:  ledger,
+						Account: account,
 					},
 					Key: key,
 				}, mv)
@@ -152,10 +151,9 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface
 type numscriptStoreAdapter struct {
-	store      InMemoryStore
-	ledgerID   uint32
-	force      bool   // When true, return unlimited balances to bypass balance checks
-	ledgerName string // For lazy schema lookup during opportunistic conversion
+	store  InMemoryStore
+	ledger string
+	force  bool // When true, return unlimited balances to bypass balance checks
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -177,8 +175,8 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 
 			volumeKey := dal.VolumeKey{
 				AccountKey: dal.AccountKey{
-					LedgerID: s.ledgerID,
-					Account:  account,
+					Ledger:  s.ledger,
+					Account: account,
 				},
 				Asset: asset,
 			}
@@ -227,8 +225,8 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		for _, key := range keys {
 			metaKey := dal.MetadataKey{
 				AccountKey: dal.AccountKey{
-					LedgerID: s.ledgerID,
-					Account:  account,
+					Ledger:  s.ledger,
+					Account: account,
 				},
 				Key: key,
 			}
@@ -241,8 +239,8 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 				// Opportunistically convert to declared schema type and write back.
 				// The schema is looked up lazily from the Store to avoid impacting
 				// tests that don't set up the GetLedger expectation.
-				if s.ledgerName != "" {
-					if info, ok := s.store.GetLedger(s.ledgerName); ok && info.MetadataSchema != nil {
+				if s.ledger != "" {
+					if info, ok := s.store.GetLedger(s.ledger); ok && info.MetadataSchema != nil {
 						if fields := info.MetadataSchema.AccountFields; fields != nil {
 							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.Type) {
 								value = commonpb.ConvertMetadataValue(value, fieldSchema.Type)

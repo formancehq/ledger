@@ -4223,7 +4223,6 @@ type LedgerInfo struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                           // Ledger name
 	CreatedAt      *Timestamp             `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                // Creation timestamp
-	Id             uint32                 `protobuf:"varint,3,opt,name=id,proto3" json:"id,omitempty"`                                              // Numeric ledger ID (auto-assigned, max 65535)
 	DeletedAt      *Timestamp             `protobuf:"bytes,4,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`                // Soft delete timestamp (nil if not deleted)
 	MetadataSchema *MetadataSchema        `protobuf:"bytes,5,opt,name=metadata_schema,json=metadataSchema,proto3" json:"metadata_schema,omitempty"` // Per-key metadata type declarations
 	unknownFields  protoimpl.UnknownFields
@@ -4272,13 +4271,6 @@ func (x *LedgerInfo) GetCreatedAt() *Timestamp {
 		return x.CreatedAt
 	}
 	return nil
-}
-
-func (x *LedgerInfo) GetId() uint32 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
 }
 
 func (x *LedgerInfo) GetDeletedAt() *Timestamp {
@@ -5173,16 +5165,15 @@ const file_common_proto_rawDesc = "" +
 	"\x10ArchivePeriodLog\x12&\n" +
 	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\"A\n" +
 	"\x17ConfirmArchivePeriodLog\x12&\n" +
-	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\"\xd5\x01\n" +
+	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\"\xcb\x01\n" +
 	"\n" +
 	"LedgerInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\n" +
-	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x0e\n" +
-	"\x02id\x18\x03 \x01(\rR\x02id\x120\n" +
+	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\x120\n" +
 	"\n" +
 	"deleted_at\x18\x04 \x01(\v2\x11.common.TimestampR\tdeletedAt\x12?\n" +
-	"\x0fmetadata_schema\x18\x05 \x01(\v2\x16.common.MetadataSchemaR\x0emetadataSchema\"n\n" +
+	"\x0fmetadata_schema\x18\x05 \x01(\v2\x16.common.MetadataSchemaR\x0emetadataSchemaJ\x04\b\x03\x10\x04\"n\n" +
 	"\x13SaveMetadataCommand\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12/\n" +
 	"\bmetadata\x18\x02 \x01(\v2\x13.common.MetadataSetR\bmetadata\"Q\n" +

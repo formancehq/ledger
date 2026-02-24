@@ -60,7 +60,7 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 	t.Parallel()
 
 	bizErr := &processing.BusinessError{Err: &processing.ErrTransactionReferenceConflict{
-		LedgerID:  42,
+		Ledger:    "test",
 		Reference: "ref-001",
 	}}
 	st := businessErrorToGRPCStatus(bizErr)
@@ -69,7 +69,7 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 
 	info := extractErrorInfo(t, st)
 	require.Equal(t, processing.ErrReasonTransactionReferenceConflict, info.Reason)
-	require.Equal(t, "42", info.Metadata["ledgerId"])
+	require.Equal(t, "test", info.Metadata["ledger"])
 	require.Equal(t, "ref-001", info.Metadata["reference"])
 }
 

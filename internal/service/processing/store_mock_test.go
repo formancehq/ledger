@@ -244,20 +244,6 @@ func (mr *MockInMemoryStoreMockRecorder) GetLedger(name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedger", reflect.TypeOf((*MockInMemoryStore)(nil).GetLedger), name)
 }
 
-// GetNextLedgerID mocks base method.
-func (m *MockInMemoryStore) GetNextLedgerID() uint32 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNextLedgerID")
-	ret0, _ := ret[0].(uint32)
-	return ret0
-}
-
-// GetNextLedgerID indicates an expected call of GetNextLedgerID.
-func (mr *MockInMemoryStoreMockRecorder) GetNextLedgerID() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextLedgerID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextLedgerID))
-}
-
 // GetNextPeriodID mocks base method.
 func (m *MockInMemoryStore) GetNextPeriodID() uint64 {
 	m.ctrl.T.Helper()
@@ -373,20 +359,6 @@ func (m *MockInMemoryStore) GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair,
 func (mr *MockInMemoryStoreMockRecorder) GetVolume(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockInMemoryStore)(nil).GetVolume), key)
-}
-
-// IncrementNextLedgerID mocks base method.
-func (m *MockInMemoryStore) IncrementNextLedgerID() uint32 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IncrementNextLedgerID")
-	ret0, _ := ret[0].(uint32)
-	return ret0
-}
-
-// IncrementNextLedgerID indicates an expected call of IncrementNextLedgerID.
-func (mr *MockInMemoryStoreMockRecorder) IncrementNextLedgerID() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextLedgerID", reflect.TypeOf((*MockInMemoryStore)(nil).IncrementNextLedgerID))
 }
 
 // IncrementNextPeriodID mocks base method.

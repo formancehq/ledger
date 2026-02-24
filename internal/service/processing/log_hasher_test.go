@@ -25,7 +25,6 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "default",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						Id:        42,
 					},
 				},
 			},
@@ -34,7 +33,7 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "588994eb156f50c0a9c44d54ce82cadef628b055e0e38e545558324f84349cec", got)
+	require.Equal(t, "d6276287f07392a75f0aaa56d8b13ead2460a8015d2e4c33ff3b98e0e3b404b4", got)
 }
 
 func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
@@ -152,7 +151,6 @@ func TestGoldenHashChain(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "ops",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						Id:        1,
 					},
 				},
 			},
@@ -177,8 +175,8 @@ func TestGoldenHashChain(t *testing.T) {
 	gotHash1 := hex.EncodeToString(hash1)
 	gotHash2 := hex.EncodeToString(hash2)
 
-	require.Equal(t, "d1c86a9d2ff2c0cfbd5edf19264c695de48a64511c695dfc6bfae58143eb74ec", gotHash1)
-	require.Equal(t, "abc9db315f7028ed8f4147a6b9abe1a326bc35fb95d1a6e16546c40276585045", gotHash2)
+	require.Equal(t, "ca652b36b0ebfe7719a0a52825a0f8dbf3e62406eb52fea8a6dbdeafdedfdd83", gotHash1)
+	require.Equal(t, "7c26ce727755a7054767a5b9ce1b1332d18b2d1044045ae016208486d5eae38d", gotHash2)
 }
 
 func TestGoldenHashAddedEventsSink(t *testing.T) {
@@ -226,7 +224,6 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "old-ledger",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						Id:        7,
 						DeletedAt: &commonpb.Timestamp{Data: 1700500000},
 					},
 				},
@@ -236,7 +233,7 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "d964fcb9c2820082460b133fe473c452d91cd1b43d4c7b3fc48f1967d2b3c1ee", got)
+	require.Equal(t, "0b8085f7af59930346204823f967bf9dd0bc894a1bb762f8c78f3c711a507b95", got)
 }
 
 func TestGoldenHashRevokeSigningKey(t *testing.T) {

@@ -57,7 +57,6 @@ type Machine struct {
 	Boundaries      *attributes.KeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs     *attributes.KeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
 
-	nextLedgerID        uint32
 	nextSequenceID      uint64
 	nextAuditSequenceID uint64
 	lastLogHash         []byte
@@ -290,7 +289,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 			attributes.DefaultSeeds,
 			cache.SinkConfigs,
 		),
-		nextLedgerID:        1,
 		nextSequenceID:      1,
 		nextAuditSequenceID: 1,
 		allPeriods:          allPeriods,
@@ -315,18 +313,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 // RecoverState recovers the FSM's in-memory counters from the Pebble data store.
 // This is called during restore bootstrap when the WAL snapshot doesn't carry
-// the FSM memory state (nextLedgerID, nextSequenceID, etc.).
+// the FSM memory state (nextSequenceID, etc.).
 // After calling this method, CreateSnapshot will serialize the correct state.
 func (fsm *Machine) RecoverState() error {
-	// Recover nextLedgerID from max existing ledger ID
-	maxID, found, err := ReadMaxLedgerID(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering max ledger ID: %w", err)
-	}
-	if found {
-		fsm.nextLedgerID = maxID + 1
-	}
-
 	// Recover nextSequenceID from last log sequence
 	lastSeq, err := ReadLastSequence(fsm.dataStore)
 	if err != nil {
@@ -355,7 +344,6 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	fsm.logger.WithFields(map[string]any{
-		"nextLedgerID":        fsm.nextLedgerID,
 		"nextSequenceID":      fsm.nextSequenceID,
 		"nextAuditSequenceID": fsm.nextAuditSequenceID,
 		"hasLogHash":          len(fsm.lastLogHash) > 0,
@@ -1176,7 +1164,6 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	snapshot := &raftcmdpb.MemorySnapshot{
-		NextLedgerId:         fsm.nextLedgerID,
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
 		Gen0:                 serializeCacheGeneration(fsm.Cache, 0),
@@ -1323,7 +1310,6 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	}
 
 	// Restore memory state from snapshot
-	fsm.nextLedgerID = memSnapshot.NextLedgerId
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
 	fsm.nextAuditSequenceID = memSnapshot.NextAuditSequenceId
 	fsm.lastLogHash = memSnapshot.LastLogHash

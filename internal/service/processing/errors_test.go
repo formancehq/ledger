@@ -43,8 +43,8 @@ func TestErrorTypes(t *testing.T) {
 		},
 		{
 			name:     "ErrTransactionReferenceConflict",
-			err:      &ErrTransactionReferenceConflict{LedgerID: 1, Reference: "ref-001"},
-			expected: `transaction reference "ref-001" already exists in ledger 1`,
+			err:      &ErrTransactionReferenceConflict{Ledger: "test", Reference: "ref-001"},
+			expected: `transaction reference "ref-001" already exists in ledger test`,
 		},
 		{
 			name:     "ErrTransactionNotFound",

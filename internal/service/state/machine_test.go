@@ -209,9 +209,6 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	require.Len(t, result.Results, 1)
 	require.NoError(t, result.Results[0].Error)
 
-	// The ledger was assigned ID=1
-	const ledgerID = uint32(1)
-
 	// ---------------------------------------------------------------
 	// Entry 2 - Batch 1 (SUCCESS): seed funds + first sales
 	// All transactions use force=true (bypasses balance checks).
@@ -303,8 +300,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	getVolumeFromCache := func(account, asset string) (input, output int64) {
 		key := dal.VolumeKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
-				Account:  account,
+				Ledger:  ledgerName,
+				Account: account,
 			},
 			Asset: asset,
 		}
@@ -346,8 +343,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		for _, exp := range expectations {
 			key := dal.VolumeKey{
 				AccountKey: dal.AccountKey{
-					LedgerID: ledgerID,
-					Account:  exp.account,
+					Ledger:  ledgerName,
+					Account: exp.account,
 				},
 				Asset: exp.asset,
 			}
@@ -392,7 +389,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "merchant:bob"},
+			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "merchant:bob"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -414,7 +411,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "customer:dave"},
+			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "customer:dave"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -436,7 +433,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "platform:revenue"},
+			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "platform:revenue"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -509,12 +506,12 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	machine, dataStore, attrs := newTestMachine(t)
 
 	aliceInputKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:alice"},
+		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 
 	worldOutputKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
+		AccountKey: dal.AccountKey{Ledger: "test", Account: "world"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -653,12 +650,12 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	machine, dataStore, attrs := newTestMachine(t)
 
 	activeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:active"},
+		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:active"},
 		Asset:      "EUR",
 	}.Bytes()
 
 	dormantKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:dormant"},
+		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:dormant"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -767,14 +764,12 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	require.Len(t, result.Results, 1)
 	require.NoError(t, result.Results[0].Error)
 
-	const ledgerID = uint32(1)
-
 	// Capture ledger info from cache for preloads
 	ledgerInfo, _, err := machine.Ledgers.Get(dal.LedgerKey{Name: ledgerName}.Bytes())
 	require.NoError(t, err)
 
 	aliceVolumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
+		AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 

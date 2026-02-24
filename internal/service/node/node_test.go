@@ -751,7 +751,7 @@ func TestClusterBasic(t *testing.T) {
 		ledgerInfo, err := createLedger(ctx, leader.Node, ledgerName)
 		require.NoError(t, err)
 		require.Equal(t, ledgerName, ledgerInfo.Name)
-		t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+		t.Logf("Created ledger: %s", ledgerInfo.Name)
 	}
 
 	// Verify all ledgers are replicated to all nodes
@@ -873,7 +873,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+	t.Logf("Created ledger: %s", ledgerInfo.Name)
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -990,7 +990,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+	t.Logf("Created ledger: %s", ledgerInfo.Name)
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -1178,7 +1178,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+	t.Logf("Created ledger: %s", ledgerInfo.Name)
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -1359,7 +1359,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	// Create a ledger to verify cluster is working
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s (ID: %d)", ledgerInfo.Name, ledgerInfo.Id)
+	t.Logf("Created ledger: %s", ledgerInfo.Name)
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {

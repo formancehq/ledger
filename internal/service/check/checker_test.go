@@ -44,7 +44,6 @@ type testEngine struct {
 	cache     *cache.Cache
 
 	// In-memory state tracking (mirroring the state machine)
-	nextLedgerID      uint32
 	nextSequenceID    uint64
 	lastLogHash       []byte
 	ledgers           map[string]*commonpb.LedgerInfo
@@ -80,7 +79,6 @@ func newTestEngine(t *testing.T) *testEngine {
 		attrs:          attrs,
 		processor:      proc,
 		cache:          c,
-		nextLedgerID:   1,
 		nextSequenceID: 1,
 		ledgers:        make(map[string]*commonpb.LedgerInfo),
 		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
@@ -376,16 +374,6 @@ func (s *inMemoryStore) GetLastLogHash() []byte {
 
 func (s *inMemoryStore) SetLastLogHash(hash []byte) {
 	s.engine.lastLogHash = hash
-}
-
-func (s *inMemoryStore) GetNextLedgerID() uint32 {
-	return s.engine.nextLedgerID
-}
-
-func (s *inMemoryStore) IncrementNextLedgerID() uint32 {
-	id := s.engine.nextLedgerID
-	s.engine.nextLedgerID++
-	return id
 }
 
 func (s *inMemoryStore) GetNextSequenceID() uint64 {
@@ -767,7 +755,6 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "test",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						Id:        1,
 					},
 				},
 			},
@@ -785,7 +772,6 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "test2",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000001},
-						Id:        2,
 					},
 				},
 			},
@@ -829,7 +815,6 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "test",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						Id:        1,
 					},
 				},
 			},
@@ -846,7 +831,6 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 					Info: &commonpb.LedgerInfo{
 						Name:      "test2",
 						CreatedAt: &commonpb.Timestamp{Data: 1700000002},
-						Id:        2,
 					},
 				},
 			},
@@ -1081,7 +1065,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 
 	// Write a spurious transaction update to Pebble for tx 1 (ledger ID 1)
 	batch := engine.store.NewBatch()
-	err := state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: 1, ID: 1}, &commonpb.TransactionUpdate{
+	err := state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: "test", ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 999,
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
@@ -1128,7 +1112,7 @@ func TestCheckerDetectsRevertedMismatch(t *testing.T) {
 	))
 
 	// Overwrite the reverted status to false in Pebble
-	tkBytes := dal.TransactionKey{LedgerID: 1, ID: 1}.Bytes()
+	tkBytes := dal.TransactionKey{Ledger: "test", ID: 1}.Bytes()
 	batch := engine.store.NewBatch()
 	// Write a later raft index to override the existing base
 	err := engine.attrs.Reverted.SetBase(batch, 1<<61, tkBytes, &commonpb.RevertedValue{Reverted: false})

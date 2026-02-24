@@ -18,8 +18,8 @@ message LedgerState {
 }
 
 message State {
-  map<uint32, LedgerState> ledgers = 1;
-  uint32 next_ledger_id = 2;                // Next available ledger ID (max ~4.3 billion)
+  map<string, LedgerState> ledgers = 1;
+  reserved 2;                                // Was: uint32 next_ledger_id (removed: ledger name used as key)
   uint64 next_sequence = 3;                 // Next global sequence number for SystemLog
   uint64 checkpoint_id = 4;                 // ID of the last checkpoint (for snapshot recovery)
 }
@@ -244,7 +244,7 @@ message RevertedTransactionMemento {
 message LedgerBoundaries {
   uint64 next_transaction_id = 1;
   uint64 next_log_id = 2;
-  uint32 ledger_id = 3;
+  reserved 3;                               // Was: uint32 ledger_id (removed: ledger name used as key)
 }
 
 message VolumePair {
@@ -319,7 +319,7 @@ message PreloadAccountMetadata {
 // ============================================================================
 
 message MemorySnapshot {
-  uint32 next_ledger_id = 1;
+  reserved 1;                                // Was: uint32 next_ledger_id (removed: ledger name used as key)
   uint64 next_sequence_id = 2;
   bytes last_log_hash = 3;
   GenerationSnapshot gen0 = 4;

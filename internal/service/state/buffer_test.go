@@ -28,10 +28,9 @@ func TestBufferedGetPutLedger(t *testing.T) {
 	require.Nil(t, info)
 
 	// Put and get
-	buf.PutLedger("test", &commonpb.LedgerInfo{Id: 1, Name: "test"})
+	buf.PutLedger("test", &commonpb.LedgerInfo{Name: "test"})
 	info, ok = buf.GetLedger("test")
 	require.True(t, ok)
-	require.Equal(t, uint32(1), info.Id)
 	require.Equal(t, "test", info.Name)
 }
 
@@ -59,7 +58,7 @@ func TestBufferedGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.MetadataKey{AccountKey: dal.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}
+	key := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: "test", Account: "alice"}, Key: "role"}
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
 	_, err := buf.GetAccountMetadata(key)
@@ -75,7 +74,7 @@ func TestBufferedDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.MetadataKey{AccountKey: dal.AccountKey{LedgerID: 1, Account: "bob"}, Key: "label"}
+	key := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: "test", Account: "bob"}, Key: "label"}
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
 
 	val, err := buf.GetAccountMetadata(key)
@@ -94,7 +93,7 @@ func TestBufferedGetPutReverted(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionKey{LedgerID: 1, ID: 42}
+	key := dal.TransactionKey{Ledger: "test", ID: 42}
 
 	// Non-existent key returns ErrNotFound from backing store
 	_, err := buf.GetReverted(key)
@@ -127,7 +126,7 @@ func TestBufferedGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionReferenceKey{LedgerID: 1, Reference: "ref-1"}
+	key := dal.TransactionReferenceKey{Ledger: "test", Reference: "ref-1"}
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetTransactionReference(key)
@@ -144,7 +143,7 @@ func TestBufferedAddTransactionUpdate(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionKey{LedgerID: 1, ID: 1}
+	key := dal.TransactionKey{Ledger: "test", ID: 1}
 	update := &commonpb.TransactionUpdate{
 		ByLog: 5,
 		Updates: []*commonpb.TransactionUpdateType{
@@ -257,15 +256,9 @@ func TestBufferedSinkConfigOperations(t *testing.T) {
 	require.True(t, buf.HasPendingSinkChanges())
 }
 
-func TestBufferedLedgerIDSequenceIDOperations(t *testing.T) {
+func TestBufferedSequenceIDOperations(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
-
-	// NextLedgerID
-	startLedgerID := buf.GetNextLedgerID()
-	id := buf.IncrementNextLedgerID()
-	require.Equal(t, startLedgerID, id)
-	require.Equal(t, startLedgerID+1, buf.GetNextLedgerID())
 
 	// NextSequenceID
 	startSeqID := buf.GetNextSequenceID()

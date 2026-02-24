@@ -74,7 +74,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		expectedMetadata = make(map[string]string)           // metadataKey -> value
 		deletedMetadata  = make(map[string]struct{})         // metadataKey -> deleted
 		expectedTxStates = make(map[string]*expectedTxState) // txKey -> expected state
-		ledgerIDs        = make(map[string]uint32)           // ledgerName -> ledgerID
+		knownLedgers     = make(map[string]struct{})          // ledgerName -> exists
 		errorCount       int
 	)
 
@@ -114,14 +114,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			switch payload := log.Payload.Type.(type) {
 			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil && payload.CreateLedger.Info != nil {
-					ledgerIDs[payload.CreateLedger.Info.Name] = payload.CreateLedger.Info.Id
+					knownLedgers[payload.CreateLedger.Info.Name] = struct{}{}
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				// Nothing to track for delete
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.LedgerName
-					ledgerID, ok := ledgerIDs[ledgerName]
+					_, ok := knownLedgers[ledgerName]
 					if !ok {
 						callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
 							fmt.Sprintf("log %d references unknown ledger %q", seq, ledgerName),
@@ -130,7 +130,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						continue
 					}
 					if payload.Apply.Log != nil && payload.Apply.Log.Data != nil {
-						replayLedgerLog(ledgerID, seq, payload.Apply.Log.Data, expectedInputs, expectedOutputs, expectedMetadata, deletedMetadata, expectedTxStates)
+						replayLedgerLog(ledgerName, seq, payload.Apply.Log.Data, expectedInputs, expectedOutputs, expectedMetadata, deletedMetadata, expectedTxStates)
 					}
 				}
 			}
@@ -192,7 +192,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 					fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
 						vk.Account, vk.Asset, expectedInput.String(), actualInputVal.String()),
-					0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
+					0, vk.Ledger, vk.Account, vk.Asset))
 				errorCount++
 			}
 		}
@@ -202,7 +202,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 					fmt.Sprintf("output mismatch for %s/%s: expected %s, got %s",
 						vk.Account, vk.Asset, expectedOutput.String(), actualOutputVal.String()),
-					0, ledgerNameByID(ledgerIDs, vk.LedgerID), vk.Account, vk.Asset))
+					0, vk.Ledger, vk.Account, vk.Asset))
 				errorCount++
 			}
 		}
@@ -238,7 +238,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("metadata mismatch for %s/%s: expected %q, got %q",
 					mk.Account, mk.Key, expectedValue, actualStr),
-				0, ledgerNameByID(ledgerIDs, mk.LedgerID), mk.Account, ""))
+				0, mk.Ledger, mk.Account, ""))
 			errorCount++
 		}
 	}
@@ -254,16 +254,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualUpdates, err := state.ReadTransactionUpdates(c.store, tk.LedgerID, tk.ID)
+		actualUpdates, err := state.ReadTransactionUpdates(c.store, tk.Ledger, tk.ID)
 		if err != nil {
-			return fmt.Errorf("getting transaction updates for ledger %d tx %d: %w", tk.LedgerID, tk.ID, err)
+			return fmt.Errorf("getting transaction updates for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
 		}
 
 		if len(expected.updates) != len(actualUpdates) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction update count mismatch for tx %d: expected %d, got %d",
 					tk.ID, len(expected.updates), len(actualUpdates)),
-				ledgerNameByID(ledgerIDs, tk.LedgerID), tk.ID))
+				tk.Ledger, tk.ID))
 			errorCount++
 			continue
 		}
@@ -274,7 +274,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 					fmt.Sprintf("transaction update mismatch for tx %d at index %d: ByLog expected %d got %d",
 						tk.ID, i, expectedUpdate.ByLog, actualUpdate.ByLog),
-					ledgerNameByID(ledgerIDs, tk.LedgerID), tk.ID))
+					tk.Ledger, tk.ID))
 				errorCount++
 			}
 		}
@@ -297,7 +297,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		actual, err := c.attrs.Reverted.ComputeValue(c.store, maxIndex, []byte(key))
 		if err != nil {
-			return fmt.Errorf("computing reverted status for ledger %d tx %d: %w", tk.LedgerID, tk.ID, err)
+			return fmt.Errorf("computing reverted status for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
 		}
 
 		actualReverted := false
@@ -309,7 +309,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("reverted mismatch for tx %d: expected %v, got %v",
 					tk.ID, expected.reverted, actualReverted),
-				ledgerNameByID(ledgerIDs, tk.LedgerID), tk.ID))
+				tk.Ledger, tk.ID))
 			errorCount++
 		}
 	}
@@ -319,7 +319,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 // replayLedgerLog updates expected state based on a ledger log payload.
 func replayLedgerLog(
-	ledgerID uint32,
+	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
 	expectedInputs map[string]*big.Int,
@@ -334,10 +334,10 @@ func replayLedgerLog(
 			return
 		}
 		tx := p.CreatedTransaction.Transaction
-		applyPostings(ledgerID, tx.Postings, expectedInputs, expectedOutputs)
+		applyPostings(ledger, tx.Postings, expectedInputs, expectedOutputs)
 
 		// Track TransactionInit update
-		txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: tx.Id}.Bytes())
+		txKey := string(dal.TransactionKey{Ledger: ledger, ID: tx.Id}.Bytes())
 		state := getOrCreateTxState(expectedTxStates, txKey)
 		state.updates = append(state.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -354,7 +354,7 @@ func replayLedgerLog(
 				for _, m := range metaSet.Metadata {
 					mk := dal.MetadataKey{
 						AccountKey: dal.AccountKey{
-							LedgerID: ledgerID,
+							Ledger: ledger,
 							Account:  account,
 						},
 						Key: m.Key,
@@ -373,10 +373,10 @@ func replayLedgerLog(
 			return
 		}
 		revertTx := p.RevertedTransaction.RevertTransaction
-		applyPostings(ledgerID, revertTx.Postings, expectedInputs, expectedOutputs)
+		applyPostings(ledger, revertTx.Postings, expectedInputs, expectedOutputs)
 
 		// Track revert update on the original transaction
-		origTxKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
+		origTxKey := string(dal.TransactionKey{Ledger: ledger, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
 		origState := getOrCreateTxState(expectedTxStates, origTxKey)
 		origState.reverted = true
 		origState.updates = append(origState.updates, &commonpb.TransactionUpdate{
@@ -391,7 +391,7 @@ func replayLedgerLog(
 		})
 
 		// Track TransactionInit for the revert transaction
-		revertTxKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: revertTx.Id}.Bytes())
+		revertTxKey := string(dal.TransactionKey{Ledger: ledger, ID: revertTx.Id}.Bytes())
 		revertState := getOrCreateTxState(expectedTxStates, revertTxKey)
 		revertState.updates = append(revertState.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -412,7 +412,7 @@ func replayLedgerLog(
 				for _, m := range p.SavedMetadata.Metadata.Metadata {
 					mk := dal.MetadataKey{
 						AccountKey: dal.AccountKey{
-							LedgerID: ledgerID,
+							Ledger: ledger,
 							Account:  target.Account.Addr,
 						},
 						Key: m.Key,
@@ -426,7 +426,7 @@ func replayLedgerLog(
 			}
 		case *commonpb.Target_Transaction:
 			if p.SavedMetadata.Metadata != nil {
-				txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
+				txKey := string(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
 				state := getOrCreateTxState(expectedTxStates, txKey)
 				updates := make([]*commonpb.TransactionUpdateType, len(p.SavedMetadata.Metadata.Metadata))
 				for i, m := range p.SavedMetadata.Metadata.Metadata {
@@ -453,7 +453,7 @@ func replayLedgerLog(
 		case *commonpb.Target_Account:
 			mk := dal.MetadataKey{
 				AccountKey: dal.AccountKey{
-					LedgerID: ledgerID,
+					Ledger: ledger,
 					Account:  target.Account.Addr,
 				},
 				Key: p.DeletedMetadata.Key,
@@ -462,7 +462,7 @@ func replayLedgerLog(
 			delete(expectedMetadata, key)
 			deletedMetadata[key] = struct{}{}
 		case *commonpb.Target_Transaction:
-			txKey := string(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}.Bytes())
+			txKey := string(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
 			state := getOrCreateTxState(expectedTxStates, txKey)
 			state.updates = append(state.updates, &commonpb.TransactionUpdate{
 				ByLog: seq,
@@ -489,7 +489,7 @@ func replayLedgerLog(
 
 // applyPostings applies postings to the expected volume maps.
 func applyPostings(
-	ledgerID uint32,
+	ledger string,
 	postings []*commonpb.Posting,
 	expectedInputs map[string]*big.Int,
 	expectedOutputs map[string]*big.Int,
@@ -500,7 +500,7 @@ func applyPostings(
 		// Source: increase output
 		sourceKey := dal.VolumeKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
+				Ledger: ledger,
 				Account:  posting.Source,
 			},
 			Asset: posting.Asset,
@@ -514,7 +514,7 @@ func applyPostings(
 		// Destination: increase input
 		destKey := dal.VolumeKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
+				Ledger: ledger,
 				Account:  posting.Destination,
 			},
 			Asset: posting.Asset,
@@ -564,11 +564,3 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 	}
 }
 
-func ledgerNameByID(ledgerIDs map[string]uint32, id uint32) string {
-	for name, lid := range ledgerIDs {
-		if lid == id {
-			return name
-		}
-	}
-	return fmt.Sprintf("unknown-ledger-id-%d", id)
-}

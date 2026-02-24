@@ -24,12 +24,10 @@ func TestProcessCreateLedger(t *testing.T) {
 
 	// Setup expectations
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
-	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(name string, info *commonpb.LedgerInfo) {
 			require.Equal(t, "test-ledger", info.Name)
-			require.Equal(t, uint32(1), info.Id)
 			require.Equal(t, now, info.CreatedAt)
 		},
 	)
@@ -37,7 +35,6 @@ func TestProcessCreateLedger(t *testing.T) {
 		func(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
 			require.Equal(t, uint64(1), boundaries.NextTransactionId)
 			require.Equal(t, uint64(1), boundaries.NextLogId)
-			require.Equal(t, uint32(1), boundaries.LedgerId)
 		},
 	)
 
@@ -56,7 +53,6 @@ func TestProcessCreateLedger(t *testing.T) {
 	createLedgerLog := result.GetCreateLedger()
 	require.NotNil(t, createLedgerLog)
 	require.Equal(t, "test-ledger", createLedgerLog.Info.Name)
-	require.Equal(t, uint32(1), createLedgerLog.Info.Id)
 }
 
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
@@ -69,7 +65,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, true)
 
 	request := &servicepb.Request{
@@ -97,7 +93,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, true)
 	mockStore.EXPECT().GetDate().Return(now)

@@ -43,7 +43,7 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixLedgerInfo).
-		PutUInt32(info.Id)
+		PutString(info.Name)
 
 	if err := b.SetProto(b.KeyBuilder.Build(), info); err != nil {
 		return fmt.Errorf("inserting ledger info: %w", err)
@@ -53,11 +53,11 @@ func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 }
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
-// Key: [KeyPrefixTransactionUpdate][ledgerID][transactionID][byLog] -> TransactionUpdate
+// Key: [KeyPrefixTransactionUpdate][name]\x00[transactionID(8)][byLog(8)] -> TransactionUpdate
 func StoreTransactionUpdate(b *dal.Batch, key dal.TransactionKey, update *commonpb.TransactionUpdate) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixTransactionUpdate).
-		PutLedgerPrefix(key.LedgerID).
+		PutLedgerName(key.Ledger).
 		PutUInt64(key.ID).
 		PutUInt64(update.ByLog)
 
@@ -274,7 +274,7 @@ func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 
 // PurgeTransactionUpdates deletes all transaction update entries whose byLog
 // field falls in [startSeq, closeSeq]. The key format is
-// [prefix(1)][ledgerID(4)][txID(8)][byLog(8)], so byLog is the last 8 bytes.
+// [prefix(1)][name]\x00[txID(8)][byLog(8)], so byLog is the last 8 bytes.
 func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 	iter, err := b.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.KeyPrefixTransactionUpdate},
@@ -287,7 +287,8 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		if len(key) < dal.TxUpdateKeyLen {
+		// Key must be at least prefix(1) + \x00(1) + txID(8) + byLog(8) = 18 bytes
+		if len(key) < 18 {
 			continue
 		}
 		byLog := binary.BigEndian.Uint64(key[len(key)-8:])

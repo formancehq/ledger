@@ -20,10 +20,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-const (
-	testLedgerName = "test-ledger"
-	testLedgerID   = uint32(1)
-)
+const testLedgerName = "test-ledger"
 
 // createTestStore creates a test store with a registered ledger
 func createTestStore(t *testing.T) *dal.Store {
@@ -40,7 +37,6 @@ func createTestStore(t *testing.T) *dal.Store {
 	// Register test ledger
 	batch := s.NewBatch()
 	err = state.SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        testLedgerID,
 		Name:      testLedgerName,
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	})
@@ -150,7 +146,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		require.NoError(t, err)
 
 		// Add TransactionUpdate with TransactionInit to link transaction ID to log sequence
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: testLedgerID, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -217,17 +213,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 2 volume keys: source (world) and destination (user:alice)
 		require.Len(t, volumes, 2)
 
 		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "world"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -268,17 +264,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 2 volume keys: original destination (alice, now source) and original source (world, now destination)
 		require.Len(t, volumes, 2)
 
 		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "world"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -322,21 +318,21 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 3 volume keys: world, alice, bob (all in USD)
 		require.Len(t, volumes, 3)
 
 		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "world"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "user:alice"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "user:bob"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:bob"},
 			Asset:      "USD",
 		}
 
@@ -380,14 +376,14 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Transactions
+		transactions := admission.extractPreloadNeeds(orders).Transactions
 
 		// Should have 1 transaction key
 		require.Len(t, transactions, 1)
 
 		txKey := dal.TransactionKey{
-			LedgerID: testLedgerID,
-			ID:       42,
+			Ledger: testLedgerName,
+			ID:     42,
 		}
 		_, hasTx := transactions[txKey]
 		require.True(t, hasTx, "should have transaction key for revert")
@@ -420,7 +416,7 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Transactions
+		transactions := admission.extractPreloadNeeds(orders).Transactions
 
 		// Should be empty - create transactions don't need revert status check
 		require.Len(t, transactions, 0)
@@ -460,13 +456,13 @@ func TestExtractNeededTransactions(t *testing.T) {
 			},
 		}
 
-		transactions := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Transactions
+		transactions := admission.extractPreloadNeeds(orders).Transactions
 
 		// Should have 2 transaction keys
 		require.Len(t, transactions, 2)
 
-		txKey1 := dal.TransactionKey{LedgerID: testLedgerID, ID: 1}
-		txKey2 := dal.TransactionKey{LedgerID: testLedgerID, ID: 2}
+		txKey1 := dal.TransactionKey{Ledger: testLedgerName, ID: 1}
+		txKey2 := dal.TransactionKey{Ledger: testLedgerName, ID: 2}
 		_, hasTx1 := transactions[txKey1]
 		_, hasTx2 := transactions[txKey2]
 		require.True(t, hasTx1)
@@ -497,7 +493,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: testLedgerID, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -589,7 +585,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 0 volume keys with force=true - processor stores deltas only
 		require.Len(t, volumes, 0, "force=true should skip volume extraction")
@@ -623,17 +619,17 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 2 volume keys: source and destination
 		require.Len(t, volumes, 2, "force=false should extract volumes normally")
 
 		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:alice"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
 			Asset:      "USD",
 		}
 		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:bob"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
 			Asset:      "USD",
 		}
 
@@ -693,14 +689,14 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have volumes only from force=false order (2 volume keys)
 		require.Len(t, volumes, 2)
 
 		// Verify force=true volumes are NOT present
 		forceSourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:force_source"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:force_source"},
 			Asset:      "USD",
 		}
 		_, hasForceSource := volumes[forceSourceKey]
@@ -708,7 +704,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		// Verify force=false volumes are present
 		normalSourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:normal_source"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:normal_source"},
 			Asset:      "EUR",
 		}
 		_, hasNormalSource := volumes[normalSourceKey]
@@ -746,7 +742,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should still have 2 volume keys for revert (even with force=true)
 		// because volume preloading is needed for correct accounting
@@ -811,7 +807,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: testLedgerID, ID: 42}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 42}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -890,17 +886,17 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Numscript emulation should discover both source and destination
 		require.NotEmpty(t, volumes, "numscript emulation should discover volumes")
 
 		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:alice"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
 			Asset:      "USD/2",
 		}
 		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "users:bob"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
 			Asset:      "USD/2",
 		}
 
@@ -938,7 +934,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Force=true should skip volume extraction entirely
 		require.Empty(t, volumes, "force=true should skip numscript emulation")
@@ -975,17 +971,17 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPhase2Needs(orders, map[string]uint32{testLedgerName: testLedgerID}).Volumes
+		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should use explicit postings, not numscript emulation
 		require.Len(t, volumes, 2)
 
 		bankKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "bank"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "bank"},
 			Asset:      "EUR",
 		}
 		merchantKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "merchant"},
+			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "merchant"},
 			Asset:      "EUR",
 		}
 

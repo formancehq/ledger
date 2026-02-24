@@ -46,7 +46,6 @@ func TestResponseSigner(t *testing.T) {
 					CreateLedger: &commonpb.CreateLedgerLog{
 						Info: &commonpb.LedgerInfo{
 							Name: "test-ledger",
-							Id:   1,
 						},
 					},
 				},

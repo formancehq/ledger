@@ -10,7 +10,7 @@ import (
 func TestDiscoverNumscriptDependencies(t *testing.T) {
 	t.Parallel()
 
-	const ledgerID = uint32(42)
+	const ledgerID = "test-ledger"
 
 	t.Run("simple transfer discovers source and destination", func(t *testing.T) {
 		t.Parallel()
@@ -27,11 +27,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.Volumes, 2)
 
 		_, hasAlice := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
 		_, hasBob := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasAlice, "should discover source account")
@@ -53,11 +53,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.Volumes, 2)
 
 		_, hasWorld := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "world"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "world"},
 			Asset:      "EUR/2",
 		}]
 		_, hasTreasury := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "treasury"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "treasury"},
 			Asset:      "EUR/2",
 		}]
 		require.True(t, hasWorld, "should discover world account")
@@ -87,7 +87,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.Volumes, 2)
 
 		_, hasEscrow := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "escrow:order-123"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "escrow:order-123"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasEscrow, "should discover interpolated account address")
@@ -110,15 +110,15 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		_, hasChecking := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice:checking"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:alice:checking"},
 			Asset:      "USD/2",
 		}]
 		_, hasSavings := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice:savings"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:alice:savings"},
 			Asset:      "USD/2",
 		}]
 		_, hasMerchant := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "merchant"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "merchant"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasChecking, "should discover first source")
@@ -143,11 +143,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		_, hasAlice := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
 		_, hasBob := result.Volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
+			AccountKey: dal.AccountKey{Ledger: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasAlice, "should discover first destination")
@@ -204,7 +204,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		for key := range result.Volumes {
-			require.Equal(t, ledgerID, key.LedgerID, "all volume keys should have the correct ledger ID")
+			require.Equal(t, ledgerID, key.Ledger, "all volume keys should have the correct ledger ID")
 		}
 	})
 

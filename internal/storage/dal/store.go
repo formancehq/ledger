@@ -63,14 +63,8 @@ var (
 	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
 	ColdSequencePrefixes = []byte{KeyPrefixLog, KeyPrefixAudit}
 
-	// Composite-keyed cold prefix: [prefix][ledgerID][txID][byLog] -- requires filtered iteration.
-	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][ledgerID][txID][byLog] -> TransactionUpdate
-
-	// TxUpdateKeyLen is the fixed key length for transaction update entries.
-	TxUpdateKeyLen = 1 + 4 + 8 + 8 // prefix(1) + ledgerID(4) + txID(8) + byLog(8)
-
-	// TxUpdateTxIDOffset is the byte offset where the transaction ID starts in the key.
-	TxUpdateTxIDOffset = 1 + 4 // prefix(1) + ledgerID(4)
+	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] -- requires filtered iteration.
+	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
 
 	// Attributes zone [0xF1, 0xF2) -- seal hash domain
 	KeyPrefixAttributes byte = 0xF1
@@ -79,7 +73,7 @@ var (
 	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
 	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	KeyPrefixIdempotency          byte = 0xF4 // [KeyPrefixIdempotency][key] -> sequence
-	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][ledgerID] -> LedgerInfo
+	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][name] -> LedgerInfo
 	KeyPrefixSigningKey           byte = 0xF6 // [KeyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
 	KeyPrefixPeriods              byte = 0xF7 // [KeyPrefixPeriods][periodID] -> Period
 	KeyPrefixNextPeriodID         byte = 0xF8 // [KeyPrefixNextPeriodID] -> uint64 (next period ID)

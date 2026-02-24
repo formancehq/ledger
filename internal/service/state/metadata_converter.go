@@ -1,7 +1,6 @@
 package state
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -29,8 +28,8 @@ type Proposer interface {
 }
 
 // MetadataConvertRequest contains the data needed to convert existing metadata
-// values to a declared type. LedgerID is resolved lazily by the MetadataConverter
-// (not on the Raft hot path).
+// values to a declared type. The ledger is validated lazily by the
+// MetadataConverter (not on the Raft hot path).
 type MetadataConvertRequest struct {
 	LedgerName string
 	TargetType commonpb.TargetType
@@ -315,13 +314,11 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 		return errNotLeader
 	}
 
-	// Resolve the ledger ID from the name (off the hot path).
-	ledgerInfo, err := GetLedgerByName(mc.dataStore, req.LedgerName)
+	// Validate the ledger exists (off the hot path).
+	_, err := GetLedgerByName(mc.dataStore, req.LedgerName)
 	if err != nil {
-		return fmt.Errorf("resolving ledger ID for %q: %w", req.LedgerName, err)
+		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}
-
-	logFields["ledgerId"] = ledgerInfo.Id
 
 	// Transaction metadata uses read-time enforcement (assembleTransaction replays
 	// append-only update logs on every read). No background scan needed — just
@@ -334,9 +331,8 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	mc.logger.WithFields(logFields).Infof("Starting metadata conversion")
 
-	// Build the canonical prefix for this ledger: 4-byte big-endian ledger ID.
-	ledgerIDPrefix := make([]byte, 4)
-	binary.BigEndian.PutUint32(ledgerIDPrefix, ledgerInfo.Id)
+	// Build the canonical prefix for this ledger.
+	ledgerPrefix := []byte(req.LedgerName + "\x00")
 
 	// Open a Pebble read handle for a point-in-time snapshot used by both passes.
 	reader := mc.dataStore.NewReadHandle()
@@ -344,7 +340,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	// Pass 1: count matching keys for progress tracking (O(1) memory).
 	var totalMatchingKeys uint64
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerIDPrefix,
+	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk dal.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
@@ -370,7 +366,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	batch := make([]*raftcmdpb.ConvertMetadataEntry, 0, mc.batchSize)
 	var convertedSoFar uint64
 
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerIDPrefix,
+	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk dal.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {

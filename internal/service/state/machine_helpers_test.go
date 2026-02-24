@@ -181,7 +181,7 @@ func TestReadLastLog(t *testing.T) {
 	require.Nil(t, log)
 
 	// Add logs
-	registerLedger(t, s, "test-ledger", 1)
+	registerLedger(t, s, "test-ledger")
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 1, testLogs...)
 

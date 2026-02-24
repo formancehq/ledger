@@ -10,7 +10,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	original := VolumeKey{
-		AccountKey: AccountKey{LedgerID: 42, Account: "users:alice"},
+		AccountKey: AccountKey{Ledger: "ledger-42", Account: "users:alice"},
 		Asset:      "USD",
 	}
 
@@ -20,7 +20,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 	err := decoded.Unmarshal(data)
 	require.NoError(t, err)
 
-	require.Equal(t, original.LedgerID, decoded.LedgerID)
+	require.Equal(t, original.Ledger, decoded.Ledger)
 	require.Equal(t, original.Account, decoded.Account)
 	require.Equal(t, original.Asset, decoded.Asset)
 }
@@ -31,25 +31,25 @@ func TestVolumeKey_Unmarshal_TooShort(t *testing.T) {
 	var bk VolumeKey
 	err := bk.Unmarshal([]byte{1, 2})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "too short")
+	require.Contains(t, err.Error(), "expected 3 parts")
 }
 
 func TestVolumeKey_Unmarshal_MissingSeparator(t *testing.T) {
 	t.Parallel()
 
-	// 4 bytes ledger ID + data without null separator
-	data := []byte{0, 0, 0, 1, 'a', 'b', 'c'}
+	// data without enough null separators (needs 3 parts)
+	data := []byte{'a', 'b', 'c'}
 	var bk VolumeKey
 	err := bk.Unmarshal(data)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "expected 2 parts")
+	require.Contains(t, err.Error(), "expected 3 parts")
 }
 
 func TestMetadataKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	original := MetadataKey{
-		AccountKey: AccountKey{LedgerID: 10, Account: "orders:123"},
+		AccountKey: AccountKey{Ledger: "ledger-10", Account: "orders:123"},
 		Key:        "category",
 	}
 
@@ -59,7 +59,7 @@ func TestMetadataKey_RoundTrip(t *testing.T) {
 	err := decoded.Unmarshal(data)
 	require.NoError(t, err)
 
-	require.Equal(t, original.LedgerID, decoded.LedgerID)
+	require.Equal(t, original.Ledger, decoded.Ledger)
 	require.Equal(t, original.Account, decoded.Account)
 	require.Equal(t, original.Key, decoded.Key)
 }
@@ -70,14 +70,14 @@ func TestMetadataKey_Unmarshal_TooShort(t *testing.T) {
 	var mk MetadataKey
 	err := mk.Unmarshal([]byte{1})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "too short")
+	require.Contains(t, err.Error(), "expected ledger separator")
 }
 
 func TestMetadataKey_Unmarshal_MissingSeparator(t *testing.T) {
 	t.Parallel()
 
-	// 4 bytes ledger ID + data without \x01 separator
-	data := []byte{0, 0, 0, 1, 'a', 'b', 'c'}
+	// ledger + \x00 + data without \x01 separator
+	data := []byte("ledger\x00abc")
 	var mk MetadataKey
 	err := mk.Unmarshal(data)
 	require.Error(t, err)
@@ -87,16 +87,16 @@ func TestMetadataKey_Unmarshal_MissingSeparator(t *testing.T) {
 func TestTransactionKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	original := TransactionKey{LedgerID: 5, ID: 12345}
+	original := TransactionKey{Ledger: "ledger-5", ID: 12345}
 
 	data := original.Bytes()
-	require.Len(t, data, 12)
+	require.Len(t, data, len("ledger-5")+1+8)
 
 	var decoded TransactionKey
 	err := decoded.Unmarshal(data)
 	require.NoError(t, err)
 
-	require.Equal(t, original.LedgerID, decoded.LedgerID)
+	require.Equal(t, original.Ledger, decoded.Ledger)
 	require.Equal(t, original.ID, decoded.ID)
 }
 
@@ -104,9 +104,9 @@ func TestTransactionKey_Unmarshal_TooShort(t *testing.T) {
 	t.Parallel()
 
 	var tk TransactionKey
-	err := tk.Unmarshal([]byte{0, 0, 0, 1, 0, 0})
+	err := tk.Unmarshal([]byte{0, 0})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "expected 12 bytes")
+	require.Contains(t, err.Error(), "expected [ledger]")
 }
 
 func TestIdempotencyKey_RoundTrip(t *testing.T) {
@@ -126,7 +126,7 @@ func TestIdempotencyKey_RoundTrip(t *testing.T) {
 func TestTransactionReferenceKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	original := TransactionReferenceKey{LedgerID: 7, Reference: "order-42"}
+	original := TransactionReferenceKey{Ledger: "ledger-7", Reference: "order-42"}
 
 	data := original.Bytes()
 
@@ -134,7 +134,7 @@ func TestTransactionReferenceKey_RoundTrip(t *testing.T) {
 	err := decoded.Unmarshal(data)
 	require.NoError(t, err)
 
-	require.Equal(t, original.LedgerID, decoded.LedgerID)
+	require.Equal(t, original.Ledger, decoded.Ledger)
 	require.Equal(t, original.Reference, decoded.Reference)
 }
 
@@ -142,9 +142,9 @@ func TestTransactionReferenceKey_Unmarshal_TooShort(t *testing.T) {
 	t.Parallel()
 
 	var trk TransactionReferenceKey
-	err := trk.Unmarshal([]byte{0, 0})
+	err := trk.Unmarshal([]byte{'a'})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "too short")
+	require.Contains(t, err.Error(), "expected 2 parts")
 }
 
 func TestLedgerKey_RoundTrip(t *testing.T) {

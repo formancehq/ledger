@@ -64,7 +64,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 		code = codes.AlreadyExists
 		reason = processing.ErrReasonTransactionReferenceConflict
 		metadata = map[string]string{
-			"ledgerId":  fmt.Sprintf("%d", transactionReferenceConflict.LedgerID),
+			"ledger":    transactionReferenceConflict.Ledger,
 			"reference": transactionReferenceConflict.Reference,
 		}
 

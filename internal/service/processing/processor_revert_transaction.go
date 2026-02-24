@@ -9,10 +9,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	txKey := dal.TransactionKey{
-		LedgerID: ledgerID,
-		ID:       order.TransactionId,
+		Ledger: ledger,
+		ID:     order.TransactionId,
 	}
 
 	// Check if transaction exists (ID must be less than next transaction ID)
@@ -42,7 +42,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 		}
 
 		// Apply the reversed posting (skip balance check if force is set)
-		if err := applyPosting(s, ledgerID, revertPostings[i], order.Force); err != nil {
+		if err := applyPosting(s, ledger, revertPostings[i], order.Force); err != nil {
 			return nil, err
 		}
 	}
@@ -55,7 +55,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 	boundaries.NextTransactionId = revertTxID + 1
 
 	// Add transaction update for the original transaction (mark as reverted)
-	s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: order.TransactionId}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: order.TransactionId}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
@@ -67,7 +67,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerID uint32, boundaries 
 	})
 
 	// Add transaction init for the revert transaction
-	s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: revertTxID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{

@@ -46,11 +46,10 @@ func (m *State) CloneVT() *State {
 		return (*State)(nil)
 	}
 	r := new(State)
-	r.NextLedgerId = m.NextLedgerId
 	r.NextSequence = m.NextSequence
 	r.CheckpointId = m.CheckpointId
 	if rhs := m.Ledgers; rhs != nil {
-		tmpContainer := make(map[uint32]*LedgerState, len(rhs))
+		tmpContainer := make(map[string]*LedgerState, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -978,7 +977,6 @@ func (m *LedgerBoundaries) CloneVT() *LedgerBoundaries {
 	r := new(LedgerBoundaries)
 	r.NextTransactionId = m.NextTransactionId
 	r.NextLogId = m.NextLogId
-	r.LedgerId = m.LedgerId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1280,7 +1278,6 @@ func (m *MemorySnapshot) CloneVT() *MemorySnapshot {
 		return (*MemorySnapshot)(nil)
 	}
 	r := new(MemorySnapshot)
-	r.NextLedgerId = m.NextLedgerId
 	r.NextSequenceId = m.NextSequenceId
 	r.Gen0 = m.Gen0.CloneVT()
 	r.Gen1 = m.Gen1.CloneVT()
@@ -1538,9 +1535,6 @@ func (this *State) EqualVT(that *State) bool {
 				return false
 			}
 		}
-	}
-	if this.NextLedgerId != that.NextLedgerId {
-		return false
 	}
 	if this.NextSequence != that.NextSequence {
 		return false
@@ -3118,9 +3112,6 @@ func (this *LedgerBoundaries) EqualVT(that *LedgerBoundaries) bool {
 	if this.NextLogId != that.NextLogId {
 		return false
 	}
-	if this.LedgerId != that.LedgerId {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3609,9 +3600,6 @@ func (this *MemorySnapshot) EqualVT(that *MemorySnapshot) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.NextLedgerId != that.NextLedgerId {
-		return false
-	}
 	if this.NextSequenceId != that.NextSequenceId {
 		return false
 	}
@@ -4027,11 +4015,6 @@ func (m *State) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.NextLedgerId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextLedgerId))
-		i--
-		dAtA[i] = 0x10
-	}
 	if len(m.Ledgers) > 0 {
 		for k := range m.Ledgers {
 			v := m.Ledgers[k]
@@ -4044,9 +4027,11 @@ func (m *State) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x12
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(k))
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
 			dAtA[i] = 0xa
@@ -6296,11 +6281,6 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.LedgerId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LedgerId))
-		i--
-		dAtA[i] = 0x18
-	}
 	if m.NextLogId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextLogId))
 		i--
@@ -7181,11 +7161,6 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.NextLedgerId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextLedgerId))
-		i--
-		dAtA[i] = 0x8
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -7675,12 +7650,9 @@ func (m *State) SizeVT() (n int) {
 				l = v.SizeVT()
 			}
 			l += 1 + protohelpers.SizeOfVarint(uint64(l))
-			mapEntrySize := 1 + protohelpers.SizeOfVarint(uint64(k)) + l
+			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
-	}
-	if m.NextLedgerId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextLedgerId))
 	}
 	if m.NextSequence != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextSequence))
@@ -8643,9 +8615,6 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 	if m.NextLogId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextLogId))
 	}
-	if m.LedgerId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerId))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -8959,9 +8928,6 @@ func (m *MemorySnapshot) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.NextLedgerId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextLedgerId))
-	}
 	if m.NextSequenceId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextSequenceId))
 	}
@@ -9362,9 +9328,9 @@ func (m *State) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Ledgers == nil {
-				m.Ledgers = make(map[uint32]*LedgerState)
+				m.Ledgers = make(map[string]*LedgerState)
 			}
-			var mapkey uint32
+			var mapkey string
 			var mapvalue *LedgerState
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
@@ -9385,6 +9351,7 @@ func (m *State) UnmarshalVT(dAtA []byte) error {
 				}
 				fieldNum := int32(wire >> 3)
 				if fieldNum == 1 {
+					var stringLenmapkey uint64
 					for shift := uint(0); ; shift += 7 {
 						if shift >= 64 {
 							return protohelpers.ErrIntOverflow
@@ -9394,11 +9361,24 @@ func (m *State) UnmarshalVT(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						mapkey |= uint32(b&0x7F) << shift
+						stringLenmapkey |= uint64(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
 					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
 				} else if fieldNum == 2 {
 					var mapmsglen int
 					for shift := uint(0); ; shift += 7 {
@@ -9447,25 +9427,6 @@ func (m *State) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledgers[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NextLedgerId", wireType)
-			}
-			m.NextLedgerId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NextLedgerId |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextSequence", wireType)
@@ -14642,25 +14603,6 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LedgerId", wireType)
-			}
-			m.LedgerId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LedgerId |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -16394,25 +16336,6 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MemorySnapshot: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NextLedgerId", wireType)
-			}
-			m.NextLedgerId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NextLedgerId |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextSequenceId", wireType)

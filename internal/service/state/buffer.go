@@ -39,7 +39,6 @@ type Buffered struct {
 	fsm                            *Machine
 	attrs                          *attributes.Attributes
 	Date                           *commonpb.Timestamp
-	NextLedgerID                   uint32
 	NextSequenceID                 uint64
 	LastLogHash                    []byte
 	Ledgers                        *attributes.DerivedKeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
@@ -203,7 +202,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		for _, update := range updates {
 			err := StoreTransactionUpdate(batch, key, update)
 			if err != nil {
-				return fmt.Errorf("failed storing transaction update for ledger %d: %w", key.LedgerID, err)
+				return fmt.Errorf("failed storing transaction update for ledger %s: %w", key.Ledger, err)
 			}
 		}
 	}
@@ -295,7 +294,6 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	b.PendingLogs = nil
-	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.lastLogHash = b.LastLogHash
 
@@ -337,7 +335,6 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Date:                at,
 		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, (*commonpb.LedgerInfo).CloneVT),
 		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
-		NextLedgerID:        fsm.nextLedgerID,
 		NextSequenceID:      fsm.nextSequenceID,
 		LastLogHash:         fsm.lastLogHash,
 		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, (*raftcmdpb.VolumePair).CloneVT),
@@ -524,16 +521,6 @@ func (b *Buffered) RemoveSinkConfig(name string) {
 
 func (b *Buffered) HasPendingSinkChanges() bool {
 	return b.sinkConfigChanged
-}
-
-func (b *Buffered) GetNextLedgerID() uint32 {
-	return b.NextLedgerID
-}
-
-func (b *Buffered) IncrementNextLedgerID() uint32 {
-	id := b.NextLedgerID
-	b.NextLedgerID++
-	return id
 }
 
 func (b *Buffered) GetNextSequenceID() uint64 {

@@ -71,7 +71,6 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 					CreateLedger: &commonpb.CreateLedgerLog{
 						Info: &commonpb.LedgerInfo{
 							Name: "orders",
-							Id:   42,
 						},
 					},
 				},
@@ -86,8 +85,6 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.LedgerName)
 	require.Equal(t, "orders", *result.LedgerName)
-	require.NotNil(t, result.LedgerID)
-	require.Equal(t, uint32(42), *result.LedgerID)
 }
 
 func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
@@ -104,7 +101,6 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 					DeleteLedger: &commonpb.DeleteLedgerLog{
 						Info: &commonpb.LedgerInfo{
 							Name: "old-ledger",
-							Id:   7,
 						},
 					},
 				},
@@ -719,5 +715,4 @@ func TestPopulateLedgerInfo_Nil(t *testing.T) {
 	data := &clickhouseEventData{}
 	populateLedgerInfo(data, nil)
 	require.Nil(t, data.LedgerName)
-	require.Nil(t, data.LedgerID)
 }

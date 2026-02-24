@@ -67,7 +67,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Ledger: %s\n", ledger.Name)
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("ID:         %d\n", ledger.Id)
 	pterm.Printf("Name:       %s\n", ledger.Name)
 	createdAt := "-"
 	if ledger.CreatedAt != nil {

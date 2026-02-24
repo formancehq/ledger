@@ -43,7 +43,6 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
-	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -196,7 +195,6 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	// No idempotency check should be made
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
-	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -240,10 +238,9 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	// Track the hash chain as SetLastLogHash is called
 	var capturedHashes [][]byte
 
-	// For each of the 3 orders: GetLedger, IncrementNextLedgerID, GetDate, PutLedger, PutBoundaries, IncrementNextSequenceID
+	// For each of the 3 orders: GetLedger, GetDate, PutLedger, PutBoundaries, IncrementNextSequenceID
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
 		mockStore.EXPECT().GetLedger(name).Return(nil, false)
-		mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
 		mockStore.EXPECT().GetDate().Return(now)
 		mockStore.EXPECT().PutLedger(name, gomock.Any())
 		mockStore.EXPECT().PutBoundaries(name, gomock.Any())
@@ -299,7 +296,6 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
 		mockStore2.EXPECT().GetLedger(name).Return(nil, false)
-		mockStore2.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
 		mockStore2.EXPECT().GetDate().Return(now)
 		mockStore2.EXPECT().PutLedger(name, gomock.Any())
 		mockStore2.EXPECT().PutBoundaries(name, gomock.Any())

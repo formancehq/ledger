@@ -29,11 +29,10 @@ func newTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
+func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 	batch := s.NewBatch()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        id,
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 	})
@@ -198,7 +197,7 @@ func TestReadLogBySequence(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
-	registerLedger(t, s, "test-ledger", 1)
+	registerLedger(t, s, "test-ledger")
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
@@ -216,7 +215,7 @@ func TestReadLastSequence(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
-	registerLedger(t, s, "test-ledger", 1)
+	registerLedger(t, s, "test-ledger")
 
 	// Test with no logs - should return 0
 	lastSequence, err := ReadLastSequence(s)
@@ -244,17 +243,16 @@ func TestReadLedgers(t *testing.T) {
 	require.Empty(t, ledgers)
 
 	// Register first ledger
-	registerLedger(t, s, "ledger-1", 1)
+	registerLedger(t, s, "ledger-1")
 	cursor, err = ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
 	require.Equal(t, "ledger-1", ledgers[0].Name)
-	require.Equal(t, uint32(1), ledgers[0].Id)
 
 	// Register second ledger
-	registerLedger(t, s, "ledger-2", 2)
+	registerLedger(t, s, "ledger-2")
 	cursor, err = ReadLedgers(s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
@@ -266,13 +264,12 @@ func TestGetLedgerByName(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
-	registerLedger(t, s, "my-ledger", 42)
+	registerLedger(t, s, "my-ledger")
 
 	ledger, err := GetLedgerByName(s, "my-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
 	require.Equal(t, "my-ledger", ledger.Name)
-	require.Equal(t, uint32(42), ledger.Id)
 
 	ledger, err = GetLedgerByName(s, "non-existing")
 	require.Error(t, err)
@@ -284,7 +281,7 @@ func TestReadLastSequenceAfterSnapshot(t *testing.T) {
 	s := newTestStore(t)
 
 	// Create some data
-	registerLedger(t, s, "test-ledger", 1)
+	registerLedger(t, s, "test-ledger")
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
@@ -311,7 +308,6 @@ func TestReadLastAppliedIndex(t *testing.T) {
 	// Create batch with index 5
 	batch := s.NewBatch()
 	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:   1,
 		Name: "test",
 	}))
 	require.NoError(t, SetAppliedIndex(batch, 5))
@@ -325,7 +321,6 @@ func TestReadLastAppliedIndex(t *testing.T) {
 	// Create another batch with index 10
 	batch = s.NewBatch()
 	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:   2,
 		Name: "test2",
 	}))
 	require.NoError(t, SetAppliedIndex(batch, 10))
@@ -341,14 +336,10 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	s := newTestStore(t)
 	attrs := attributes.New()
 
-	const (
-		ledgerName = "test-ledger"
-		ledgerID   = uint32(1)
-	)
+	const ledgerName = "test-ledger"
 	createdAt := commonpb.NewTimestamp(libtime.Now())
 	batch := s.NewBatch()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        ledgerID,
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 	})
@@ -357,15 +348,15 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	worldKey := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "world"}, Asset: "USD"}
+	worldKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
 		OutputKnown: commonpb.NewUint256FromUint64(100),
 	}))
-	metadataKey := dal.MetadataKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "bank"}, Key: "key"}
+	metadataKey := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
-	require.NoError(t, StoreTransactionUpdate(batch, dal.TransactionKey{LedgerID: ledgerID, ID: 1}, &commonpb.TransactionUpdate{
+	require.NoError(t, StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
 			{
@@ -389,7 +380,6 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	deletedAt := commonpb.NewTimestamp(libtime.Now())
 	batch = s.NewBatch()
 	require.NoError(t, SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        ledgerID,
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 		DeletedAt: deletedAt,
@@ -627,7 +617,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 
 		// Store periods, nextPeriodID, and logs in the same batch
 		batch := s.NewBatch()
@@ -760,7 +750,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
@@ -777,7 +767,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
@@ -794,7 +784,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
@@ -809,7 +799,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
@@ -823,7 +813,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
@@ -852,7 +842,7 @@ func TestReadLogsSince(t *testing.T) {
 		s := newTestStore(t)
 
 		now := libtime.Now()
-		registerLedger(t, s, "test-ledger", 1)
+		registerLedger(t, s, "test-ledger")
 
 		// Create logs with different payload types
 		mixedLogs := []*commonpb.Log{
@@ -864,7 +854,6 @@ func TestReadLogsSince(t *testing.T) {
 							Info: &commonpb.LedgerInfo{
 								Name:      "new-ledger",
 								CreatedAt: commonpb.NewTimestamp(now),
-								Id:        2,
 							},
 						},
 					},
@@ -900,7 +889,6 @@ func TestReadLogsSince(t *testing.T) {
 							Info: &commonpb.LedgerInfo{
 								Name:      "new-ledger",
 								DeletedAt: commonpb.NewTimestamp(now),
-								Id:        2,
 							},
 						},
 					},

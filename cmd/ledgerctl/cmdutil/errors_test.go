@@ -73,7 +73,7 @@ func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
 
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "ref conflict",
 		processing.ErrReasonTransactionReferenceConflict, map[string]string{
-			"ledgerId":  "42",
+			"ledger":    "test",
 			"reference": "ref-001",
 		})
 
@@ -82,7 +82,7 @@ func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
 
 	var refErr *processing.ErrTransactionReferenceConflict
 	require.True(t, errors.As(bizErr, &refErr))
-	require.Equal(t, uint32(42), refErr.LedgerID)
+	require.Equal(t, "test", refErr.Ledger)
 	require.Equal(t, "ref-001", refErr.Reference)
 }
 
@@ -188,7 +188,7 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"ledger already exists", &processing.ErrLedgerAlreadyExists{Name: "test"}},
 		{"ledger not found", &processing.ErrLedgerNotFound{Name: "test"}},
 		{"idempotency key conflict", &processing.ErrIdempotencyKeyConflict{Key: "ik-1"}},
-		{"transaction reference conflict", &processing.ErrTransactionReferenceConflict{LedgerID: 1, Reference: "ref-1"}},
+		{"transaction reference conflict", &processing.ErrTransactionReferenceConflict{Ledger: "test", Reference: "ref-1"}},
 		{"transaction not found", &processing.ErrTransactionNotFound{TransactionID: 100}},
 		{"transaction already reverted", &processing.ErrTransactionAlreadyReverted{TransactionID: 100}},
 		{"insufficient funds", &processing.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "10", Balance: "5"}},
@@ -235,7 +235,7 @@ func serverSideConvert(bizErr *processing.BusinessError) *status.Status {
 		metadata = map[string]string{"key": e.Key}
 	case *processing.ErrTransactionReferenceConflict:
 		code, reason = codes.AlreadyExists, processing.ErrReasonTransactionReferenceConflict
-		metadata = map[string]string{"ledgerId": "1", "reference": e.Reference}
+		metadata = map[string]string{"ledger": e.Ledger, "reference": e.Reference}
 	case *processing.ErrTransactionNotFound:
 		code, reason = codes.NotFound, processing.ErrReasonTransactionNotFound
 		metadata = map[string]string{"transactionId": "100"}

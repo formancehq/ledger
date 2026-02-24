@@ -121,11 +121,10 @@ func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 	require.NoError(t, batch.Commit())
 }
 
-func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
+func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 	batch := s.NewBatch()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        id,
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 	}))
@@ -141,7 +140,7 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 	logger := logging.Testing()
 
 	// Write logs before starting emitter (simulates catch-up on leader restart)
-	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "orders")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -153,7 +152,6 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 						Info: &commonpb.LedgerInfo{
 							Name:      "orders",
 							CreatedAt: commonpb.NewTimestamp(now),
-							Id:        1,
 						},
 					},
 				},
@@ -219,7 +217,7 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "payments", 1)
+	registerLedger(t, store, "payments")
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
@@ -280,7 +278,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "orders")
 	now := libtime.Now()
 
 	// Append 3 logs
@@ -290,7 +288,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -408,7 +406,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "test", 1)
+	registerLedger(t, store, "test")
 	now := libtime.Now()
 
 	// Write logs covering all 6 event types
@@ -419,7 +417,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -517,7 +515,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_DeleteLedger{
 					DeleteLedger: &commonpb.DeleteLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", DeletedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "test", DeletedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -562,7 +560,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "test", 1)
+	registerLedger(t, store, "test")
 	now := libtime.Now()
 
 	// Write 10 logs
@@ -624,7 +622,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "test", 1)
+	registerLedger(t, store, "test")
 	now := libtime.Now()
 
 	// Write logs covering 3 event types
@@ -635,7 +633,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},

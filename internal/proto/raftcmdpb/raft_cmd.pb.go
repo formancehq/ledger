@@ -85,10 +85,9 @@ func (x *LedgerState) GetNextTransactionId() uint64 {
 
 type State struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Ledgers       map[uint32]*LedgerState `protobuf:"bytes,1,rep,name=ledgers,proto3" json:"ledgers,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	NextLedgerId  uint32                  `protobuf:"varint,2,opt,name=next_ledger_id,json=nextLedgerId,proto3" json:"next_ledger_id,omitempty"` // Next available ledger ID (max ~4.3 billion)
-	NextSequence  uint64                  `protobuf:"varint,3,opt,name=next_sequence,json=nextSequence,proto3" json:"next_sequence,omitempty"`   // Next global sequence number for SystemLog
-	CheckpointId  uint64                  `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`   // ID of the last checkpoint (for snapshot recovery)
+	Ledgers       map[string]*LedgerState `protobuf:"bytes,1,rep,name=ledgers,proto3" json:"ledgers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	NextSequence  uint64                  `protobuf:"varint,3,opt,name=next_sequence,json=nextSequence,proto3" json:"next_sequence,omitempty"` // Next global sequence number for SystemLog
+	CheckpointId  uint64                  `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // ID of the last checkpoint (for snapshot recovery)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -123,18 +122,11 @@ func (*State) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *State) GetLedgers() map[uint32]*LedgerState {
+func (x *State) GetLedgers() map[string]*LedgerState {
 	if x != nil {
 		return x.Ledgers
 	}
 	return nil
-}
-
-func (x *State) GetNextLedgerId() uint32 {
-	if x != nil {
-		return x.NextLedgerId
-	}
-	return 0
 }
 
 func (x *State) GetNextSequence() uint64 {
@@ -2359,7 +2351,6 @@ type LedgerBoundaries struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	NextTransactionId uint64                 `protobuf:"varint,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
 	NextLogId         uint64                 `protobuf:"varint,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
-	LedgerId          uint32                 `protobuf:"varint,3,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2404,13 +2395,6 @@ func (x *LedgerBoundaries) GetNextTransactionId() uint64 {
 func (x *LedgerBoundaries) GetNextLogId() uint64 {
 	if x != nil {
 		return x.NextLogId
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetLedgerId() uint32 {
-	if x != nil {
-		return x.LedgerId
 	}
 	return 0
 }
@@ -3147,7 +3131,6 @@ func (x *PreloadAccountMetadata) GetValue() *commonpb.MetadataValue {
 
 type MemorySnapshot struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	NextLedgerId         uint32                 `protobuf:"varint,1,opt,name=next_ledger_id,json=nextLedgerId,proto3" json:"next_ledger_id,omitempty"`
 	NextSequenceId       uint64                 `protobuf:"varint,2,opt,name=next_sequence_id,json=nextSequenceId,proto3" json:"next_sequence_id,omitempty"`
 	LastLogHash          []byte                 `protobuf:"bytes,3,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`
 	Gen0                 *GenerationSnapshot    `protobuf:"bytes,4,opt,name=gen0,proto3" json:"gen0,omitempty"`
@@ -3194,13 +3177,6 @@ func (x *MemorySnapshot) ProtoReflect() protoreflect.Message {
 // Deprecated: Use MemorySnapshot.ProtoReflect.Descriptor instead.
 func (*MemorySnapshot) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{46}
-}
-
-func (x *MemorySnapshot) GetNextLedgerId() uint32 {
-	if x != nil {
-		return x.NextLedgerId
-	}
-	return 0
 }
 
 func (x *MemorySnapshot) GetNextSequenceId() uint64 {
@@ -3729,15 +3705,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vledger_info\x18\x01 \x01(\v2\x12.common.LedgerInfoR\n" +
 	"ledgerInfo\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12.\n" +
-	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\"\xfa\x01\n" +
+	"\x13next_transaction_id\x18\x03 \x01(\x04R\x11nextTransactionId\"\xda\x01\n" +
 	"\x05State\x122\n" +
-	"\aledgers\x18\x01 \x03(\v2\x18.raft.State.LedgersEntryR\aledgers\x12$\n" +
-	"\x0enext_ledger_id\x18\x02 \x01(\rR\fnextLedgerId\x12#\n" +
+	"\aledgers\x18\x01 \x03(\v2\x18.raft.State.LedgersEntryR\aledgers\x12#\n" +
 	"\rnext_sequence\x18\x03 \x01(\x04R\fnextSequence\x12#\n" +
 	"\rcheckpoint_id\x18\x04 \x01(\x04R\fcheckpointId\x1aM\n" +
 	"\fLedgersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\rR\x03key\x12'\n" +
-	"\x05value\x18\x02 \x01(\v2\x11.raft.LedgerStateR\x05value:\x028\x01\"\x85\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12'\n" +
+	"\x05value\x18\x02 \x01(\v2\x11.raft.LedgerStateR\x05value:\x028\x01J\x04\b\x02\x10\x03\"\x85\n" +
 	"\n" +
 	"\x05Order\x125\n" +
 	"\vidempotency\x18\x01 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12.\n" +
@@ -3891,11 +3866,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\x1aRevertedTransactionMemento\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12F\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x17.raft.TransactionResumeR\x11revertTransaction\"\x7f\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x17.raft.TransactionResumeR\x11revertTransaction\"h\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x04R\x11nextTransactionId\x12\x1e\n" +
-	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12\x1b\n" +
-	"\tledger_id\x18\x03 \x01(\rR\bledgerId\"\xd4\x01\n" +
+	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogIdJ\x04\b\x03\x10\x04\"\xd4\x01\n" +
 	"\n" +
 	"VolumePair\x120\n" +
 	"\vinput_known\x18\x01 \x01(\v2\x0f.common.Uint256R\n" +
@@ -3947,9 +3921,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06config\x18\x02 \x01(\v2\x12.common.SinkConfigR\x06config\"h\n" +
 	"\x16PreloadAccountMetadata\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value\"\xe4\x04\n" +
-	"\x0eMemorySnapshot\x12$\n" +
-	"\x0enext_ledger_id\x18\x01 \x01(\rR\fnextLedgerId\x12(\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value\"\xc4\x04\n" +
+	"\x0eMemorySnapshot\x12(\n" +
 	"\x10next_sequence_id\x18\x02 \x01(\x04R\x0enextSequenceId\x12\"\n" +
 	"\rlast_log_hash\x18\x03 \x01(\fR\vlastLogHash\x12,\n" +
 	"\x04gen0\x18\x04 \x01(\v2\x18.raft.GenerationSnapshotR\x04gen0\x12,\n" +
@@ -3963,7 +3936,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"openPeriod\x125\n" +
 	"\x0eclosing_period\x18\v \x01(\v2\x0e.common.PeriodR\rclosingPeriod\x12$\n" +
 	"\x0enext_period_id\x18\f \x01(\x04R\fnextPeriodId\x125\n" +
-	"\x0eclosed_periods\x18\r \x03(\v2\x0e.common.PeriodR\rclosedPeriods\"\xb0\x03\n" +
+	"\x0eclosed_periods\x18\r \x03(\v2\x0e.common.PeriodR\rclosedPeriodsJ\x04\b\x01\x10\x02\"\xb0\x03\n" +
 	"\x12GenerationSnapshot\x12\x1d\n" +
 	"\n" +
 	"base_index\x18\x01 \x01(\x04R\tbaseIndex\x12<\n" +

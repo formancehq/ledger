@@ -59,10 +59,9 @@ func TestKeyBuilder_PutLedgerPrefix(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	key := kb.PutLedgerPrefix(5).Build()
+	key := kb.PutString("ledger-5").PutByte(0x00).Build()
 
-	require.Len(t, key, 4)
-	require.Equal(t, uint32(5), binary.BigEndian.Uint32(key))
+	require.Equal(t, append([]byte("ledger-5"), 0x00), key)
 }
 
 func TestKeyBuilder_Chaining(t *testing.T) {

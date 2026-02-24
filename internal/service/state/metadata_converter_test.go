@@ -31,11 +31,10 @@ func newConverterTestStore(t *testing.T) *dal.Store {
 }
 
 // registerLedgerWithSchema registers a ledger with a metadata schema.
-func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, id uint32, schema *commonpb.MetadataSchema) {
+func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *commonpb.MetadataSchema) {
 	t.Helper()
 	batch := s.NewBatch()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:             id,
 		Name:           name,
 		CreatedAt:      commonpb.NewTimestamp(libtime.Now()),
 		MetadataSchema: schema,
@@ -94,7 +93,7 @@ func TestMetadataConverterFieldNoLongerConverting(t *testing.T) {
 	// No EXPECT on proposer → any call will fail the test.
 
 	// Register a ledger with the field already COMPLETE (not CONVERTING).
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"age": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -131,7 +130,7 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 	// No EXPECT → non-leader must never propose.
 
 	// Register a ledger with the field in CONVERTING state.
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"age": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -151,7 +150,7 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 	}
 
 	// Now mark the field as complete (simulating leader completing via Raft).
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"age": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -175,7 +174,7 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	proposer := NewMockProposer(ctrl)
 
 	// Register a ledger with the field in CONVERTING state but no metadata entries.
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"score": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -230,7 +229,7 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 	proposer := NewMockProposer(ctrl)
 
 	// Register multiple fields in CONVERTING state.
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"field1": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -321,7 +320,7 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 
 	// Register ledger with schema that is complete — requests will be processed
 	// quickly (exit on isFieldStillConverting=false).
-	registerLedgerWithSchema(t, store, "test-ledger", 1, &commonpb.MetadataSchema{
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
 		AccountFields: map[string]*commonpb.MetadataFieldSchema{
 			"x": {
 				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,

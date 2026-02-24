@@ -9,14 +9,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ledgerName string, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, ErrTargetRequired
 	}
 
 	// Enforce schema: convert metadata values to declared types.
 	if order.Metadata != nil {
-		if info, ok := s.GetLedger(ledgerName); ok && info.MetadataSchema != nil {
+		if info, ok := s.GetLedger(ledger); ok && info.MetadataSchema != nil {
 			targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
 			if _, isTx := order.Target.Target.(*commonpb.Target_Transaction); isTx {
 				targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
@@ -30,8 +30,8 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 		for _, entry := range order.Metadata.Metadata {
 			s.PutAccountMetadata(dal.MetadataKey{
 				AccountKey: dal.AccountKey{
-					LedgerID: ledgerID,
-					Account:  target.Account.Addr,
+					Ledger:  ledger,
+					Account: target.Account.Addr,
 				},
 				Key: entry.Key,
 			}, entry.Value)
@@ -52,7 +52,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 				},
 			}
 		}
-		s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog:   s.GetNextSequenceID(),
 			Updates: updates,
 		})
@@ -68,7 +68,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerID uint32, boundaries *raftc
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
 		return nil, ErrTargetRequired
 	}
@@ -80,8 +80,8 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 	case *commonpb.Target_Account:
 		metaKey := dal.MetadataKey{
 			AccountKey: dal.AccountKey{
-				LedgerID: ledgerID,
-				Account:  target.Account.Addr,
+				Ledger:  ledger,
+				Account: target.Account.Addr,
 			},
 			Key: order.Key,
 		}
@@ -101,7 +101,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerID uint32, boundaries *ra
 		}
 		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
 		// This ensures each transaction update has a unique key in PebbleDB
-		s.AddTransactionUpdate(dal.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog: s.GetNextSequenceID(),
 			Updates: []*commonpb.TransactionUpdateType{{
 				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{

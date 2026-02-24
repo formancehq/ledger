@@ -47,7 +47,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	case errors.As(err, &transactionReferenceConflict):
 		failure.ErrorType = processing.ErrReasonTransactionReferenceConflict
-		failure.Context["ledgerId"] = fmt.Sprintf("%d", transactionReferenceConflict.LedgerID)
+		failure.Context["ledger"] = transactionReferenceConflict.Ledger
 		failure.Context["reference"] = transactionReferenceConflict.Reference
 
 	case errors.As(err, &transactionNotFound):

@@ -19,11 +19,11 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "world"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "world"},
 		Asset:      "USD",
 	}
 	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -41,7 +41,7 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 1, posting, false)
+	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.NoError(t, err)
 }
 
@@ -54,7 +54,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -73,7 +73,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 1, posting, false)
+	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.Error(t, err)
 
 	var insufficientFunds *ErrInsufficientFunds
@@ -91,7 +91,7 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -109,7 +109,7 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 1, posting, false)
+	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.Error(t, err)
 
 	var balanceNotFound *ErrBalanceNotFound
@@ -127,11 +127,11 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -157,7 +157,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 1, posting, true)
+	err := applyPosting(mockStore, "test-ledger", posting, true)
 	require.NoError(t, err)
 }
 
@@ -170,11 +170,11 @@ func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -200,6 +200,6 @@ func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 1, posting, false)
+	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.NoError(t, err)
 }

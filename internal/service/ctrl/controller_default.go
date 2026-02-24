@@ -73,12 +73,12 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName stri
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return buildTransaction(handle, ledgerInfo.Id, transactionID, ledgerInfo.MetadataSchema)
+	return buildTransaction(handle, ledgerInfo.Name, transactionID, ledgerInfo.MetadataSchema)
 }
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
-func buildTransaction(reader dal.PebbleReader, ledgerID uint32, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	updates, err := state.ReadTransactionUpdates(reader, ledgerID, transactionID)
+func buildTransaction(reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+	updates, err := state.ReadTransactionUpdates(reader, ledger, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
@@ -210,10 +210,10 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 
 	handle := ctrl.store.NewReadHandle()
 
-	// Build iterator bounds for [keyPrefixTransactionUpdate][ledgerID]...[afterTxID or max]
+	// Build iterator bounds for [keyPrefixTransactionUpdate][ledgerName]\x00...[afterTxID or max]
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixTransactionUpdate).
-		PutLedgerPrefix(ledgerInfo.Id)
+		PutLedgerName(ledgerInfo.Name)
 	lowerBound := kb.Snapshot()
 
 	if afterTxID > 0 {
@@ -237,7 +237,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		iter:       iter,
 		pageSize:   pageSize,
 		lastTxID:   ^uint64(0),
-		txIDOffset: dal.TxUpdateTxIDOffset,
+		txIDOffset: 1 + len(ledgerInfo.Name) + 1,
 		schema:     ledgerInfo.MetadataSchema,
 	}, nil
 }
@@ -256,9 +256,9 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 
 	handle := ctrl.store.NewReadHandle()
 
-	// Build lower bound: [0xF1][ledgerID] optionally followed by [afterAddress]\x02 or [prefix]
+	// Build lower bound: [0xF1][ledgerName]\x00 optionally followed by [afterAddress]\x02 or [prefix]
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAttributes).PutLedgerPrefix(ledgerInfo.Id)
+	kb.PutByte(dal.KeyPrefixAttributes).PutLedgerName(ledgerInfo.Name)
 	if afterAddress != "" {
 		kb.PutString(afterAddress).PutByte(0x02) // skip past both \x00 (Volume) and \x01 (Metadata)
 	} else if prefix != "" {
@@ -266,16 +266,18 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 	}
 	lowerBound := kb.Build()
 
-	// Build upper bound: [0xF1][ledgerID][IncrementBytes(prefix)] or [0xF1][ledgerID+1]
+	// Build upper bound: [0xF1][ledgerName]\x00[IncrementBytes(prefix)] or past ledger range
 	kb.PutByte(dal.KeyPrefixAttributes)
 	if prefix != "" {
 		if incPrefix := attributes.IncrementBytes([]byte(prefix)); incPrefix != nil {
-			kb.PutLedgerPrefix(ledgerInfo.Id).PutBytes(incPrefix)
+			kb.PutLedgerName(ledgerInfo.Name).PutBytes(incPrefix)
 		} else {
-			kb.PutLedgerPrefix(ledgerInfo.Id + 1)
+			// prefix overflow: go past entire ledger range
+			kb.PutString(ledgerInfo.Name).PutByte(0x01)
 		}
 	} else {
-		kb.PutLedgerPrefix(ledgerInfo.Id + 1)
+		// After all entries for this ledger: [0xF1][name]\x01 (any byte > \x00 after name)
+		kb.PutString(ledgerInfo.Name).PutByte(0x01)
 	}
 	upperBound := kb.Build()
 
@@ -310,7 +312,7 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.Id, address, ledgerInfo.MetadataSchema)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.Name, address, ledgerInfo.MetadataSchema)
 }
 
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {

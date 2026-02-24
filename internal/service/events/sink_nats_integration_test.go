@@ -113,7 +113,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "orders")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -122,7 +122,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -217,7 +217,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "payments", 1)
+	registerLedger(t, store, "payments")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -307,8 +307,8 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "orders", 1)
-	registerLedger(t, store, "payments", 2)
+	registerLedger(t, store, "orders")
+	registerLedger(t, store, "payments")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -318,7 +318,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -329,7 +329,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "payments", CreatedAt: commonpb.NewTimestamp(now), Id: 2},
+						Info: &commonpb.LedgerInfo{Name: "payments", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},

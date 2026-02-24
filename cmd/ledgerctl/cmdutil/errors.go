@@ -83,9 +83,8 @@ func reconstructError(reason string, metadata map[string]string, message string)
 		return &processing.ErrIdempotencyKeyConflict{Key: metadata["key"]}
 
 	case processing.ErrReasonTransactionReferenceConflict:
-		ledgerID, _ := strconv.ParseUint(metadata["ledgerId"], 10, 32)
 		return &processing.ErrTransactionReferenceConflict{
-			LedgerID:  uint32(ledgerID),
+			Ledger:    metadata["ledger"],
 			Reference: metadata["reference"],
 		}
 

@@ -22,7 +22,7 @@ func TestGetBalances_ForceMode(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    true,
 	}
 
@@ -50,12 +50,12 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -85,12 +85,12 @@ func TestGetBalances_DiffOnlyVolume(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -120,12 +120,12 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -151,12 +151,12 @@ func TestGetBalances_VolumeNotFound(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "bank"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -182,16 +182,17 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "status",
 	}
 
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("active"), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"status"},
@@ -213,12 +214,12 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 
 	adapter := &numscriptStoreAdapter{
 		store:    mockStore,
-		ledgerID: 1,
+		ledger: "test-ledger",
 		force:    false,
 	}
 
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -244,22 +245,20 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerID:   1,
-		force:      false,
-		ledgerName: "test-ledger",
+		store:  mockStore,
+		ledger: "test-ledger",
+		force:  false,
 	}
 
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}
 
 	// Return a string value that should be converted to int64 per schema
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -291,14 +290,13 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerID:   1,
-		force:      false,
-		ledgerName: "test-ledger",
+		store:  mockStore,
+		ledger: "test-ledger",
+		force:  false,
 	}
 
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}
 

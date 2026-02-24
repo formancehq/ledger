@@ -27,7 +27,6 @@ func TestLogToEvent(t *testing.T) {
 							Info: &commonpb.LedgerInfo{
 								Name:      "orders",
 								CreatedAt: &commonpb.Timestamp{Data: 1000},
-								Id:        1,
 							},
 						},
 					},

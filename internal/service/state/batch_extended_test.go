@@ -226,7 +226,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	// Store transaction updates with different byLog values
 	batch := s.NewBatch()
 	for _, seq := range []uint64{5, 10, 15, 20, 25} {
-		key := dal.TransactionKey{LedgerID: 1, ID: 1}
+		key := dal.TransactionKey{Ledger: "test", ID: 1}
 		update := &commonpb.TransactionUpdate{
 			ByLog: seq,
 			Updates: []*commonpb.TransactionUpdateType{
@@ -242,7 +242,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify all 5 updates exist
-	updates, err := ReadTransactionUpdates(s, 1, 1)
+	updates, err := ReadTransactionUpdates(s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 5)
 
@@ -252,7 +252,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify only updates with byLog 5 and 25 remain
-	updates, err = ReadTransactionUpdates(s, 1, 1)
+	updates, err = ReadTransactionUpdates(s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(5), updates[0].ByLog)
@@ -317,7 +317,7 @@ func TestReadTransactionUpdates(t *testing.T) {
 	// Store updates for two different transactions
 	batch := s.NewBatch()
 	require.NoError(t, StoreTransactionUpdate(batch,
-		dal.TransactionKey{LedgerID: 1, ID: 100},
+		dal.TransactionKey{Ledger: "test", ID: 100},
 		&commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
@@ -328,7 +328,7 @@ func TestReadTransactionUpdates(t *testing.T) {
 		},
 	))
 	require.NoError(t, StoreTransactionUpdate(batch,
-		dal.TransactionKey{LedgerID: 1, ID: 100},
+		dal.TransactionKey{Ledger: "test", ID: 100},
 		&commonpb.TransactionUpdate{
 			ByLog: 5,
 			Updates: []*commonpb.TransactionUpdateType{
@@ -339,7 +339,7 @@ func TestReadTransactionUpdates(t *testing.T) {
 		},
 	))
 	require.NoError(t, StoreTransactionUpdate(batch,
-		dal.TransactionKey{LedgerID: 1, ID: 200},
+		dal.TransactionKey{Ledger: "test", ID: 200},
 		&commonpb.TransactionUpdate{
 			ByLog: 2,
 			Updates: []*commonpb.TransactionUpdateType{
@@ -352,19 +352,19 @@ func TestReadTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read updates for transaction 100
-	updates, err := ReadTransactionUpdates(s, 1, 100)
+	updates, err := ReadTransactionUpdates(s, "test", 100)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(1), updates[0].ByLog)
 	require.Equal(t, uint64(5), updates[1].ByLog)
 
 	// Read updates for transaction 200
-	updates, err = ReadTransactionUpdates(s, 1, 200)
+	updates, err = ReadTransactionUpdates(s, "test", 200)
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
 
 	// Read updates for non-existent transaction
-	updates, err = ReadTransactionUpdates(s, 1, 999)
+	updates, err = ReadTransactionUpdates(s, "test", 999)
 	require.NoError(t, err)
 	require.Empty(t, updates)
 }
@@ -375,12 +375,12 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	s := newTestStore(t)
 
 	// Register a ledger
-	registerLedger(t, s, "find-tx-ledger", 1)
+	registerLedger(t, s, "find-tx-ledger")
 
 	// Store a transaction update with TransactionInit
 	batch := s.NewBatch()
 	require.NoError(t, StoreTransactionUpdate(batch,
-		dal.TransactionKey{LedgerID: 1, ID: 1},
+		dal.TransactionKey{Ledger: "find-tx-ledger", ID: 1},
 		&commonpb.TransactionUpdate{
 			ByLog: 5,
 			Updates: []*commonpb.TransactionUpdateType{
@@ -416,28 +416,6 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	// Non-existent ledger should return error
 	_, err = FindTransactionCreationLog(s, "non-existent", 1)
 	require.Error(t, err)
-}
-
-func TestReadMaxLedgerID(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Empty store
-	maxID, found, err := ReadMaxLedgerID(s)
-	require.NoError(t, err)
-	require.False(t, found)
-	require.Equal(t, uint32(0), maxID)
-
-	// Register ledgers
-	registerLedger(t, s, "maxid-a", 5)
-	registerLedger(t, s, "maxid-b", 10)
-	registerLedger(t, s, "maxid-c", 3)
-
-	maxID, found, err = ReadMaxLedgerID(s)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, uint32(10), maxID)
 }
 
 func TestReadLastAuditSequence(t *testing.T) {

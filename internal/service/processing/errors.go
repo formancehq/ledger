@@ -85,12 +85,12 @@ func (e *ErrIdempotencyKeyConflict) Error() string {
 
 // ErrTransactionReferenceConflict is returned when a transaction reference already exists in the same ledger.
 type ErrTransactionReferenceConflict struct {
-	LedgerID  uint32
+	Ledger    string
 	Reference string
 }
 
 func (e *ErrTransactionReferenceConflict) Error() string {
-	return fmt.Sprintf("transaction reference %q already exists in ledger %d", e.Reference, e.LedgerID)
+	return fmt.Sprintf("transaction reference %q already exists in ledger %s", e.Reference, e.Ledger)
 }
 
 // ErrTransactionNotFound is returned when a transaction ID is beyond the known range.

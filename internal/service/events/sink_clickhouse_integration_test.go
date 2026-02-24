@@ -92,7 +92,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "orders")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -101,7 +101,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -159,7 +159,6 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	var evt1 map[string]any
 	require.NoError(t, json.Unmarshal([]byte(rows[0].Data), &evt1))
 	require.Equal(t, "orders", evt1["ledgerName"])
-	require.EqualValues(t, 1, evt1["ledgerId"])
 
 	// Verify COMMITTED_TRANSACTION event
 	require.Equal(t, uint64(2), rows[1].LogSequence)
@@ -192,7 +191,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "analytics", 1)
+	registerLedger(t, store, "analytics")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -201,7 +200,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "analytics", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "analytics", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -249,16 +248,12 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestClickHouseConn(t, dsn)
 
-	// Query typed sub-columns: ledgerName and ledgerId for CREATED_LEDGER event
-	var (
-		ledgerName string
-		ledgerID   uint32
-	)
+	// Query typed sub-columns: ledgerName for CREATED_LEDGER event
+	var ledgerName string
 	row := conn.QueryRow(ctx, fmt.Sprintf(
-		"SELECT data.ledgerName, data.ledgerId FROM %s WHERE type = 'created_ledger' LIMIT 1", table))
-	require.NoError(t, row.Scan(&ledgerName, &ledgerID))
+		"SELECT data.ledgerName FROM %s WHERE type = 'created_ledger' LIMIT 1", table))
+	require.NoError(t, row.Scan(&ledgerName))
 	require.Equal(t, "analytics", ledgerName)
-	require.EqualValues(t, 1, ledgerID)
 
 	// Query transaction sub-columns: transaction.id (UInt64) and posting details
 	var txID uint64

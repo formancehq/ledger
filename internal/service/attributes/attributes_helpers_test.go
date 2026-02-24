@@ -446,19 +446,17 @@ func TestLedgerAttribute(t *testing.T) {
 	// Set base
 	batch := store.NewBatch()
 	require.NoError(t, attrs.Ledger.SetBase(batch, 1, testKey, &commonpb.LedgerInfo{
-		Id:   1,
 		Name: "my-ledger",
 	}))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint32(1), result.Id)
+	require.Equal(t, "my-ledger", result.Name)
 
 	// Diff overrides the base for ledger info
 	batch = store.NewBatch()
 	require.NoError(t, attrs.Ledger.AddDiff(batch, 2, testKey, &commonpb.LedgerInfo{
-		Id:   1,
 		Name: "my-ledger-renamed",
 	}))
 	require.NoError(t, batch.Commit())

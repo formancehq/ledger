@@ -20,7 +20,7 @@ func TestProcessConvertMetadataBatch_LedgerNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 
@@ -58,12 +58,11 @@ func TestProcessConvertMetadataBatch_StaleSchema(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	// Ledger exists but the schema field is no longer CONVERTING
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -117,11 +116,10 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -134,7 +132,7 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 
 	// Build a canonical key for the metadata entry
 	mk := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "user:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -196,11 +194,10 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -212,7 +209,7 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	}
 
 	mk := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "user:001"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -268,7 +265,7 @@ func TestProcessMetadataConversionComplete_LedgerNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 
@@ -306,12 +303,11 @@ func TestProcessMetadataConversionComplete_Stale(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	// Schema is COMPLETE, so the completion order is stale
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -365,11 +361,10 @@ func TestProcessMetadataConversionComplete_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {

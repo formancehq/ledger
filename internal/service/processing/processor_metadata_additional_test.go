@@ -21,7 +21,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 
 	order := &raftcmdpb.Order{
@@ -55,11 +55,10 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
+		Name:           "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -113,7 +112,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
@@ -159,7 +158,7 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 
 	order := &raftcmdpb.Order{
@@ -192,7 +191,7 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 
 	order := &raftcmdpb.Order{
@@ -230,11 +229,11 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 3}, gomock.Any()).Do(
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{Ledger: "test-ledger", ID: 3}, gomock.Any()).Do(
 		func(_ dal.TransactionKey, update *commonpb.TransactionUpdate) {
 			require.Equal(t, uint64(50), update.ByLog)
 			require.Len(t, update.Updates, 1)
@@ -286,7 +285,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 
 	request := &servicepb.Request{

@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -92,21 +91,24 @@ func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.
 
 // scanAccount performs a single forward scan over all Volume and Metadata attributes
 // for one account and returns an assembled Account. The scan range is
-// [0xF1][ledgerID][address]\x00 .. [0xF1][ledgerID][address]\x02, covering both
+// [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02, covering both
 // volume (\x00) and metadata (\x01) canonical key separators.
 func scanAccount(
 	reader dal.PebbleReader,
 	attrs *attributes.Attributes,
-	ledgerID uint32,
+	ledger string,
 	address string,
 	schema *commonpb.MetadataSchema,
 ) (*commonpb.Account, error) {
-	// Build bounds: [0xF1][ledgerID][address]\x00 .. [0xF1][ledgerID][address]\x02
-	baseLen := 1 + 4 + len(address)
+	// Build bounds: [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02
+	baseLen := 1 + len(ledger) + 1 + len(address)
 	buf := make([]byte, baseLen+1)
 	buf[0] = dal.KeyPrefixAttributes
-	binary.BigEndian.PutUint32(buf[1:], ledgerID)
-	copy(buf[5:], address)
+	n := 1
+	n += copy(buf[n:], ledger)
+	buf[n] = 0x00
+	n++
+	copy(buf[n:], address)
 
 	lowerBound := make([]byte, baseLen+1)
 	copy(lowerBound, buf)

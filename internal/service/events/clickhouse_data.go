@@ -48,7 +48,6 @@ func ClickHouseCreateTableDDL(table string) string {
         metadata Map(String, String),
         key Nullable(String),
         ledgerName Nullable(String),
-        ledgerId Nullable(UInt32),
         signingKeyId Nullable(String),
         publicKey Nullable(String),
         requireSignatures Nullable(Bool),
@@ -96,7 +95,6 @@ type clickhouseEventData struct {
 
 	// CREATED_LEDGER / DELETED_LEDGER
 	LedgerName *string `json:"ledgerName,omitempty"`
-	LedgerID   *uint32 `json:"ledgerId,omitempty"`
 
 	// Signing key management
 	SigningKeyID      *string `json:"signingKeyId,omitempty"`
@@ -194,7 +192,6 @@ func populateLedgerInfo(data *clickhouseEventData, info *commonpb.LedgerInfo) {
 		return
 	}
 	data.LedgerName = &info.Name
-	data.LedgerID = &info.Id
 }
 
 func populateApply(data *clickhouseEventData, apply *commonpb.ApplyLedgerLog) {

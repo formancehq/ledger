@@ -79,7 +79,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptl
 
 // DiscoverNumscriptDependencies runs a Numscript script with a discovery store that
 // returns infinite balances, solely to discover which accounts/assets and metadata keys
-// the script queries. The returned keys have their LedgerID set to the provided value.
+// the script queries. The returned keys have their Ledger set to the provided value.
 //
 // Scripts must be deterministic: GetBalances and GetAccountsMetadata may each be
 // called at most once. If a script calls either more than once (e.g., via mid-script
@@ -90,7 +90,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptl
 // accounts were queried before the error occurred.
 //
 // Known limitation: with infinite balances, `oneof` may only query the first source.
-func DiscoverNumscriptDependencies(script string, vars map[string]string, ledgerID uint32) (*DiscoveryResult, error) {
+func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger string) (*DiscoveryResult, error) {
 	parsed := numscriptlib.Parse(script)
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 		return nil, &ErrNumscriptParse{
@@ -117,10 +117,10 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 		return nil, store.nonDeterministic
 	}
 
-	// Collect volume keys from balance queries (sources) with the real ledgerID
+	// Collect volume keys from balance queries (sources) with the real ledger name
 	volumes := make(map[dal.VolumeKey]struct{}, len(store.queriedVolumes))
 	for key := range store.queriedVolumes {
-		key.LedgerID = ledgerID
+		key.Ledger = ledger
 		volumes[key] = struct{}{}
 	}
 
@@ -128,19 +128,19 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	// GetBalances only captures source accounts; destinations come from postings.
 	for _, posting := range execResult.Postings {
 		volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Source},
+			AccountKey: dal.AccountKey{Ledger: ledger, Account: posting.Source},
 			Asset:      posting.Asset,
 		}] = struct{}{}
 		volumes[dal.VolumeKey{
-			AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
+			AccountKey: dal.AccountKey{Ledger: ledger, Account: posting.Destination},
 			Asset:      posting.Asset,
 		}] = struct{}{}
 	}
 
-	// Collect metadata keys with the real ledgerID
+	// Collect metadata keys with the real ledger name
 	metadata := make(map[dal.MetadataKey]struct{}, len(store.queriedMetadata))
 	for key := range store.queriedMetadata {
-		key.LedgerID = ledgerID
+		key.Ledger = ledger
 		metadata[key] = struct{}{}
 	}
 

@@ -69,8 +69,6 @@ type InMemoryStore interface {
 	SetLastLogHash(hash []byte)
 
 	// Counters and timestamps
-	GetNextLedgerID() uint32
-	IncrementNextLedgerID() uint32
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
 	GetDate() *commonpb.Timestamp

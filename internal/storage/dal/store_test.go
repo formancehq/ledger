@@ -31,12 +31,11 @@ func TestPebbleStore(t *testing.T) {
 	})
 }
 
-// registerLedger is a helper function to register a ledger and return its ID
-func registerLedger(t *testing.T, s *dal.Store, name string, id uint32) {
+// registerLedger is a helper function to register a ledger.
+func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 	batch := s.NewBatch()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
-		Id:        id,
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	})
@@ -58,16 +57,13 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 	t.Parallel()
 
-	const (
-		testLedgerName = "test-ledger"
-		testLedgerID   = uint32(1)
-	)
+	const testLedgerName = "test-ledger"
 
 	t.Run("AppendLogs", func(t *testing.T) {
 		t.Parallel()
 		s := createStore(t)
 
-		registerLedger(t, s, testLedgerName, testLedgerID)
+		registerLedger(t, s, testLedgerName)
 		testLogs := createTestLogs(testLedgerName)
 		appendLogs(t, s, 0, testLogs...)
 	})
@@ -77,24 +73,24 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		s := createStore(t)
 		attrs := attributes.New()
 
-		registerLedger(t, s, testLedgerName, testLedgerID)
+		registerLedger(t, s, testLedgerName)
 		batch := s.NewBatch()
 
 		// Index 1: world sends 100 to bank
-		worldKey := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "world"}, Asset: "USD"}
+		worldKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
 			OutputKnown: commonpb.NewUint256FromUint64(100),
 		}))
 
-		bankKey := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "bank"}, Asset: "USD"}
+		bankKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 1, bankCanonicalKey, &raftcmdpb.VolumePair{
 			InputKnown: commonpb.NewUint256FromUint64(100),
 		}))
 
 		// Index 2: bank sends 50 to user (bank cumulative: input=100, output=50)
-		userKey := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: testLedgerID, Account: "user"}, Asset: "USD"}
+		userKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user"}, Asset: "USD"}
 		userCanonicalKey := userKey.Bytes()
 		require.NoError(t, attrs.Volume.AddDiff(batch, 2, bankCanonicalKey, &raftcmdpb.VolumePair{
 			InputKnown:  commonpb.NewUint256FromUint64(100),
@@ -262,15 +258,12 @@ func TestVolume(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 	attrs := attributes.New()
 
-	const (
-		ledgerName = "test-ledger"
-		ledgerID   = uint32(1)
-	)
-	registerLedger(t, s, ledgerName, ledgerID)
+	const ledgerName = "test-ledger"
+	registerLedger(t, s, ledgerName)
 
-	bankUSD := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "bank"}, Asset: "USD"}
-	userUSD := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "user"}, Asset: "USD"}
-	bankEUR := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: "bank"}, Asset: "EUR"}
+	bankUSD := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "bank"}, Asset: "USD"}
+	userUSD := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "user"}, Asset: "USD"}
+	bankEUR := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "bank"}, Asset: "EUR"}
 
 	bankUSDKey := bankUSD.Bytes()
 	userUSDKey := userUSD.Bytes()
@@ -392,7 +385,7 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, big.NewInt(0), v.OutputKnown.ToBigInt())
 
 	// Non-existing ledger should have 0 volume
-	nonExistingKey := dal.VolumeKey{AccountKey: dal.AccountKey{LedgerID: 999, Account: "bank"}, Asset: "USD"}
+	nonExistingKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: "nonexistent", Account: "bank"}, Asset: "USD"}
 	nonExistingCanonicalKey := nonExistingKey.Bytes()
 	v = getVolume(nonExistingCanonicalKey, 100)
 	require.Equal(t, big.NewInt(0), v.InputKnown.ToBigInt())

@@ -58,8 +58,8 @@ func (kb *KeyBuilder) PutBytes(value []byte) *KeyBuilder {
 	return kb
 }
 
-func (kb *KeyBuilder) PutLedgerPrefix(ledgerID uint32) *KeyBuilder {
-	return kb.PutUInt32(ledgerID)
+func (kb *KeyBuilder) PutLedgerName(name string) *KeyBuilder {
+	return kb.PutString(name).PutByte(0x00)
 }
 
 // Build returns a copy of the built key and resets the buffer for reuse.

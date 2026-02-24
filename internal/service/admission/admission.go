@@ -278,8 +278,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract required idempotency keys, ledgers, boundaries, and sink configs from orders (name-based)
-	p1 := a.extractPhase1Needs(orders)
+	// Step 1: Extract all preload needs from orders in a single pass
+	needs := a.extractPreloadNeeds(orders)
 
 	// Step 2: Read nextIndex atomically (optimistic snapshot for preload boundary).
 	nextIndex := a.nextIndex.Load()
@@ -294,11 +294,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	cmd := commands.NewCommand(orders...)
 	cmd.Preload.LastPersistedIndex = boundary
 
-	// Phase 1: Preload ledgers first to resolve name→ID mapping
-	ledgerIDs := make(map[string]uint32) // ledgerName → ledgerID
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p1.Ledgers)),
+	// Preload ledgers (for CreateLedger/DeleteLedger orders)
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Ledgers)),
 		metric.WithAttributes(attribute.String("type", "ledgers")))
-	for ledgerKey := range p1.Ledgers {
+	for ledgerKey := range needs.Ledgers {
 		canonicalKey := ledgerKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -320,7 +319,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			}
 
 			if result.Value != nil {
-				ledgerIDs[ledgerKey.Name] = result.Value.Id
 				attrID := &raftcmdpb.AttributeID{
 					Id:  id[:],
 					Tag: tag,
@@ -344,25 +342,15 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 				})
 			}
 		} else {
-			// Ledger is guaranteed in cache — read its ID directly from cache.
-			// We cannot use ComputeValue (which reads from PebbleDB at boundary) because
-			// for recently created ledgers, the boundary may be before the creation index,
-			// causing ComputeValue to return nil even though the ledger exists in cache.
 			a.preloadCacheHitsCounter.Add(ctx, 1,
 				metric.WithAttributes(attribute.String("type", "ledgers")))
-			entry, ok := a.cache.Ledgers.Get(id)
-			if ok && entry.Data != nil {
-				ledgerIDs[ledgerKey.Name] = entry.Data.Id
-			}
 		}
 	}
 
-	// Phase 1.5: Preload boundaries (for Apply orders) to resolve ledger IDs.
-	// Boundaries are always in Gen0 (written on every transaction), so the ledger ID
-	// is always available without needing a separate ledger info preload in the hot path.
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p1.Boundaries)),
+	// Preload boundaries (for Apply orders)
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Boundaries)),
 		metric.WithAttributes(attribute.String("type", "boundaries")))
-	for boundaryKey := range p1.Boundaries {
+	for boundaryKey := range needs.Boundaries {
 		canonicalKey := boundaryKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -384,7 +372,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			}
 
 			if result.Value != nil {
-				ledgerIDs[boundaryKey.Name] = result.Value.LedgerId
 				attrID := &raftcmdpb.AttributeID{
 					Id:  id[:],
 					Tag: tag,
@@ -410,20 +397,12 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		} else {
 			a.preloadCacheHitsCounter.Add(ctx, 1,
 				metric.WithAttributes(attribute.String("type", "boundaries")))
-			// Boundary is in cache — extract ledger ID from it
-			entry, ok := a.cache.Boundaries.Get(id)
-			if ok && entry.Data != nil {
-				ledgerIDs[boundaryKey.Name] = entry.Data.LedgerId
-			}
 		}
 	}
 
-	// Phase 2: Extract volumes, metadata, transactions, and references using resolved IDs
-	p2 := a.extractPhase2Needs(orders, ledgerIDs)
-
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p2.Volumes)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Volumes)),
 		metric.WithAttributes(attribute.String("type", "volumes")))
-	for volumeKey := range p2.Volumes {
+	for volumeKey := range needs.Volumes {
 		canonicalKey := volumeKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -479,9 +458,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Build preload for reverted status not guaranteed in cache
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p2.Transactions)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Transactions)),
 		metric.WithAttributes(attribute.String("type", "reversions")))
-	for txKey := range p2.Transactions {
+	for txKey := range needs.Transactions {
 		canonicalKey := txKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 		attrID := &raftcmdpb.AttributeID{
@@ -539,9 +518,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Build preload for idempotency keys not guaranteed in cache
 	// Only preload if the key is actually found (has a value), to reduce command size
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p1.IdempotencyKeys)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.IdempotencyKeys)),
 		metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-	for ikKey := range p1.IdempotencyKeys {
+	for ikKey := range needs.IdempotencyKeys {
 		canonicalKey := ikKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -597,9 +576,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Build preload for transaction references not guaranteed in cache
 	// Only preload if the reference exists (has a value), to reduce command size
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p2.References)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.References)),
 		metric.WithAttributes(attribute.String("type", "references")))
-	for refKey := range p2.References {
+	for refKey := range needs.References {
 		canonicalKey := refKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -652,9 +631,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Phase 4: Preload sink configs for AddEventsSink/RemoveEventsSink
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p1.SinkConfigs)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.SinkConfigs)),
 		metric.WithAttributes(attribute.String("type", "sink_configs")))
-	for sinkKey := range p1.SinkConfigs {
+	for sinkKey := range needs.SinkConfigs {
 		canonicalKey := sinkKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -706,9 +685,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Phase 5: Preload account metadata for Numscript meta() calls
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(p2.Metadata)),
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Metadata)),
 		metric.WithAttributes(attribute.String("type", "account_metadata")))
-	for metadataKey := range p2.Metadata {
+	for metadataKey := range needs.Metadata {
 		canonicalKey := metadataKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
@@ -937,62 +916,33 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	return true
 }
 
-// phase1Needs contains all data extracted from orders before ledger ID resolution.
-type phase1Needs struct {
+// preloadNeeds contains all data extracted from orders in a single pass.
+// It combines what was previously split across phase1 (name-based) and phase2
+// (ledger-scoped) extraction, now that DAL keys use ledger names directly.
+type preloadNeeds struct {
 	IdempotencyKeys map[dal.IdempotencyKey]struct{}
 	Ledgers         map[dal.LedgerKey]struct{}
 	Boundaries      map[dal.LedgerKey]struct{}
 	SinkConfigs     map[dal.SinkConfigKey]struct{}
+	Volumes         map[dal.VolumeKey]struct{}
+	Metadata        map[dal.MetadataKey]struct{}
+	Transactions    map[dal.TransactionKey]struct{}
+	References      map[dal.TransactionReferenceKey]struct{}
 }
 
-// extractPhase1Needs extracts all preload keys needed before ledger ID resolution
-// in a single pass over the orders slice.
+// extractPreloadNeeds extracts all preload keys from orders in a single pass.
 //
-// - IdempotencyKeys: from orders with an idempotency key set
-// - Ledgers: from CreateLedger/DeleteLedger orders
-// - Boundaries: from Apply orders (to access next_transaction_id/next_log_id)
-// - SinkConfigs: from AddEventsSink/RemoveEventsSink orders
-func (a *Admission) extractPhase1Needs(orders []*raftcmdpb.Order) phase1Needs {
-	p := phase1Needs{
-		IdempotencyKeys: make(map[dal.IdempotencyKey]struct{}),
-		Ledgers:         make(map[dal.LedgerKey]struct{}),
-		Boundaries:      make(map[dal.LedgerKey]struct{}),
-		SinkConfigs:     make(map[dal.SinkConfigKey]struct{}),
-	}
-
-	for _, order := range orders {
-		if order.Idempotency != nil && order.Idempotency.Key != "" {
-			p.IdempotencyKeys[dal.IdempotencyKey{Key: order.Idempotency.Key}] = struct{}{}
-		}
-
-		switch orderType := order.Type.(type) {
-		case *raftcmdpb.Order_CreateLedger:
-			p.Ledgers[dal.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
-		case *raftcmdpb.Order_DeleteLedger:
-			p.Ledgers[dal.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
-		case *raftcmdpb.Order_Apply:
-			p.Boundaries[dal.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
-		case *raftcmdpb.Order_AddEventsSink:
-			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
-		case *raftcmdpb.Order_RemoveEventsSink:
-			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
-		}
-	}
-
-	return p
-}
-
-// phase2Needs contains all data extracted from orders after ledger ID resolution.
-type phase2Needs struct {
-	Volumes      map[dal.VolumeKey]struct{}
-	Metadata     map[dal.MetadataKey]struct{}
-	Transactions map[dal.TransactionKey]struct{}
-	References   map[dal.TransactionReferenceKey]struct{}
-}
-
-// extractPhase2Needs extracts all preload keys needed after ledger ID resolution
-// in a single pass over the orders slice. It combines volume, metadata, transaction,
-// and reference extraction.
+// For every order it collects:
+//   - IdempotencyKeys: from orders with an idempotency key set
+//   - Ledgers: from CreateLedger/DeleteLedger orders
+//   - Boundaries: from Apply orders (to access next_transaction_id/next_log_id)
+//   - SinkConfigs: from AddEventsSink/RemoveEventsSink orders
+//
+// For Apply orders it additionally collects:
+//   - Volumes: accounts that need balance checks or cache warmup
+//   - Metadata: accounts whose metadata is queried (e.g. Numscript meta() calls)
+//   - Transactions: transactions whose reverted status must be checked
+//   - References: transaction references for uniqueness enforcement
 //
 // Volume preloading rationale:
 //   - Sources need balance checks (Input + Output to compute balance)
@@ -1003,107 +953,124 @@ type phase2Needs struct {
 //     Numscript scripts may still query metadata via meta() calls
 //   - For reverts, postings are reversed: original destination becomes source
 //     and original source becomes destination
-func (a *Admission) extractPhase2Needs(orders []*raftcmdpb.Order, ledgerIDs map[string]uint32) phase2Needs {
-	p := phase2Needs{
-		Volumes:      make(map[dal.VolumeKey]struct{}),
-		Metadata:     make(map[dal.MetadataKey]struct{}),
-		Transactions: make(map[dal.TransactionKey]struct{}),
-		References:   make(map[dal.TransactionReferenceKey]struct{}),
+func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds {
+	p := preloadNeeds{
+		IdempotencyKeys: make(map[dal.IdempotencyKey]struct{}),
+		Ledgers:         make(map[dal.LedgerKey]struct{}),
+		Boundaries:      make(map[dal.LedgerKey]struct{}),
+		SinkConfigs:     make(map[dal.SinkConfigKey]struct{}),
+		Volumes:         make(map[dal.VolumeKey]struct{}),
+		Metadata:        make(map[dal.MetadataKey]struct{}),
+		Transactions:    make(map[dal.TransactionKey]struct{}),
+		References:      make(map[dal.TransactionReferenceKey]struct{}),
 	}
 
 	for _, order := range orders {
-		applyOrder, ok := order.Type.(*raftcmdpb.Order_Apply)
-		if !ok {
-			continue
+		// Idempotency keys apply to all order types.
+		if order.Idempotency != nil && order.Idempotency.Key != "" {
+			p.IdempotencyKeys[dal.IdempotencyKey{Key: order.Idempotency.Key}] = struct{}{}
 		}
 
-		ledgerID := ledgerIDs[applyOrder.Apply.Ledger]
+		switch orderType := order.Type.(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			p.Ledgers[dal.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
+		case *raftcmdpb.Order_DeleteLedger:
+			p.Ledgers[dal.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+		case *raftcmdpb.Order_AddEventsSink:
+			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
+		case *raftcmdpb.Order_RemoveEventsSink:
+			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+		case *raftcmdpb.Order_Apply:
+			p.Boundaries[dal.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 
-		switch applyData := applyOrder.Apply.Data.(type) {
-		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-			// References (extracted regardless of Force or Numscript)
-			if applyData.CreateTransaction.Reference != "" {
-				p.References[dal.TransactionReferenceKey{
-					LedgerID:  ledgerID,
-					Reference: applyData.CreateTransaction.Reference,
-				}] = struct{}{}
-			}
+			ledgerName := orderType.Apply.Ledger
 
-			// Numscript emulation: discover required accounts and metadata by running with infinite balances.
-			// This is needed because Numscript transactions have no explicit postings at admission
-			// time — the accounts are determined dynamically by the script at runtime.
-			if applyData.CreateTransaction.Script != nil &&
-				applyData.CreateTransaction.Script.Plain != "" &&
-				len(applyData.CreateTransaction.Postings) == 0 {
-				discovered, err := numscript.DiscoverNumscriptDependencies(
-					applyData.CreateTransaction.Script.Plain,
-					applyData.CreateTransaction.Script.Vars,
-					ledgerID,
-				)
-				if err != nil {
-					a.logger.WithFields(map[string]any{
-						"error": err.Error(),
-					}).Info("Numscript emulation failed during dependency discovery, skipping preload")
+			switch applyData := orderType.Apply.Data.(type) {
+			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+				// References (extracted regardless of Force or Numscript)
+				if applyData.CreateTransaction.Reference != "" {
+					p.References[dal.TransactionReferenceKey{
+						Ledger:    ledgerName,
+						Reference: applyData.CreateTransaction.Reference,
+					}] = struct{}{}
 				}
-				if discovered != nil {
-					// Skip volume preloading for force transactions - they store deltas only
-					if !applyData.CreateTransaction.Force {
-						for key := range discovered.Volumes {
-							p.Volumes[key] = struct{}{}
+
+				// Numscript emulation: discover required accounts and metadata by running with infinite balances.
+				// This is needed because Numscript transactions have no explicit postings at admission
+				// time -- the accounts are determined dynamically by the script at runtime.
+				if applyData.CreateTransaction.Script != nil &&
+					applyData.CreateTransaction.Script.Plain != "" &&
+					len(applyData.CreateTransaction.Postings) == 0 {
+					discovered, err := numscript.DiscoverNumscriptDependencies(
+						applyData.CreateTransaction.Script.Plain,
+						applyData.CreateTransaction.Script.Vars,
+						ledgerName,
+					)
+					if err != nil {
+						a.logger.WithFields(map[string]any{
+							"error": err.Error(),
+						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
+					}
+					if discovered != nil {
+						// Skip volume preloading for force transactions - they store deltas only
+						if !applyData.CreateTransaction.Force {
+							for key := range discovered.Volumes {
+								p.Volumes[key] = struct{}{}
+							}
+						}
+						for key := range discovered.Metadata {
+							p.Metadata[key] = struct{}{}
 						}
 					}
-					for key := range discovered.Metadata {
-						p.Metadata[key] = struct{}{}
-					}
+					continue
 				}
-				continue
-			}
 
-			// Skip volume preloading for force transactions - they store deltas only
-			if applyData.CreateTransaction.Force {
-				continue
-			}
+				// Skip volume preloading for force transactions - they store deltas only
+				if applyData.CreateTransaction.Force {
+					continue
+				}
 
-			for _, posting := range applyData.CreateTransaction.Postings {
-				// Source account needs balance check
-				p.Volumes[dal.VolumeKey{
-					AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Source},
-					Asset:      posting.Asset,
-				}] = struct{}{}
-				// Destination account needs to be in cache to apply credit
-				p.Volumes[dal.VolumeKey{
-					AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
-					Asset:      posting.Asset,
-				}] = struct{}{}
-			}
+				for _, posting := range applyData.CreateTransaction.Postings {
+					// Source account needs balance check
+					p.Volumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Source},
+						Asset:      posting.Asset,
+					}] = struct{}{}
+					// Destination account needs to be in cache to apply credit
+					p.Volumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Destination},
+						Asset:      posting.Asset,
+					}] = struct{}{}
+				}
 
-		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-			// Need to check if the transaction is already reverted
-			p.Transactions[dal.TransactionKey{
-				LedgerID: ledgerID,
-				ID:       applyData.RevertTransaction.TransactionId,
-			}] = struct{}{}
+			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+				// Need to check if the transaction is already reverted
+				p.Transactions[dal.TransactionKey{
+					Ledger: ledgerName,
+					ID:     applyData.RevertTransaction.TransactionId,
+				}] = struct{}{}
 
-			// For reverts, postings are reversed: original destination becomes source (needs balance check)
-			// and original source becomes destination (needs to receive credit)
-			for _, posting := range applyData.RevertTransaction.OriginalPostings {
-				p.Volumes[dal.VolumeKey{
-					AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
-					Asset:      posting.Asset,
-				}] = struct{}{}
-				p.Volumes[dal.VolumeKey{
-					AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: posting.Source},
-					Asset:      posting.Asset,
-				}] = struct{}{}
-			}
+				// For reverts, postings are reversed: original destination becomes source (needs balance check)
+				// and original source becomes destination (needs to receive credit)
+				for _, posting := range applyData.RevertTransaction.OriginalPostings {
+					p.Volumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Destination},
+						Asset:      posting.Asset,
+					}] = struct{}{}
+					p.Volumes[dal.VolumeKey{
+						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Source},
+						Asset:      posting.Asset,
+					}] = struct{}{}
+				}
 
-		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-			// Preload the metadata key so processDeleteMetadata can check existence
-			if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
-				p.Metadata[dal.MetadataKey{
-					AccountKey: dal.AccountKey{LedgerID: ledgerID, Account: target.Account.Addr},
-					Key:        applyData.DeleteMetadata.Key,
-				}] = struct{}{}
+			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+				// Preload the metadata key so processDeleteMetadata can check existence
+				if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
+					p.Metadata[dal.MetadataKey{
+						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: target.Account.Addr},
+						Key:        applyData.DeleteMetadata.Key,
+					}] = struct{}{}
+				}
 			}
 		}
 	}

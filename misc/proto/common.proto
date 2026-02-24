@@ -488,7 +488,7 @@ message ConfirmArchivePeriodLog {
 message LedgerInfo {
   string name = 1;                          // Ledger name
   Timestamp created_at = 2;                 // Creation timestamp
-  uint32 id = 3;                            // Numeric ledger ID (auto-assigned, max 65535)
+  reserved 3;                               // Was: uint32 id (removed: ledger name used as key)
   Timestamp deleted_at = 4;                 // Soft delete timestamp (nil if not deleted)
   MetadataSchema metadata_schema = 5;       // Per-key metadata type declarations
 }

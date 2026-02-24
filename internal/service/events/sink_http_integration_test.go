@@ -72,7 +72,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "orders", 1)
+	registerLedger(t, store, "orders")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -81,7 +81,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now), Id: 1},
+						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
 					},
 				},
 			},
@@ -162,7 +162,7 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "payments", 1)
+	registerLedger(t, store, "payments")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -227,7 +227,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
 
-	registerLedger(t, store, "payments", 1)
+	registerLedger(t, store, "payments")
 	now := libtime.Now()
 
 	appendTestLogs(t, store,

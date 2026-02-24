@@ -22,7 +22,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
@@ -30,7 +30,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutAccountMetadata(
 		dal.MetadataKey{
-			AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
+			AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 			Key:        "status",
 		},
 		commonpb.NewStringValue("active"),
@@ -81,14 +81,14 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{LedgerID: 1, ID: 5}, gomock.Any()).Do(
+	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any()).Do(
 		func(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
 			require.Equal(t, uint64(42), update.ByLog) // Global sequence ID
 			require.Len(t, update.Updates, 1)
@@ -136,10 +136,10 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -189,9 +189,9 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LedgerId: 1}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 

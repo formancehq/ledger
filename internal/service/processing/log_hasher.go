@@ -173,7 +173,6 @@ func (h *logHasher) hashLedgerInfo(info *commonpb.LedgerInfo) {
 	h.writePresence(true)
 	h.writeString(info.Name)
 	h.hashTimestamp(info.CreatedAt)
-	h.writeUint32(info.Id)
 	h.hashTimestamp(info.DeletedAt)
 }
 

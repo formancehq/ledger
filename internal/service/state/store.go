@@ -189,10 +189,10 @@ func ReadLogBySequence(reader dal.PebbleReader, sequence uint64) (*commonpb.Log,
 }
 
 // ReadTransactionUpdates retrieves all updates for a transaction ID from the given reader, ordered by ByLog.
-func ReadTransactionUpdates(reader dal.PebbleReader, ledgerID uint32, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+func ReadTransactionUpdates(reader dal.PebbleReader, ledger string, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixTransactionUpdate).
-		PutLedgerPrefix(ledgerID).
+		PutLedgerName(ledger).
 		PutUInt64(transactionID)
 	lowerBound := kb.Snapshot()
 
@@ -257,7 +257,7 @@ func ReadLogsSince(reader dal.PebbleReader, afterSequence uint64) (dal.Cursor[*c
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
 func ReadLedgers(reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	lowerBound := []byte{dal.KeyPrefixLedgerInfo}
-	upperBound := []byte{dal.KeyPrefixLedgerInfo, 0xFF, 0xFF, 0xFF, 0xFF}
+	upperBound := []byte{dal.KeyPrefixLedgerInfo + 1}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -288,41 +288,33 @@ func ReadPeriodSchedule(reader dal.PebbleReader) (string, error) {
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns dal.ErrNotFound if the ledger does not exist or is soft-deleted.
 func GetLedgerByName(reader dal.PebbleReader, name string) (*commonpb.LedgerInfo, error) {
-	cursor, err := ReadLedgers(reader)
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixLedgerInfo).PutString(name)
+
+	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
-		return nil, err
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, dal.ErrNotFound
+		}
+		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}
-	defer func() { _ = cursor.Close() }()
+	defer func() { _ = closer.Close() }()
 
-	for {
-		ledger, err := cursor.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		if ledger.Name == name {
-			// Check if soft-deleted
-			if ledger.DeletedAt != nil {
-				return nil, dal.ErrNotFound
-			}
-			return ledger, nil
-		}
+	info := &commonpb.LedgerInfo{}
+	if err := proto.Unmarshal(value, info); err != nil {
+		return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
 	}
 
-	return nil, dal.ErrNotFound
+	if info.DeletedAt != nil {
+		return nil, dal.ErrNotFound
+	}
+	return info, nil
 }
 
 // FindTransactionCreationLog returns the system log that created a transaction.
-// It resolves the ledger name to an ID, finds the TransactionInit update, and retrieves the log.
+// It finds the TransactionInit update and retrieves the log.
 func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Log, error) {
-	ledgerInfo, err := GetLedgerByName(reader, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("resolving ledger ID for %s: %w", ledgerName, err)
-	}
-
-	updates, err := ReadTransactionUpdates(reader, ledgerInfo.Id, txID)
+	updates, err := ReadTransactionUpdates(reader, ledgerName, txID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", txID, err)
 	}
@@ -352,35 +344,6 @@ func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID
 	}
 
 	return log, nil
-}
-
-// ReadMaxLedgerID returns the highest ledger ID from the given reader. Returns 0, false if no ledgers exist.
-func ReadMaxLedgerID(reader dal.PebbleReader) (uint32, bool, error) {
-	cursor, err := ReadLedgers(reader)
-	if err != nil {
-		return 0, false, err
-	}
-	defer func() { _ = cursor.Close() }()
-
-	var (
-		maxID uint32
-		found bool
-	)
-	for {
-		ledger, err := cursor.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return 0, false, err
-		}
-		if !found || ledger.Id > maxID {
-			maxID = ledger.Id
-			found = true
-		}
-	}
-
-	return maxID, found, nil
 }
 
 // ReadLastAuditSequence returns the last audit entry sequence from the given reader. Returns 0 if no entries exist.

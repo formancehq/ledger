@@ -2,7 +2,6 @@ package ledgers
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"sort"
 	"time"
@@ -68,7 +67,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	tableData := pterm.TableData{
-		{"ID", "NAME", "CREATED AT"},
+		{"NAME", "CREATED AT"},
 	}
 
 	for _, name := range names {
@@ -78,7 +77,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 			createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
 		}
 		tableData = append(tableData, []string{
-			fmt.Sprintf("%d", ledger.Id),
 			ledger.Name,
 			createdAt,
 		})
