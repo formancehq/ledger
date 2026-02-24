@@ -629,7 +629,8 @@ select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
 from get_all_account_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
 $$ set search_path from current;
 
-create temporary table tmp_volumes as
+drop table if exists tmp_volumes;
+create temporary table tmp_volumes on commit drop as
 select
 	ledger,
 	accounts_address,

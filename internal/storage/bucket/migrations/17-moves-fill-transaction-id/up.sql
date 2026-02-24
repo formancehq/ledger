@@ -5,6 +5,7 @@ do $$
 	begin
 		set search_path = '{{.Schema}}';
 
+		drop table if exists transactions_ids;
 		create temporary table transactions_ids as
 		select row_number() over (order by transactions.seq) as row_number,
 		       moves.seq as moves_seq, transactions.id, transactions.seq as transactions_seq
@@ -37,6 +38,8 @@ do $$
 
 			perform pg_notify('migrations-{{ .Schema }}', 'continue: ' || _batch_size);
 		end loop;
+
+		drop table transactions_ids;
 	end
 $$
 language plpgsql;
