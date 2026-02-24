@@ -11,11 +11,12 @@
 
 The ledger's storage is write-oriented. Read capabilities are limited to primary-key lookups and sequential scans. There is no support for:
 
-- **Metadata filtering**: "List accounts where `category=premium`"
+- **Account metadata filtering**: "List accounts where `category=premium`"
+- **Transaction metadata filtering**: "List transactions where `amount >= 5000`"
 - **Multi-criteria filtering**: "List accounts where `category=premium AND region=eu`"
 - **Boolean combinations**: "List accounts where `(category=premium OR category=gold) AND NOT status=suspended`"
-- **Typed range queries**: "List accounts where `credit_limit >= 10000`" (leveraging the typed metadata system)
-- **Address-based filtering combined with metadata**: "List merchants with credit_limit >= 5000 AND active=true"
+- **Typed range queries**: "List transactions where `amount >= 10000`" (leveraging the typed metadata system)
+- **Address-based filtering combined with metadata**: "List transactions involving merchants with amount >= 5000"
 
 The reference implementation (`github.com/formancehq/ledger`) supports metadata filtering via SQL `WHERE` clauses — a capability that requires a fundamentally different approach in an embedded key-value store.
 
@@ -23,8 +24,8 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 ## 2. Goals
 
-1. Allow clients to filter accounts by **metadata key/value pairs** with boolean operators (AND, OR, NOT)
-2. Allow clients to filter by **account address** (prefix or exact match)
+1. Allow clients to filter **accounts** or **transactions** by metadata key/value pairs with boolean operators (AND, OR, NOT)
+2. Allow clients to filter by **account address** (prefix or exact match) — for account queries directly, for transaction queries via posting involvement
 3. Allow **mixing** metadata and address filters in a single query
 4. Support **parameterized** filters (values resolved at execution time)
 5. Execute queries efficiently via **secondary indexes**, not full scans
@@ -35,9 +36,11 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 ### In scope
 
+- **Two query targets**: accounts and transactions — each prepared query declares its target type
 - Recursive boolean filter model (AND/OR/NOT) on metadata and addresses
 - **Typed metadata conditions**: string equality, integer ranges (>, <, >=, <=, BETWEEN), boolean checks, existence checks — leveraging the existing typed metadata system (`MetadataType` enum: `STRING`, `INT64`, `BOOL`, `UINT64`, sub-64-bit integer types)
-- Prepared query CRUD (create, list, delete) via Raft commands
+- **Address filters on transactions**: filter transactions by accounts involved in their postings (source or destination)
+- Prepared query CRUD (create, update, list, delete) via Raft commands
 - Prepared query execution (read-only) with parameter substitution
 - Asynchronous index building from Raft log
 - Dedicated read store (separate engine, optionally on separate disk)
@@ -46,7 +49,8 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 ### Out of scope
 
 - Full-text search / fuzzy matching on metadata values
-- Volume-based filters (e.g., "balance > 1000") — future work, could be added as a post-filter
+- Volume-based filters (e.g., "balance > 1000") — future work, could be added as a `FieldRef` source
+- **Cross-entity conditions**: e.g., `AccountMetadata` in a transaction query or `TransactionMetadata` in an account query — future work, requires cross-table joins
 - Cross-ledger queries
 - Real-time (synchronous) index updates in FSM apply
 
@@ -87,7 +91,9 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 ### 5.1 Recursive Filter Tree
 
-A prepared query filter is a **tree of boolean operators** where leaves are either field conditions or address matches. Each node in the tree produces a **sorted iterator of account addresses** (bbolt approach) or a SQL subquery (DuckDB approach).
+Each prepared query declares a **target type** — `ACCOUNTS` or `TRANSACTIONS` — which determines what entity is returned and how filters are interpreted.
+
+A prepared query filter is a **tree of boolean operators** where leaves are either field conditions or address matches. Each node in the tree produces a **sorted iterator of entity IDs** (account addresses or transaction IDs) in the bbolt approach, or a SQL subquery in the DuckDB approach.
 
 ```
 AND(a, b)  →  intersection of results
@@ -134,12 +140,14 @@ Leaf nodes are either **field conditions** (FieldRef + Condition) or **address m
 
 #### Field references
 
-A `FieldRef` identifies **where** to look for the value:
+A `FieldRef` identifies **where** to look for the value. The field source must match the query's target type:
 
-| FieldRef | Targets | Index table |
-|----------|---------|-------------|
-| `AccountMetadata("key")` | Metadata on accounts | `account_metadata` / `[0x0C]` |
-| `TransactionMetadata("key")` | Metadata on transactions | `transaction_metadata` / `[0x0C]` |
+| FieldRef | Description | Index table | Valid target |
+|----------|-------------|-------------|--------------|
+| `AccountMetadata("key")` | Metadata on accounts | `account_metadata` / `[0x0C]` | `ACCOUNTS` only |
+| `TransactionMetadata("key")` | Metadata on transactions | `transaction_metadata` / `[0x0C]` | `TRANSACTIONS` only |
+
+Cross-entity conditions (e.g., `AccountMetadata` in a `TRANSACTIONS` query) are rejected at creation time — see Section 3 (Out of scope).
 
 The condition type must be compatible with the declared `MetadataType` for the key. If the ledger has a schema declaring `credit_limit` as `INT64`, only `IntCondition` is valid for that key. For untyped keys (no schema), only `StringCondition` is allowed.
 
@@ -166,21 +174,30 @@ This design is extensible — future `FieldRef` sources (e.g., `Volume("USD/2")`
 
 #### Address conditions
 
-| Condition | Matches | Example |
-|-----------|---------|---------|
-| **AddressPrefix** | All accounts whose address starts with prefix | `AddressPrefix("merchants:")` |
-| **AddressExact** | Single account by exact address | `AddressExact("merchants:acme_corp")` |
+`AddressMatch` is valid for both target types, but its semantics differ:
+
+| Target | AddressPrefix("merchants:") | AddressExact("merchants:acme_corp") |
+|--------|----------------------------|-------------------------------------|
+| `ACCOUNTS` | Accounts whose address starts with `merchants:` | The single account `merchants:acme_corp` |
+| `TRANSACTIONS` | Transactions with at least one posting involving an account matching `merchants:*` | Transactions with at least one posting involving `merchants:acme_corp` |
+
+For transaction queries, `AddressMatch` uses the `account_transactions` table to find transactions linked to matching accounts.
 
 ### 5.3 NOT Operator
 
-`NOT` requires the "universe" of all accounts to compute the complement. This means:
+`NOT` requires the "universe" of all entities to compute the complement. This means:
 
 ```
+-- ACCOUNTS target
 NOT(StringEquals(AccountMetadata("status"), "suspended"))
 = all accounts in ledger EXCEPT those with status=suspended
+
+-- TRANSACTIONS target
+NOT(IntRange(TransactionMetadata("amount"), min: 10000))
+= all transactions in ledger EXCEPT those with amount >= 10000
 ```
 
-**Performance caveat**: `NOT` as a top-level filter is expensive (scans all accounts). Under an `AND`, the intersection with a more selective filter reduces the scan early. The query validator should **reject** queries where `NOT` is the outermost operator on a large ledger.
+**Performance caveat**: `NOT` as a top-level filter is expensive (scans all entities). Under an `AND`, the intersection with a more selective filter reduces the scan early. The query validator should **reject** queries where `NOT` is the outermost operator on a large ledger.
 
 ### 5.4 Proto Definition
 
@@ -302,6 +319,15 @@ message AddressMatch {
     string param_exact = 4;             // parameter: exact resolved at execution
   }
 }
+
+// ============================================================================
+// Query target — determines what entity type is returned
+// ============================================================================
+
+enum QueryTarget {
+  ACCOUNTS = 0;                         // returns account addresses
+  TRANSACTIONS = 1;                     // returns transaction IDs
+}
 ```
 
 ### 5.5 Resource Limits
@@ -325,6 +351,7 @@ message PreparedQuery {
   string name = 1;                           // unique within ledger
   string ledger = 2;
   QueryFilter filter = 3;                    // recursive filter tree
+  QueryTarget target = 4;                    // ACCOUNTS or TRANSACTIONS
 }
 
 message CreatePreparedQueryRequest {
@@ -347,18 +374,22 @@ message ExecutePreparedQueryResponse {
 
 // Cursor follows the reference implementation pattern (bunpaginate).
 // The cursor string is a base64-encoded JSON containing the full pagination state.
+// The data field depends on the query's target type:
+//   ACCOUNTS     → account_data is populated (list of account addresses)
+//   TRANSACTIONS → transaction_data is populated (list of transaction IDs)
 message Cursor {
   uint32 page_size = 1;
   bool has_more = 2;
   string previous = 3;                       // opaque cursor to previous page (empty if first page)
   string next = 4;                           // opaque cursor to next page (empty if last page)
-  repeated common.Account data = 5;
+  repeated string account_data = 5;          // for ACCOUNTS target
+  repeated uint64 transaction_data = 6;      // for TRANSACTIONS target
 }
 ```
 
-- **Create**: `CreatePreparedQueryRequest` → Raft command → validated (resource limits, condition/schema compatibility) → persisted at `[0xE0][ledgerName\x00][queryName]` in primary store
-- **Update**: `UpdatePreparedQueryRequest` → Raft command → re-validated → overwrites filter at same key. Designed to be batched with `SetMetadataFieldType` in the same proposal for atomic schema + query updates.
-- **Execute**: `ExecutePreparedQueryRequest` → read-only against the read index store → streams matching accounts
+- **Create**: `CreatePreparedQueryRequest` → Raft command → validated (resource limits, condition/schema compatibility, FieldRef/target compatibility) → persisted at `[0xE0][ledgerName\x00][queryName]` in primary store. FieldRef sources must match the target type (e.g., `AccountMetadata` only on `ACCOUNTS` target, `TransactionMetadata` only on `TRANSACTIONS` target).
+- **Update**: `UpdatePreparedQueryRequest` → Raft command → re-validated → overwrites filter at same key. Target type cannot be changed (delete + recreate if needed). Designed to be batched with `SetMetadataFieldType` in the same proposal for atomic schema + query updates.
+- **Execute**: `ExecutePreparedQueryRequest` → read-only against the read index store → returns matching accounts or transaction IDs depending on query target
 - **List**: returns all prepared queries for a ledger
 - **Delete**: Raft command → definition removed from primary store
 
@@ -433,8 +464,8 @@ When updating the metadata inverted index, the index builder must know the **old
 **In bbolt (key-value approach):**
 
 ```
-Reverse map:   [0x0E][ledgerName\x00][account\x00][metadataKey] → currentValue
-Forward index: [0x0C][ledgerName\x00][metadataKey\x00][metadataValue\x00][accountAddress] → (empty)
+Reverse map:   [0x0E][ledgerName\x00][a:][account\x00][metadataKey] → currentValue
+Forward index: [0x0C][ledgerName\x00][a:][metadataKey\x00][metadataValue\x00][accountAddress] → (empty)
 ```
 
 **In DuckDB:** the `account_metadata` table naturally stores the current value. An `UPDATE` handles both old-value cleanup and new-value insertion.
@@ -450,7 +481,7 @@ This makes the primary store and read store **fully independent** for random met
 
 **Transaction metadata** can be modified after creation (same as account metadata) and its types can change via `SetMetadataFieldType`. The same old-value problem applies — the index builder needs the previous value to delete stale index entries. The reverse metadata map pattern applies identically:
 
-- **bbolt**: `[0x0E][ledgerName\x00][tx:{txId}\x00][metadataKey]` → `MetadataValue protobuf`
+- **bbolt**: `[0x0E][ledgerName\x00][t:][txId(8B BE)][metadataKey]` → `MetadataValue protobuf`
 - **DuckDB**: the `transaction_metadata` table stores the current value natively (`INSERT OR REPLACE`)
 
 ### 7.3 Consistency Model
@@ -522,9 +553,13 @@ Use bbolt as the read store engine. Implement inverted indexes, merge-join itera
 
 | Prefix | Key | Value | Purpose |
 |--------|-----|-------|---------|
-| `0x0C` | `[ledgerName\x00][metadataKey\x00][typeTag(1B)][sortableValue][accountAddress]` | (empty) | Metadata inverted index |
-| `0x0D` | `[ledgerName\x00][accountAddress]` | (empty) | Account existence index |
-| `0x0E` | `[ledgerName\x00][account\x00][metadataKey]` | `MetadataValue protobuf` | Reverse metadata map |
+| `0x0C` | `[ledgerName\x00][a:][metadataKey\x00][typeTag(1B)][sortableValue][accountAddress]` | (empty) | Account metadata inverted index |
+| `0x0C` | `[ledgerName\x00][t:][metadataKey\x00][typeTag(1B)][sortableValue][txId(8B BE)]` | (empty) | Transaction metadata inverted index |
+| `0x0D` | `[ledgerName\x00][a:][accountAddress]` | (empty) | Account existence index |
+| `0x0D` | `[ledgerName\x00][t:][txId(8B BE)]` | (empty) | Transaction existence index |
+| `0x0E` | `[ledgerName\x00][a:][account\x00][metadataKey]` | `MetadataValue protobuf` | Account reverse metadata map |
+| `0x0E` | `[ledgerName\x00][t:][txId(8B BE)][metadataKey]` | `MetadataValue protobuf` | Transaction reverse metadata map |
+| `0x0F` | `[ledgerName\x00][accountAddress\x00][txId(8B BE)]` | (empty) | Account → transactions mapping (for AddressMatch on TRANSACTIONS) |
 
 The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 
@@ -536,13 +571,15 @@ The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 | BOOL | `'B'` | 1 byte (`0x00` = false, `0x01` = true) | |
 | NullValue | `'N'` | Original raw string + `\x00` separator | Allows ExistsCondition to scan null entries |
 
-**String equality** — point scan on `[0x0C][ledger\x00][key\x00]['S'][value\x00]`.
+**String equality (accounts)** — point scan on `[0x0C][ledger\x00][a:][key\x00]['S'][value\x00]`.
 
-**Integer range** — range scan:
+**Integer range (accounts)** — range scan:
 ```
-lower: [0x0C][ledger\x00][key\x00]['I'][encode(min)]
-upper: [0x0C][ledger\x00][key\x00]['I'][encode(max+1)]
+lower: [0x0C][ledger\x00][a:][key\x00]['I'][encode(min)]
+upper: [0x0C][ledger\x00][a:][key\x00]['I'][encode(max+1)]
 ```
+
+**Transaction queries** use the `t:` namespace (`[0x0C][ledger\x00][t:][key\x00]...`) and return transaction IDs (8-byte big-endian). For `AddressMatch` on transactions, the iterator scans `[0x0F][ledger\x00][matchingAccount\x00]` to find linked transaction IDs.
 
 This exploits bbolt's B+ tree sorted iteration — the encoded values sort in numeric order.
 
@@ -550,24 +587,32 @@ This exploits bbolt's B+ tree sorted iteration — the encoded values sort in nu
 
 - `AND` → merge-intersect of N sorted cursors
 - `OR` → merge-union of N sorted cursors
-- `NOT` → merge-difference against the account existence index (`0x0D`)
+- `NOT` → merge-difference against the existence index (`0x0D[ledger\x00][a:]` for accounts, `0x0D[ledger\x00][t:]` for transactions)
 
 All cursors are lazy and streaming — no intermediate materialization. Memory usage is constant regardless of result set size.
 
 ```
-Execution example — string equality:
-  AND(OR(StringEquals("category","premium"), StringEquals("category","gold")), AddressPrefix("merchants:"))
+Execution example — ACCOUNTS target, string equality:
+  AND(OR(StringEquals(AccountMetadata("category"),"premium"), StringEquals(AccountMetadata("category"),"gold")), AddressPrefix("merchants:"))
 
-  cursor1: scan [0x0C][ledger\x00][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
-  cursor2: scan [0x0C][ledger\x00][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
-  cursor3: OR(cursor1, cursor2)                                       → [acc_A, acc_B, acc_C, acc_F, acc_G]
-  cursor4: scan [0x0D][ledger\x00][merchants:]...[merchants:\xFF]    → [acc_A, acc_B, acc_C, acc_F, acc_H]
-  cursor5: AND(cursor3, cursor4)                                      → [acc_A, acc_B, acc_C, acc_F]
+  cursor1: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
+  cursor2: scan [0x0C][ledger\x00][a:][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
+  cursor3: OR(cursor1, cursor2)                                           → [acc_A, acc_B, acc_C, acc_F, acc_G]
+  cursor4: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]    → [acc_A, acc_B, acc_C, acc_F, acc_H]
+  cursor5: AND(cursor3, cursor4)                                          → [acc_A, acc_B, acc_C, acc_F]
 
-Execution example — integer range (credit_limit >= 10000):
-  cursor1: range [0x0C][ledger\x00][credit_limit\x00]['I'][encode(10000)]
-                 ...[0x0C][ledger\x00][credit_limit\x00]['I'][\xFF x 8]
+Execution example — ACCOUNTS target, integer range (credit_limit >= 10000):
+  cursor1: range [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(10000)]
+                 ...[0x0C][ledger\x00][a:][credit_limit\x00]['I'][\xFF x 8]
            → all accounts with credit_limit >= 10000
+
+Execution example — TRANSACTIONS target, AddressMatch:
+  AddressPrefix("merchants:")
+  step1: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]
+         → [merchants:acme, merchants:beta]
+  step2: for each account, scan [0x0F][ledger\x00][account\x00]
+         → merchants:acme → [tx_1, tx_5], merchants:beta → [tx_3, tx_5]
+  step3: merge-union → [tx_1, tx_3, tx_5]
 ```
 
 **Merge-join performance:** O(N x S) where N = number of filters, S = smallest result set. High-selectivity filters terminate quickly. Sub-second on SSD for typical use cases (10-20% selectivity on 1M accounts).
@@ -587,6 +632,12 @@ CREATE TABLE accounts (
   ledger VARCHAR NOT NULL,
   account VARCHAR NOT NULL,
   PRIMARY KEY (ledger, account)
+);
+
+CREATE TABLE transactions (
+  ledger VARCHAR NOT NULL,
+  tx_id BIGINT NOT NULL,
+  PRIMARY KEY (ledger, tx_id)
 );
 
 CREATE TABLE account_metadata (
@@ -656,10 +707,10 @@ WHERE key = 'active' AND bool_value = true
 WHERE key = 'email' AND value_type != 3
 ```
 
-**Full example — string + range + boolean:**
+**Full example — ACCOUNTS target (string + range + boolean):**
 
 ```sql
--- Filter: AND(StringEquals("category", "premium"), IntRange("credit_limit", min: 10000), BoolEquals("active", true))
+-- Filter: AND(StringEquals(AccountMetadata("category"), "premium"), IntRange(AccountMetadata("credit_limit"), min: 10000), BoolEquals(AccountMetadata("active"), true))
 SELECT DISTINCT a.account
 FROM accounts a
 JOIN account_metadata m1
@@ -674,6 +725,24 @@ JOIN account_metadata m3
 WHERE a.ledger = $1
   AND a.account > $3                        -- keyset pagination
 ORDER BY a.account
+LIMIT $2
+```
+
+**Full example — TRANSACTIONS target (metadata range + address involvement):**
+
+```sql
+-- Filter: AND(IntRange(TransactionMetadata("amount"), min: 5000), AddressPrefix("merchants:"))
+SELECT DISTINCT t.tx_id
+FROM transactions t
+JOIN transaction_metadata m1
+  ON t.ledger = m1.ledger AND t.tx_id = m1.tx_id
+  AND m1.key = 'amount' AND m1.int_value >= 5000
+JOIN account_transactions at1
+  ON t.ledger = at1.ledger AND t.tx_id = at1.tx_id
+  AND at1.account LIKE 'merchants:%'
+WHERE t.ledger = $1
+  AND t.tx_id > $3                          -- keyset pagination
+ORDER BY t.tx_id
 LIMIT $2
 ```
 
@@ -859,14 +928,20 @@ These prefixes apply when using bbolt. With DuckDB, they are replaced by table s
 
 | Prefix | Key | Value | Purpose |
 |--------|-----|-------|---------|
-| `0x0C` | `[ledgerName\x00][metadataKey\x00][typeTag(1B)][sortableValue][accountAddress]` | (empty) | Typed metadata inverted index |
-| `0x0D` | `[ledgerName\x00][accountAddress]` | (empty) | Account existence index |
-| `0x0E` | `[ledgerName\x00][account\x00][metadataKey]` | `MetadataValue protobuf` | Reverse metadata map (current typed value) |
+| `0x0C` | `[ledgerName\x00][a:][metadataKey\x00][typeTag(1B)][sortableValue][accountAddress]` | (empty) | Account metadata inverted index |
+| `0x0C` | `[ledgerName\x00][t:][metadataKey\x00][typeTag(1B)][sortableValue][txId(8B BE)]` | (empty) | Transaction metadata inverted index |
+| `0x0D` | `[ledgerName\x00][a:][accountAddress]` | (empty) | Account existence index |
+| `0x0D` | `[ledgerName\x00][t:][txId(8B BE)]` | (empty) | Transaction existence index |
+| `0x0E` | `[ledgerName\x00][a:][account\x00][metadataKey]` | `MetadataValue protobuf` | Account reverse metadata map |
+| `0x0E` | `[ledgerName\x00][t:][txId(8B BE)][metadataKey]` | `MetadataValue protobuf` | Transaction reverse metadata map |
+| `0x0F` | `[ledgerName\x00][accountAddress\x00][txId(8B BE)]` | (empty) | Account → transactions mapping |
 | `0xE0` | `[ledgerName\x00][queryName]` | `PreparedQuery protobuf` | Query definitions (primary store) |
 
 `typeTag` values: `'S'` (string), `'I'` (signed int), `'U'` (unsigned int), `'B'` (bool), `'N'` (null). See Section 8.1 for encoding details.
 
-`0x0C`, `0x0D`, `0x0E` live in the read store. `0xE0` lives in the primary Pebble store.
+`a:` / `t:` namespace tags distinguish account and transaction entries under the same prefix, keeping the sorted key layout clean.
+
+`0x0C`, `0x0D`, `0x0E`, `0x0F` live in the read store. `0xE0` lives in the primary Pebble store.
 
 ## 11. Execution Examples
 
@@ -876,6 +951,7 @@ These prefixes apply when using bbolt. With DuckDB, they are replaced by table s
 
 ```
 Prepared query "active_premium_merchants":
+  target: ACCOUNTS
   filter: AND(
     OR(
       StringEquals(AccountMetadata("category"), hardcoded: "premium"),
@@ -911,13 +987,13 @@ LIMIT $2
 **bbolt:**
 
 ```
-  cursor1: scan [0x0C][ledger\x00][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
-  cursor2: scan [0x0C][ledger\x00][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
-  cursor3: OR(cursor1, cursor2)                                       → [acc_A, acc_B, acc_C, acc_F, acc_G]
-  cursor4: scan [0x0D][ledger\x00][merchants:]...[merchants:\xFF]    → [acc_A, acc_B, acc_C, acc_F, acc_H]
-  cursor5: scan [0x0C][ledger\x00][status\x00]['S'][suspended\x00]  → [acc_B]
-  cursor6: NOT(cursor5) via universe [0x0D][ledger\x00]              → [acc_A, acc_C, acc_F, acc_G, acc_H, ...]
-  cursor7: AND(cursor3, cursor4, cursor6)                             → [acc_A, acc_C, acc_F]
+  cursor1: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
+  cursor2: scan [0x0C][ledger\x00][a:][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
+  cursor3: OR(cursor1, cursor2)                                           → [acc_A, acc_B, acc_C, acc_F, acc_G]
+  cursor4: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]    → [acc_A, acc_B, acc_C, acc_F, acc_H]
+  cursor5: scan [0x0C][ledger\x00][a:][status\x00]['S'][suspended\x00]  → [acc_B]
+  cursor6: NOT(cursor5) via universe [0x0D][ledger\x00][a:]              → [acc_A, acc_C, acc_F, acc_G, acc_H, ...]
+  cursor7: AND(cursor3, cursor4, cursor6)                                 → [acc_A, acc_C, acc_F]
 ```
 
 ### 11.2 Integer range query
@@ -926,6 +1002,7 @@ LIMIT $2
 
 ```
 Prepared query "high_value_merchants":
+  target: ACCOUNTS
   filter: AND(
     IntRange(AccountMetadata("credit_limit"), min: 10000, max: 50000),
     AddressPrefix(hardcoded: "merchants:")
@@ -952,10 +1029,10 @@ LIMIT $2
 **bbolt:**
 
 ```
-  cursor1: range [0x0C][ledger\x00][credit_limit\x00]['I'][encode(10000)]
-             ... [0x0C][ledger\x00][credit_limit\x00]['I'][encode(50001)]
+  cursor1: range [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(10000)]
+             ... [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(50001)]
            → [acc_A(15000), acc_C(30000), acc_F(10000), acc_H(45000)]
-  cursor2: scan [0x0D][ledger\x00][merchants:]...[merchants:\xFF]
+  cursor2: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]
            → [acc_A, acc_C, acc_F, acc_H, acc_J]
   cursor3: AND(cursor1, cursor2)
            → [acc_A, acc_C, acc_F, acc_H]
@@ -967,6 +1044,7 @@ LIMIT $2
 
 ```
 Prepared query "active_above_threshold":
+  target: ACCOUNTS
   filter: AND(
     IntRange(AccountMetadata("monthly_volume"), param_min: "min_volume"),
     BoolEquals(AccountMetadata("active"), hardcoded: true),
@@ -998,23 +1076,71 @@ LIMIT $2
 **bbolt:**
 
 ```
-  cursor1: range [0x0C][ledger\x00][monthly_volume\x00]['I'][encode(50000)]
-             ... [0x0C][ledger\x00][monthly_volume\x00]['I'][\xFF x 8]
+  cursor1: range [0x0C][ledger\x00][a:][monthly_volume\x00]['I'][encode(50000)]
+             ... [0x0C][ledger\x00][a:][monthly_volume\x00]['I'][\xFF x 8]
            → [acc_A(75000), acc_F(50000), acc_H(120000)]
-  cursor2: scan [0x0C][ledger\x00][active\x00]['B'][\x01]
+  cursor2: scan [0x0C][ledger\x00][a:][active\x00]['B'][\x01]
            → [acc_A, acc_C, acc_F, acc_H]
-  cursor3: scan [0x0D][ledger\x00][merchants:]...[merchants:\xFF]
+  cursor3: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]
            → [acc_A, acc_C, acc_F, acc_H, acc_J]
   cursor4: AND(cursor1, cursor2, cursor3)
            → [acc_A, acc_F, acc_H]
 ```
 
-### 11.4 Complex mixed query
+### 11.4 Transaction query — metadata range + address involvement
+
+**Use case**: "List transactions involving merchants with amount >= 5000"
+
+```
+Prepared query "large_merchant_transactions":
+  target: TRANSACTIONS
+  filter: AND(
+    IntRange(TransactionMetadata("amount"), param_min: "min_amount"),
+    AddressPrefix(param: "prefix")
+  )
+
+Client: { "min_amount": "5000", "prefix": "merchants:" }
+```
+
+**DuckDB:**
+
+```sql
+SELECT DISTINCT t.tx_id
+FROM transactions t
+JOIN transaction_metadata m1
+  ON t.ledger = m1.ledger AND t.tx_id = m1.tx_id
+  AND m1.key = 'amount' AND m1.int_value >= $3
+JOIN account_transactions at1
+  ON t.ledger = at1.ledger AND t.tx_id = at1.tx_id
+  AND at1.account LIKE $4 || '%'
+WHERE t.ledger = $1
+  AND t.tx_id > $5                          -- keyset pagination
+ORDER BY t.tx_id
+LIMIT $2
+-- $1='default', $2=100, $3=5000, $4='merchants:', $5=0 (cursor)
+```
+
+**bbolt:**
+
+```
+  cursor1: range [0x0C][ledger\x00][t:][amount\x00]['I'][encode(5000)]
+                 ...[0x0C][ledger\x00][t:][amount\x00]['I'][\xFF x 8]
+           → [tx_1(10000), tx_3(7500), tx_5(5000), tx_8(25000)]
+  cursor2: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]
+           → [merchants:acme, merchants:beta]
+  cursor3: for each account, scan [0x0F][ledger\x00][account\x00]
+           → merchants:acme → [tx_1, tx_5, tx_9], merchants:beta → [tx_3, tx_5]
+  cursor4: merge-union(cursor3 results) → [tx_1, tx_3, tx_5, tx_9]
+  cursor5: AND(cursor1, cursor4) → [tx_1, tx_3, tx_5]
+```
+
+### 11.5 Complex mixed query
 
 **Use case**: "List EU or US merchants with credit limit >= 5000, category premium or gold, that are not suspended"
 
 ```
 Prepared query "qualified_regional_merchants":
+  target: ACCOUNTS
   filter: AND(
     OR(
       StringEquals(AccountMetadata("region"), hardcoded: "eu"),
@@ -1064,20 +1190,23 @@ Note: DuckDB's optimizer can rewrite `OR(StringEquals, StringEquals)` on the sam
 ## 12. Implementation Plan
 
 1. **Read store infrastructure**: index builder (tails system logs via `NotifyLogsCommitted()`), read store interface (abstract over bbolt/DuckDB), configuration flags (`--read-index-dir`, `--read-index-enable`)
-2. **Account existence tracking**: populate `accounts` table / `0x0D` index from Raft entries
-3. **Account metadata index**: populate `account_metadata` table / `0x0C` + `0x0E` indexes, typed value encoding
-4. **Transaction metadata index**: populate `transaction_metadata` table / same reverse map pattern, same typed encoding
-5. **Schema change handling**: index builder detects `SetMetadataFieldType` logs → re-encodes all entries for the affected key via `ConvertMetadataValue`
-6. **Prepared query CRUD**: Raft commands for create/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation at creation time
-7. **Query executor**: filter tree → iterator tree (bbolt) or SQL (DuckDB), condition/schema re-validation at execution time, pagination, streaming
-8. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
+2. **Account existence tracking**: populate `accounts` table / `[0x0D][a:]` index from Raft entries
+3. **Account metadata index**: populate `account_metadata` table / `[0x0C][a:]` + `[0x0E][a:]` indexes, typed value encoding
+4. **Transaction existence tracking**: populate `transactions` table / `[0x0D][t:]` index from Raft entries
+5. **Transaction metadata index**: populate `transaction_metadata` table / `[0x0C][t:]` + `[0x0E][t:]` indexes, same reverse map pattern, same typed encoding
+6. **Account-transaction mapping**: populate `account_transactions` table / `[0x0F]` index from transaction postings (for AddressMatch on TRANSACTIONS target)
+7. **Schema change handling**: index builder detects `SetMetadataFieldType` logs → re-encodes all entries for the affected key via `ConvertMetadataValue`
+8. **Prepared query CRUD**: Raft commands for create/update/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation + FieldRef/target compatibility at creation time
+9. **Query executor**: filter tree → iterator tree (bbolt) or SQL (DuckDB), condition/schema re-validation at execution time, target-dependent result type (accounts or transaction IDs), pagination
+10. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
 
 ## 13. Decisions Record
 
 | Topic | Decision | Rationale |
 |---|---|---|
+| **Query targets** | ACCOUNTS and TRANSACTIONS | Each prepared query declares a target type. ACCOUNTS returns account addresses, TRANSACTIONS returns transaction IDs. FieldRef sources must match the target type (e.g., `AccountMetadata` only on ACCOUNTS, `TransactionMetadata` only on TRANSACTIONS). Cross-entity conditions are out of scope (future work). |
 | **Filter model** | Recursive boolean tree (AND/OR/NOT) | Supports complex queries; composable; compiles naturally to both iterator trees and SQL |
-| **Leaf types** | FieldCondition (FieldRef × Condition) + AddressMatch | Separates "where to look" (FieldRef: AccountMetadata, TransactionMetadata) from "what to match" (Condition: string/int/uint/bool/exists). Conditions are reusable across data sources. Extensible to future sources (e.g., volumes) without new condition types. |
+| **Leaf types** | FieldCondition (FieldRef × Condition) + AddressMatch | Separates "where to look" (FieldRef: AccountMetadata, TransactionMetadata) from "what to match" (Condition: string/int/uint/bool/exists). Conditions are reusable across data sources. Extensible to future sources (e.g., volumes) without new condition types. AddressMatch semantics depend on target type: direct match for ACCOUNTS, posting involvement for TRANSACTIONS. |
 | **Index population** | Asynchronous via index builder | Keeps FSM apply fast (RAM-only); no I/O contention on write path |
 | **Feeding strategy** | Tail system logs (0x01) in Pebble, not raw Raft entries | Raw Raft entries include rejected proposals (insufficient funds, idempotency conflicts, etc.); system logs contain only accepted operations; reuses existing `NotifyLogsCommitted()` pattern from event emitter |
 | **Read store autonomy** | Reverse metadata map (bbolt) or native UPDATE (DuckDB) | Eliminates cross-store random I/O for metadata lookups; sequential log reads from Pebble are acceptable |
