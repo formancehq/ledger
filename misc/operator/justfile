@@ -1,0 +1,16 @@
+controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+
+generate:
+    {{controller-gen}} object:headerFile="" paths=./api/... \
+        crd output:crd:dir=config/crd/bases \
+        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+
+build:
+    go build -o build/operator ./cmd/operator
+
+test:
+    go test ./...
+
+pre-commit: generate
+    go mod tidy
+    go build ./...

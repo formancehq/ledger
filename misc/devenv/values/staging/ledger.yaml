@@ -32,7 +32,6 @@ config:
       mode: grpc
       port: "4317"
     metrics:
-      batch: "true"
       enabled: true
       endpoint: otel-opentelemetry-collector
       exporter: otlp
@@ -52,7 +51,7 @@ config:
       port: "4317"
       sampling:
         enabled: true
-        successRatio: 0.1    # Sampling ratio for successful traces (0.0-1.0)
+        successRatio: "0.1"  # Sampling ratio for successful traces (0.0-1.0)
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"
@@ -67,7 +66,7 @@ config:
     maxSizePerMsg: 2097152
     compactionMargin: 50000
     proposeQueueCapacity: 1024
-    snapshotThreshold: "10000"
+    snapshotThreshold: 10000
     tickInterval: 100ms
     transport:
       receptionQueues:
@@ -87,8 +86,6 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-  perPod:
-    enabled: true
 ingressGrpc:
   enabled: true
   className: traefik
@@ -102,7 +99,7 @@ ingressGrpc:
     targetGroupARN: "arn:aws:elasticloadbalancing:eu-west-1:955332203423:targetgroup/geoffrey-ledger-v3-grpc/e549d74021a8e711"
     targetType: ip
 persistence:
-  persistentVolumeClaimRetentionPolicy:
+  retentionPolicy:
     whenDeleted: Delete
   # WAL persistence (Raft logs)
   wal:
@@ -113,11 +110,7 @@ persistence:
     accessMode: ReadWriteOnce
     size: 50Gi
 
-serviceAccount:
-  create: false
-  name: "aws-access"
-
-replicaCount: 3
+replicas: 3
 resources:
   limits:
     cpu: 8000m

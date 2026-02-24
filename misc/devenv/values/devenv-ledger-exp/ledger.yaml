@@ -28,7 +28,6 @@ config:
       mode: grpc
       port: "4317"
     metrics:
-      batch: "true"
       enabled: true
       endpoint: otel-opentelemetry-collector
       exporter: otlp
@@ -48,7 +47,7 @@ config:
       port: "4317"
       sampling:
         enabled: true
-        successRatio: 0.1
+        successRatio: "0.1"
     pyroscope:
       enabled: true
       serverAddress: "http://pyroscope:4040"
@@ -86,8 +85,6 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-  perPod:
-    enabled: true
 ingressGrpc:
   enabled: true
   className: nginx
@@ -97,9 +94,9 @@ ingressGrpc:
         - path: /
           pathType: Prefix
 persistence:
-  persistentVolumeClaimRetentionPolicy:
+  retentionPolicy:
     whenDeleted: Delete
-replicaCount: 3
+replicas: 3
 resources:
   limits:
     cpu: 4000m

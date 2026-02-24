@@ -15,7 +15,7 @@ build:
 
 # Build the client application
 build-client:
-    go build -o ./build/ledgerctl ./cmd/ledgerctl/main
+    go build -o ./build/ledgerctl ./cmd/ledgerctl
 
 # Run the application locally (single node)
 run:
@@ -23,10 +23,10 @@ run:
 
 # Run the client application
 run-client *ARGS:
-    go run ./cmd/ledgerctl/main {{ARGS}}
+    go run ./cmd/ledgerctl {{ARGS}}
 
 install-client:
-    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl/main
+    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
@@ -75,24 +75,24 @@ generate-proto:
 k8s-install:
     cd misc/devenv && pulumi up
 
-k8s-uninstall:
-    helm uninstall ledger-v3-poc
+k8s-destroy:
+    cd misc/devenv && pulumi destroy
 
 k8s-watch:
-    watch -n 1 kubectl get pods -l app.kubernetes.io/name=ledger-v3-poc
+    watch -n 1 kubectl get pods -l app.kubernetes.io/name=ledger-exp
 
 k8s-logs:
-    kubectl logs -f statefulset/ledger-v3-poc
+    kubectl logs -f statefulset/ledger-exp
 
 k8s-describe-ss:
-    kubectl describe statefulset/ledger-v3-poc
+    kubectl describe statefulset/ledger-exp
 
 k8s-describe-pod:
-    kubectl describe pods/ledger-v3-poc-0
+    kubectl describe pods/ledger-exp-0
 
 k8s-rollout-restart:
-    kubectl rollout restart statefulsets/ledger-v3-poc
-    kubectl rollout status statefulset/ledger-v3-poc
+    kubectl rollout restart statefulsets/ledger-exp
+    kubectl rollout status statefulset/ledger-exp
 
 # Available demo tapes
 demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations demo_audit demo_signing"
@@ -111,7 +111,7 @@ _generate-demo tapes:
     echo "Generating CLI demo GIFs..."
     echo "Using temporary directory: $DEMO_DIR"
     echo "Building client..."
-    go build -o ./build/ledgerctl ./cmd/ledgerctl/main
+    go build -o ./build/ledgerctl ./cmd/ledgerctl
     echo "Building server..."
     go build -o "$DEMO_DIR/ledger-server" .
     cleanup() {

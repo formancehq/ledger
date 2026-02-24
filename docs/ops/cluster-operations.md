@@ -326,9 +326,9 @@ ledgerctl cluster promote-learner <node-id>
 
 Or via the `PromoteLearner` gRPC RPC. The request is forwarded to the leader if it reaches a follower.
 
-## Kubernetes (Helm Chart)
+## Kubernetes (Operator)
 
-The Helm chart implements the bootstrap/join model using a StatefulSet:
+The Ledger operator implements the bootstrap/join model using a StatefulSet:
 
 ```bash
 # Pod 0 (index 0) → Node ID 1 → Bootstrap
@@ -344,15 +344,15 @@ fi
 - **Pod management policy**: `Parallel` (all pods start simultaneously)
 - **Pod-0**: bootstraps the cluster
 - **Other pods**: join via pod-0 with 60s retry (waiting for pod-0 to be ready)
-- **Auto-promotion**: controlled by `config.raft.learnerPromotionThreshold` in `values.yaml`
+- **Auto-promotion**: controlled by `config.raft.learnerPromotionThreshold` in the Ledger CR spec
 - **Node IDs**: `POD_INDEX + 1` (Pod 0 = Node 1, Pod 1 = Node 2, etc.)
 
 ### Scaling
 
-To add nodes:
+To add nodes, update the `replicas` field in the Ledger CR:
 
 ```bash
-helm upgrade ledger-v3-poc ./misc/chart --set replicaCount=5
+kubectl patch ledgers.ledger.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
 ```
 
 New pods will join the existing cluster as learners and be auto-promoted once caught up.

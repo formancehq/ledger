@@ -10,7 +10,7 @@ COPY main.go .
 COPY internal internal
 COPY cmd cmd
 # Build client binary
-RUN go build -o ledgerctl ./cmd/ledgerctl/main
+RUN go build -o ledgerctl ./cmd/ledgerctl
 # Build server binary
 RUN go build -o ledger-v3-poc .
 

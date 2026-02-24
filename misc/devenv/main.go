@@ -1,3 +1,6 @@
+// WARNING: This Pulumi devenv is intended for development and testing purposes only.
+// The official method for deploying Formance in production is the Formance Stack Operator
+// (https://github.com/formancehq/operator).
 package main
 
 import (
@@ -14,9 +17,11 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
+	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	k8syaml "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"gopkg.in/yaml.v3"
@@ -234,6 +239,50 @@ func main() {
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build benchmark operator image: %w", err)
+		}
+
+		// Build Docker image for the ledger operator
+		ledgerOperatorImage, err := dockerbuild.NewImage(ctx, "formancehq/ledger-operator", &dockerbuild.ImageArgs{
+			Context: dockerbuild.BuildContextArgs{
+				Location: pulumi.String("../operator"),
+			},
+			Builder: dockerbuild.BuilderConfigArgs{
+				Name: pulumi.String(dockerBuilderName),
+			},
+			CacheFrom: dockerbuild.CacheFromArray{
+				dockerbuild.CacheFromArgs{
+					Registry: dockerbuild.CacheFromRegistryArgs{
+						Ref: pulumi.Sprintf("%s/formancehq/ledger-operator:buildcache", registry),
+					},
+				},
+			},
+			CacheTo: dockerbuild.CacheToArray{
+				dockerbuild.CacheToArgs{
+					Registry: dockerbuild.CacheToRegistryArgs{
+						Ref: pulumi.Sprintf("%s/formancehq/ledger-operator:buildcache,mode=max", registry),
+					},
+				},
+			},
+			Dockerfile: dockerbuild.DockerfileArgs{
+				Location: pulumi.String("../operator/Dockerfile"),
+			},
+			Platforms: dockerbuild.PlatformArray{
+				"linux/amd64",
+			},
+			Push: pulumi.Bool(true),
+			Registries: dockerbuild.RegistryArray{
+				dockerbuild.RegistryArgs{
+					Address:  pulumi.String(registry),
+					Username: config.GetSecret(ctx, "formance-dev-registry-username"),
+					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
+				},
+			},
+			Tags: pulumi.StringArray{
+				pulumi.Sprintf("%s/formancehq/ledger-operator:latest", registry),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build ledger operator image: %w", err)
 		}
 
 		// Get the config directory for Grafana provisioning files (still needed for dashboards and datasources)
@@ -537,19 +586,50 @@ func main() {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
 
-		// Deploy Ledger
-		ledgerValues, err := getConfigObject("ledger")
+		// Apply Ledger CRD
+		ledgerCRD, err := k8syaml.NewConfigFile(ctx, "ledger-crd", &k8syaml.ConfigFileArgs{
+			File: "../operator/config/crd/bases/ledger.formance.com_ledgers.yaml",
+		}, pulumi.Provider(k8sProvider))
 		if err != nil {
-			return fmt.Errorf("failed to read Ledger values: %w", err)
+			return fmt.Errorf("failed to apply Ledger CRD: %w", err)
 		}
-		ledgerValues["image"] = map[string]any{
+
+		// Deploy ledger operator via its Helm chart
+		operatorChartPath := filepath.Join("..", "operator", "chart")
+		ledgerOperator, err := helm.NewRelease(ctx, "ledger-operator", &helm.ReleaseArgs{
+			Name:      pulumi.String("ledger-operator"),
+			Chart:     pulumi.String(operatorChartPath),
+			Namespace: namespace.Metadata.Name(),
+			Values: pulumi.Map{
+				"image": pulumi.Map{
+					"repository": pulumi.Sprintf("%s/formancehq/ledger-operator", pullRegistry),
+					"tag":        pulumi.Sprintf("latest@%s", ledgerOperatorImage.Digest),
+				},
+				"leaderElection": pulumi.Bool(true),
+				"watchNamespace": namespace.Metadata.Name(),
+			},
+			ForceUpdate: pulumi.Bool(true),
+		},
+			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerCRD, ledgerOperatorImage}),
+			pulumi.Provider(k8sProvider),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to deploy ledger operator: %w", err)
+		}
+
+		// Deploy Ledger via CR
+		ledgerSpec, err := getConfigObject("ledger")
+		if err != nil {
+			return fmt.Errorf("failed to read Ledger spec: %w", err)
+		}
+		ledgerSpec["image"] = map[string]any{
 			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
 			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
 		}
-		
+
 		// Add build version to Pyroscope tags for profile comparison
-		if configMonitoring, ok := ledgerValues["config"].(map[string]interface{}); ok {
-			if monitoring, ok := configMonitoring["monitoring"].(map[string]interface{}); ok {
+		if configSection, ok := ledgerSpec["config"].(map[string]interface{}); ok {
+			if monitoring, ok := configSection["monitoring"].(map[string]interface{}); ok {
 				if pyroscope, ok := monitoring["pyroscope"].(map[string]interface{}); ok {
 					existingTags := ""
 					if tags, ok := pyroscope["tags"].(string); ok && tags != "" {
@@ -559,8 +639,8 @@ func main() {
 				}
 			}
 		}
-		// Cold storage: optionally create an S3 bucket and inject config into Helm values
-		ledgerDeps := []pulumi.Resource{namespace, otlp, dockerImage}
+		// Cold storage: optionally create an S3 bucket and inject config into the CR spec
+		ledgerDeps := []pulumi.Resource{namespace, otlp, dockerImage, ledgerOperator}
 		if getConfigBool("coldStorage-enabled", false) {
 			coldStorageRegion := cfg.Get("coldStorage-s3-region")
 			if coldStorageRegion == "" {
@@ -582,11 +662,11 @@ func main() {
 				return fmt.Errorf("failed to create cold storage S3 bucket: %w", err)
 			}
 
-			// Ensure the config.coldStorage section exists in ledger values
-			configMap, ok := ledgerValues["config"].(map[string]interface{})
+			// Ensure the config.coldStorage section exists in ledger spec
+			configMap, ok := ledgerSpec["config"].(map[string]interface{})
 			if !ok {
 				configMap = make(map[string]interface{})
-				ledgerValues["config"] = configMap
+				ledgerSpec["config"] = configMap
 			}
 			configMap["coldStorage"] = map[string]interface{}{
 				"driver": "s3",
@@ -596,11 +676,20 @@ func main() {
 				},
 			}
 
-			// Create IAM role and ServiceAccount for IRSA (IAM Roles for Service Accounts)
+			// Create IAM role for IRSA and inject annotation into the CR spec
+			// so the operator-managed ServiceAccount gets the IRSA annotation.
 			oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
 			if oidcIssuer != "" {
 				// Strip https:// prefix if present
 				oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
+
+				// The SA name is the CR name (operator default)
+				ledgerSAName := "ledger-exp"
+				if saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{}); ok {
+					if name, ok := saSpec["name"].(string); ok && name != "" {
+						ledgerSAName = name
+					}
+				}
 
 				// Get AWS account ID
 				callerIdentity, err := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
@@ -618,7 +707,7 @@ func main() {
 						"Action":    "sts:AssumeRoleWithWebIdentity",
 						"Condition": map[string]any{
 							"StringEquals": map[string]string{
-								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:aws-access", namespaceName),
+								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:%s", namespaceName, ledgerSAName),
 								oidcIssuer + ":aud": "sts.amazonaws.com",
 							},
 						},
@@ -665,20 +754,20 @@ func main() {
 					return fmt.Errorf("failed to create cold storage S3 policy: %w", err)
 				}
 
-				// Create ServiceAccount annotated with the role ARN
-				sa, err := v1.NewServiceAccount(ctx, "aws-access", &v1.ServiceAccountArgs{
-					Metadata: &metav1.ObjectMetaArgs{
-						Name:      pulumi.String("aws-access"),
-						Namespace: namespace.Metadata.Name(),
-						Annotations: pulumi.StringMap{
-							"eks.amazonaws.com/role-arn": coldStorageRole.Arn,
-						},
-					},
-				}, pulumi.Provider(k8sProvider))
-				if err != nil {
-					return fmt.Errorf("failed to create IRSA ServiceAccount: %w", err)
+				// Inject IRSA annotation into the CR spec so the operator
+				// creates the ServiceAccount with the correct role ARN.
+				saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{})
+				if !ok {
+					saSpec = make(map[string]interface{})
+					ledgerSpec["serviceAccount"] = saSpec
 				}
-				ledgerDeps = append(ledgerDeps, sa)
+				annotations, ok := saSpec["annotations"].(map[string]interface{})
+				if !ok {
+					annotations = make(map[string]interface{})
+					saSpec["annotations"] = annotations
+				}
+				annotations["eks.amazonaws.com/role-arn"] = coldStorageRole.Arn
+
 				ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
 			}
 
@@ -686,22 +775,39 @@ func main() {
 			ctx.Export("coldStorageBucket", coldBucket.Bucket)
 		}
 
-		// Get the chart path (relative to the devenv directory where Pulumi.yaml is)
-		// The chart is in ../chart relative to devenv
-		chartPath := filepath.Join("..", "chart")
-		ledger, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
-			Name:             pulumi.String("ledger-exp"),
-			Chart:            pulumi.String(chartPath),
-			Namespace:        namespace.Metadata.Name(),
-			Values:           pulumi.ToMap(ledgerValues),
-			DependencyUpdate: pulumi.Bool(true),
-			ForceUpdate:      pulumi.Bool(true),
+		// Ensure the operator manages the ServiceAccount (override any stale SSA field).
+		saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{})
+		if !ok {
+			saSpec = make(map[string]interface{})
+			ledgerSpec["serviceAccount"] = saSpec
+		}
+		if _, exists := saSpec["create"]; !exists {
+			saSpec["create"] = true
+		}
+		if _, exists := saSpec["name"]; !exists {
+			saSpec["name"] = ""
+		}
+
+		// Create Ledger custom resource (replaces the old Helm release)
+		ledgerCR, err := apiextensions.NewCustomResource(ctx, "ledger", &apiextensions.CustomResourceArgs{
+			ApiVersion: pulumi.String("ledger.formance.com/v1alpha1"),
+			Kind:       pulumi.String("Ledger"),
+			Metadata: &metav1.ObjectMetaArgs{
+				Name:      pulumi.String("ledger-exp"),
+				Namespace: namespace.Metadata.Name(),
+				Annotations: pulumi.StringMap{
+					"pulumi.com/patchForce": pulumi.String("true"),
+				},
+			},
+			OtherFields: kubernetes.UntypedArgs{
+				"spec": ledgerSpec,
+			},
 		},
 			pulumi.DependsOn(ledgerDeps),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to deploy Ledger: %w", err)
+			return fmt.Errorf("failed to create Ledger CR: %w", err)
 		}
 
 		// Deploy k6-operator (optional, enabled by default)
@@ -778,7 +884,9 @@ func main() {
 		ctx.Export("lokiRelease", loki.Name)
 		ctx.Export("otlpRelease", otlp.Name)
 		ctx.Export("grafanaRelease", grafana.Name)
-		ctx.Export("ledgerRelease", ledger.Name)
+		ctx.Export("ledgerOperatorRelease", ledgerOperator.Name)
+		ctx.Export("ledgerCR", ledgerCR.Metadata.Name())
+		ctx.Export("ledgerOperatorImage", ledgerOperatorImage.Tags.Index(pulumi.Int(0)))
 		ctx.Export("benchmarkOperatorImage", benchmarkOperatorImage.Tags.Index(pulumi.Int(0)))
 		if pyroscope != nil {
 			ctx.Export("pyroscopeRelease", pyroscope.Name)
