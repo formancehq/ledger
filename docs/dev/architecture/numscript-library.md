@@ -19,6 +19,20 @@ Key rules:
 - **Saving with an empty version** defaults to the `"latest"` slot.
 - **Deletion is a soft delete.** Deleting a numscript clears its latest-version pointer but preserves all versioned entries in storage. Explicit version lookups (e.g. `?version=1.0.0`) continue to work after deletion.
 
+### Version Resolution
+
+When reading a numscript (via `GetNumscript` or a `ScriptReference` in a transaction), the `version` field supports several formats. The system resolves them in order:
+
+| Input | Strategy | Resolved to |
+|---|---|---|
+| `""` (empty) | Read the latest-version pointer, then recursively resolve that version | Whatever the pointer holds (e.g. `"2.0.0"` or `"latest"`) |
+| `"latest"` | Direct lookup on the `latest` slot | The `latest` slot content |
+| `"1.0.0"` (full semver) | Direct lookup on the exact semver key | Exact match or `NOT_FOUND` |
+| `"1.0"` (major.minor) | Range scan `[1.0.0, 1.1.0)`, take the **highest** | Highest `1.0.x` patch |
+| `"1"` (major only) | Range scan `[1.0.0, 2.0.0)`, take the **highest** | Highest `1.x.y` minor+patch |
+
+Partial versions are parsed by `semver.ParsePartial()` (`internal/semver/`). Range scans exploit the big-endian uint32 encoding of semver components in Pebble keys, which ensures lexicographic order matches semantic order.
+
 ### Syntax Validation
 
 Scripts are parsed and validated **at save time**, not at transaction creation time. This catches syntax errors early. The parser uses the same Numscript interpreter as transaction execution, with all experimental features enabled.
@@ -113,16 +127,90 @@ ledgerctl numscripts delete payment-with-fees
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | Immutable semver already saved |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get/delete non-existent numscript |
 
+## Script References in Transactions
+
+Instead of inlining a numscript in every `CreateTransaction` request, clients can pass a `ScriptReference` that points to a script stored in the library. The version resolution described in [Version Resolution](#version-resolution) applies here.
+
+### Protobuf
+
+```protobuf
+message ScriptReference {
+  string name = 1;
+  string version = 2; // "" = latest pointer
+  map<string, string> vars = 3;
+}
+
+message CreateTransactionPayload {
+  // ...
+  ScriptReference script_reference = 8;
+}
+```
+
+### Resolution Flow
+
+Version resolution happens in the **admission layer** (`admission.go`), before the Raft proposal is built. This means the script content is resolved at request time from Pebble, not from the FSM caches.
+
+```
+POST /{ledger}/transactions  { scriptReference: { name: "payment", version: "1" } }
+    │
+    ▼
+Admission: resolveScriptReference()
+    │
+    ├── Validate: script and scriptReference are mutually exclusive
+    │   (both set → INVALID_ARGUMENT)
+    │
+    ├── ReadNumscript(store, name="payment", version="1")
+    │       │
+    │       ▼
+    │   semver.ParsePartial("1") → major=1, depth=1
+    │       │
+    │       ▼
+    │   resolvePartialVersion(): range scan [1.0.0, 2.0.0)
+    │       │
+    │       ▼
+    │   iter.Last() → NumscriptInfo { version: "1.3.0", content: "..." }
+    │
+    ├── If nil → NUMSCRIPT_NOT_FOUND
+    │
+    └── Build Script { plain: info.Content, vars: scriptReference.Vars }
+        │
+        ▼
+    Normal transaction processing (parse, execute, postings...)
+```
+
+### Version Pinning Examples
+
+Given a library with versions `1.0.0`, `1.0.5`, `1.2.0`, `2.0.0`:
+
+| `scriptReference.version` | Resolved version | Behavior |
+|---|---|---|
+| `""` | Latest pointer (e.g. `"2.0.0"`) | Follows whatever version was last saved |
+| `"1.0.0"` | `1.0.0` | Exact pin, never changes |
+| `"1.0"` | `1.0.5` | Picks highest patch in `1.0.x` — auto-updates when `1.0.6` is saved |
+| `"1"` | `1.2.0` | Picks highest minor+patch in `1.x.y` — auto-updates within major |
+| `"2.0.0"` | `2.0.0` | Exact pin |
+| `"3"` | `NOT_FOUND` | No version in the `3.x.y` range |
+
+### Error Cases
+
+| Condition | gRPC code | Reason |
+|---|---|---|
+| Both `script` and `scriptReference` set | `INVALID_ARGUMENT` | `SCRIPT_AND_REFERENCE_CONFLICT` |
+| Script name not found / version not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` |
+
 ## Storage
 
 ### Pebble Keys
 
-Two key prefixes store numscript data:
+Three key formats store numscript data:
 
 | Prefix | Key format | Value |
 |---|---|---|
-| `KeyPrefixNumscript` | `[prefix][name]\x00[version]` | Protobuf-encoded `NumscriptInfo` |
+| `KeyPrefixNumscript` (semver) | `[prefix][name]\x00\x00[major_u32BE][minor_u32BE][patch_u32BE]` | Protobuf `NumscriptInfo` |
+| `KeyPrefixNumscript` (latest) | `[prefix][name]\x00\x01` | Protobuf `NumscriptInfo` |
 | `KeyPrefixNumscriptLatest` | `[prefix][name]` | Version string (UTF-8 bytes) |
+
+The `\x00` byte after the name is a separator. The next byte is a **tag**: `0x00` = semver entry, `0x01` = latest slot (constants `NumscriptVersionTagSemver` / `NumscriptVersionTagLatest` in `dal/types.go`). Semver components are encoded as big-endian `uint32`, which guarantees lexicographic key order matches semantic version order — enabling efficient range scans for partial version resolution.
 
 The latest-version pointer is a simple string that tells the system which version to resolve when no explicit version is requested. On soft delete, this key is written with an empty value (not deleted from Pebble), preserving the key's existence for the storage layer.
 
@@ -208,8 +296,19 @@ HTTP Handler → backend.GetNumscript(name, version)
     │
     ▼
 Controller → ReadNumscript(store, name, version)
-    ├── If version == "": resolve latest pointer first
-    └── Read specific version entry from Pebble
+    │
+    ├── version == ""
+    │       → ReadNumscriptLatestVersion(name) → pointer (e.g. "2.0.0")
+    │       → ReadNumscript(name, "2.0.0")     (recursive)
+    │
+    ├── version == "latest"
+    │       → readNumscriptLatestSlot(): direct Get on [prefix][name]\x00\x01
+    │
+    ├── depth == 3 (e.g. "1.0.0")
+    │       → readNumscriptExactSemver(): direct Get on [prefix][name]\x00\x00[1][0][0]
+    │
+    └── depth < 3 (e.g. "1" or "1.0")
+            → resolvePartialVersion(): range scan, iter.Last()
 ```
 
 ### Delete Path
@@ -249,7 +348,8 @@ Buffered.Merge()
 | Cache | `internal/service/cache/cache.go` | `NumscriptVersions`, `NumscriptEntries` caches |
 | Admission | `internal/service/admission/admission.go` | Preload phases 5-6 |
 | Loaders | `internal/service/admission/loader.go` | `NumscriptVersions`, `NumscriptEntries` loaders |
-| DAL types | `internal/storage/dal/types.go` | `NumscriptVersionKey`, `NumscriptEntryKey` |
+| Semver | `internal/semver/semver.go` | `Version`, `Parse`, `ParsePartial` |
+| DAL types | `internal/storage/dal/types.go` | `NumscriptVersionKey`, `NumscriptEntryKey`, version tag constants |
 | Proto | `misc/proto/common.proto` | `NumscriptInfo`, log payload messages |
 | Proto | `misc/proto/raft_cmd.proto` | `SaveNumscriptOrder`, `DeleteNumscriptOrder`, preload messages |
 | Proto | `misc/proto/bucket.proto` | gRPC service methods |
