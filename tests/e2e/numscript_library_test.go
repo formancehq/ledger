@@ -243,6 +243,188 @@ send [EUR/2 2] (
 		})
 	})
 
+	Context("Partial version resolution", Ordered, func() {
+		const simpleScript = `send [USD/2 1] (source = @world destination = @x)`
+
+		BeforeAll(func() {
+			// Save multiple versions of "partial-test" to test range resolution
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					saveNumscriptWithVersionAction("partial-test", simpleScript, "1.0.0"),
+					saveNumscriptWithVersionAction("partial-test", simpleScript, "1.0.3"),
+					saveNumscriptWithVersionAction("partial-test", simpleScript, "1.2.0"),
+					saveNumscriptWithVersionAction("partial-test", simpleScript, "2.0.0"),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should resolve '1.0' to highest 1.0.x", func() {
+			info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+				Name:    "partial-test",
+				Version: "1.0",
+			})
+			Expect(err).To(Succeed())
+			Expect(info.Version).To(Equal("1.0.3"))
+		})
+
+		It("Should resolve '1' to highest 1.x.y", func() {
+			info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+				Name:    "partial-test",
+				Version: "1",
+			})
+			Expect(err).To(Succeed())
+			Expect(info.Version).To(Equal("1.2.0"))
+		})
+
+		It("Should still resolve exact semver", func() {
+			info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+				Name:    "partial-test",
+				Version: "1.0.0",
+			})
+			Expect(err).To(Succeed())
+			Expect(info.Version).To(Equal("1.0.0"))
+		})
+
+		It("Should return NOT_FOUND for non-matching partial", func() {
+			_, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+				Name:    "partial-test",
+				Version: "3",
+			})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.NotFound))
+		})
+
+		It("Should resolve partial version in ScriptReference", func() {
+			const ledgerName = "partial-version-ledger"
+
+			const transferScript = `
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)
+`
+			// Create ledger and save two versions
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					saveNumscriptWithVersionAction("transfer", transferScript, "1.0.0"),
+					saveNumscriptWithVersionAction("transfer", transferScript, "1.0.5"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Use partial version "1.0" in script reference — should resolve to 1.0.5
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createScriptRefTransactionAction(ledgerName, "transfer", "1.0", map[string]string{
+						"destination": "users:charlie",
+						"amount":      "USD/2 42",
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("42"))
+		})
+
+		It("Should resolve major-only partial version in ScriptReference", func() {
+			const ledgerName = "partial-major-ledger"
+
+			const transferScript = `
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)
+`
+			// Create ledger and save versions across minor ranges
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					saveNumscriptWithVersionAction("major-transfer", transferScript, "1.0.0"),
+					saveNumscriptWithVersionAction("major-transfer", transferScript, "1.3.0"),
+					saveNumscriptWithVersionAction("major-transfer", transferScript, "2.0.0"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Use version "1" — should resolve to 1.3.0 (highest 1.x.y)
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createScriptRefTransactionAction(ledgerName, "major-transfer", "1", map[string]string{
+						"destination": "users:delta",
+						"amount":      "USD/2 77",
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("77"))
+		})
+
+		It("Should resolve latest version in ScriptReference when version is empty", func() {
+			const ledgerName = "latest-ref-ledger"
+
+			const transferScript = `
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)
+`
+			// Create ledger and save multiple semver versions
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					saveNumscriptWithVersionAction("latest-transfer", transferScript, "1.0.0"),
+					saveNumscriptWithVersionAction("latest-transfer", transferScript, "2.0.0"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Use version "" — should resolve via latest pointer to 2.0.0
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createScriptRefTransactionAction(ledgerName, "latest-transfer", "", map[string]string{
+						"destination": "users:echo",
+						"amount":      "USD/2 99",
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("99"))
+		})
+	})
+
 	Context("Script reference transactions", Ordered, func() {
 		const ledgerName = "numscript-lib-ledger"
 

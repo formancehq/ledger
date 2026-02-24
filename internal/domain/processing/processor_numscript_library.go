@@ -2,32 +2,13 @@ package processing
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/semver"
 )
-
-// isValidSemver validates a version string is "major.minor.patch" format.
-// The special value "latest" is NOT considered valid semver (handled separately).
-func isValidSemver(s string) bool {
-	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
-		return false
-	}
-	for _, part := range parts {
-		if part == "" {
-			return false
-		}
-		if _, err := strconv.Atoi(part); err != nil {
-			return false
-		}
-	}
-	return true
-}
 
 func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	if order.Name == "" {
@@ -53,7 +34,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 	if version == "latest" {
 		// "latest" is its own version slot, always overwritable
 		resolvedVersion = "latest"
-	} else if isValidSemver(version) {
+	} else if _, err := semver.Parse(version); err == nil {
 		// Semver versions are immutable — check the specific version doesn't already exist
 		exists, err := s.NumscriptVersionExists(order.Name, version)
 		if err != nil {

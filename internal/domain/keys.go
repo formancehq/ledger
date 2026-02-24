@@ -238,6 +238,13 @@ func (k NumscriptEntryKey) Bytes() []byte {
 	return ret
 }
 
+const (
+	// NumscriptVersionTagSemver is the tag byte for semver-encoded numscript entries.
+	NumscriptVersionTagSemver byte = 0x00
+	// NumscriptVersionTagLatest is the tag byte for the "latest" numscript slot.
+	NumscriptVersionTagLatest byte = 0x01
+)
+
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte

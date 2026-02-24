@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -377,13 +378,28 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 }
 
 // SaveNumscript stores a versioned numscript entry and updates the latest version pointer.
+// Semver versions are encoded as [prefix][name]\x00\x00[major_u32BE][minor_u32BE][patch_u32BE].
+// The "latest" slot is encoded as [prefix][name]\x00\x01.
 func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
-	// Store versioned entry: [prefix][name]\x00[version_string] -> NumscriptInfo
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscript).
 		PutString(info.Name).
-		PutByte(0x00).
-		PutString(info.Version)
+		PutByte(0x00)
+
+	if info.Version == "latest" {
+		b.KeyBuilder.PutByte(domain.NumscriptVersionTagLatest)
+	} else {
+		sv, err := semver.Parse(info.Version)
+		if err != nil {
+			return fmt.Errorf("saving numscript %q: %w", info.Name, err)
+		}
+		b.KeyBuilder.
+			PutByte(domain.NumscriptVersionTagSemver).
+			PutUInt32(sv.Major).
+			PutUInt32(sv.Minor).
+			PutUInt32(sv.Patch)
+	}
+
 	if err := b.SetProto(b.KeyBuilder.Build(), info); err != nil {
 		return fmt.Errorf("saving numscript %q v%s: %w", info.Name, info.Version, err)
 	}
