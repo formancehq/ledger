@@ -34,12 +34,15 @@ const (
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
 	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
-	ErrReasonLedgerInMirrorMode           = "LEDGER_IN_MIRROR_MODE"
-	ErrReasonLedgerNotInMirrorMode        = "LEDGER_NOT_IN_MIRROR_MODE"
-	ErrReasonPreparedQueryAlreadyExists   = "PREPARED_QUERY_ALREADY_EXISTS"
-	ErrReasonPreparedQueryNotFound        = "PREPARED_QUERY_NOT_FOUND"
-	ErrReasonIndexNotFound                = "INDEX_NOT_FOUND"
-	ErrReasonIndexBuilding                = "INDEX_BUILDING"
+	ErrReasonLedgerInMirrorMode              = "LEDGER_IN_MIRROR_MODE"
+	ErrReasonLedgerNotInMirrorMode           = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonPreparedQueryAlreadyExists      = "PREPARED_QUERY_ALREADY_EXISTS"
+	ErrReasonPreparedQueryNotFound           = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexNotFound                   = "INDEX_NOT_FOUND"
+	ErrReasonIndexBuilding                   = "INDEX_BUILDING"
+	ErrReasonNumscriptNotFound               = "NUMSCRIPT_NOT_FOUND"
+	ErrReasonNumscriptVersionAlreadyExists   = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
+	ErrReasonNumscriptInvalidVersion         = "NUMSCRIPT_INVALID_VERSION"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -59,10 +62,13 @@ func (e *BusinessError) Unwrap() error {
 
 // Sentinel validation errors (no context needed).
 var (
-	ErrTargetRequired      = errors.New("target is required")
-	ErrMetadataKeyRequired = errors.New("key is required")
-	ErrAuditDisabled       = errors.New("audit log is disabled on this server")
-	ErrMaintenanceMode     = errors.New("cluster is in maintenance mode: write operations are blocked")
+	ErrTargetRequired           = errors.New("target is required")
+	ErrMetadataKeyRequired      = errors.New("key is required")
+	ErrAuditDisabled            = errors.New("audit log is disabled on this server")
+	ErrMaintenanceMode          = errors.New("cluster is in maintenance mode: write operations are blocked")
+	ErrNumscriptNameRequired       = errors.New("numscript name is required")
+	ErrNumscriptContentRequired    = errors.New("numscript content is required")
+	ErrScriptAndReferenceConflict  = errors.New("cannot specify both script and scriptReference")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.
@@ -290,3 +296,30 @@ func (e *ErrInvalidReceipt) Error() string {
 	return fmt.Sprintf("invalid receipt: %s", e.Reason)
 }
 
+// ErrNumscriptNotFound is returned when a referenced numscript does not exist in the library.
+type ErrNumscriptNotFound struct {
+	Name string
+}
+
+func (e *ErrNumscriptNotFound) Error() string {
+	return fmt.Sprintf("numscript not found: %s", e.Name)
+}
+
+// ErrNumscriptVersionAlreadyExists is returned when saving with a semver version that already exists.
+type ErrNumscriptVersionAlreadyExists struct {
+	Name    string
+	Version string
+}
+
+func (e *ErrNumscriptVersionAlreadyExists) Error() string {
+	return fmt.Sprintf("numscript %q version %s already exists", e.Name, e.Version)
+}
+
+// ErrNumscriptInvalidVersion is returned when the version string is not valid semver.
+type ErrNumscriptInvalidVersion struct {
+	Version string
+}
+
+func (e *ErrNumscriptInvalidVersion) Error() string {
+	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
+}

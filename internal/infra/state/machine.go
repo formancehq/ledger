@@ -48,7 +48,7 @@ type Machine struct {
 	mu sync.Mutex
 
 	// Composed subsystems
-	Registry *StateRegistry // 8 KeyStores + Cache + Attrs
+	Registry *StateRegistry // 10 KeyStores + Cache + Attrs (includes NumscriptVersions/NumscriptEntries)
 	Periods  *PeriodTracker // Period lifecycle
 
 	// FSM mechanics
@@ -793,6 +793,32 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	// Helper function to put a preloaded string value into a cache generation
+	putInCacheString := func(
+		kv kv.KV[attributes.U128, attributes.Entry[string]],
+		attrID *raftcmdpb.AttributeID,
+		value string,
+	) string {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id":    id.Hex(),
+			"value": value,
+		}).Debugf("Preload string")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[string]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	// Helper function to put a preloaded account metadata value into a cache generation
 	putInCacheMetadataValue := func(
 		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]],
@@ -885,6 +911,22 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, value)
 			} else {
 				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
+			}
+
+		case *raftcmdpb.Preload_NumscriptVersion:
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.Id, preloadType.NumscriptVersion.Version)
+				putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.Id, value)
+			} else {
+				putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.Id, preloadType.NumscriptVersion.Version)
+			}
+
+		case *raftcmdpb.Preload_NumscriptEntry:
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.Id, preloadType.NumscriptEntry.Exists)
+				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.Id, value)
+			} else {
+				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.Id, preloadType.NumscriptEntry.Exists)
 			}
 		}
 	}

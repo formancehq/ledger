@@ -583,6 +583,23 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 	return impl.ctrl.GetLedgerStats(ctx, req.Ledger)
 }
 
+func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
+	return impl.ctrl.GetNumscript(ctx, req.Name, req.Version)
+}
+
+func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
+	scripts, err := impl.ctrl.ListNumscripts(stream.Context())
+	if err != nil {
+		return fmt.Errorf("listing numscripts: %w", err)
+	}
+	for _, script := range scripts {
+		if err := stream.Send(script); err != nil {
+			return fmt.Errorf("sending numscript: %w", err)
+		}
+	}
+	return nil
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

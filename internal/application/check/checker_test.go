@@ -430,6 +430,10 @@ func (s *inMemoryStore) GetPreparedQuery(_, _ string) (*commonpb.PreparedQuery, 
 }
 func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)  {}
 func (s *inMemoryStore) DeletePreparedQuery(_, _ string)             {}
+func (s *inMemoryStore) GetNumscriptLatestVersion(_ string) (string, error)   { return "", nil }
+func (s *inMemoryStore) NumscriptVersionExists(_, _ string) (bool, error)    { return false, nil }
+func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)              {}
+func (s *inMemoryStore) DeleteNumscriptLatest(_ string)                      {}
 
 // Helper functions for building orders
 

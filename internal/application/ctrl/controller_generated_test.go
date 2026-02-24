@@ -197,6 +197,21 @@ func (mr *MockControllerMockRecorder) GetMetadataSchemaStatus(ctx, ledgerName an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetadataSchemaStatus", reflect.TypeOf((*MockController)(nil).GetMetadataSchemaStatus), ctx, ledgerName)
 }
 
+// GetNumscript mocks base method.
+func (m *MockController) GetNumscript(ctx context.Context, name, version string) (*commonpb.NumscriptInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNumscript", ctx, name, version)
+	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNumscript indicates an expected call of GetNumscript.
+func (mr *MockControllerMockRecorder) GetNumscript(ctx, name, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, name, version)
+}
+
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	m.ctrl.T.Helper()
@@ -270,6 +285,21 @@ func (m *MockController) ListLogs(ctx context.Context, afterSequence uint64, pag
 func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, pageSize any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, afterSequence, pageSize)
+}
+
+// ListNumscripts mocks base method.
+func (m *MockController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNumscripts", ctx)
+	ret0, _ := ret[0].([]*commonpb.NumscriptInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNumscripts indicates an expected call of ListNumscripts.
+func (mr *MockControllerMockRecorder) ListNumscripts(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscripts", reflect.TypeOf((*MockController)(nil).ListNumscripts), ctx)
 }
 
 // ListPeriods mocks base method.

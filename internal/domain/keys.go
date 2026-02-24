@@ -215,6 +215,29 @@ type PreparedQueryKey struct {
 	Name   string
 }
 
+// NumscriptVersionKey uniquely identifies a numscript by name for version tracking.
+type NumscriptVersionKey struct {
+	Name string
+}
+
+func (k NumscriptVersionKey) Bytes() []byte {
+	return []byte(k.Name)
+}
+
+// NumscriptEntryKey uniquely identifies a specific numscript version entry.
+type NumscriptEntryKey struct {
+	Name    string
+	Version string
+}
+
+func (k NumscriptEntryKey) Bytes() []byte {
+	ret := make([]byte, len(k.Name)+1+len(k.Version))
+	n := copy(ret, k.Name)
+	ret[n] = 0x00
+	copy(ret[n+1:], k.Version)
+	return ret
+}
+
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte

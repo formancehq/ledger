@@ -625,7 +625,118 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
-	// Phase 5: Preload account metadata for Numscript meta() calls
+	// Phase 5: Preload numscript versions for SaveNumscript/DeleteNumscript
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptVersions)),
+		metric.WithAttributes(attribute.String("type", "numscript_versions")))
+	for nsKey := range needs.NumscriptVersions {
+		canonicalKey := nsKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+
+		if !a.cache.NumscriptVersions.IsGuaranteedInCache(nextIndex, id) {
+			preloadStart := time.Now()
+			result, err := a.loaders.NumscriptVersions.LoadOrWait(id, boundary, func() (string, error) {
+				return query.ReadNumscriptLatestVersion(a.store, nsKey.Name)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("loading numscript version for %q from store: %w", nsKey.Name, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.NumscriptVersions = append(loadedKeys.NumscriptVersions, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "numscript_versions")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "numscript_versions")))
+			}
+
+			// Always send preload (empty string means "not found", which the FSM needs to know)
+			attrID := &raftcmdpb.AttributeID{
+				Id:  id[:],
+				Tag: tag,
+			}
+
+			a.logger.WithFields(map[string]any{
+				"id":        id.Hex(),
+				"boundary":  boundary,
+				"nextIndex": nextIndex,
+				"name":      nsKey.Name,
+				"version":   result.Value,
+				"fromLoad":  result.FromLoad,
+			}).Debug("Preloading numscript version from store")
+
+			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+				Type: &raftcmdpb.Preload_NumscriptVersion{
+					NumscriptVersion: &raftcmdpb.PreloadNumscriptVersion{
+						Id:      attrID,
+						Version: result.Value,
+					},
+				},
+			})
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "numscript_versions")))
+		}
+	}
+
+	// Phase 6: Preload numscript entries for semver immutability checks
+	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptEntries)),
+		metric.WithAttributes(attribute.String("type", "numscript_entries")))
+	for entryKey := range needs.NumscriptEntries {
+		canonicalKey := entryKey.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+
+		if !a.cache.NumscriptEntries.IsGuaranteedInCache(nextIndex, id) {
+			preloadStart := time.Now()
+			result, err := a.loaders.NumscriptEntries.LoadOrWait(id, boundary, func() (bool, error) {
+				info, err := query.ReadNumscript(a.store, entryKey.Name, entryKey.Version)
+				if err != nil {
+					return false, err
+				}
+				return info != nil, nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("loading numscript entry %q v%s from store: %w", entryKey.Name, entryKey.Version, err)
+			}
+
+			if result.FromLoad {
+				loadedKeys.NumscriptEntries = append(loadedKeys.NumscriptEntries, id)
+				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
+					metric.WithAttributes(attribute.String("type", "numscript_entries")))
+				a.preloadCounter.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("type", "numscript_entries")))
+			}
+
+			// Always send preload (both true and false) so the FSM never needs a Pebble read
+			attrID := &raftcmdpb.AttributeID{
+				Id:  id[:],
+				Tag: tag,
+			}
+
+			a.logger.WithFields(map[string]any{
+				"id":        id.Hex(),
+				"boundary":  boundary,
+				"nextIndex": nextIndex,
+				"name":      entryKey.Name,
+				"version":   entryKey.Version,
+				"exists":    result.Value,
+				"fromLoad":  result.FromLoad,
+			}).Debug("Preloading numscript entry existence from store")
+
+			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+				Type: &raftcmdpb.Preload_NumscriptEntry{
+					NumscriptEntry: &raftcmdpb.PreloadNumscriptEntry{
+						Id:     attrID,
+						Exists: result.Value,
+					},
+				},
+			})
+		} else {
+			a.preloadCacheHitsCounter.Add(ctx, 1,
+				metric.WithAttributes(attribute.String("type", "numscript_entries")))
+		}
+	}
+
+	// Phase 7: Preload account metadata for Numscript meta() calls
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Metadata)),
 		metric.WithAttributes(attribute.String("type", "account_metadata")))
 	for metadataKey := range needs.Metadata {
@@ -861,13 +972,15 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 // It combines what was previously split across phase1 (name-based) and phase2
 // (ledger-scoped) extraction, now that DAL keys use ledger names directly.
 type preloadNeeds struct {
-	IdempotencyKeys map[domain.IdempotencyKey]struct{}
-	Ledgers         map[domain.LedgerKey]struct{}
-	Boundaries      map[domain.LedgerKey]struct{}
-	SinkConfigs     map[domain.SinkConfigKey]struct{}
-	Volumes         map[domain.VolumeKey]struct{}
-	Metadata        map[domain.MetadataKey]struct{}
-	References      map[domain.TransactionReferenceKey]struct{}
+	IdempotencyKeys   map[domain.IdempotencyKey]struct{}
+	Ledgers           map[domain.LedgerKey]struct{}
+	Boundaries        map[domain.LedgerKey]struct{}
+	SinkConfigs       map[domain.SinkConfigKey]struct{}
+	NumscriptVersions map[domain.NumscriptVersionKey]struct{}
+	NumscriptEntries  map[domain.NumscriptEntryKey]struct{}
+	Volumes           map[domain.VolumeKey]struct{}
+	Metadata          map[domain.MetadataKey]struct{}
+	References        map[domain.TransactionReferenceKey]struct{}
 }
 
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
@@ -877,6 +990,8 @@ type preloadNeeds struct {
 //   - Ledgers: from CreateLedger/DeleteLedger orders
 //   - Boundaries: from Apply orders (to access next_transaction_id/next_log_id)
 //   - SinkConfigs: from AddEventsSink/RemoveEventsSink orders
+//   - NumscriptVersions: from SaveNumscript/DeleteNumscript orders
+//   - NumscriptEntries: from SaveNumscript orders with explicit semver
 //
 // For Apply orders it additionally collects:
 //   - Volumes: accounts that need balance checks or post-commit volume expansion
@@ -894,13 +1009,15 @@ type preloadNeeds struct {
 //     and original source becomes destination
 func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds {
 	p := preloadNeeds{
-		IdempotencyKeys: make(map[domain.IdempotencyKey]struct{}),
-		Ledgers:         make(map[domain.LedgerKey]struct{}),
-		Boundaries:      make(map[domain.LedgerKey]struct{}),
-		SinkConfigs:     make(map[domain.SinkConfigKey]struct{}),
-		Volumes:         make(map[domain.VolumeKey]struct{}),
-		Metadata:        make(map[domain.MetadataKey]struct{}),
-		References:      make(map[domain.TransactionReferenceKey]struct{}),
+		IdempotencyKeys:   make(map[domain.IdempotencyKey]struct{}),
+		Ledgers:           make(map[domain.LedgerKey]struct{}),
+		Boundaries:        make(map[domain.LedgerKey]struct{}),
+		SinkConfigs:       make(map[domain.SinkConfigKey]struct{}),
+		NumscriptVersions: make(map[domain.NumscriptVersionKey]struct{}),
+		NumscriptEntries:  make(map[domain.NumscriptEntryKey]struct{}),
+		Volumes:           make(map[domain.VolumeKey]struct{}),
+		Metadata:          make(map[domain.MetadataKey]struct{}),
+		References:        make(map[domain.TransactionReferenceKey]struct{}),
 	}
 
 	for _, order := range orders {
@@ -923,6 +1040,15 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.Ledger}] = struct{}{}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.Ledger}] = struct{}{}
+		case *raftcmdpb.Order_SaveNumscript:
+			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.SaveNumscript.Name}] = struct{}{}
+			// For semver saves, preload the specific version entry for immutability check
+			version := orderType.SaveNumscript.Version
+			if version != "" && version != "latest" {
+				p.NumscriptEntries[domain.NumscriptEntryKey{Name: orderType.SaveNumscript.Name, Version: version}] = struct{}{}
+			}
+		case *raftcmdpb.Order_DeleteNumscript:
+			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.Name}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
 			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 
@@ -1223,6 +1349,20 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Data:   &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: dropIndexOrder},
 			},
 		}
+	case *servicepb.Request_SaveNumscript:
+		order.Type = &raftcmdpb.Order_SaveNumscript{
+			SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
+				Name:    reqType.SaveNumscript.Name,
+				Content: reqType.SaveNumscript.Content,
+				Version: reqType.SaveNumscript.Version,
+			},
+		}
+	case *servicepb.Request_DeleteNumscript:
+		order.Type = &raftcmdpb.Order_DeleteNumscript{
+			DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
+				Name: reqType.DeleteNumscript.Name,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}
@@ -1251,15 +1391,40 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 
 	switch data := apply.Data.(type) {
 	case *servicepb.LedgerApplyRequest_CreateTransaction:
+		ct := data.CreateTransaction
+		script := ct.Script
+
+		// Resolve ScriptReference: read numscript from Pebble and use it as the script
+		if ct.ScriptReference != nil {
+			if script != nil && script.Plain != "" {
+				return nil, &domain.BusinessError{
+					Err: domain.ErrScriptAndReferenceConflict,
+				}
+			}
+			info, err := query.ReadNumscript(a.store, ct.ScriptReference.Name, ct.ScriptReference.Version)
+			if err != nil {
+				return nil, fmt.Errorf("reading numscript %q: %w", ct.ScriptReference.Name, err)
+			}
+			if info == nil {
+				return nil, &domain.BusinessError{
+					Err: &domain.ErrNumscriptNotFound{Name: ct.ScriptReference.Name},
+				}
+			}
+			script = &commonpb.Script{
+				Plain: info.Content,
+				Vars:  ct.ScriptReference.Vars,
+			}
+		}
+
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings:      data.CreateTransaction.Postings,
-				Script:        data.CreateTransaction.Script,
-				Timestamp:     data.CreateTransaction.Timestamp,
-				Reference:     data.CreateTransaction.Reference,
-				Metadata:      data.CreateTransaction.Metadata,
-				Force:         data.CreateTransaction.Force,
-				ExpandVolumes: data.CreateTransaction.ExpandVolumes,
+				Postings:      ct.Postings,
+				Script:        script,
+				Timestamp:     ct.Timestamp,
+				Reference:     ct.Reference,
+				Metadata:      ct.Metadata,
+				Force:         ct.Force,
+				ExpandVolumes: ct.ExpandVolumes,
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:

@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -206,6 +207,33 @@ func (g *BucketGrpcClient) GetLedgerStats(ctx context.Context, ledgerName string
 	return g.client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
 		Ledger: ledgerName,
 	})
+}
+
+func (g *BucketGrpcClient) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+	return g.client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Name:    name,
+		Version: version,
+	})
+}
+
+func (g *BucketGrpcClient) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
+	stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC ListNumscripts call failed: %w", err)
+	}
+
+	var scripts []*commonpb.NumscriptInfo
+	for {
+		info, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("receiving numscript: %w", err)
+		}
+		scripts = append(scripts, info)
+	}
+	return scripts, nil
 }
 
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

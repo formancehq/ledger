@@ -375,3 +375,37 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 
 	return iter.Error()
 }
+
+// SaveNumscript stores a versioned numscript entry and updates the latest version pointer.
+func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
+	// Store versioned entry: [prefix][name]\x00[version_string] -> NumscriptInfo
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixNumscript).
+		PutString(info.Name).
+		PutByte(0x00).
+		PutString(info.Version)
+	if err := b.SetProto(b.KeyBuilder.Build(), info); err != nil {
+		return fmt.Errorf("saving numscript %q v%s: %w", info.Name, info.Version, err)
+	}
+
+	// Update latest version pointer: [prefix][name] -> version string bytes
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixNumscriptLatest).
+		PutString(info.Name)
+	if err := b.SetBytes(b.KeyBuilder.Build(), []byte(info.Version)); err != nil {
+		return fmt.Errorf("saving numscript latest version for %q: %w", info.Name, err)
+	}
+	return nil
+}
+
+// ClearNumscriptLatestVersion soft-deletes a numscript by writing an empty version pointer.
+// The version entries remain in Pebble and are still accessible by explicit version.
+func ClearNumscriptLatestVersion(b *dal.Batch, name string) error {
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixNumscriptLatest).
+		PutString(name)
+	if err := b.SetBytes(b.KeyBuilder.Build(), nil); err != nil {
+		return fmt.Errorf("clearing numscript latest version for %q: %w", name, err)
+	}
+	return nil
+}

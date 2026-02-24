@@ -71,6 +71,10 @@ service BucketService {
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   // GetLedgerStats returns aggregate statistics for a ledger
   rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
+  // GetNumscript returns a numscript by name and optional version
+  rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
+  // ListNumscripts streams all numscripts (latest version of each)
+  rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo);
 }
 
 // ============================================================================
@@ -180,6 +184,8 @@ message Request {
     DeletePreparedQueryRequest delete_prepared_query = 24;
     CreateIndexRequest create_index = 25;
     DropIndexRequest drop_index = 26;
+    SaveNumscriptRequest save_numscript = 27;
+    DeleteNumscriptRequest delete_numscript = 28;
   }
   signature.RequestSignature signature = 5;
 }
@@ -299,6 +305,39 @@ message DropIndexRequest {
   }
 }
 
+// ============================================================================
+// Numscript Library Messages
+// ============================================================================
+
+// SaveNumscriptRequest saves a numscript to the library.
+// version must be a valid semver string (e.g. "1.0.0") or "latest" to overwrite the most recent version.
+message SaveNumscriptRequest {
+  string name = 1;
+  string content = 2;
+  string version = 3;
+}
+
+// DeleteNumscriptRequest removes a numscript from the library (versions preserved).
+message DeleteNumscriptRequest {
+  string name = 1;
+}
+
+// GetNumscriptRequest retrieves a numscript by name and optional version.
+message GetNumscriptRequest {
+  string name = 1;
+  string version = 2; // "" = latest
+}
+
+// ListNumscriptsRequest lists all numscripts (latest version of each).
+message ListNumscriptsRequest {}
+
+// ScriptReference references a numscript from the library by name and optional version.
+message ScriptReference {
+  string name = 1;
+  string version = 2; // "" = latest
+  map<string, string> vars = 3;
+}
+
 message GetPeriodScheduleRequest {}
 
 message GetPeriodScheduleResponse {
@@ -335,6 +374,7 @@ message CreateTransactionPayload {
   map<string, common.MetadataSet> account_metadata = 6;
   bool force = 7;
   bool expand_volumes = 8;
+  ScriptReference script_reference = 9;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction
