@@ -46,39 +46,20 @@ type Machine struct {
 
 	mu sync.Mutex
 
-	// Attributes for writing to PebbleDB (each Machine has its own instance)
-	Attrs *attributes.Attributes
+	// Composed subsystems
+	Registry *StateRegistry // 8 KeyStores + Cache + Attrs
+	Periods  *PeriodTracker // Period lifecycle
 
-	Cache           *cache.Cache
-	Volumes         *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	Reversions      *attributes.KeyStore[domain.TransactionKey, bool]
-	IdempotencyKeys *attributes.KeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References      *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers         *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries      *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs     *attributes.KeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
-
+	// FSM mechanics
 	nextSequenceID      uint64
 	nextAuditSequenceID uint64
 	lastLogHash         []byte
 	lastCheckpointID    uint64
 
-	// All non-purged periods are kept in memory. currentOpenPeriod and closingPeriod
-	// are convenience pointers into allPeriods for fast access on the hot path.
-	allPeriods        map[uint64]*commonpb.Period
-	currentOpenPeriod *commonpb.Period
-	closingPeriod     *commonpb.Period
-	nextPeriodID      uint64
-
 	lastAppliedIndex            uint64
 	lastAppliedTimestamp        uint64
 	snapshotIndex               uint64
 	generationRotationThreshold uint64
-
-	// Period schedule cron expression (empty = disabled)
-	periodSchedule  string
-	scheduleChanged signal.Signal
 
 	// KeyStore holds registered signing keys (updated after proposal apply)
 	keyStore *keystore.KeyStore
@@ -257,46 +238,10 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		eventNotifier:               eventNotifier,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
-		Attrs:                       attrs,
-		Cache:                       cache,
-		Volumes: attributes.NewKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair](
-			attributes.DefaultSeeds,
-			cache.Volumes,
-		),
-		AccountMetadata: attributes.NewKeyStore[domain.MetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultSeeds,
-			cache.AccountMetadata,
-		),
-		Reversions: attributes.NewKeyStore[domain.TransactionKey, bool](
-			attributes.DefaultSeeds,
-			cache.Reversions,
-		),
-		IdempotencyKeys: attributes.NewKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue](
-			attributes.DefaultSeeds,
-			cache.IdempotencyKeys,
-		),
-		References: attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
-			attributes.DefaultSeeds,
-			cache.References,
-		),
-		Ledgers: attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](
-			attributes.DefaultSeeds,
-			cache.Ledgers,
-		),
-		Boundaries: attributes.NewKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries](
-			attributes.DefaultSeeds,
-			cache.Boundaries,
-		),
-		SinkConfigs: attributes.NewKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](
-			attributes.DefaultSeeds,
-			cache.SinkConfigs,
-		),
-		nextSequenceID:      1,
-		nextAuditSequenceID: 1,
-		allPeriods:          allPeriods,
-		currentOpenPeriod:   currentOpenPeriod,
-		closingPeriod:       closingPeriod,
-		nextPeriodID:        nextPeriodID,
+		Registry:                    NewStateRegistry(cache, attrs),
+		Periods:                     NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriod, nextPeriodID, periodSchedule),
+		nextSequenceID:              1,
+		nextAuditSequenceID:         1,
 		dirtyVolumeKeys: [3]map[string]uint32{
 			make(map[string]uint32),
 			make(map[string]uint32),
@@ -306,8 +251,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		sealRequestCh:            make(chan SealRequest, 1),
 		archiveRequestCh:         make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
-		periodSchedule:           periodSchedule,
-		scheduleChanged:          signal.New(),
 	}
 
 	return fsm, nil
@@ -370,12 +313,12 @@ func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
 	batch := db.NewBatch()
 	for keyStr, value := range fsm.dirtyBoundaryKeys {
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Attrs.Boundary.SetBase(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.SetBase(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
 			_ = batch.Cancel()
 			_ = db.Close()
 			return fmt.Errorf("setting boundary base: %w", err)
 		}
-		if err := fsm.Attrs.Boundary.DeleteOldest(batch, fsm.lastAppliedIndex, canonicalKey); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.DeleteOldest(batch, fsm.lastAppliedIndex, canonicalKey); err != nil {
 			_ = batch.Cancel()
 			_ = db.Close()
 			return fmt.Errorf("compacting old boundary: %w", err)
@@ -432,7 +375,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			}
 		}
 
-		if rotated, oldGen1BaseIndex := fsm.Cache.CheckRotationNeeded(entry.Index); rotated {
+		if rotated, oldGen1BaseIndex := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
 			rotationStart := time.Now()
 
 			// Rotate dirty key tracking: consume slot[2], shift down, allocate new slot[0]
@@ -448,7 +391,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			}
 
 			// Flush dirty boundaries to Pebble at the rotation boundary index
-			if err := fsm.flushBoundaries(batch, fsm.Cache.BaseIndex.Gen0); err != nil {
+			if err := fsm.flushBoundaries(batch, fsm.Registry.Cache.BaseIndex.Gen0); err != nil {
 				return nil, fmt.Errorf("flushing boundaries at rotation: %w", err)
 			}
 
@@ -622,7 +565,7 @@ func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64,
 			continue
 		}
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
+		if err := fsm.Registry.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey); err != nil {
 			return 0, fmt.Errorf("compacting volume: %w", err)
 		}
 		compacted++
@@ -635,10 +578,10 @@ func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64,
 func (fsm *Machine) flushBoundaries(batch *dal.Batch, index uint64) error {
 	for keyStr, value := range fsm.dirtyBoundaryKeys {
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Attrs.Boundary.SetBase(batch, index, canonicalKey, value); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.SetBase(batch, index, canonicalKey, value); err != nil {
 			return fmt.Errorf("setting boundary base: %w", err)
 		}
-		if err := fsm.Attrs.Boundary.DeleteOldest(batch, index, canonicalKey); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.DeleteOldest(batch, index, canonicalKey); err != nil {
 			return fmt.Errorf("compacting old boundary: %w", err)
 		}
 	}
@@ -656,15 +599,15 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// The preloads must be for the gen0 or the gen1
 	// This is the role of the admission to ensure this invariant
 	switch preloadSet.LastPersistedIndex {
-	case fsm.Cache.BaseIndex.Gen0:
+	case fsm.Registry.Cache.BaseIndex.Gen0:
 		fsm.logger.Debug("Selecting cache generation 0")
-	case fsm.Cache.BaseIndex.Gen1:
+	case fsm.Registry.Cache.BaseIndex.Gen1:
 		fsm.logger.Debug("Selecting cache generation 1")
 	default:
 		return &ErrGenerationMismatch{
 			LastPersistedIndex: preloadSet.LastPersistedIndex,
-			Gen0BaseIndex:      fsm.Cache.BaseIndex.Gen0,
-			Gen1BaseIndex:      fsm.Cache.BaseIndex.Gen1,
+			Gen0BaseIndex:      fsm.Registry.Cache.BaseIndex.Gen0,
+			Gen1BaseIndex:      fsm.Registry.Cache.BaseIndex.Gen1,
 		}
 	}
 
@@ -904,19 +847,19 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				InputKnown:  preloadType.Volume.Input,
 				OutputKnown: preloadType.Volume.Output,
 			}
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				aggregated := putInCacheVolumePair(fsm.Cache.Volumes.Gen1(), preloadType.Volume.Id, pair)
-				putInCacheVolumePair(fsm.Cache.Volumes.Gen0(), preloadType.Volume.Id, aggregated)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				aggregated := putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen1(), preloadType.Volume.Id, pair)
+				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.Id, aggregated)
 			} else {
-				putInCacheVolumePair(fsm.Cache.Volumes.Gen0(), preloadType.Volume.Id, pair)
+				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.Id, pair)
 			}
 
 		case *raftcmdpb.Preload_Reverted:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheBool(fsm.Cache.Reversions.Gen1(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
-				putInCacheBool(fsm.Cache.Reversions.Gen0(), preloadType.Reverted.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheBool(fsm.Registry.Cache.Reversions.Gen1(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
+				putInCacheBool(fsm.Registry.Cache.Reversions.Gen0(), preloadType.Reverted.Id, value)
 			} else {
-				putInCacheBool(fsm.Cache.Reversions.Gen0(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
+				putInCacheBool(fsm.Registry.Cache.Reversions.Gen0(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
 			}
 
 		case *raftcmdpb.Preload_IdempotencyKey:
@@ -924,54 +867,54 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				LogSequence: preloadType.IdempotencyKey.LogSequence,
 				Hash:        preloadType.IdempotencyKey.Hash,
 			}
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.Id, idempotencyValue)
-				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.Id, idempotencyValue)
+				putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, value)
 			} else {
-				putInCacheIdempotencyValue(fsm.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, idempotencyValue)
+				putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.Id, idempotencyValue)
 			}
 
 		case *raftcmdpb.Preload_Ledger:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheLedger(fsm.Cache.Ledgers.Gen1(), preloadType.Ledger.Id, preloadType.Ledger.Info)
-				putInCacheLedger(fsm.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.Id, preloadType.Ledger.Info)
+				putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, value)
 			} else {
-				putInCacheLedger(fsm.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, preloadType.Ledger.Info)
+				putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.Id, preloadType.Ledger.Info)
 			}
 
 		case *raftcmdpb.Preload_Boundary:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheBoundary(fsm.Cache.Boundaries.Gen1(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
-				putInCacheBoundary(fsm.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
+				putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, value)
 			} else {
-				putInCacheBoundary(fsm.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
+				putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.Id, preloadType.Boundary.Boundaries)
 			}
 
 		case *raftcmdpb.Preload_TransactionReference:
 			referenceValue := &commonpb.TransactionReferenceValue{
 				TransactionId: preloadType.TransactionReference.TransactionId,
 			}
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheReferenceValue(fsm.Cache.References.Gen1(), preloadType.TransactionReference.Id, referenceValue)
-				putInCacheReferenceValue(fsm.Cache.References.Gen0(), preloadType.TransactionReference.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheReferenceValue(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.Id, referenceValue)
+				putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.Id, value)
 			} else {
-				putInCacheReferenceValue(fsm.Cache.References.Gen0(), preloadType.TransactionReference.Id, referenceValue)
+				putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.Id, referenceValue)
 			}
 
 		case *raftcmdpb.Preload_SinkConfig:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
-				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
+				putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, value)
 			} else {
-				putInCacheSinkConfig(fsm.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
+				putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.Id, preloadType.SinkConfig.Config)
 			}
 
 		case *raftcmdpb.Preload_AccountMetadata:
-			if preloadSet.LastPersistedIndex == fsm.Cache.BaseIndex.Gen1 {
-				value := putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
-				putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, value)
+			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
+				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, value)
 			} else {
-				putInCacheMetadataValue(fsm.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
+				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.Id, preloadType.AccountMetadata.Value)
 			}
 		}
 	}
@@ -1050,21 +993,21 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	effectiveDate := fsm.hlcTimestamp(proposal.Date)
 
 	// Auto-bootstrap first period deterministically at first proposal
-	if fsm.currentOpenPeriod == nil {
-		fsm.currentOpenPeriod = &commonpb.Period{
+	if fsm.Periods.CurrentOpenPeriod() == nil {
+		p := &commonpb.Period{
 			Id:            1,
 			Start:         effectiveDate,
 			Status:        commonpb.PeriodStatus_PERIOD_OPEN,
 			StartSequence: 1,
 		}
-		fsm.allPeriods[fsm.currentOpenPeriod.Id] = fsm.currentOpenPeriod
-		fsm.nextPeriodID = 2
+		fsm.Periods.SetCurrentOpenPeriod(p)
+		fsm.Periods.SetNextPeriodID(2)
 
 		// Persist the bootstrapped period so it survives restarts
-		if err := StorePeriod(batch, fsm.currentOpenPeriod); err != nil {
+		if err := StorePeriod(batch, p); err != nil {
 			return nil, fmt.Errorf("storing bootstrapped period: %w", err)
 		}
-		if err := StoreNextPeriodID(batch, fsm.nextPeriodID); err != nil {
+		if err := StoreNextPeriodID(batch, fsm.Periods.NextPeriodID()); err != nil {
 			return nil, fmt.Errorf("storing next period ID: %w", err)
 		}
 	}
@@ -1159,7 +1102,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 
 	// Collect CLOSED/ARCHIVED periods (OPEN and CLOSING are stored separately)
 	closedPeriods := make([]*commonpb.Period, 0)
-	for _, p := range fsm.allPeriods {
+	for _, p := range fsm.Periods.AllPeriods() {
 		if p.Status != commonpb.PeriodStatus_PERIOD_OPEN && p.Status != commonpb.PeriodStatus_PERIOD_CLOSING {
 			closedPeriods = append(closedPeriods, p)
 		}
@@ -1168,15 +1111,15 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
-		Gen0:                 serializeCacheGeneration(fsm.Cache, 0),
-		Gen1:                 serializeCacheGeneration(fsm.Cache, 1),
+		Gen0:                 serializeCacheGeneration(fsm.Registry.Cache, 0),
+		Gen1:                 serializeCacheGeneration(fsm.Registry.Cache, 1),
 		CheckpointId:         checkpointID,
-		CurrentGeneration:    fsm.Cache.CurrentGeneration(),
+		CurrentGeneration:    fsm.Registry.Cache.CurrentGeneration(),
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
 		NextAuditSequenceId:  fsm.nextAuditSequenceID,
-		OpenPeriod:           fsm.currentOpenPeriod,
-		ClosingPeriod:        fsm.closingPeriod,
-		NextPeriodId:         fsm.nextPeriodID,
+		OpenPeriod:           fsm.Periods.CurrentOpenPeriod(),
+		ClosingPeriod:        fsm.Periods.ClosingPeriod(),
+		NextPeriodId:         fsm.Periods.NextPeriodID(),
 		ClosedPeriods:        closedPeriods,
 	}
 
@@ -1318,28 +1261,26 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.lastCheckpointID = memSnapshot.CheckpointId
 	fsm.lastAppliedTimestamp = memSnapshot.LastAppliedTimestamp
 	// Rebuild allPeriods from all three sources in the snapshot
-	fsm.allPeriods = make(map[uint64]*commonpb.Period)
+	allPeriods := make(map[uint64]*commonpb.Period)
 	if memSnapshot.OpenPeriod != nil {
-		fsm.allPeriods[memSnapshot.OpenPeriod.Id] = memSnapshot.OpenPeriod
+		allPeriods[memSnapshot.OpenPeriod.Id] = memSnapshot.OpenPeriod
 	}
 	if memSnapshot.ClosingPeriod != nil {
-		fsm.allPeriods[memSnapshot.ClosingPeriod.Id] = memSnapshot.ClosingPeriod
+		allPeriods[memSnapshot.ClosingPeriod.Id] = memSnapshot.ClosingPeriod
 	}
 	for _, p := range memSnapshot.ClosedPeriods {
-		fsm.allPeriods[p.Id] = p
+		allPeriods[p.Id] = p
 	}
-	fsm.currentOpenPeriod = memSnapshot.OpenPeriod
-	fsm.closingPeriod = memSnapshot.ClosingPeriod
-	fsm.nextPeriodID = memSnapshot.NextPeriodId
+	fsm.Periods.Reset(allPeriods, memSnapshot.OpenPeriod, memSnapshot.ClosingPeriod, memSnapshot.NextPeriodId)
 
 	// Reset the cache and deserialize both generations into it
 	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
-	fsm.Cache.Reset()
-	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen0, 0)
-	deserializeCacheGeneration(fsm.Cache, memSnapshot.Gen1, 1)
+	fsm.Registry.Cache.Reset()
+	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen0, 0)
+	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen1, 1)
 
 	// Update currentGeneration to match the snapshot
-	fsm.Cache.SetCurrentGeneration(memSnapshot.CurrentGeneration)
+	fsm.Registry.Cache.SetCurrentGeneration(memSnapshot.CurrentGeneration)
 
 	// Signing keys are not in the memory snapshot — they live in Pebble.
 	// They will be reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
@@ -1568,7 +1509,7 @@ func (fsm *Machine) MetadataConvertRequestCh() chan MetadataConvertRequest {
 // to the archiver channel. Called internally after batch commit on all nodes.
 // The Archiver itself skips execution when the node is not the leader.
 func (fsm *Machine) dispatchArchiveRequests() {
-	for _, p := range fsm.allPeriods {
+	for _, p := range fsm.Periods.AllPeriods() {
 		if p.Status == commonpb.PeriodStatus_PERIOD_ARCHIVING {
 			select {
 			case fsm.archiveRequestCh <- ArchiveRequest{
@@ -1639,28 +1580,24 @@ func (fsm *Machine) OnLeadershipAcquired() {
 
 // AllPeriods returns all non-purged periods kept in memory.
 func (fsm *Machine) AllPeriods() []*commonpb.Period {
-	periods := make([]*commonpb.Period, 0, len(fsm.allPeriods))
-	for _, p := range fsm.allPeriods {
-		periods = append(periods, p)
-	}
-	return periods
+	return fsm.Periods.AllPeriods()
 }
 
 // ClosingPeriod returns the period currently in CLOSING state, or nil.
 // Used for crash recovery on startup.
 func (fsm *Machine) ClosingPeriod() *commonpb.Period {
-	return fsm.closingPeriod
+	return fsm.Periods.ClosingPeriod()
 }
 
 // PeriodSchedule returns the current period schedule cron expression.
 // Empty string means the schedule is disabled.
 func (fsm *Machine) PeriodSchedule() string {
-	return fsm.periodSchedule
+	return fsm.Periods.Schedule()
 }
 
 // ScheduleChanged returns the Signal that fires when the period schedule changes.
 func (fsm *Machine) ScheduleChanged() signal.Signal {
-	return fsm.scheduleChanged
+	return fsm.Periods.ScheduleChanged()
 }
 
 // checkClosePeriod checks if the apply result contains a ClosePeriod log

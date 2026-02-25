@@ -307,7 +307,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset: asset,
 		}
 
-		pair, _, err := machine.Volumes.Get(key.Bytes())
+		pair, _, err := machine.Registry.Volumes.Get(key.Bytes())
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("unexpected error reading cache volumes for %s: %v", account, err)
 		}
@@ -766,7 +766,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 
 	// Capture ledger info from cache for preloads
-	ledgerInfo, _, err := machine.Ledgers.Get(domain.LedgerKey{Name: ledgerName}.Bytes())
+	ledgerInfo, _, err := machine.Registry.Ledgers.Get(domain.LedgerKey{Name: ledgerName}.Bytes())
 	require.NoError(t, err)
 
 	aliceVolumeKey := domain.VolumeKey{
@@ -784,7 +784,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 			),
 		)
 		proposal.Preload = makeLedgerPreloadSet(
-			machine.Cache.BaseIndex.Gen0,
+			machine.Registry.Cache.BaseIndex.Gen0,
 			ledgerName,
 			ledgerInfo,
 		)

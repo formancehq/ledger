@@ -71,8 +71,8 @@ func TestMachineAllPeriods(t *testing.T) {
 	require.Empty(t, machine.AllPeriods())
 
 	// Add periods to machine
-	machine.allPeriods[1] = &commonpb.Period{Id: 1, Status: commonpb.PeriodStatus_PERIOD_CLOSED}
-	machine.allPeriods[2] = &commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_OPEN}
+	machine.Periods.PutPeriod(&commonpb.Period{Id: 1, Status: commonpb.PeriodStatus_PERIOD_CLOSED})
+	machine.Periods.PutPeriod(&commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_OPEN})
 
 	periods := machine.AllPeriods()
 	require.Len(t, periods, 2)
@@ -87,7 +87,7 @@ func TestMachineClosingPeriod(t *testing.T) {
 	require.Nil(t, machine.ClosingPeriod())
 
 	// Set closing period
-	machine.closingPeriod = &commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	machine.Periods.SetClosingPeriod(&commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
 	require.NotNil(t, machine.ClosingPeriod())
 	require.Equal(t, uint64(3), machine.ClosingPeriod().Id)
 }
@@ -101,7 +101,7 @@ func TestMachinePeriodSchedule(t *testing.T) {
 	require.Equal(t, "", machine.PeriodSchedule())
 
 	// Set schedule
-	machine.periodSchedule = "*/5 * * * *"
+	machine.Periods.SetSchedule("*/5 * * * *")
 	require.Equal(t, "*/5 * * * *", machine.PeriodSchedule())
 }
 

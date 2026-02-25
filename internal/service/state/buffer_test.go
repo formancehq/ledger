@@ -332,7 +332,7 @@ func TestBufferedGetPeriodByID(t *testing.T) {
 	require.False(t, ok)
 
 	// Add via allPeriods (simulating Machine state)
-	buf.allPeriods[10] = &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSED}
+	buf.periods.PutPeriod(&commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSED})
 
 	p, ok := buf.GetPeriodByID(10)
 	require.True(t, ok)

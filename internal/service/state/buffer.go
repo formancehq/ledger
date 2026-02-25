@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
-	"google.golang.org/protobuf/proto"
 )
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
@@ -42,14 +41,7 @@ type Buffered struct {
 	Date                           *commonpb.Timestamp
 	NextSequenceID                 uint64
 	LastLogHash                    []byte
-	Ledgers                        *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries                     *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	Volumes                        *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata                *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	Reversions                     *attributes.DerivedKeyStore[domain.TransactionKey, bool]
-	IdempotencyKeys                *attributes.DerivedKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References                     *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	SinkConfigs                    *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	Derived                        *DerivedRegistry
 	TransactionsUpdates            map[domain.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs                    []*commonpb.Log
 	pendingSigningKeyUpdates       []signingKeyUpdate
@@ -58,11 +50,8 @@ type Buffered struct {
 	pendingAuditConfigUpdate       *auditConfigUpdate
 	pendingPeriodScheduleUpdate    *string
 	sinkConfigChanged              bool
-	allPeriods                     map[uint64]*commonpb.Period
-	currentOpenPeriod              *commonpb.Period
-	closingPeriod                  *commonpb.Period
+	periods                        *PeriodTracker
 	changedPeriods                 []*commonpb.Period
-	NextPeriodID                   uint64
 	purgeRanges                    []purgeRange
 	pendingArchives                []ArchiveRequest
 	pendingMetadataConvertRequests []MetadataConvertRequest
@@ -77,7 +66,7 @@ type purgeRange struct {
 
 func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	// Process Ledger updates
-	ledgerUpdates, _, err := b.Ledgers.Merge()
+	ledgerUpdates, _, err := b.Derived.Ledgers.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
@@ -94,7 +83,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process Boundary updates — track dirty keys for deferred Pebble write at generation rotation
-	boundaryUpdates, _, err := b.Boundaries.Merge()
+	boundaryUpdates, _, err := b.Derived.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
@@ -103,7 +92,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process Volume updates and track dirty volume keys inline
-	volumeUpdates, _, err := b.Volumes.Merge()
+	volumeUpdates, _, err := b.Derived.Volumes.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
@@ -134,7 +123,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return err
 	}
 
-	accountMetadataUpdates, accountMetadataDeletions, err := b.AccountMetadata.Merge()
+	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
@@ -152,7 +141,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 
 
 	// Process Reversions updates
-	reversionUpdates, _, err := b.Reversions.Merge()
+	reversionUpdates, _, err := b.Derived.Reversions.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge reversions: %w", err)
 	}
@@ -168,7 +157,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process IdempotencyKeys updates
-	idempotencyUpdates, _, err := b.IdempotencyKeys.Merge()
+	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
@@ -184,7 +173,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := b.References.Merge()
+	referenceUpdates, _, err := b.Derived.References.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
@@ -259,11 +248,10 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 				return fmt.Errorf("saving period schedule: %w", err)
 			}
 		}
-		b.fsm.periodSchedule = *b.pendingPeriodScheduleUpdate
-		b.fsm.scheduleChanged.Notify()
+		b.fsm.Periods.SetSchedule(*b.pendingPeriodScheduleUpdate)
 	}
 
-	sinkUpdates, sinkDeletions, err := b.SinkConfigs.Merge()
+	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
 	}
@@ -283,7 +271,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 			return fmt.Errorf("storing period %d: %w", p.Id, err)
 		}
 	}
-	if err := StoreNextPeriodID(batch, b.NextPeriodID); err != nil {
+	if err := StoreNextPeriodID(batch, b.periods.NextPeriodID()); err != nil {
 		return fmt.Errorf("storing next period ID: %w", err)
 	}
 
@@ -298,64 +286,40 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.lastLogHash = b.LastLogHash
 
-	// Apply changed periods to Machine's allPeriods
+	// Apply changed periods to Machine's Periods tracker
 	for _, p := range b.changedPeriods {
-		b.fsm.allPeriods[p.Id] = p
+		b.fsm.Periods.PutPeriod(p)
 	}
 
 	// Remove purged periods from memory
 	for _, pr := range b.purgeRanges {
-		delete(b.fsm.allPeriods, pr.periodID)
+		b.fsm.Periods.DeletePeriod(pr.periodID)
 	}
 
-	b.fsm.currentOpenPeriod = b.currentOpenPeriod
-	b.fsm.closingPeriod = b.closingPeriod
-	b.fsm.nextPeriodID = b.NextPeriodID
+	b.fsm.Periods.SetCurrentOpenPeriod(b.periods.CurrentOpenPeriod())
+	b.fsm.Periods.SetClosingPeriod(b.periods.ClosingPeriod())
+	b.fsm.Periods.SetNextPeriodID(b.periods.NextPeriodID())
 
 	return nil
 }
 
 func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
-	// Clone allPeriods from Machine; currentOpenPeriod/closingPeriod point into the cloned map.
-	clonedAll := make(map[uint64]*commonpb.Period, len(fsm.allPeriods))
-	for id, p := range fsm.allPeriods {
-		clonedAll[id] = proto.CloneOf(p)
-	}
-
-	var clonedOpen, clonedClosing *commonpb.Period
-	if fsm.currentOpenPeriod != nil {
-		clonedOpen = clonedAll[fsm.currentOpenPeriod.Id]
-	}
-	if fsm.closingPeriod != nil {
-		clonedClosing = clonedAll[fsm.closingPeriod.Id]
-	}
-
 	return &Buffered{
 		fsm:                 fsm,
-		attrs:               fsm.Attrs,
+		attrs:               fsm.Registry.Attrs,
 		Date:                at,
-		Ledgers:             attributes.NewDerivedKeyStore(fsm.Ledgers, (*commonpb.LedgerInfo).CloneVT),
-		Boundaries:          attributes.NewDerivedKeyStore(fsm.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
+		Derived:             NewDerivedRegistry(fsm.Registry),
 		NextSequenceID:      fsm.nextSequenceID,
 		LastLogHash:         fsm.lastLogHash,
-		Volumes:             attributes.NewDerivedKeyStore(fsm.Volumes, (*raftcmdpb.VolumePair).CloneVT),
-		AccountMetadata:     attributes.NewDerivedKeyStore(fsm.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
-		Reversions:          attributes.NewDerivedKeyStore(fsm.Reversions, nil), // bool is a value type, no clone needed
-		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
-		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
-		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
 		TransactionsUpdates: make(map[domain.TransactionKey][]*commonpb.TransactionUpdate),
-		allPeriods:          clonedAll,
-		currentOpenPeriod:   clonedOpen,
-		closingPeriod:       clonedClosing,
-		NextPeriodID:        fsm.nextPeriodID,
+		periods:             fsm.Periods.Clone(),
 	}
 }
 
 // Store interface implementation for Buffered
 
 func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
-	info, err := b.Ledgers.Get(domain.LedgerKey{Name: name})
+	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil || info == nil {
 		return nil, false
 	}
@@ -363,11 +327,11 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 }
 
 func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
-	b.Ledgers.Put(domain.LedgerKey{Name: name}, info)
+	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
 }
 
 func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
-	boundaries, err := b.Boundaries.Get(domain.LedgerKey{Name: ledger})
+	boundaries, err := b.Derived.Boundaries.Get(domain.LedgerKey{Name: ledger})
 	if err != nil || boundaries == nil {
 		return nil, false
 	}
@@ -375,51 +339,51 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 }
 
 func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	b.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
+	b.Derived.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
 }
 
 func (b *Buffered) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
-	return b.Volumes.Get(key)
+	return b.Derived.Volumes.Get(key)
 }
 
 func (b *Buffered) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-	b.Volumes.Put(key, value)
+	b.Derived.Volumes.Put(key, value)
 }
 
 func (b *Buffered) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
-	return b.AccountMetadata.Get(key)
+	return b.Derived.AccountMetadata.Get(key)
 }
 
 func (b *Buffered) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
-	b.AccountMetadata.Put(key, value)
+	b.Derived.AccountMetadata.Put(key, value)
 }
 
 func (b *Buffered) DeleteAccountMetadata(key domain.MetadataKey) {
-	b.AccountMetadata.Delete(key)
+	b.Derived.AccountMetadata.Delete(key)
 }
 
 func (b *Buffered) GetReverted(key domain.TransactionKey) (bool, error) {
-	return b.Reversions.Get(key)
+	return b.Derived.Reversions.Get(key)
 }
 
 func (b *Buffered) PutReverted(key domain.TransactionKey, reverted bool) {
-	b.Reversions.Put(key, reverted)
+	b.Derived.Reversions.Put(key, reverted)
 }
 
 func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
-	return b.IdempotencyKeys.Get(key)
+	return b.Derived.IdempotencyKeys.Get(key)
 }
 
 func (b *Buffered) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	b.IdempotencyKeys.Put(key, value)
+	b.Derived.IdempotencyKeys.Put(key, value)
 }
 
 func (b *Buffered) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
-	return b.References.Get(key)
+	return b.Derived.References.Get(key)
 }
 
 func (b *Buffered) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
-	b.References.Put(key, value)
+	b.Derived.References.Put(key, value)
 }
 
 func (b *Buffered) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
@@ -503,7 +467,7 @@ func (b *Buffered) DeletePeriodSchedule() {
 }
 
 func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
-	cfg, err := b.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
+	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
 	if err != nil {
 		return nil, nil
 	}
@@ -511,12 +475,12 @@ func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 }
 
 func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
-	b.SinkConfigs.Put(domain.SinkConfigKey{Name: config.Name}, config)
+	b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: config.Name}, config)
 	b.sinkConfigChanged = true
 }
 
 func (b *Buffered) RemoveSinkConfig(name string) {
-	b.SinkConfigs.Delete(domain.SinkConfigKey{Name: name})
+	b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: name})
 	b.sinkConfigChanged = true
 }
 
@@ -623,49 +587,51 @@ func checkDoubleEntryInvariant(
 // Period operations
 
 func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
-	if b.currentOpenPeriod != nil {
-		return b.currentOpenPeriod, true
+	p := b.periods.CurrentOpenPeriod()
+	if p != nil {
+		return p, true
 	}
 	return nil, false
 }
 
 func (b *Buffered) GetClosingPeriod() (*commonpb.Period, bool) {
-	if b.closingPeriod != nil {
-		return b.closingPeriod, true
+	p := b.periods.ClosingPeriod()
+	if p != nil {
+		return p, true
 	}
 	return nil, false
 }
 
 func (b *Buffered) SetCurrentOpenPeriod(period *commonpb.Period) {
-	b.currentOpenPeriod = period
+	b.periods.SetCurrentOpenPeriod(period)
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
 func (b *Buffered) SetClosingPeriod(period *commonpb.Period) {
-	b.closingPeriod = period
+	b.periods.SetClosingPeriod(period)
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
 // ClearClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
 func (b *Buffered) ClearClosingPeriod() {
-	if b.closingPeriod != nil {
-		b.changedPeriods = append(b.changedPeriods, b.closingPeriod)
+	if closing := b.periods.ClosingPeriod(); closing != nil {
+		b.changedPeriods = append(b.changedPeriods, closing)
 	}
-	b.closingPeriod = nil
+	b.periods.ClearClosingPeriod()
 }
 
 func (b *Buffered) GetNextPeriodID() uint64 {
-	return b.NextPeriodID
+	return b.periods.NextPeriodID()
 }
 
 func (b *Buffered) IncrementNextPeriodID() uint64 {
-	id := b.NextPeriodID
-	b.NextPeriodID++
+	id := b.periods.NextPeriodID()
+	b.periods.SetNextPeriodID(id + 1)
 	return id
 }
 
 // GetPeriodByID looks up a period by ID from in-memory state only.
-// It checks changedPeriods first (most recent modifications), then the allPeriods map.
+// It checks changedPeriods first (most recent modifications), then the periods tracker.
 func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 	// Check changedPeriods (most recently changed first)
 	for i := len(b.changedPeriods) - 1; i >= 0; i-- {
@@ -674,8 +640,7 @@ func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 		}
 	}
 
-	p, ok := b.allPeriods[periodID]
-	return p, ok
+	return b.periods.GetPeriodByID(periodID)
 }
 
 // UpdatePeriod records a period modification to be persisted in Merge().
