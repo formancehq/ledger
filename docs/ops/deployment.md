@@ -52,6 +52,13 @@ Available flags for `run`:
 - `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
+- `--receipt-signing-key`: HMAC-SHA256 key for JWT transaction receipts (env: `RECEIPT_SIGNING_KEY`)
+- `--cold-storage-driver`: Cold storage driver: `filesystem` (default) or `s3`
+- `--cold-storage-path`: Base path for filesystem driver (default: `<data-dir>/cold-storage`)
+- `--cold-storage-bucket-id`: Shared namespace prefix for archives (default: cluster-id)
+- `--cold-storage-s3-bucket`: S3 bucket name (required when driver=s3)
+- `--cold-storage-s3-region`: AWS region for S3
+- `--cold-storage-s3-endpoint`: Custom S3 endpoint (for MinIO)
 
 ### Configuration
 

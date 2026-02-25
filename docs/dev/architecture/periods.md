@@ -4,7 +4,7 @@
 
 Periods provide a mechanism for partitioning a ledger's history into discrete, sealed segments. Each period covers a contiguous range of transactions and, once closed and sealed, produces a cryptographic hash that attests to the integrity of all data written during that period.
 
-This is the foundation for future data retention and cold storage features (Phase 2).
+Once sealed, a period can be **archived to cold storage** (S3 or filesystem): logs and audit entries are exported and purged from Pebble, while attributes (volumes, metadata, reversion status) remain in hot storage. This reduces snapshot sizes, speeds up node recovery, and keeps Pebble compaction fast. **Receipt-based reverts** (JWT) allow reverting archived transactions without accessing cold storage.
 
 ## Period Lifecycle
 
@@ -459,6 +459,49 @@ ledger-exp-devenv:coldStorage-s3-region: eu-west-1
 ```
 
 When enabled, Pulumi creates an S3 bucket (`ledger-exp-cold-storage-{stack}`) and injects the `config.coldStorage` values into the Helm release automatically. AWS credentials are auto-injected via the service account.
+
+## Design Decisions
+
+### Per-Bucket vs Per-Ledger Retention
+
+**Decision**: Periods operate at the **bucket level** (entire Raft group). All ledgers within a bucket share the same period boundaries and retention policy.
+
+**For different retention policies per ledger**, shard ledgers into **separate Raft groups (buckets)**, each with its own period configuration, cold storage settings, and retention duration.
+
+#### Why per-bucket
+
+| Argument | Detail |
+|---|---|
+| **Log stream is global** | The Raft log uses a single global sequence. Cutting at a global sequence naturally captures all ledgers. Per-ledger would require filtering interleaved logs, turning a simple range delete into a scatter-gather operation. |
+| **Attribute generations are global** | The two-generation compaction system tracks Raft index (global), not per-ledger sequences. Per-ledger periods would break generation boundary alignment. |
+| **Idempotency keys are bucket-level** | IK keys are stored globally (`0x02` prefix). Their retention aligns naturally with bucket-wide periods. |
+| **Pebble range delete is trivial** | Logs are keyed `[0x01][global_sequence]`. Purging a period is a single `DeleteRange(seqStart, seqEnd)`. Per-ledger purge would require iterating all logs and checking ledger membership. |
+| **Single FSM state** | One period state to track in the FSM. Per-ledger would require N period states in the FSM hot path. |
+| **Sealing hash is straightforward** | One hash chain, one sealing point. Per-ledger would require N independent sealing hashes. |
+
+### Decisions Summary
+
+| Topic | Decision | Rationale |
+|---|---|---|
+| **Period scope** | Per-bucket | Aligns with global log, global generations, trivial range delete |
+| **Receipt format** | JWT (HS256) | Client-readable, standard format, upgradable to RS256/EdDSA later |
+| **Signing key** | Cluster-level secret (CLI flag / env var) | Simple provisioning, shared across all nodes |
+| **Archive format** | Raw binary KV dump in tar.gz | Fast archival and exact restoration, gzip-compressed |
+| **Purge strategy** | Auto-purge after verified archive | System verifies archive exists before purging |
+| **Period granularity** | Configurable cron schedule, modifiable at runtime | Changing granularity only affects future periods |
+| **Cold storage cleanup** | Not the system's responsibility | Delegated to external tooling (S3 lifecycle rules) |
+| **Close process** | Two-step (ClosePeriod + SealPeriod) | Full state scan cannot block the Raft consensus loop |
+| **No balance snapshot** | Keep attributes in hot storage, purge only logs | Attributes ARE the compact derived state; reads continue after archival |
+
+## Future Considerations
+
+### Read-Only Access to Archives
+
+Transparent read-only querying of archived periods: the service detects a query targets an archived period, fetches and caches the archive locally, serves the query, and evicts the cache after a configurable TTL.
+
+### Receipt Key Rotation
+
+The signing key should be rotatable. Receipts would include a `kid` (key ID) field in the JWT header to support verification with older keys during rotation.
 
 ## Related Documentation
 
