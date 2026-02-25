@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	numscriptlib "github.com/formancehq/numscript"
 	"github.com/holiman/uint256"
 )
@@ -72,15 +72,15 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		}
 
 		// Update source output (money going out)
-		sourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{
+		sourceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{
 				Ledger:  ledger,
 				Account: posting.Source,
 			},
 			Asset: posting.Asset,
 		}
 		sourceVol, err := s.GetVolume(sourceKey)
-		if err != nil && !errors.Is(err, dal.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, err
 		}
 		if sourceVol == nil {
@@ -90,15 +90,15 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{
+		destKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{
 				Ledger:  ledger,
 				Account: posting.Destination,
 			},
 			Asset: posting.Asset,
 		}
 		destVol, err := s.GetVolume(destKey)
-		if err != nil && !errors.Is(err, dal.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, err
 		}
 		if destVol == nil {
@@ -118,8 +118,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 			for key, value := range meta {
 				mv := commonpb.NewStringValue(value)
 				mdList = append(mdList, &commonpb.Metadata{Key: key, Value: mv})
-				s.PutAccountMetadata(dal.MetadataKey{
-					AccountKey: dal.AccountKey{
+				s.PutAccountMetadata(domain.MetadataKey{
+					AccountKey: domain.AccountKey{
 						Ledger:  ledger,
 						Account: account,
 					},
@@ -173,8 +173,8 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 				continue
 			}
 
-			volumeKey := dal.VolumeKey{
-				AccountKey: dal.AccountKey{
+			volumeKey := domain.VolumeKey{
+				AccountKey: domain.AccountKey{
 					Ledger:  s.ledger,
 					Account: account,
 				},
@@ -182,7 +182,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 			}
 
 			vol, err := s.store.GetVolume(volumeKey)
-			if err != nil && !errors.Is(err, dal.ErrNotFound) {
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}
 
@@ -223,8 +223,8 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		result[account] = accountMeta
 
 		for _, key := range keys {
-			metaKey := dal.MetadataKey{
-				AccountKey: dal.AccountKey{
+			metaKey := domain.MetadataKey{
+				AccountKey: domain.AccountKey{
 					Ledger:  s.ledger,
 					Account: account,
 				},
@@ -232,7 +232,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 			}
 
 			value, err := s.store.GetAccountMetadata(metaKey)
-			if err != nil && !errors.Is(err, dal.ErrNotFound) {
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}
 			if value != nil {

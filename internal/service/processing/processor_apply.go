@@ -3,6 +3,7 @@ package processing
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -10,7 +11,7 @@ import (
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	boundaries, ok := s.GetBoundaries(apply.Ledger)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: apply.Ledger}
+		return nil, &domain.ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
 	var (

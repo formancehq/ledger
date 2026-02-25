@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -27,7 +28,7 @@ func assembleAccount(
 	if len(volEntries) > 0 {
 		volumes := make(map[string]*commonpb.VolumesWithBalance, len(volEntries))
 		for _, entry := range volEntries {
-			var vk dal.VolumeKey
+			var vk domain.VolumeKey
 			if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
 				continue
 			}
@@ -53,7 +54,7 @@ func assembleAccount(
 	if len(metaEntries) > 0 {
 		mdList := make([]*commonpb.Metadata, 0, len(metaEntries))
 		for _, entry := range metaEntries {
-			var mk dal.MetadataKey
+			var mk domain.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err == nil && entry.Value != nil {
 				mdList = append(mdList, &commonpb.Metadata{
 					Key:   mk.Key,

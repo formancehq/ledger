@@ -8,9 +8,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -413,7 +413,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInsufficientFunds))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds))
 			Expect(info.Domain).To(Equal("ledger"))
 			Expect(info.Metadata["account"]).To(Equal("limited-account"))
 			Expect(info.Metadata["asset"]).To(Equal("USD"))
@@ -435,7 +435,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonLedgerNotFound))
+			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerNotFound))
 			Expect(info.Domain).To(Equal("ledger"))
 		})
 

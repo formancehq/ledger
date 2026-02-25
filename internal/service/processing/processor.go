@@ -9,10 +9,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 type RequestProcessor struct {
@@ -51,16 +51,16 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		if hasIdempotency {
 			orderHash = p.computeOrderHash(order)
 
-			ikKey := dal.IdempotencyKey{Key: order.Idempotency.Key}
+			ikKey := domain.IdempotencyKey{Key: order.Idempotency.Key}
 			storedValue, err := s.GetIdempotencyKey(ikKey)
-			if err != nil && !errors.Is(err, dal.ErrNotFound) {
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, fmt.Errorf("checking idempotency key: %w", err)
 			}
 
 			// Check if idempotency key exists
 			if storedValue != nil {
 				if !bytes.Equal(orderHash, storedValue.Hash) {
-					return nil, &ErrIdempotencyKeyConflict{Key: order.Idempotency.Key}
+					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.Idempotency.Key}
 				}
 
 				// Hash matches - return reference to existing log without processing
@@ -98,7 +98,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		// Store idempotency key if present (reuse orderHash computed above)
 		if hasIdempotency {
 			s.PutIdempotencyKey(
-				dal.IdempotencyKey{
+				domain.IdempotencyKey{
 					Key: order.Idempotency.Key,
 				},
 				&commonpb.IdempotencyKeyValue{

@@ -3,6 +3,7 @@ package processing
 import (
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
@@ -71,7 +72,7 @@ func TestProcessClosePeriod_NoPeriodOpen(t *testing.T) {
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
-	require.ErrorIs(t, err, ErrNoPeriodOpen)
+	require.ErrorIs(t, err, domain.ErrNoPeriodOpen)
 	require.Nil(t, payload)
 }
 
@@ -98,7 +99,7 @@ func TestProcessClosePeriod_AlreadyClosing(t *testing.T) {
 	mockStore.EXPECT().GetClosingPeriod().Return(closingPeriod, true)
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
-	require.ErrorIs(t, err, ErrPeriodAlreadyClosing)
+	require.ErrorIs(t, err, domain.ErrPeriodAlreadyClosing)
 	require.Nil(t, payload)
 }
 
@@ -159,7 +160,7 @@ func TestProcessSealPeriod_PeriodNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notFoundErr *ErrPeriodNotFound
+	var notFoundErr *domain.ErrPeriodNotFound
 	require.ErrorAs(t, err, &notFoundErr)
 	require.Equal(t, uint64(99), notFoundErr.PeriodID)
 }
@@ -191,7 +192,7 @@ func TestProcessSealPeriod_PeriodNotClosing(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notFoundErr *ErrPeriodNotFound
+	var notFoundErr *domain.ErrPeriodNotFound
 	require.ErrorAs(t, err, &notFoundErr)
 	require.Equal(t, uint64(1), notFoundErr.PeriodID)
 }
@@ -246,7 +247,7 @@ func TestProcessArchivePeriod_NotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notFoundErr *ErrPeriodNotFound
+	var notFoundErr *domain.ErrPeriodNotFound
 	require.ErrorAs(t, err, &notFoundErr)
 	require.Equal(t, uint64(99), notFoundErr.PeriodID)
 }
@@ -272,7 +273,7 @@ func TestProcessArchivePeriod_NotClosed(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notClosedErr *ErrPeriodNotClosed
+	var notClosedErr *domain.ErrPeriodNotClosed
 	require.ErrorAs(t, err, &notClosedErr)
 	require.Equal(t, uint64(1), notClosedErr.PeriodID)
 }
@@ -327,7 +328,7 @@ func TestProcessConfirmArchivePeriod_NotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notFoundErr *ErrPeriodNotFound
+	var notFoundErr *domain.ErrPeriodNotFound
 	require.ErrorAs(t, err, &notFoundErr)
 	require.Equal(t, uint64(99), notFoundErr.PeriodID)
 }
@@ -353,7 +354,7 @@ func TestProcessConfirmArchivePeriod_NotArchiving(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, payload)
 
-	var notArchivingErr *ErrPeriodNotArchiving
+	var notArchivingErr *domain.ErrPeriodNotArchiving
 	require.ErrorAs(t, err, &notArchivingErr)
 	require.Equal(t, uint64(1), notArchivingErr.PeriodID)
 }

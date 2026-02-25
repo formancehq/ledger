@@ -3,6 +3,7 @@ package processing
 import (
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -59,7 +60,7 @@ func TestProcessSetPeriodSchedule_InvalidCron(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var cronErr *ErrInvalidCronExpression
+	var cronErr *domain.ErrInvalidCronExpression
 	require.ErrorAs(t, err, &cronErr)
 	require.Equal(t, "not-a-cron", cronErr.Expression)
 }

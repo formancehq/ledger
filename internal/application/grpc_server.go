@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -236,10 +236,10 @@ func convertToGRPCError(err error) error {
 	}
 
 	// Convert ErrAuditDisabled to FailedPrecondition with ErrorInfo
-	if errors.Is(err, processing.ErrAuditDisabled) {
+	if errors.Is(err, domain.ErrAuditDisabled) {
 		st := status.New(codes.FailedPrecondition, err.Error())
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: processing.ErrReasonAuditDisabled,
+			Reason: domain.ErrReasonAuditDisabled,
 			Domain: "ledger",
 		})
 		if detailErr == nil {
@@ -249,11 +249,11 @@ func convertToGRPCError(err error) error {
 	}
 
 	// Convert ErrPeriodNotClosed to FailedPrecondition with ErrorInfo
-	var periodNotClosedErr *processing.ErrPeriodNotClosed
+	var periodNotClosedErr *domain.ErrPeriodNotClosed
 	if errors.As(err, &periodNotClosedErr) {
 		st := status.New(codes.FailedPrecondition, err.Error())
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: processing.ErrReasonPeriodNotClosed,
+			Reason: domain.ErrReasonPeriodNotClosed,
 			Domain: "ledger",
 		})
 		if detailErr == nil {
@@ -263,11 +263,11 @@ func convertToGRPCError(err error) error {
 	}
 
 	// Convert ErrPeriodNotArchiving to FailedPrecondition with ErrorInfo
-	var periodNotArchivingErr *processing.ErrPeriodNotArchiving
+	var periodNotArchivingErr *domain.ErrPeriodNotArchiving
 	if errors.As(err, &periodNotArchivingErr) {
 		st := status.New(codes.FailedPrecondition, err.Error())
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: processing.ErrReasonPeriodNotArchiving,
+			Reason: domain.ErrReasonPeriodNotArchiving,
 			Domain: "ledger",
 		})
 		if detailErr == nil {
@@ -277,7 +277,7 @@ func convertToGRPCError(err error) error {
 	}
 
 	// Convert BusinessError to proper gRPC status with ErrorInfo details
-	var bizErr *processing.BusinessError
+	var bizErr *domain.BusinessError
 	if errors.As(err, &bizErr) {
 		return businessErrorToGRPCStatus(bizErr).Err()
 	}

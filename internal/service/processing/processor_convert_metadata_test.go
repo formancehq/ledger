@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -43,7 +43,7 @@ func TestProcessConvertMetadataBatch_LedgerNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var ledgerNotFound *ErrLedgerNotFound
+	var ledgerNotFound *domain.ErrLedgerNotFound
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 
@@ -131,8 +131,8 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 	}
 
 	// Build a canonical key for the metadata entry
-	mk := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "user:001"},
+	mk := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -208,8 +208,8 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 		},
 	}
 
-	mk := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "user:001"},
+	mk := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -288,7 +288,7 @@ func TestProcessMetadataConversionComplete_LedgerNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var ledgerNotFound *ErrLedgerNotFound
+	var ledgerNotFound *domain.ErrLedgerNotFound
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 

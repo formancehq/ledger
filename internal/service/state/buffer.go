@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -41,15 +42,15 @@ type Buffered struct {
 	Date                           *commonpb.Timestamp
 	NextSequenceID                 uint64
 	LastLogHash                    []byte
-	Ledgers                        *attributes.DerivedKeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries                     *attributes.DerivedKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	Volumes                        *attributes.DerivedKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata                *attributes.DerivedKeyStore[dal.MetadataKey, *commonpb.MetadataValue]
-	Reversions                     *attributes.DerivedKeyStore[dal.TransactionKey, bool]
-	IdempotencyKeys                *attributes.DerivedKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References                     *attributes.DerivedKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	SinkConfigs                    *attributes.DerivedKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
-	TransactionsUpdates            map[dal.TransactionKey][]*commonpb.TransactionUpdate
+	Ledgers                        *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries                     *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	Volumes                        *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata                *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	Reversions                     *attributes.DerivedKeyStore[domain.TransactionKey, bool]
+	IdempotencyKeys                *attributes.DerivedKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References                     *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	SinkConfigs                    *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	TransactionsUpdates            map[domain.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs                    []*commonpb.Log
 	pendingSigningKeyUpdates       []signingKeyUpdate
 	pendingSigningConfigUpdate     *signingConfigUpdate
@@ -343,7 +344,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		IdempotencyKeys:     attributes.NewDerivedKeyStore(fsm.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
 		References:          attributes.NewDerivedKeyStore(fsm.References, (*commonpb.TransactionReferenceValue).CloneVT),
 		SinkConfigs:         attributes.NewDerivedKeyStore(fsm.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
-		TransactionsUpdates: make(map[dal.TransactionKey][]*commonpb.TransactionUpdate),
+		TransactionsUpdates: make(map[domain.TransactionKey][]*commonpb.TransactionUpdate),
 		allPeriods:          clonedAll,
 		currentOpenPeriod:   clonedOpen,
 		closingPeriod:       clonedClosing,
@@ -354,7 +355,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 // Store interface implementation for Buffered
 
 func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
-	info, err := b.Ledgers.Get(dal.LedgerKey{Name: name})
+	info, err := b.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil || info == nil {
 		return nil, false
 	}
@@ -362,11 +363,11 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 }
 
 func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
-	b.Ledgers.Put(dal.LedgerKey{Name: name}, info)
+	b.Ledgers.Put(domain.LedgerKey{Name: name}, info)
 }
 
 func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
-	boundaries, err := b.Boundaries.Get(dal.LedgerKey{Name: ledger})
+	boundaries, err := b.Boundaries.Get(domain.LedgerKey{Name: ledger})
 	if err != nil || boundaries == nil {
 		return nil, false
 	}
@@ -374,54 +375,54 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 }
 
 func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	b.Boundaries.Put(dal.LedgerKey{Name: ledger}, boundaries)
+	b.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
 }
 
-func (b *Buffered) GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (b *Buffered) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	return b.Volumes.Get(key)
 }
 
-func (b *Buffered) PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
+func (b *Buffered) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	b.Volumes.Put(key, value)
 }
 
-func (b *Buffered) GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error) {
+func (b *Buffered) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	return b.AccountMetadata.Get(key)
 }
 
-func (b *Buffered) PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue) {
+func (b *Buffered) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
 	b.AccountMetadata.Put(key, value)
 }
 
-func (b *Buffered) DeleteAccountMetadata(key dal.MetadataKey) {
+func (b *Buffered) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.AccountMetadata.Delete(key)
 }
 
-func (b *Buffered) GetReverted(key dal.TransactionKey) (bool, error) {
+func (b *Buffered) GetReverted(key domain.TransactionKey) (bool, error) {
 	return b.Reversions.Get(key)
 }
 
-func (b *Buffered) PutReverted(key dal.TransactionKey, reverted bool) {
+func (b *Buffered) PutReverted(key domain.TransactionKey, reverted bool) {
 	b.Reversions.Put(key, reverted)
 }
 
-func (b *Buffered) GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	return b.IdempotencyKeys.Get(key)
 }
 
-func (b *Buffered) PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (b *Buffered) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	b.IdempotencyKeys.Put(key, value)
 }
 
-func (b *Buffered) GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (b *Buffered) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	return b.References.Get(key)
 }
 
-func (b *Buffered) PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (b *Buffered) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.References.Put(key, value)
 }
 
-func (b *Buffered) AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
+func (b *Buffered) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
 	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
 }
 
@@ -502,7 +503,7 @@ func (b *Buffered) DeletePeriodSchedule() {
 }
 
 func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
-	cfg, err := b.SinkConfigs.Get(dal.SinkConfigKey{Name: name})
+	cfg, err := b.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
 	if err != nil {
 		return nil, nil
 	}
@@ -510,12 +511,12 @@ func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 }
 
 func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
-	b.SinkConfigs.Put(dal.SinkConfigKey{Name: config.Name}, config)
+	b.SinkConfigs.Put(domain.SinkConfigKey{Name: config.Name}, config)
 	b.sinkConfigChanged = true
 }
 
 func (b *Buffered) RemoveSinkConfig(name string) {
-	b.SinkConfigs.Delete(dal.SinkConfigKey{Name: name})
+	b.SinkConfigs.Delete(domain.SinkConfigKey{Name: name})
 	b.sinkConfigChanged = true
 }
 
@@ -585,7 +586,7 @@ func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int
 // This is a fundamental accounting invariant: every posting moves the same amount from a source
 // account (output) to a destination account (input), so the totals must always balance.
 func checkDoubleEntryInvariant(
-	volumeUpdates []attributes.Update[dal.VolumeKey, *raftcmdpb.VolumePair],
+	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	var (
 		inputSum  uint256.Int

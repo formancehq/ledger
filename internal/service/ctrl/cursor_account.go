@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -92,13 +93,13 @@ func (c *accountCursor) Next() (*commonpb.Account, error) {
 		var account string
 		switch attrType {
 		case dal.AttributePrefixVolume:
-			var vk dal.VolumeKey
+			var vk domain.VolumeKey
 			if err := vk.Unmarshal(ck); err != nil {
 				continue
 			}
 			account = vk.Account
 		case dal.AttributePrefixMetadata:
-			var mk dal.MetadataKey
+			var mk domain.MetadataKey
 			if err := mk.Unmarshal(ck); err != nil {
 				continue
 			}

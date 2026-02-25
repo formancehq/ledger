@@ -10,10 +10,10 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -125,7 +125,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		last := entries[len(entries)-1]
 		Expect(last.GetFailure()).NotTo(BeNil(), "expected failure outcome")
-		Expect(last.GetFailure().ErrorType).To(Equal(processing.ErrReasonInsufficientFunds))
+		Expect(last.GetFailure().ErrorType).To(Equal(domain.ErrReasonInsufficientFunds))
 		Expect(last.GetFailure().Message).NotTo(BeEmpty())
 	})
 

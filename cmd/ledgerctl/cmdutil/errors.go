@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/pterm/pterm"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -30,8 +30,8 @@ func FormatGRPCError(context string, err error) error {
 // printErrorDetails prints structured details for specific business error types.
 func printErrorDetails(err error) {
 	var (
-		insufficient *processing.ErrInsufficientFunds
-		refConflict  *processing.ErrTransactionReferenceConflict
+		insufficient *domain.ErrInsufficientFunds
+		refConflict  *domain.ErrTransactionReferenceConflict
 	)
 
 	switch {
@@ -49,7 +49,7 @@ func printErrorDetails(err error) {
 
 // BusinessErrorFromGRPC extracts a BusinessError from a gRPC status error.
 // Returns nil if the error is not a business error (no ErrorInfo with domain "ledger").
-func BusinessErrorFromGRPC(err error) *processing.BusinessError {
+func BusinessErrorFromGRPC(err error) *domain.BusinessError {
 	st, ok := status.FromError(err)
 	if !ok {
 		return nil
@@ -63,7 +63,7 @@ func BusinessErrorFromGRPC(err error) *processing.BusinessError {
 
 		inner := reconstructError(info.Reason, info.Metadata, st.Message())
 		if inner != nil {
-			return &processing.BusinessError{Err: inner}
+			return &domain.BusinessError{Err: inner}
 		}
 	}
 
@@ -73,53 +73,53 @@ func BusinessErrorFromGRPC(err error) *processing.BusinessError {
 // reconstructError rebuilds the typed error from the reason and metadata.
 func reconstructError(reason string, metadata map[string]string, message string) error {
 	switch reason {
-	case processing.ErrReasonLedgerAlreadyExists:
-		return &processing.ErrLedgerAlreadyExists{Name: metadata["name"]}
+	case domain.ErrReasonLedgerAlreadyExists:
+		return &domain.ErrLedgerAlreadyExists{Name: metadata["name"]}
 
-	case processing.ErrReasonLedgerNotFound:
-		return &processing.ErrLedgerNotFound{Name: metadata["name"]}
+	case domain.ErrReasonLedgerNotFound:
+		return &domain.ErrLedgerNotFound{Name: metadata["name"]}
 
-	case processing.ErrReasonIdempotencyKeyConflict:
-		return &processing.ErrIdempotencyKeyConflict{Key: metadata["key"]}
+	case domain.ErrReasonIdempotencyKeyConflict:
+		return &domain.ErrIdempotencyKeyConflict{Key: metadata["key"]}
 
-	case processing.ErrReasonTransactionReferenceConflict:
-		return &processing.ErrTransactionReferenceConflict{
+	case domain.ErrReasonTransactionReferenceConflict:
+		return &domain.ErrTransactionReferenceConflict{
 			Ledger:    metadata["ledger"],
 			Reference: metadata["reference"],
 		}
 
-	case processing.ErrReasonTransactionNotFound:
+	case domain.ErrReasonTransactionNotFound:
 		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
-		return &processing.ErrTransactionNotFound{TransactionID: txID}
+		return &domain.ErrTransactionNotFound{TransactionID: txID}
 
-	case processing.ErrReasonTransactionAlreadyReverted:
+	case domain.ErrReasonTransactionAlreadyReverted:
 		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
-		return &processing.ErrTransactionAlreadyReverted{TransactionID: txID}
+		return &domain.ErrTransactionAlreadyReverted{TransactionID: txID}
 
-	case processing.ErrReasonInsufficientFunds:
-		return &processing.ErrInsufficientFunds{
+	case domain.ErrReasonInsufficientFunds:
+		return &domain.ErrInsufficientFunds{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
 			Amount:  metadata["amount"],
 			Balance: metadata["balance"],
 		}
 
-	case processing.ErrReasonBalanceNotFound:
-		return &processing.ErrBalanceNotFound{
+	case domain.ErrReasonBalanceNotFound:
+		return &domain.ErrBalanceNotFound{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
 		}
 
-	case processing.ErrReasonBalanceNotPreloaded:
+	case domain.ErrReasonBalanceNotPreloaded:
 		return &numscript.ErrBalanceNotPreloaded{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
 		}
 
-	case processing.ErrReasonNumscriptParseError:
+	case domain.ErrReasonNumscriptParseError:
 		return &numscript.ErrNumscriptParse{Details: metadata["details"]}
 
-	case processing.ErrReasonValidation:
+	case domain.ErrReasonValidation:
 		return fmt.Errorf("%s", message)
 
 	default:

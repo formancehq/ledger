@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,7 +64,7 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			return nil, &processing.ErrLedgerAlreadyExists{Name: "test-ledger"}
+			return nil, &domain.ErrLedgerAlreadyExists{Name: "test-ledger"}
 		},
 	}
 	srv := newTestServer(t, backend)

@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -348,15 +349,15 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	worldKey := dal.VolumeKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
+	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
 		OutputKnown: commonpb.NewUint256FromUint64(100),
 	}))
-	metadataKey := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
+	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.AddDiff(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
-	require.NoError(t, StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
+	require.NoError(t, StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
 		ByLog: 1,
 		Updates: []*commonpb.TransactionUpdateType{
 			{

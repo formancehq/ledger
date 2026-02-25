@@ -1,9 +1,12 @@
-package processing
+package domain
 
 import (
 	"errors"
 	"fmt"
 )
+
+// ErrNotFound is a sentinel error for missing records in storage lookups.
+var ErrNotFound = errors.New("not found")
 
 // Reason constants shared between server and client for gRPC error mapping.
 const (
@@ -34,7 +37,7 @@ const (
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
-// It flows through futures → admission → controller → gRPC server, where the interceptor
+// It flows through futures -> admission -> controller -> gRPC server, where the interceptor
 // maps it to proper gRPC status codes.
 type BusinessError struct {
 	Err error

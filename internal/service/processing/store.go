@@ -1,9 +1,9 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 //go:generate mockgen -source=store.go -destination=store_mock_test.go -package=processing -mock_names=InMemoryStore=MockInMemoryStore
@@ -20,28 +20,28 @@ type InMemoryStore interface {
 	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
 	// Volume operations (merged Input+Output)
-	GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error)
-	PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair)
+	GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error)
+	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
-	GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error)
-	PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue)
-	DeleteAccountMetadata(key dal.MetadataKey)
+	GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error)
+	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
+	DeleteAccountMetadata(key domain.MetadataKey)
 
 	// Transaction reversion status operations
-	GetReverted(key dal.TransactionKey) (bool, error)
-	PutReverted(key dal.TransactionKey, reverted bool)
+	GetReverted(key domain.TransactionKey) (bool, error)
+	PutReverted(key domain.TransactionKey, reverted bool)
 
 	// Idempotency key operations
-	GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
-	PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
+	GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
+	PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
 	// Transaction reference operations
-	GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
-	PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
+	GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
+	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
 	// Transaction updates
-	AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate)
+	AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate)
 
 	// Signing key operations
 	AddSigningKey(keyID string, publicKey []byte, parentKeyID string)

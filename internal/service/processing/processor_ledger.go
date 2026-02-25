@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -8,7 +9,7 @@ import (
 func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	_, ok := s.GetLedger(order.Name)
 	if ok {
-		return nil, &ErrLedgerAlreadyExists{Name: order.Name}
+		return nil, &domain.ErrLedgerAlreadyExists{Name: order.Name}
 	}
 
 	info := &commonpb.LedgerInfo{
@@ -34,7 +35,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	l, ok := s.GetLedger(order.Name)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: order.Name}
+		return nil, &domain.ErrLedgerNotFound{Name: order.Name}
 	}
 	l.DeletedAt = s.GetDate()
 

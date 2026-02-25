@@ -3,9 +3,9 @@ package processing
 import (
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func (p *RequestProcessor) processConvertMetadataBatch(
@@ -15,7 +15,7 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: ledgerName}
+		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
 	// Staleness check: the field must still be CONVERTING with the expected type.
@@ -37,7 +37,7 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 
 	var count uint32
 	for _, entry := range order.Entries {
-		var mk dal.MetadataKey
+		var mk domain.MetadataKey
 		if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
 			return nil, fmt.Errorf("unmarshal metadata key: %w", err)
 		}
@@ -78,7 +78,7 @@ func (p *RequestProcessor) processMetadataConversionComplete(
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: ledgerName}
+		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
 	// Staleness check: the field must still be CONVERTING with the expected type.

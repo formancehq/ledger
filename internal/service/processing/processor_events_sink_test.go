@@ -3,6 +3,7 @@ package processing
 import (
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var sinkAlreadyExists *ErrSinkAlreadyExists
+	var sinkAlreadyExists *domain.ErrSinkAlreadyExists
 	require.ErrorAs(t, err, &sinkAlreadyExists)
 	require.Equal(t, "my-nats-sink", sinkAlreadyExists.Name)
 }
@@ -137,7 +138,7 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var sinkNotFound *ErrSinkNotFound
+	var sinkNotFound *domain.ErrSinkNotFound
 	require.ErrorAs(t, err, &sinkNotFound)
 	require.Equal(t, "my-nats-sink", sinkNotFound.Name)
 }

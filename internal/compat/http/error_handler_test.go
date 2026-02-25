@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/stretchr/testify/require"
 )
@@ -37,49 +37,49 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "ledger already exists",
-			err:            &processing.ErrLedgerAlreadyExists{Name: "test"},
+			err:            &domain.ErrLedgerAlreadyExists{Name: "test"},
 			expectedStatus: http.StatusConflict,
 			expectedCode:   "CONFLICT",
 		},
 		{
 			name:           "ledger not found",
-			err:            &processing.ErrLedgerNotFound{Name: "test"},
+			err:            &domain.ErrLedgerNotFound{Name: "test"},
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},
 		{
 			name:           "transaction reference conflict",
-			err:            &processing.ErrTransactionReferenceConflict{Reference: "ref1"},
+			err:            &domain.ErrTransactionReferenceConflict{Reference: "ref1"},
 			expectedStatus: http.StatusConflict,
 			expectedCode:   "CONFLICT",
 		},
 		{
 			name:           "idempotency key conflict",
-			err:            &processing.ErrIdempotencyKeyConflict{Key: "key1"},
+			err:            &domain.ErrIdempotencyKeyConflict{Key: "key1"},
 			expectedStatus: http.StatusConflict,
 			expectedCode:   "CONFLICT",
 		},
 		{
 			name:           "transaction not found",
-			err:            &processing.ErrTransactionNotFound{TransactionID: 42},
+			err:            &domain.ErrTransactionNotFound{TransactionID: 42},
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},
 		{
 			name:           "transaction already reverted",
-			err:            &processing.ErrTransactionAlreadyReverted{TransactionID: 42},
+			err:            &domain.ErrTransactionAlreadyReverted{TransactionID: 42},
 			expectedStatus: http.StatusConflict,
 			expectedCode:   "CONFLICT",
 		},
 		{
 			name:           "insufficient funds",
-			err:            &processing.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "100", Balance: "50"},
+			err:            &domain.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "100", Balance: "50"},
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "INSUFFICIENT_FUNDS",
 		},
 		{
 			name:           "balance not found",
-			err:            &processing.ErrBalanceNotFound{Account: "a", Asset: "USD"},
+			err:            &domain.ErrBalanceNotFound{Account: "a", Asset: "USD"},
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "BALANCE_NOT_FOUND",
 		},
@@ -91,19 +91,19 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "metadata not found",
-			err:            &processing.ErrMetadataNotFound{Target: "account:foo", Key: "bar"},
+			err:            &domain.ErrMetadataNotFound{Target: "account:foo", Key: "bar"},
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},
 		{
 			name:           "target required",
-			err:            processing.ErrTargetRequired,
+			err:            domain.ErrTargetRequired,
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "VALIDATION",
 		},
 		{
 			name:           "metadata key required",
-			err:            processing.ErrMetadataKeyRequired,
+			err:            domain.ErrMetadataKeyRequired,
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "VALIDATION",
 		},

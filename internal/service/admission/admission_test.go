@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -146,7 +147,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		require.NoError(t, err)
 
 		// Add TransactionUpdate with TransactionInit to link transaction ID to log sequence
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -218,12 +219,12 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// Should have 2 volume keys: source (world) and destination (user:alice)
 		require.Len(t, volumes, 2)
 
-		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
+		worldKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
-		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
+		aliceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -269,12 +270,12 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// Should have 2 volume keys: original destination (alice, now source) and original source (world, now destination)
 		require.Len(t, volumes, 2)
 
-		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
+		worldKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
-		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
+		aliceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -323,16 +324,16 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// Should have 3 volume keys: world, alice, bob (all in USD)
 		require.Len(t, volumes, 3)
 
-		worldKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "world"},
+		worldKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
-		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
+		aliceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
-		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "user:bob"},
+		bobKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:bob"},
 			Asset:      "USD",
 		}
 
@@ -381,7 +382,7 @@ func TestExtractNeededTransactions(t *testing.T) {
 		// Should have 1 transaction key
 		require.Len(t, transactions, 1)
 
-		txKey := dal.TransactionKey{
+		txKey := domain.TransactionKey{
 			Ledger: testLedgerName,
 			ID:     42,
 		}
@@ -461,8 +462,8 @@ func TestExtractNeededTransactions(t *testing.T) {
 		// Should have 2 transaction keys
 		require.Len(t, transactions, 2)
 
-		txKey1 := dal.TransactionKey{Ledger: testLedgerName, ID: 1}
-		txKey2 := dal.TransactionKey{Ledger: testLedgerName, ID: 2}
+		txKey1 := domain.TransactionKey{Ledger: testLedgerName, ID: 1}
+		txKey2 := domain.TransactionKey{Ledger: testLedgerName, ID: 2}
 		_, hasTx1 := transactions[txKey1]
 		_, hasTx2 := transactions[txKey2]
 		require.True(t, hasTx1)
@@ -493,7 +494,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -624,12 +625,12 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		// Should have 2 volume keys: source and destination
 		require.Len(t, volumes, 2, "force=false should extract volumes normally")
 
-		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
+		aliceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
 			Asset:      "USD",
 		}
-		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
+		bobKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
 			Asset:      "USD",
 		}
 
@@ -695,16 +696,16 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.Len(t, volumes, 2)
 
 		// Verify force=true volumes are NOT present
-		forceSourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:force_source"},
+		forceSourceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:force_source"},
 			Asset:      "USD",
 		}
 		_, hasForceSource := volumes[forceSourceKey]
 		require.False(t, hasForceSource, "force=true order should NOT have volumes extracted")
 
 		// Verify force=false volumes are present
-		normalSourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:normal_source"},
+		normalSourceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:normal_source"},
 			Asset:      "EUR",
 		}
 		_, hasNormalSource := volumes[normalSourceKey]
@@ -807,7 +808,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, dal.TransactionKey{Ledger: testLedgerName, ID: 42}, &commonpb.TransactionUpdate{
+		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 42}, &commonpb.TransactionUpdate{
 			ByLog: 1,
 			Updates: []*commonpb.TransactionUpdateType{
 				{
@@ -891,12 +892,12 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		// Numscript emulation should discover both source and destination
 		require.NotEmpty(t, volumes, "numscript emulation should discover volumes")
 
-		aliceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
+		aliceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
 			Asset:      "USD/2",
 		}
-		bobKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
+		bobKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
 			Asset:      "USD/2",
 		}
 
@@ -976,12 +977,12 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		// Should use explicit postings, not numscript emulation
 		require.Len(t, volumes, 2)
 
-		bankKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "bank"},
+		bankKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "bank"},
 			Asset:      "EUR",
 		}
-		merchantKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: testLedgerName, Account: "merchant"},
+		merchantKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "merchant"},
 			Asset:      "EUR",
 		}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -298,8 +299,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	}
 
 	getVolumeFromCache := func(account, asset string) (input, output int64) {
-		key := dal.VolumeKey{
-			AccountKey: dal.AccountKey{
+		key := domain.VolumeKey{
+			AccountKey: domain.AccountKey{
 				Ledger:  ledgerName,
 				Account: account,
 			},
@@ -307,7 +308,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		}
 
 		pair, _, err := machine.Volumes.Get(key.Bytes())
-		if err != nil && !errors.Is(err, dal.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("unexpected error reading cache volumes for %s: %v", account, err)
 		}
 		input = effectiveVolumeInput(pair)
@@ -341,8 +342,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		lastIndex := uint64(4)
 
 		for _, exp := range expectations {
-			key := dal.VolumeKey{
-				AccountKey: dal.AccountKey{
+			key := domain.VolumeKey{
+				AccountKey: domain.AccountKey{
 					Ledger:  ledgerName,
 					Account: exp.account,
 				},
@@ -388,8 +389,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"merchant:bob cache output should be 0")
 
 		// Store: same verification
-		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "merchant:bob"},
+		canonicalKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "merchant:bob"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -410,8 +411,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"customer:dave cache output should be 330 (batch 3 only), not 660")
 
 		// Store: same verification
-		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "customer:dave"},
+		canonicalKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "customer:dave"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -432,8 +433,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			"platform:revenue cache input should be 50 (20+30), not 80")
 
 		// Store: same verification
-		canonicalKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "platform:revenue"},
+		canonicalKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "platform:revenue"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -505,13 +506,13 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 
 	machine, dataStore, attrs := newTestMachine(t)
 
-	aliceInputKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:alice"},
+	aliceInputKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 
-	worldOutputKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test", Account: "world"},
+	worldOutputKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test", Account: "world"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -649,13 +650,13 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 
 	machine, dataStore, attrs := newTestMachine(t)
 
-	activeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:active"},
+	activeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test", Account: "users:active"},
 		Asset:      "EUR",
 	}.Bytes()
 
-	dormantKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test", Account: "users:dormant"},
+	dormantKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test", Account: "users:dormant"},
 		Asset:      "EUR",
 	}.Bytes()
 
@@ -716,7 +717,7 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 // may have been evicted from cache due to generation rotation.
 func makeLedgerPreloadSet(lastPersistedIndex uint64, ledgerName string, ledgerInfo *commonpb.LedgerInfo) *raftcmdpb.PreloadSet {
 	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
-	id, tag := hasher.MakeKey(dal.LedgerKey{Name: ledgerName}.Bytes())
+	id, tag := hasher.MakeKey(domain.LedgerKey{Name: ledgerName}.Bytes())
 
 	return &raftcmdpb.PreloadSet{
 		LastPersistedIndex: lastPersistedIndex,
@@ -765,11 +766,11 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 
 	// Capture ledger info from cache for preloads
-	ledgerInfo, _, err := machine.Ledgers.Get(dal.LedgerKey{Name: ledgerName}.Bytes())
+	ledgerInfo, _, err := machine.Ledgers.Get(domain.LedgerKey{Name: ledgerName}.Bytes())
 	require.NoError(t, err)
 
-	aliceVolumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: ledgerName, Account: "users:alice"},
+	aliceVolumeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "users:alice"},
 		Asset:      "EUR",
 	}.Bytes()
 

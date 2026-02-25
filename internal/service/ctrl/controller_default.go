@@ -7,6 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -64,7 +65,7 @@ func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commo
 func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -202,7 +203,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -248,7 +249,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -303,7 +304,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -318,7 +319,7 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, name)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
 		}
 		return nil, err
@@ -330,7 +331,7 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 		return nil, err
@@ -409,7 +410,7 @@ func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64)
 
 	entry, err := state.ReadAuditEntry(handle, sequence)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
 		}
 		return nil, fmt.Errorf("getting audit entry %d: %w", sequence, err)

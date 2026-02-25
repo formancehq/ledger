@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -167,7 +167,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionNotFound))
+			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionNotFound))
 			Expect(info.Domain).To(Equal("ledger"))
 		})
 
@@ -205,7 +205,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionAlreadyReverted))
+			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionAlreadyReverted))
 			Expect(info.Domain).To(Equal("ledger"))
 		})
 

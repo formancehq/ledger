@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -48,14 +49,14 @@ type Machine struct {
 	Attrs *attributes.Attributes
 
 	Cache           *cache.Cache
-	Volumes         *attributes.KeyStore[dal.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata *attributes.KeyStore[dal.MetadataKey, *commonpb.MetadataValue]
-	Reversions      *attributes.KeyStore[dal.TransactionKey, bool]
-	IdempotencyKeys *attributes.KeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References      *attributes.KeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers         *attributes.KeyStore[dal.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries      *attributes.KeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs     *attributes.KeyStore[dal.SinkConfigKey, *commonpb.SinkConfig]
+	Volumes         *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	Reversions      *attributes.KeyStore[domain.TransactionKey, bool]
+	IdempotencyKeys *attributes.KeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References      *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers         *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries      *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs     *attributes.KeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
 
 	nextSequenceID      uint64
 	nextAuditSequenceID uint64
@@ -257,35 +258,35 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		sharedState:                 sharedState,
 		Attrs:                       attrs,
 		Cache:                       cache,
-		Volumes: attributes.NewKeyStore[dal.VolumeKey, *raftcmdpb.VolumePair](
+		Volumes: attributes.NewKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair](
 			attributes.DefaultSeeds,
 			cache.Volumes,
 		),
-		AccountMetadata: attributes.NewKeyStore[dal.MetadataKey, *commonpb.MetadataValue](
+		AccountMetadata: attributes.NewKeyStore[domain.MetadataKey, *commonpb.MetadataValue](
 			attributes.DefaultSeeds,
 			cache.AccountMetadata,
 		),
-		Reversions: attributes.NewKeyStore[dal.TransactionKey, bool](
+		Reversions: attributes.NewKeyStore[domain.TransactionKey, bool](
 			attributes.DefaultSeeds,
 			cache.Reversions,
 		),
-		IdempotencyKeys: attributes.NewKeyStore[dal.IdempotencyKey, *commonpb.IdempotencyKeyValue](
+		IdempotencyKeys: attributes.NewKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue](
 			attributes.DefaultSeeds,
 			cache.IdempotencyKeys,
 		),
-		References: attributes.NewKeyStore[dal.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
+		References: attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
 			attributes.DefaultSeeds,
 			cache.References,
 		),
-		Ledgers: attributes.NewKeyStore[dal.LedgerKey, *commonpb.LedgerInfo](
+		Ledgers: attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](
 			attributes.DefaultSeeds,
 			cache.Ledgers,
 		),
-		Boundaries: attributes.NewKeyStore[dal.LedgerKey, *raftcmdpb.LedgerBoundaries](
+		Boundaries: attributes.NewKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries](
 			attributes.DefaultSeeds,
 			cache.Boundaries,
 		),
-		SinkConfigs: attributes.NewKeyStore[dal.SinkConfigKey, *commonpb.SinkConfig](
+		SinkConfigs: attributes.NewKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](
 			attributes.DefaultSeeds,
 			cache.SinkConfigs,
 		),
@@ -1036,7 +1037,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if fsm.sharedState.MaintenanceMode() && !allOrdersAreMaintenanceMode(proposal.Orders) {
 		return &ApplyResult{
 			ProposalID: proposal.Id,
-			Error:      &processing.BusinessError{Err: processing.ErrMaintenanceMode},
+			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
 		}, nil
 	}
 
@@ -1092,7 +1093,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 		return &ApplyResult{
 			ProposalID: proposal.Id,
-			Error:      &processing.BusinessError{Err: err},
+			Error:      &domain.BusinessError{Err: err},
 		}, nil
 	}
 

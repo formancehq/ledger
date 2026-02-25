@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +75,7 @@ func TestHandleCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
-			return nil, &processing.ErrInsufficientFunds{
+			return nil, &domain.ErrInsufficientFunds{
 				Account: "users:001",
 				Asset:   "USD",
 				Amount:  "100",

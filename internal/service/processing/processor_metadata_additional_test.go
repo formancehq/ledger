@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -41,7 +41,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 	result, err := processor.ProcessOrder(order, mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrTargetRequired)
+	require.ErrorIs(t, err, domain.ErrTargetRequired)
 }
 
 func TestProcessAddMetadata_WithSchema(t *testing.T) {
@@ -143,7 +143,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var txNotFound *ErrTransactionNotFound
+	var txNotFound *domain.ErrTransactionNotFound
 	require.ErrorAs(t, err, &txNotFound)
 	require.Equal(t, uint64(99), txNotFound.TransactionID)
 }
@@ -178,7 +178,7 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 	result, err := processor.ProcessOrder(order, mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrTargetRequired)
+	require.ErrorIs(t, err, domain.ErrTargetRequired)
 }
 
 func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
@@ -215,7 +215,7 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 	result, err := processor.ProcessOrder(order, mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.ErrorIs(t, err, ErrMetadataKeyRequired)
+	require.ErrorIs(t, err, domain.ErrMetadataKeyRequired)
 }
 
 func TestProcessDeleteMetadata_Transaction(t *testing.T) {
@@ -233,8 +233,8 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{Ledger: "test-ledger", ID: 3}, gomock.Any()).Do(
-		func(_ dal.TransactionKey, update *commonpb.TransactionUpdate) {
+	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 3}, gomock.Any()).Do(
+		func(_ domain.TransactionKey, update *commonpb.TransactionUpdate) {
 			require.Equal(t, uint64(50), update.ByLog)
 			require.Len(t, update.Updates, 1)
 			delMeta := update.Updates[0].GetTransactionModificationDeleteMetadata()
@@ -310,6 +310,6 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var txNotFound *ErrTransactionNotFound
+	var txNotFound *domain.ErrTransactionNotFound
 	require.ErrorAs(t, err, &txNotFound)
 }

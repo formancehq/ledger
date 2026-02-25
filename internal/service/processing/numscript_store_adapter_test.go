@@ -6,7 +6,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	numscriptlib "github.com/formancehq/numscript"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -54,8 +54,8 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	volumeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -89,8 +89,8 @@ func TestGetBalances_DiffOnlyVolume(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	volumeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -124,8 +124,8 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	volumeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -155,13 +155,13 @@ func TestGetBalances_VolumeNotFound(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	volumeKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
 	// Volume not found at all
-	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
@@ -186,8 +186,8 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 		force:    false,
 	}
 
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -218,12 +218,12 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 		force:    false,
 	}
 
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"status"},
@@ -250,8 +250,8 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 		force:  false,
 	}
 
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}
 
@@ -295,8 +295,8 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 		force:  false,
 	}
 
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}
 

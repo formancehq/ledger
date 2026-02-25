@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -233,7 +233,7 @@ func isAuditDisabledError(err error) bool {
 		if !ok {
 			continue
 		}
-		if info.Reason == processing.ErrReasonAuditDisabled && info.Domain == "ledger" {
+		if info.Reason == domain.ErrReasonAuditDisabled && info.Domain == "ledger" {
 			return true
 		}
 	}

@@ -8,9 +8,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -173,7 +173,7 @@ var _ = Describe("Periods", Ordered, func() {
 
 					info := extractGRPCErrorInfo(err)
 					Expect(info).NotTo(BeNil())
-					Expect(info.Reason).To(Equal(processing.ErrReasonPeriodAlreadyClosing))
+					Expect(info.Reason).To(Equal(domain.ErrReasonPeriodAlreadyClosing))
 					gotExpectedError = true
 				}
 				// If no error, the sealer was faster — try again
@@ -328,7 +328,7 @@ var _ = Describe("Receipts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonTransactionAlreadyReverted))
+			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionAlreadyReverted))
 		})
 	})
 })

@@ -12,9 +12,9 @@ package processing
 import (
 	reflect "reflect"
 
+	domain "github.com/formancehq/ledger-v3-poc/internal/domain"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	dal "github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -79,7 +79,7 @@ func (mr *MockInMemoryStoreMockRecorder) AddSinkConfig(config any) *gomock.Call 
 }
 
 // AddTransactionUpdate mocks base method.
-func (m *MockInMemoryStore) AddTransactionUpdate(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
+func (m *MockInMemoryStore) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddTransactionUpdate", key, update)
 }
@@ -103,7 +103,7 @@ func (mr *MockInMemoryStoreMockRecorder) ClearClosingPeriod() *gomock.Call {
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *MockInMemoryStore) DeleteAccountMetadata(key dal.MetadataKey) {
+func (m *MockInMemoryStore) DeleteAccountMetadata(key domain.MetadataKey) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "DeleteAccountMetadata", key)
 }
@@ -127,7 +127,7 @@ func (mr *MockInMemoryStoreMockRecorder) DeletePeriodSchedule() *gomock.Call {
 }
 
 // GetAccountMetadata mocks base method.
-func (m *MockInMemoryStore) GetAccountMetadata(key dal.MetadataKey) (*commonpb.MetadataValue, error) {
+func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccountMetadata", key)
 	ret0, _ := ret[0].(*commonpb.MetadataValue)
@@ -201,7 +201,7 @@ func (mr *MockInMemoryStoreMockRecorder) GetDate() *gomock.Call {
 }
 
 // GetIdempotencyKey mocks base method.
-func (m *MockInMemoryStore) GetIdempotencyKey(key dal.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (m *MockInMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIdempotencyKey", key)
 	ret0, _ := ret[0].(*commonpb.IdempotencyKeyValue)
@@ -288,7 +288,7 @@ func (mr *MockInMemoryStoreMockRecorder) GetPeriodByID(periodID any) *gomock.Cal
 }
 
 // GetReverted mocks base method.
-func (m *MockInMemoryStore) GetReverted(key dal.TransactionKey) (bool, error) {
+func (m *MockInMemoryStore) GetReverted(key domain.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetReverted", key)
 	ret0, _ := ret[0].(bool)
@@ -332,7 +332,7 @@ func (mr *MockInMemoryStoreMockRecorder) GetSinkConfig(name any) *gomock.Call {
 }
 
 // GetTransactionReference mocks base method.
-func (m *MockInMemoryStore) GetTransactionReference(key dal.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (m *MockInMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionReference", key)
 	ret0, _ := ret[0].(*commonpb.TransactionReferenceValue)
@@ -347,7 +347,7 @@ func (mr *MockInMemoryStoreMockRecorder) GetTransactionReference(key any) *gomoc
 }
 
 // GetVolume mocks base method.
-func (m *MockInMemoryStore) GetVolume(key dal.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (m *MockInMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolume", key)
 	ret0, _ := ret[0].(*raftcmdpb.VolumePair)
@@ -390,7 +390,7 @@ func (mr *MockInMemoryStoreMockRecorder) IncrementNextSequenceID() *gomock.Call 
 }
 
 // PutAccountMetadata mocks base method.
-func (m *MockInMemoryStore) PutAccountMetadata(key dal.MetadataKey, value *commonpb.MetadataValue) {
+func (m *MockInMemoryStore) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutAccountMetadata", key, value)
 }
@@ -414,7 +414,7 @@ func (mr *MockInMemoryStoreMockRecorder) PutBoundaries(ledger, boundaries any) *
 }
 
 // PutIdempotencyKey mocks base method.
-func (m *MockInMemoryStore) PutIdempotencyKey(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (m *MockInMemoryStore) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutIdempotencyKey", key, value)
 }
@@ -438,7 +438,7 @@ func (mr *MockInMemoryStoreMockRecorder) PutLedger(name, info any) *gomock.Call 
 }
 
 // PutReverted mocks base method.
-func (m *MockInMemoryStore) PutReverted(key dal.TransactionKey, reverted bool) {
+func (m *MockInMemoryStore) PutReverted(key domain.TransactionKey, reverted bool) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutReverted", key, reverted)
 }
@@ -450,7 +450,7 @@ func (mr *MockInMemoryStoreMockRecorder) PutReverted(key, reverted any) *gomock.
 }
 
 // PutTransactionReference mocks base method.
-func (m *MockInMemoryStore) PutTransactionReference(key dal.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (m *MockInMemoryStore) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutTransactionReference", key, value)
 }
@@ -462,7 +462,7 @@ func (mr *MockInMemoryStoreMockRecorder) PutTransactionReference(key, value any)
 }
 
 // PutVolume mocks base method.
-func (m *MockInMemoryStore) PutVolume(key dal.VolumeKey, value *raftcmdpb.VolumePair) {
+func (m *MockInMemoryStore) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutVolume", key, value)
 }

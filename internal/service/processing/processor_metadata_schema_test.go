@@ -3,6 +3,7 @@ package processing
 import (
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
@@ -149,7 +150,7 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var ledgerNotFound *ErrLedgerNotFound
+	var ledgerNotFound *domain.ErrLedgerNotFound
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 

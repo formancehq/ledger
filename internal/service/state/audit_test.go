@@ -11,9 +11,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
@@ -162,7 +162,7 @@ func TestAuditLogOnFailure(t *testing.T) {
 	require.Equal(t, uint64(2), failEntry.ProposalId)
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is BALANCE_NOT_FOUND because the account doesn't exist yet (no balance preloaded)
-	require.Equal(t, processing.ErrReasonBalanceNotFound, failEntry.GetFailure().ErrorType)
+	require.Equal(t, domain.ErrReasonBalanceNotFound, failEntry.GetFailure().ErrorType)
 	require.NotEmpty(t, failEntry.GetFailure().Message)
 	require.Contains(t, failEntry.GetFailure().Context, "account")
 	require.Contains(t, failEntry.GetFailure().Context, "asset")
@@ -317,37 +317,37 @@ func TestBuildAuditFailure(t *testing.T) {
 
 	t.Run("InsufficientFunds", func(t *testing.T) {
 		t.Parallel()
-		err := &processing.ErrInsufficientFunds{
+		err := &domain.ErrInsufficientFunds{
 			Account: "user:alice",
 			Asset:   "USD",
 		}
 		failure := buildAuditFailure(err)
-		require.Equal(t, processing.ErrReasonInsufficientFunds, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonInsufficientFunds, failure.ErrorType)
 		require.Equal(t, "user:alice", failure.Context["account"])
 		require.Equal(t, "USD", failure.Context["asset"])
 	})
 
 	t.Run("LedgerNotFound", func(t *testing.T) {
 		t.Parallel()
-		err := &processing.ErrLedgerNotFound{Name: "missing-ledger"}
+		err := &domain.ErrLedgerNotFound{Name: "missing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, processing.ErrReasonLedgerNotFound, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonLedgerNotFound, failure.ErrorType)
 		require.Equal(t, "missing-ledger", failure.Context["name"])
 	})
 
 	t.Run("LedgerAlreadyExists", func(t *testing.T) {
 		t.Parallel()
-		err := &processing.ErrLedgerAlreadyExists{Name: "existing-ledger"}
+		err := &domain.ErrLedgerAlreadyExists{Name: "existing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, processing.ErrReasonLedgerAlreadyExists, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonLedgerAlreadyExists, failure.ErrorType)
 		require.Equal(t, "existing-ledger", failure.Context["name"])
 	})
 
 	t.Run("TransactionNotFound", func(t *testing.T) {
 		t.Parallel()
-		err := &processing.ErrTransactionNotFound{TransactionID: 42}
+		err := &domain.ErrTransactionNotFound{TransactionID: 42}
 		failure := buildAuditFailure(err)
-		require.Equal(t, processing.ErrReasonTransactionNotFound, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonTransactionNotFound, failure.ErrorType)
 		require.Equal(t, "42", failure.Context["transactionId"])
 	})
 
@@ -355,7 +355,7 @@ func TestBuildAuditFailure(t *testing.T) {
 		t.Parallel()
 		err := numscript.ErrScriptRequired
 		failure := buildAuditFailure(err)
-		require.Equal(t, processing.ErrReasonValidation, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonValidation, failure.ErrorType)
 	})
 
 	t.Run("Unknown", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -10,11 +11,11 @@ import (
 func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	currentPeriod, ok := s.GetCurrentOpenPeriod()
 	if !ok {
-		return nil, ErrNoPeriodOpen
+		return nil, domain.ErrNoPeriodOpen
 	}
 
 	if _, hasClosing := s.GetClosingPeriod(); hasClosing {
-		return nil, ErrPeriodAlreadyClosing
+		return nil, domain.ErrPeriodAlreadyClosing
 	}
 
 	// Transition current period to CLOSING
@@ -49,11 +50,11 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	closingPeriod, ok := s.GetClosingPeriod()
 	if !ok || closingPeriod.Id != order.PeriodId {
-		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
 	}
 
 	if closingPeriod.Status != commonpb.PeriodStatus_PERIOD_CLOSING {
-		return nil, &ErrPeriodNotClosing{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotClosing{PeriodID: order.PeriodId}
 	}
 
 	// Transition to CLOSED and persist via ClearClosingPeriod
@@ -76,11 +77,11 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	period, ok := s.GetPeriodByID(order.PeriodId)
 	if !ok {
-		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
 	}
 
 	if period.Status != commonpb.PeriodStatus_PERIOD_CLOSED {
-		return nil, &ErrPeriodNotClosed{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotClosed{PeriodID: order.PeriodId}
 	}
 
 	// Transition to ARCHIVING deterministically on all nodes
@@ -104,11 +105,11 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	period, ok := s.GetPeriodByID(order.PeriodId)
 	if !ok {
-		return nil, &ErrPeriodNotFound{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
 	}
 
 	if period.Status != commonpb.PeriodStatus_PERIOD_ARCHIVING {
-		return nil, &ErrPeriodNotArchiving{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotArchiving{PeriodID: order.PeriodId}
 	}
 
 	period.Status = commonpb.PeriodStatus_PERIOD_ARCHIVED

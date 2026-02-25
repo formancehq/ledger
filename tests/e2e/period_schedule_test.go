@@ -6,9 +6,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -95,7 +95,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInvalidCronExpression))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidCronExpression))
 		})
 	})
 
@@ -112,7 +112,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInvalidCronExpression))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidCronExpression))
 		})
 	})
 

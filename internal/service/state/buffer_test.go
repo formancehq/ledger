@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,11 +58,11 @@ func TestBufferedGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: "test", Account: "alice"}, Key: "role"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "alice"}, Key: "role"}
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
 	_, err := buf.GetAccountMetadata(key)
-	require.True(t, errors.Is(err, dal.ErrNotFound))
+	require.True(t, errors.Is(err, domain.ErrNotFound))
 
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("admin"))
 	val, err := buf.GetAccountMetadata(key)
@@ -74,7 +74,7 @@ func TestBufferedDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.MetadataKey{AccountKey: dal.AccountKey{Ledger: "test", Account: "bob"}, Key: "label"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "bob"}, Key: "label"}
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
 
 	val, err := buf.GetAccountMetadata(key)
@@ -93,11 +93,11 @@ func TestBufferedGetPutReverted(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionKey{Ledger: "test", ID: 42}
+	key := domain.TransactionKey{Ledger: "test", ID: 42}
 
 	// Non-existent key returns ErrNotFound from backing store
 	_, err := buf.GetReverted(key)
-	require.True(t, errors.Is(err, dal.ErrNotFound))
+	require.True(t, errors.Is(err, domain.ErrNotFound))
 
 	buf.PutReverted(key, true)
 	reverted, err := buf.GetReverted(key)
@@ -109,11 +109,11 @@ func TestBufferedGetPutIdempotencyKey(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.IdempotencyKey{Key: "ik-1"}
+	key := domain.IdempotencyKey{Key: "ik-1"}
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetIdempotencyKey(key)
-	require.True(t, errors.Is(err, dal.ErrNotFound))
+	require.True(t, errors.Is(err, domain.ErrNotFound))
 
 	buf.PutIdempotencyKey(key, &commonpb.IdempotencyKeyValue{LogSequence: 5})
 	val, err := buf.GetIdempotencyKey(key)
@@ -126,11 +126,11 @@ func TestBufferedGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionReferenceKey{Ledger: "test", Reference: "ref-1"}
+	key := domain.TransactionReferenceKey{Ledger: "test", Reference: "ref-1"}
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetTransactionReference(key)
-	require.True(t, errors.Is(err, dal.ErrNotFound))
+	require.True(t, errors.Is(err, domain.ErrNotFound))
 
 	buf.PutTransactionReference(key, &commonpb.TransactionReferenceValue{TransactionId: 100})
 	val, err := buf.GetTransactionReference(key)
@@ -143,7 +143,7 @@ func TestBufferedAddTransactionUpdate(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := dal.TransactionKey{Ledger: "test", ID: 1}
+	key := domain.TransactionKey{Ledger: "test", ID: 1}
 	update := &commonpb.TransactionUpdate{
 		ByLog: 5,
 		Updates: []*commonpb.TransactionUpdateType{

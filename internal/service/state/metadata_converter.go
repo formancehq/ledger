@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -342,7 +343,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	var totalMatchingKeys uint64
 	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
-			var mk dal.MetadataKey
+			var mk domain.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
 				return nil // skip unparseable keys
 			}
@@ -368,7 +369,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
-			var mk dal.MetadataKey
+			var mk domain.MetadataKey
 			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
 				mc.logger.Errorf("Failed to unmarshal metadata key %x: %v", entry.CanonicalKey, err)
 				return nil // skip unparseable keys

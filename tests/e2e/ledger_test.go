@@ -6,9 +6,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -215,7 +215,7 @@ var _ = Describe("Ledger", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonLedgerAlreadyExists))
+			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerAlreadyExists))
 			Expect(info.Domain).To(Equal("ledger"))
 			Expect(info.Metadata["name"]).To(Equal("dup-ledger"))
 		})

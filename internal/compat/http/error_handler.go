@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 )
 
@@ -14,16 +14,16 @@ import (
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
 		notFoundErr    *commonpb.NotFoundError
-		refConflict    *processing.ErrTransactionReferenceConflict
-		ikConflict     *processing.ErrIdempotencyKeyConflict
-		ledgerExists   *processing.ErrLedgerAlreadyExists
-		ledgerNotFound *processing.ErrLedgerNotFound
-		txNotFound     *processing.ErrTransactionNotFound
-		txReverted     *processing.ErrTransactionAlreadyReverted
-		insufficient   *processing.ErrInsufficientFunds
-		balNotFound    *processing.ErrBalanceNotFound
+		refConflict    *domain.ErrTransactionReferenceConflict
+		ikConflict     *domain.ErrIdempotencyKeyConflict
+		ledgerExists   *domain.ErrLedgerAlreadyExists
+		ledgerNotFound *domain.ErrLedgerNotFound
+		txNotFound     *domain.ErrTransactionNotFound
+		txReverted     *domain.ErrTransactionAlreadyReverted
+		insufficient   *domain.ErrInsufficientFunds
+		balNotFound    *domain.ErrBalanceNotFound
 		parseErr       *numscript.ErrNumscriptParse
-		metaNotFound   *processing.ErrMetadataNotFound
+		metaNotFound   *domain.ErrMetadataNotFound
 	)
 
 	switch {
@@ -64,8 +64,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &metaNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
-	case errors.Is(err, processing.ErrTargetRequired),
-		errors.Is(err, processing.ErrMetadataKeyRequired),
+	case errors.Is(err, domain.ErrTargetRequired),
+		errors.Is(err, domain.ErrMetadataKeyRequired),
 		errors.Is(err, numscript.ErrScriptRequired),
 		errors.Is(err, admission.ErrIdempotencyKeyTooLong):
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)

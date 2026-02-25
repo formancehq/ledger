@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -286,7 +287,7 @@ func ReadPeriodSchedule(reader dal.PebbleReader) (string, error) {
 }
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
-// Returns dal.ErrNotFound if the ledger does not exist or is soft-deleted.
+// Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
 func GetLedgerByName(reader dal.PebbleReader, name string) (*commonpb.LedgerInfo, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLedgerInfo).PutString(name)
@@ -294,7 +295,7 @@ func GetLedgerByName(reader dal.PebbleReader, name string) (*commonpb.LedgerInfo
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, dal.ErrNotFound
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}
@@ -306,7 +307,7 @@ func GetLedgerByName(reader dal.PebbleReader, name string) (*commonpb.LedgerInfo
 	}
 
 	if info.DeletedAt != nil {
-		return nil, dal.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return info, nil
 }
@@ -332,7 +333,7 @@ func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID
 		}
 	}
 	if sequence == 0 {
-		return nil, dal.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 
 	log, err := ReadLogBySequence(reader, sequence)
@@ -340,7 +341,7 @@ func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
 	if log == nil {
-		return nil, dal.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 
 	return log, nil
@@ -410,7 +411,7 @@ func ReadAuditEntries(reader dal.PebbleReader, afterSequence *uint64) (dal.Curso
 }
 
 // ReadAuditEntry returns a single audit entry by sequence number.
-// Returns dal.ErrNotFound if the entry does not exist.
+// Returns domain.ErrNotFound if the entry does not exist.
 func ReadAuditEntry(reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEntry, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixAudit).PutUInt64(sequence)
@@ -419,7 +420,7 @@ func ReadAuditEntry(reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEnt
 	value, closer, err := reader.Get(key)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, dal.ErrNotFound
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("reading audit entry %d: %w", sequence, err)
 	}

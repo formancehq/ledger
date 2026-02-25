@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.opentelemetry.io/otel/trace/noop"
 	"github.com/stretchr/testify/require"
@@ -510,7 +510,7 @@ func TestHandleGetTransaction_LedgerLookupError(t *testing.T) {
 
 	backend := &mockBackend{
 		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return nil, &processing.ErrLedgerNotFound{Name: "missing"}
+			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		},
 	}
 	srv := newTestServer(t, backend)

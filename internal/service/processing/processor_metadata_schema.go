@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -12,7 +13,7 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: ledgerName}
+		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
 	if info.MetadataSchema == nil {
@@ -62,7 +63,7 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 ) (*commonpb.LedgerLogPayload, error) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
-		return nil, &ErrLedgerNotFound{Name: ledgerName}
+		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
 	if info.MetadataSchema == nil {

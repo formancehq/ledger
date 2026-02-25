@@ -4,22 +4,22 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.Reference != "" {
-		refKey := dal.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference}
+		refKey := domain.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference}
 		existingRef, err := s.GetTransactionReference(refKey)
-		if err != nil && !errors.Is(err, dal.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, fmt.Errorf("checking transaction reference: %w", err)
 		}
 		if existingRef != nil {
-			return nil, &ErrTransactionReferenceConflict{
+			return nil, &domain.ErrTransactionReferenceConflict{
 				Ledger:    ledger,
 				Reference: order.Reference,
 			}
@@ -44,7 +44,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	boundaries.NextTransactionId = nextTransactionID + 1
 
 	// Store the transaction init update for later indexing
-	s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: nextTransactionID}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: nextTransactionID}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(), // Will be set correctly when committing
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
@@ -100,8 +100,8 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.Metadata)
 		// Update buffer with schema-enforced values (numscript wrote string values)
 		for _, md := range ms.Metadata {
-			s.PutAccountMetadata(dal.MetadataKey{
-				AccountKey: dal.AccountKey{Ledger: ledger, Account: account},
+			s.PutAccountMetadata(domain.MetadataKey{
+				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
 				Key:        md.Key,
 			}, md.Value)
 		}
@@ -115,7 +115,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	// Store transaction reference if provided
 	if order.Reference != "" {
 		s.PutTransactionReference(
-			dal.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference},
+			domain.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}

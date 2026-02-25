@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -18,20 +18,20 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "world"},
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "world"},
 		Asset:      "USD",
 	}
-	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	destKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 
 	// Source (world) has nil volumes - should be created on the fly
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
 
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 
 	posting := &commonpb.Posting{
@@ -53,8 +53,8 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -76,7 +76,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.Error(t, err)
 
-	var insufficientFunds *ErrInsufficientFunds
+	var insufficientFunds *domain.ErrInsufficientFunds
 	require.ErrorAs(t, err, &insufficientFunds)
 	require.Equal(t, "bank", insufficientFunds.Account)
 	require.Equal(t, "USD", insufficientFunds.Asset)
@@ -90,8 +90,8 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -112,7 +112,7 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.Error(t, err)
 
-	var balanceNotFound *ErrBalanceNotFound
+	var balanceNotFound *domain.ErrBalanceNotFound
 	require.ErrorAs(t, err, &balanceNotFound)
 	require.Equal(t, "bank", balanceNotFound.Account)
 	require.Equal(t, "USD", balanceNotFound.Asset)
@@ -126,12 +126,12 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
-	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	destKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -169,12 +169,12 @@ func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "bank"},
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
-	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+	destKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
 		Asset:      "USD",
 	}
 

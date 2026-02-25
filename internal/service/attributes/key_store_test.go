@@ -3,8 +3,8 @@ package attributes
 import (
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/kv"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,7 +80,7 @@ func TestKeyStoreGet(t *testing.T) {
 		store := newTestKeyStore()
 
 		_, _, err := store.Get([]byte("missing-key"))
-		require.ErrorIs(t, err, dal.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 
 	t.Run("overwritten value returns latest", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestKeyStoreDelete(t *testing.T) {
 
 		// Should not be found after deletion
 		_, _, err = store.Get([]byte("to-delete"))
-		require.ErrorIs(t, err, dal.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 
 	t.Run("non-existent key returns ErrNotFound", func(t *testing.T) {
@@ -122,7 +122,7 @@ func TestKeyStoreDelete(t *testing.T) {
 		store := newTestKeyStore()
 
 		_, err := store.Delete([]byte("never-existed"))
-		require.ErrorIs(t, err, dal.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }
 
@@ -324,7 +324,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 		// Verify the key is removed from the underlying store
 		_, _, err = store.Get([]byte("to-remove"))
-		require.ErrorIs(t, err, dal.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 
 	t.Run("merge deletion of non-existent key is not an error", func(t *testing.T) {

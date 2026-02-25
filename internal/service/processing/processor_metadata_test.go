@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -29,8 +29,8 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutAccountMetadata(
-		dal.MetadataKey{
-			AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+		domain.MetadataKey{
+			AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 			Key:        "status",
 		},
 		commonpb.NewStringValue("active"),
@@ -88,8 +88,8 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().AddTransactionUpdate(dal.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any()).Do(
-		func(key dal.TransactionKey, update *commonpb.TransactionUpdate) {
+	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any()).Do(
+		func(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
 			require.Equal(t, uint64(42), update.ByLog) // Global sequence ID
 			require.Len(t, update.Updates, 1)
 			addMeta := update.Updates[0].GetTransactionModificationAddMetadata()
@@ -138,8 +138,8 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -190,13 +190,13 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	metaKey := dal.MetadataKey{
-		AccountKey: dal.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -220,7 +220,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	var metaNotFound *ErrMetadataNotFound
+	var metaNotFound *domain.ErrMetadataNotFound
 	require.ErrorAs(t, err, &metaNotFound)
 	require.Equal(t, "users:123", metaNotFound.Target)
 	require.Equal(t, "status", metaNotFound.Key)

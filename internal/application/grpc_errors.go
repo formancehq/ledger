@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -15,7 +15,7 @@ import (
 const errorDomain = "ledger"
 
 // businessErrorToGRPCStatus converts a BusinessError to a gRPC status with ErrorInfo details.
-func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status {
+func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	var (
 		code     codes.Code
 		reason   string
@@ -25,44 +25,44 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 	inner := bizErr.Err
 
 	var (
-		ledgerAlreadyExists          *processing.ErrLedgerAlreadyExists
-		ledgerNotFound               *processing.ErrLedgerNotFound
-		idempotencyKeyConflict       *processing.ErrIdempotencyKeyConflict
-		transactionReferenceConflict *processing.ErrTransactionReferenceConflict
-		transactionNotFound          *processing.ErrTransactionNotFound
-		transactionAlreadyReverted   *processing.ErrTransactionAlreadyReverted
-		insufficientFunds            *processing.ErrInsufficientFunds
-		balanceNotFound              *processing.ErrBalanceNotFound
+		ledgerAlreadyExists          *domain.ErrLedgerAlreadyExists
+		ledgerNotFound               *domain.ErrLedgerNotFound
+		idempotencyKeyConflict       *domain.ErrIdempotencyKeyConflict
+		transactionReferenceConflict *domain.ErrTransactionReferenceConflict
+		transactionNotFound          *domain.ErrTransactionNotFound
+		transactionAlreadyReverted   *domain.ErrTransactionAlreadyReverted
+		insufficientFunds            *domain.ErrInsufficientFunds
+		balanceNotFound              *domain.ErrBalanceNotFound
 		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
 		numscriptParse               *numscript.ErrNumscriptParse
-		sinkAlreadyExists            *processing.ErrSinkAlreadyExists
-		sinkNotFound                 *processing.ErrSinkNotFound
-		metadataNotFound             *processing.ErrMetadataNotFound
-		periodNotFound               *processing.ErrPeriodNotFound
-		periodNotClosing             *processing.ErrPeriodNotClosing
-		invalidReceipt               *processing.ErrInvalidReceipt
-		invalidCronExpression        *processing.ErrInvalidCronExpression
+		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
+		sinkNotFound                 *domain.ErrSinkNotFound
+		metadataNotFound             *domain.ErrMetadataNotFound
+		periodNotFound               *domain.ErrPeriodNotFound
+		periodNotClosing             *domain.ErrPeriodNotClosing
+		invalidReceipt               *domain.ErrInvalidReceipt
+		invalidCronExpression        *domain.ErrInvalidCronExpression
 	)
 
 	switch {
 	case errors.As(inner, &ledgerAlreadyExists):
 		code = codes.AlreadyExists
-		reason = processing.ErrReasonLedgerAlreadyExists
+		reason = domain.ErrReasonLedgerAlreadyExists
 		metadata = map[string]string{"name": ledgerAlreadyExists.Name}
 
 	case errors.As(inner, &ledgerNotFound):
 		code = codes.NotFound
-		reason = processing.ErrReasonLedgerNotFound
+		reason = domain.ErrReasonLedgerNotFound
 		metadata = map[string]string{"name": ledgerNotFound.Name}
 
 	case errors.As(inner, &idempotencyKeyConflict):
 		code = codes.AlreadyExists
-		reason = processing.ErrReasonIdempotencyKeyConflict
+		reason = domain.ErrReasonIdempotencyKeyConflict
 		metadata = map[string]string{"key": idempotencyKeyConflict.Key}
 
 	case errors.As(inner, &transactionReferenceConflict):
 		code = codes.AlreadyExists
-		reason = processing.ErrReasonTransactionReferenceConflict
+		reason = domain.ErrReasonTransactionReferenceConflict
 		metadata = map[string]string{
 			"ledger":    transactionReferenceConflict.Ledger,
 			"reference": transactionReferenceConflict.Reference,
@@ -70,21 +70,21 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.As(inner, &transactionNotFound):
 		code = codes.NotFound
-		reason = processing.ErrReasonTransactionNotFound
+		reason = domain.ErrReasonTransactionNotFound
 		metadata = map[string]string{
 			"transactionId": fmt.Sprintf("%d", transactionNotFound.TransactionID),
 		}
 
 	case errors.As(inner, &transactionAlreadyReverted):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonTransactionAlreadyReverted
+		reason = domain.ErrReasonTransactionAlreadyReverted
 		metadata = map[string]string{
 			"transactionId": fmt.Sprintf("%d", transactionAlreadyReverted.TransactionID),
 		}
 
 	case errors.As(inner, &insufficientFunds):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonInsufficientFunds
+		reason = domain.ErrReasonInsufficientFunds
 		metadata = map[string]string{
 			"account": insufficientFunds.Account,
 			"asset":   insufficientFunds.Asset,
@@ -94,7 +94,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.As(inner, &balanceNotFound):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonBalanceNotFound
+		reason = domain.ErrReasonBalanceNotFound
 		metadata = map[string]string{
 			"account": balanceNotFound.Account,
 			"asset":   balanceNotFound.Asset,
@@ -102,7 +102,7 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.As(inner, &balanceNotPreloaded):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonBalanceNotPreloaded
+		reason = domain.ErrReasonBalanceNotPreloaded
 		metadata = map[string]string{
 			"account": balanceNotPreloaded.Account,
 			"asset":   balanceNotPreloaded.Asset,
@@ -110,67 +110,67 @@ func businessErrorToGRPCStatus(bizErr *processing.BusinessError) *status.Status 
 
 	case errors.As(inner, &numscriptParse):
 		code = codes.InvalidArgument
-		reason = processing.ErrReasonNumscriptParseError
+		reason = domain.ErrReasonNumscriptParseError
 		metadata = map[string]string{"details": numscriptParse.Details}
 
 	case errors.As(inner, &sinkAlreadyExists):
 		code = codes.AlreadyExists
-		reason = processing.ErrReasonSinkAlreadyExists
+		reason = domain.ErrReasonSinkAlreadyExists
 		metadata = map[string]string{"name": sinkAlreadyExists.Name}
 
 	case errors.As(inner, &sinkNotFound):
 		code = codes.NotFound
-		reason = processing.ErrReasonSinkNotFound
+		reason = domain.ErrReasonSinkNotFound
 		metadata = map[string]string{"name": sinkNotFound.Name}
 
 	case errors.As(inner, &metadataNotFound):
 		code = codes.NotFound
-		reason = processing.ErrReasonMetadataNotFound
+		reason = domain.ErrReasonMetadataNotFound
 		metadata = map[string]string{"target": metadataNotFound.Target, "key": metadataNotFound.Key}
 
-	case errors.Is(inner, processing.ErrNoPeriodOpen):
+	case errors.Is(inner, domain.ErrNoPeriodOpen):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonNoPeriodOpen
+		reason = domain.ErrReasonNoPeriodOpen
 
-	case errors.Is(inner, processing.ErrPeriodAlreadyClosing):
+	case errors.Is(inner, domain.ErrPeriodAlreadyClosing):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonPeriodAlreadyClosing
+		reason = domain.ErrReasonPeriodAlreadyClosing
 
 	case errors.As(inner, &periodNotFound):
 		code = codes.NotFound
-		reason = processing.ErrReasonPeriodNotFound
+		reason = domain.ErrReasonPeriodNotFound
 		metadata = map[string]string{
 			"periodId": fmt.Sprintf("%d", periodNotFound.PeriodID),
 		}
 
 	case errors.As(inner, &periodNotClosing):
 		code = codes.FailedPrecondition
-		reason = processing.ErrReasonPeriodNotClosing
+		reason = domain.ErrReasonPeriodNotClosing
 		metadata = map[string]string{
 			"periodId": fmt.Sprintf("%d", periodNotClosing.PeriodID),
 		}
 
 	case errors.As(inner, &invalidReceipt):
 		code = codes.InvalidArgument
-		reason = processing.ErrReasonInvalidReceipt
+		reason = domain.ErrReasonInvalidReceipt
 		metadata = map[string]string{
 			"reason": invalidReceipt.Reason,
 		}
 
-	case errors.Is(inner, processing.ErrTargetRequired),
-		errors.Is(inner, processing.ErrMetadataKeyRequired),
+	case errors.Is(inner, domain.ErrTargetRequired),
+		errors.Is(inner, domain.ErrMetadataKeyRequired),
 		errors.Is(inner, numscript.ErrScriptRequired),
 		errors.Is(inner, admission.ErrIdempotencyKeyTooLong):
 		code = codes.InvalidArgument
-		reason = processing.ErrReasonValidation
+		reason = domain.ErrReasonValidation
 
-	case errors.Is(inner, processing.ErrMaintenanceMode):
+	case errors.Is(inner, domain.ErrMaintenanceMode):
 		code = codes.Unavailable
-		reason = processing.ErrReasonMaintenanceMode
+		reason = domain.ErrReasonMaintenanceMode
 
 	case errors.As(inner, &invalidCronExpression):
 		code = codes.InvalidArgument
-		reason = processing.ErrReasonInvalidCronExpression
+		reason = domain.ErrReasonInvalidCronExpression
 		metadata = map[string]string{
 			"expression": invalidCronExpression.Expression,
 			"details":    invalidCronExpression.Details,

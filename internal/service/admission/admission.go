@@ -21,7 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
@@ -920,14 +920,14 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 // It combines what was previously split across phase1 (name-based) and phase2
 // (ledger-scoped) extraction, now that DAL keys use ledger names directly.
 type preloadNeeds struct {
-	IdempotencyKeys map[dal.IdempotencyKey]struct{}
-	Ledgers         map[dal.LedgerKey]struct{}
-	Boundaries      map[dal.LedgerKey]struct{}
-	SinkConfigs     map[dal.SinkConfigKey]struct{}
-	Volumes         map[dal.VolumeKey]struct{}
-	Metadata        map[dal.MetadataKey]struct{}
-	Transactions    map[dal.TransactionKey]struct{}
-	References      map[dal.TransactionReferenceKey]struct{}
+	IdempotencyKeys map[domain.IdempotencyKey]struct{}
+	Ledgers         map[domain.LedgerKey]struct{}
+	Boundaries      map[domain.LedgerKey]struct{}
+	SinkConfigs     map[domain.SinkConfigKey]struct{}
+	Volumes         map[domain.VolumeKey]struct{}
+	Metadata        map[domain.MetadataKey]struct{}
+	Transactions    map[domain.TransactionKey]struct{}
+	References      map[domain.TransactionReferenceKey]struct{}
 }
 
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
@@ -955,33 +955,33 @@ type preloadNeeds struct {
 //     and original source becomes destination
 func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds {
 	p := preloadNeeds{
-		IdempotencyKeys: make(map[dal.IdempotencyKey]struct{}),
-		Ledgers:         make(map[dal.LedgerKey]struct{}),
-		Boundaries:      make(map[dal.LedgerKey]struct{}),
-		SinkConfigs:     make(map[dal.SinkConfigKey]struct{}),
-		Volumes:         make(map[dal.VolumeKey]struct{}),
-		Metadata:        make(map[dal.MetadataKey]struct{}),
-		Transactions:    make(map[dal.TransactionKey]struct{}),
-		References:      make(map[dal.TransactionReferenceKey]struct{}),
+		IdempotencyKeys: make(map[domain.IdempotencyKey]struct{}),
+		Ledgers:         make(map[domain.LedgerKey]struct{}),
+		Boundaries:      make(map[domain.LedgerKey]struct{}),
+		SinkConfigs:     make(map[domain.SinkConfigKey]struct{}),
+		Volumes:         make(map[domain.VolumeKey]struct{}),
+		Metadata:        make(map[domain.MetadataKey]struct{}),
+		Transactions:    make(map[domain.TransactionKey]struct{}),
+		References:      make(map[domain.TransactionReferenceKey]struct{}),
 	}
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
 		if order.Idempotency != nil && order.Idempotency.Key != "" {
-			p.IdempotencyKeys[dal.IdempotencyKey{Key: order.Idempotency.Key}] = struct{}{}
+			p.IdempotencyKeys[domain.IdempotencyKey{Key: order.Idempotency.Key}] = struct{}{}
 		}
 
 		switch orderType := order.Type.(type) {
 		case *raftcmdpb.Order_CreateLedger:
-			p.Ledgers[dal.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
 		case *raftcmdpb.Order_DeleteLedger:
-			p.Ledgers[dal.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
 		case *raftcmdpb.Order_AddEventsSink:
-			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
 		case *raftcmdpb.Order_RemoveEventsSink:
-			p.SinkConfigs[dal.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
-			p.Boundaries[dal.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
+			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 
 			ledgerName := orderType.Apply.Ledger
 
@@ -989,7 +989,7 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 				// References (extracted regardless of Force or Numscript)
 				if applyData.CreateTransaction.Reference != "" {
-					p.References[dal.TransactionReferenceKey{
+					p.References[domain.TransactionReferenceKey{
 						Ledger:    ledgerName,
 						Reference: applyData.CreateTransaction.Reference,
 					}] = struct{}{}
@@ -1032,20 +1032,20 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 
 				for _, posting := range applyData.CreateTransaction.Postings {
 					// Source account needs balance check
-					p.Volumes[dal.VolumeKey{
-						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Source},
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
 						Asset:      posting.Asset,
 					}] = struct{}{}
 					// Destination account needs to be in cache to apply credit
-					p.Volumes[dal.VolumeKey{
-						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Destination},
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
 						Asset:      posting.Asset,
 					}] = struct{}{}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Need to check if the transaction is already reverted
-				p.Transactions[dal.TransactionKey{
+				p.Transactions[domain.TransactionKey{
 					Ledger: ledgerName,
 					ID:     applyData.RevertTransaction.TransactionId,
 				}] = struct{}{}
@@ -1053,12 +1053,12 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 				// For reverts, postings are reversed: original destination becomes source (needs balance check)
 				// and original source becomes destination (needs to receive credit)
 				for _, posting := range applyData.RevertTransaction.OriginalPostings {
-					p.Volumes[dal.VolumeKey{
-						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Destination},
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
 						Asset:      posting.Asset,
 					}] = struct{}{}
-					p.Volumes[dal.VolumeKey{
-						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: posting.Source},
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
 						Asset:      posting.Asset,
 					}] = struct{}{}
 				}
@@ -1066,8 +1066,8 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 				// Preload the metadata key so processDeleteMetadata can check existence
 				if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
-					p.Metadata[dal.MetadataKey{
-						AccountKey: dal.AccountKey{Ledger: ledgerName, Account: target.Account.Addr},
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.Addr},
 						Key:        applyData.DeleteMetadata.Key,
 					}] = struct{}{}
 				}
@@ -1218,7 +1218,7 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	// Set idempotency key if provided (hash will be computed in processor from payload)
 	if req.IdempotencyKey != "" {
 		if len(req.IdempotencyKey) > maxIdempotencyKeyLength {
-			return nil, &processing.BusinessError{Err: ErrIdempotencyKeyTooLong}
+			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
 		}
 		order.Idempotency = &commonpb.Idempotency{
 			Key: req.IdempotencyKey,
@@ -1320,8 +1320,8 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
 	log, err := state.FindTransactionCreationLog(a.store, ledgerName, transactionID)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
-			return nil, &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: transactionID}}
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}
 		}
 		return nil, fmt.Errorf("finding transaction creation log: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -166,7 +167,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var vk dal.VolumeKey
+		var vk domain.VolumeKey
 		if err := vk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -219,7 +220,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		var mk dal.MetadataKey
+		var mk domain.MetadataKey
 		if err := mk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -249,7 +250,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var tk dal.TransactionKey
+		var tk domain.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -290,7 +291,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		var tk dal.TransactionKey
+		var tk domain.TransactionKey
 		if err := tk.Unmarshal([]byte(key)); err != nil {
 			continue
 		}
@@ -337,7 +338,7 @@ func replayLedgerLog(
 		applyPostings(ledger, tx.Postings, expectedInputs, expectedOutputs)
 
 		// Track TransactionInit update
-		txKey := string(dal.TransactionKey{Ledger: ledger, ID: tx.Id}.Bytes())
+		txKey := string(domain.TransactionKey{Ledger: ledger, ID: tx.Id}.Bytes())
 		state := getOrCreateTxState(expectedTxStates, txKey)
 		state.updates = append(state.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -352,8 +353,8 @@ func replayLedgerLog(
 		for account, metaSet := range p.CreatedTransaction.AccountMetadata {
 			if metaSet != nil {
 				for _, m := range metaSet.Metadata {
-					mk := dal.MetadataKey{
-						AccountKey: dal.AccountKey{
+					mk := domain.MetadataKey{
+						AccountKey: domain.AccountKey{
 							Ledger: ledger,
 							Account:  account,
 						},
@@ -376,7 +377,7 @@ func replayLedgerLog(
 		applyPostings(ledger, revertTx.Postings, expectedInputs, expectedOutputs)
 
 		// Track revert update on the original transaction
-		origTxKey := string(dal.TransactionKey{Ledger: ledger, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
+		origTxKey := string(domain.TransactionKey{Ledger: ledger, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
 		origState := getOrCreateTxState(expectedTxStates, origTxKey)
 		origState.reverted = true
 		origState.updates = append(origState.updates, &commonpb.TransactionUpdate{
@@ -391,7 +392,7 @@ func replayLedgerLog(
 		})
 
 		// Track TransactionInit for the revert transaction
-		revertTxKey := string(dal.TransactionKey{Ledger: ledger, ID: revertTx.Id}.Bytes())
+		revertTxKey := string(domain.TransactionKey{Ledger: ledger, ID: revertTx.Id}.Bytes())
 		revertState := getOrCreateTxState(expectedTxStates, revertTxKey)
 		revertState.updates = append(revertState.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
@@ -410,8 +411,8 @@ func replayLedgerLog(
 		case *commonpb.Target_Account:
 			if p.SavedMetadata.Metadata != nil {
 				for _, m := range p.SavedMetadata.Metadata.Metadata {
-					mk := dal.MetadataKey{
-						AccountKey: dal.AccountKey{
+					mk := domain.MetadataKey{
+						AccountKey: domain.AccountKey{
 							Ledger: ledger,
 							Account:  target.Account.Addr,
 						},
@@ -426,7 +427,7 @@ func replayLedgerLog(
 			}
 		case *commonpb.Target_Transaction:
 			if p.SavedMetadata.Metadata != nil {
-				txKey := string(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
+				txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
 				state := getOrCreateTxState(expectedTxStates, txKey)
 				updates := make([]*commonpb.TransactionUpdateType, len(p.SavedMetadata.Metadata.Metadata))
 				for i, m := range p.SavedMetadata.Metadata.Metadata {
@@ -451,8 +452,8 @@ func replayLedgerLog(
 		}
 		switch target := p.DeletedMetadata.Target.Target.(type) {
 		case *commonpb.Target_Account:
-			mk := dal.MetadataKey{
-				AccountKey: dal.AccountKey{
+			mk := domain.MetadataKey{
+				AccountKey: domain.AccountKey{
 					Ledger: ledger,
 					Account:  target.Account.Addr,
 				},
@@ -462,7 +463,7 @@ func replayLedgerLog(
 			delete(expectedMetadata, key)
 			deletedMetadata[key] = struct{}{}
 		case *commonpb.Target_Transaction:
-			txKey := string(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
+			txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}.Bytes())
 			state := getOrCreateTxState(expectedTxStates, txKey)
 			state.updates = append(state.updates, &commonpb.TransactionUpdate{
 				ByLog: seq,
@@ -498,8 +499,8 @@ func applyPostings(
 		amount := posting.Amount.ToBigInt()
 
 		// Source: increase output
-		sourceKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{
+		sourceKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{
 				Ledger: ledger,
 				Account:  posting.Source,
 			},
@@ -512,8 +513,8 @@ func applyPostings(
 		expectedOutputs[sk].Add(expectedOutputs[sk], amount)
 
 		// Destination: increase input
-		destKey := dal.VolumeKey{
-			AccountKey: dal.AccountKey{
+		destKey := domain.VolumeKey{
+			AccountKey: domain.AccountKey{
 				Ledger: ledger,
 				Account:  posting.Destination,
 			},

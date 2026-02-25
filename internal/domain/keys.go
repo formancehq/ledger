@@ -1,9 +1,16 @@
-package dal
+package domain
 
 import (
 	"encoding/binary"
 	"fmt"
 )
+
+// CanonicalBytes is implemented by key types that can be serialized
+// to a canonical byte representation for storage lookups.
+type CanonicalBytes interface {
+	Bytes() []byte
+	Unmarshal(data []byte) error
+}
 
 type AccountKey struct {
 	Ledger  string

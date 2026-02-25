@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +59,7 @@ func TestHandleGetTransaction_NotFound(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		},
 		getTransactionFn: func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, error) {
-			return nil, &processing.ErrTransactionNotFound{TransactionID: 999}
+			return nil, &domain.ErrTransactionNotFound{TransactionID: 999}
 		},
 	}
 	srv := newTestServer(t, backend)

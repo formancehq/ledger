@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -39,7 +39,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	}
 
 	// Idempotency key not found
-	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(nil, dal.ErrNotFound)
+	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(nil, domain.ErrNotFound)
 
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
@@ -52,9 +52,9 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	mockStore.EXPECT().GetLastLogHash().Return(nil)
 	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 	mockStore.EXPECT().PutIdempotencyKey(
-		dal.IdempotencyKey{Key: "unique-key-123"},
+		domain.IdempotencyKey{Key: "unique-key-123"},
 		gomock.Any(),
-	).Do(func(key dal.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+	).Do(func(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 		require.Equal(t, uint64(100), value.LogSequence)
 		require.NotEmpty(t, value.Hash)
 	})
@@ -103,7 +103,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	}
 
 	// Idempotency key found with matching hash
-	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(
+	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(
 		&commonpb.IdempotencyKeyValue{
 			LogSequence: 42,
 			Hash:        expectedHash,
@@ -150,7 +150,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 	}
 
 	// Idempotency key found with DIFFERENT hash (conflict)
-	mockStore.EXPECT().GetIdempotencyKey(dal.IdempotencyKey{Key: "unique-key-123"}).Return(
+	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(
 		&commonpb.IdempotencyKeyValue{
 			LogSequence: 42,
 			Hash:        []byte("different-hash"),
@@ -163,7 +163,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
 	require.Error(t, err)
 	require.Nil(t, response)
-	require.ErrorAs(t, err, new(*ErrIdempotencyKeyConflict))
+	require.ErrorAs(t, err, new(*domain.ErrIdempotencyKeyConflict))
 }
 
 func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {

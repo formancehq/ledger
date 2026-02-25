@@ -5,11 +5,6 @@ import (
 	"encoding/binary"
 )
 
-type CanonicalBytes interface {
-	Bytes() []byte
-	Unmarshal(data []byte) error
-}
-
 type KeyBuilder struct {
 	buf *bytes.Buffer
 	err error

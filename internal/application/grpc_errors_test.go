@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -18,14 +18,14 @@ import (
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrLedgerAlreadyExists{Name: "my-ledger"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrLedgerAlreadyExists{Name: "my-ledger"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.AlreadyExists, st.Code())
 	require.Contains(t, st.Message(), "my-ledger")
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonLedgerAlreadyExists, info.Reason)
+	require.Equal(t, domain.ErrReasonLedgerAlreadyExists, info.Reason)
 	require.Equal(t, errorDomain, info.Domain)
 	require.Equal(t, "my-ledger", info.Metadata["name"])
 }
@@ -33,33 +33,33 @@ func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrLedgerNotFound{Name: "missing-ledger"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "missing-ledger"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonLedgerNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonLedgerNotFound, info.Reason)
 	require.Equal(t, "missing-ledger", info.Metadata["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_IdempotencyKeyConflict(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrIdempotencyKeyConflict{Key: "ik-123"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrIdempotencyKeyConflict{Key: "ik-123"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonIdempotencyKeyConflict, info.Reason)
+	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, info.Reason)
 	require.Equal(t, "ik-123", info.Metadata["key"])
 }
 
 func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrTransactionReferenceConflict{
+	bizErr := &domain.BusinessError{Err: &domain.ErrTransactionReferenceConflict{
 		Ledger:    "test",
 		Reference: "ref-001",
 	}}
@@ -68,7 +68,7 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonTransactionReferenceConflict, info.Reason)
+	require.Equal(t, domain.ErrReasonTransactionReferenceConflict, info.Reason)
 	require.Equal(t, "test", info.Metadata["ledger"])
 	require.Equal(t, "ref-001", info.Metadata["reference"])
 }
@@ -76,33 +76,33 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_TransactionNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrTransactionNotFound{TransactionID: 999}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: 999}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonTransactionNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonTransactionNotFound, info.Reason)
 	require.Equal(t, "999", info.Metadata["transactionId"])
 }
 
 func TestBusinessErrorToGRPCStatus_TransactionAlreadyReverted(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrTransactionAlreadyReverted{TransactionID: 42}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrTransactionAlreadyReverted{TransactionID: 42}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonTransactionAlreadyReverted, info.Reason)
+	require.Equal(t, domain.ErrReasonTransactionAlreadyReverted, info.Reason)
 	require.Equal(t, "42", info.Metadata["transactionId"])
 }
 
 func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrInsufficientFunds{
+	bizErr := &domain.BusinessError{Err: &domain.ErrInsufficientFunds{
 		Account: "user:001",
 		Asset:   "USD",
 		Amount:  "1000",
@@ -113,7 +113,7 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonInsufficientFunds, info.Reason)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, info.Reason)
 	require.Equal(t, "user:001", info.Metadata["account"])
 	require.Equal(t, "USD", info.Metadata["asset"])
 	require.Equal(t, "1000", info.Metadata["amount"])
@@ -123,7 +123,7 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrBalanceNotFound{
+	bizErr := &domain.BusinessError{Err: &domain.ErrBalanceNotFound{
 		Account: "user:002",
 		Asset:   "EUR",
 	}}
@@ -132,7 +132,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonBalanceNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonBalanceNotFound, info.Reason)
 	require.Equal(t, "user:002", info.Metadata["account"])
 	require.Equal(t, "EUR", info.Metadata["asset"])
 }
@@ -140,7 +140,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &numscript.ErrBalanceNotPreloaded{
+	bizErr := &domain.BusinessError{Err: &numscript.ErrBalanceNotPreloaded{
 		Account: "user:003",
 		Asset:   "BTC",
 	}}
@@ -149,7 +149,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonBalanceNotPreloaded, info.Reason)
+	require.Equal(t, domain.ErrReasonBalanceNotPreloaded, info.Reason)
 	require.Equal(t, "user:003", info.Metadata["account"])
 	require.Equal(t, "BTC", info.Metadata["asset"])
 }
@@ -157,13 +157,13 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &numscript.ErrNumscriptParse{Details: "unexpected token at line 3"}}
+	bizErr := &domain.BusinessError{Err: &numscript.ErrNumscriptParse{Details: "unexpected token at line 3"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonNumscriptParseError, info.Reason)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, info.Reason)
 	require.Equal(t, "unexpected token at line 3", info.Metadata["details"])
 }
 
@@ -174,8 +174,8 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"target required", processing.ErrTargetRequired},
-		{"metadata key required", processing.ErrMetadataKeyRequired},
+		{"target required", domain.ErrTargetRequired},
+		{"metadata key required", domain.ErrMetadataKeyRequired},
 		{"script required", numscript.ErrScriptRequired},
 	}
 
@@ -183,13 +183,13 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			bizErr := &processing.BusinessError{Err: tt.err}
+			bizErr := &domain.BusinessError{Err: tt.err}
 			st := businessErrorToGRPCStatus(bizErr)
 
 			require.Equal(t, codes.InvalidArgument, st.Code())
 
 			info := extractErrorInfo(t, st)
-			require.Equal(t, processing.ErrReasonValidation, info.Reason)
+			require.Equal(t, domain.ErrReasonValidation, info.Reason)
 			require.Equal(t, errorDomain, info.Domain)
 		})
 	}
@@ -198,39 +198,39 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_SinkAlreadyExists(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrSinkAlreadyExists{Name: "my-sink"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrSinkAlreadyExists{Name: "my-sink"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonSinkAlreadyExists, info.Reason)
+	require.Equal(t, domain.ErrReasonSinkAlreadyExists, info.Reason)
 	require.Equal(t, "my-sink", info.Metadata["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_SinkNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrSinkNotFound{Name: "missing-sink"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrSinkNotFound{Name: "missing-sink"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonSinkNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonSinkNotFound, info.Reason)
 	require.Equal(t, "missing-sink", info.Metadata["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrMetadataNotFound{Target: "account:foo", Key: "role"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrMetadataNotFound{Target: "account:foo", Key: "role"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonMetadataNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonMetadataNotFound, info.Reason)
 	require.Equal(t, "account:foo", info.Metadata["target"])
 	require.Equal(t, "role", info.Metadata["key"])
 }
@@ -238,82 +238,82 @@ func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: processing.ErrNoPeriodOpen}
+	bizErr := &domain.BusinessError{Err: domain.ErrNoPeriodOpen}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonNoPeriodOpen, info.Reason)
+	require.Equal(t, domain.ErrReasonNoPeriodOpen, info.Reason)
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodAlreadyClosing(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: processing.ErrPeriodAlreadyClosing}
+	bizErr := &domain.BusinessError{Err: domain.ErrPeriodAlreadyClosing}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonPeriodAlreadyClosing, info.Reason)
+	require.Equal(t, domain.ErrReasonPeriodAlreadyClosing, info.Reason)
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrPeriodNotFound{PeriodID: 7}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrPeriodNotFound{PeriodID: 7}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonPeriodNotFound, info.Reason)
+	require.Equal(t, domain.ErrReasonPeriodNotFound, info.Reason)
 	require.Equal(t, "7", info.Metadata["periodId"])
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrPeriodNotClosing{PeriodID: 3}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrPeriodNotClosing{PeriodID: 3}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonPeriodNotClosing, info.Reason)
+	require.Equal(t, domain.ErrReasonPeriodNotClosing, info.Reason)
 	require.Equal(t, "3", info.Metadata["periodId"])
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrInvalidReceipt{Reason: "bad signature"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidReceipt{Reason: "bad signature"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonInvalidReceipt, info.Reason)
+	require.Equal(t, domain.ErrReasonInvalidReceipt, info.Reason)
 	require.Equal(t, "bad signature", info.Metadata["reason"])
 }
 
 func TestBusinessErrorToGRPCStatus_MaintenanceMode(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: processing.ErrMaintenanceMode}
+	bizErr := &domain.BusinessError{Err: domain.ErrMaintenanceMode}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.Unavailable, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonMaintenanceMode, info.Reason)
+	require.Equal(t, domain.ErrReasonMaintenanceMode, info.Reason)
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrInvalidCronExpression{
+	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidCronExpression{
 		Expression: "* * * *",
 		Details:    "expected 5 fields",
 	}}
@@ -322,7 +322,7 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, processing.ErrReasonInvalidCronExpression, info.Reason)
+	require.Equal(t, domain.ErrReasonInvalidCronExpression, info.Reason)
 	require.Equal(t, "* * * *", info.Metadata["expression"])
 	require.Equal(t, "expected 5 fields", info.Metadata["details"])
 }
@@ -330,7 +330,7 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: errors.New("something unexpected")}
+	bizErr := &domain.BusinessError{Err: errors.New("something unexpected")}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.Internal, st.Code())
@@ -342,7 +342,7 @@ func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
 func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &processing.BusinessError{Err: &processing.ErrLedgerNotFound{Name: "test"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "test"}}
 	grpcErr := convertToGRPCError(bizErr)
 
 	st, ok := status.FromError(grpcErr)
@@ -417,7 +417,7 @@ func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(processing.ErrAuditDisabled)
+	grpcErr := convertToGRPCError(domain.ErrAuditDisabled)
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -426,7 +426,7 @@ func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&processing.ErrPeriodNotClosed{PeriodID: 5})
+	grpcErr := convertToGRPCError(&domain.ErrPeriodNotClosed{PeriodID: 5})
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -435,7 +435,7 @@ func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
 func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&processing.ErrPeriodNotArchiving{PeriodID: 3})
+	grpcErr := convertToGRPCError(&domain.ErrPeriodNotArchiving{PeriodID: 3})
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())

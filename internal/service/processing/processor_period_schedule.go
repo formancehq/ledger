@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/robfig/cron/v3"
@@ -15,7 +16,7 @@ var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | 
 // It validates the cron expression and stores it in the FSM state.
 func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	if _, err := CronParser.Parse(order.Cron); err != nil {
-		return nil, &ErrInvalidCronExpression{
+		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.Cron,
 			Details:    err.Error(),
 		}

@@ -6,17 +6,17 @@ import (
 
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // applyPosting applies a single posting by updating volumes.
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
 func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, skipBalanceCheck bool) error {
-	sourceKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{
 			Ledger:  ledger,
 			Account: posting.Source,
 		},
@@ -29,7 +29,7 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 
 	// Get current volume pair for source
 	sourceVol, err := s.GetVolume(sourceKey)
-	if err != nil && !errors.Is(err, dal.ErrNotFound) {
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
 	if sourceVol == nil {
@@ -48,7 +48,7 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 		} else if sourceVol.InputDiff != nil {
 			sourceVol.InputDiff.IntoUint256(&inputValue)
 		} else {
-			return &ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
+			return &domain.ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
 		}
 
 		// Compute effective output value with the same logic.
@@ -62,7 +62,7 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 		if overflow || inputValue.Lt(sum) {
 			// Only compute signed balance for the error message
 			balanceBig := new(big.Int).Sub(inputValue.ToBig(), outputValue.ToBig())
-			return &ErrInsufficientFunds{
+			return &domain.ErrInsufficientFunds{
 				Account: posting.Source,
 				Asset:   posting.Asset,
 				Amount:  amount.Dec(),
@@ -79,8 +79,8 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
-	destKey := dal.VolumeKey{
-		AccountKey: dal.AccountKey{
+	destKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{
 			Ledger:  ledger,
 			Account: posting.Destination,
 		},
@@ -88,7 +88,7 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	}
 
 	destVol, err := s.GetVolume(destKey)
-	if err != nil && !errors.Is(err, dal.ErrNotFound) {
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
 	if destVol == nil {

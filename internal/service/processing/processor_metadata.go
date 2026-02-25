@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
-		return nil, ErrTargetRequired
+		return nil, domain.ErrTargetRequired
 	}
 
 	// Enforce schema: convert metadata values to declared types.
@@ -28,8 +28,8 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	switch target := order.Target.Target.(type) {
 	case *commonpb.Target_Account:
 		for _, entry := range order.Metadata.Metadata {
-			s.PutAccountMetadata(dal.MetadataKey{
-				AccountKey: dal.AccountKey{
+			s.PutAccountMetadata(domain.MetadataKey{
+				AccountKey: domain.AccountKey{
 					Ledger:  ledger,
 					Account: target.Account.Addr,
 				},
@@ -38,7 +38,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		}
 	case *commonpb.Target_Transaction:
 		if target.Transaction.Id >= boundaries.NextTransactionId {
-			return nil, &ErrTransactionNotFound{TransactionID: target.Transaction.Id}
+			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.Id}
 		}
 		// Group all metadata updates into a single TransactionUpdate
 		// to avoid key collisions in PebbleDB (all updates in same request share the same ByLog)
@@ -52,7 +52,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 				},
 			}
 		}
-		s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog:   s.GetNextSequenceID(),
 			Updates: updates,
 		})
@@ -70,24 +70,24 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 
 func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.Target == nil {
-		return nil, ErrTargetRequired
+		return nil, domain.ErrTargetRequired
 	}
 	if order.Key == "" {
-		return nil, ErrMetadataKeyRequired
+		return nil, domain.ErrMetadataKeyRequired
 	}
 
 	switch target := order.Target.Target.(type) {
 	case *commonpb.Target_Account:
-		metaKey := dal.MetadataKey{
-			AccountKey: dal.AccountKey{
+		metaKey := domain.MetadataKey{
+			AccountKey: domain.AccountKey{
 				Ledger:  ledger,
 				Account: target.Account.Addr,
 			},
 			Key: order.Key,
 		}
 		if _, err := s.GetAccountMetadata(metaKey); err != nil {
-			if errors.Is(err, dal.ErrNotFound) {
-				return nil, &ErrMetadataNotFound{
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, &domain.ErrMetadataNotFound{
 					Target: target.Account.Addr,
 					Key:    order.Key,
 				}
@@ -97,11 +97,11 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
 		if target.Transaction.Id >= boundaries.NextTransactionId {
-			return nil, &ErrTransactionNotFound{TransactionID: target.Transaction.Id}
+			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.Id}
 		}
 		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
 		// This ensures each transaction update has a unique key in PebbleDB
-		s.AddTransactionUpdate(dal.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
+		s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.Id}, &commonpb.TransactionUpdate{
 			ByLog: s.GetNextSequenceID(),
 			Updates: []*commonpb.TransactionUpdateType{{
 				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{

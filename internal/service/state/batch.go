@@ -6,6 +6,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -54,7 +55,7 @@ func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
 // Key: [KeyPrefixTransactionUpdate][name]\x00[transactionID(8)][byLog(8)] -> TransactionUpdate
-func StoreTransactionUpdate(b *dal.Batch, key dal.TransactionKey, update *commonpb.TransactionUpdate) error {
+func StoreTransactionUpdate(b *dal.Batch, key domain.TransactionKey, update *commonpb.TransactionUpdate) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerName(key.Ledger).

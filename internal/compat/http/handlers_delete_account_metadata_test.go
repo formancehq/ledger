@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,7 +56,7 @@ func TestHandleDeleteAccountMetadata_NotFound(t *testing.T) {
 
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
-			return nil, &processing.ErrMetadataNotFound{Target: "account:users:001", Key: "role"}
+			return nil, &domain.ErrMetadataNotFound{Target: "account:users:001", Key: "role"}
 		},
 	}
 	srv := newTestServer(t, backend)
