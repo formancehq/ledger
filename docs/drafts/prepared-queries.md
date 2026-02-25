@@ -3,8 +3,6 @@
 **Status**: Draft for team review
 **Author**: Geoffrey + Claude
 **Date**: 2026-02-24
-**Related**: [Advanced Read Queries](./advanced-read-queries.md)
-
 ---
 
 ## 1. Problem Statement

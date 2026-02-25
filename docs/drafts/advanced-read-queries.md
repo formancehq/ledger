@@ -1,8 +1,10 @@
 # Draft — Advanced Read Queries
 
-**Status**: Draft for team review
+**Status**: Outdated — superseded by [Prepared Queries](./prepared-queries.md)
 **Author**: Geoffrey + Claude
 **Date**: 2026-02-13, updated 2026-02-24
+
+> **Note**: This document is an early exploration and is outdated relative to the [Prepared Queries](./prepared-queries.md) draft, which contains the current design. Some sections here (storage engine options, key layout) have been reworked or replaced. Do not take this document at face value — refer to Prepared Queries for the up-to-date design.
 
 ---
 
