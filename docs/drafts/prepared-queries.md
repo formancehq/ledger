@@ -649,26 +649,6 @@ O(N × S) where N = number of filters, S = smallest result set. High-selectivity
 - A 2-filter AND on 1M accounts with 10-20% selectivity scans ~200K entries per cursor — sub-second on SSD
 - The key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key — equivalent to a partial index, no wasted scans on unrelated keys
 
-### 8.5 Estimated Code
-
-~2000-3000 LOC of custom Go code:
-
-| Component | LOC estimate | Description |
-|-----------|-------------|-------------|
-| Sortable encoding | ~200 | `encode(int64)`, `encode(uint64)`, type tag dispatch |
-| Key builders | ~150 | Prefix construction for each key type |
-| Iterator interface | ~100 | `Next() (key, bool)`, `Close()` |
-| Merge-intersect | ~150 | N-way sorted intersection |
-| Merge-union | ~150 | N-way sorted union |
-| Merge-difference | ~100 | Sorted difference (for NOT) |
-| Filter tree compiler | ~300 | Recursive tree → iterator tree |
-| Index builder | ~400 | Log tailing, metadata extraction, bbolt writes |
-| Reverse metadata map | ~200 | Old-value lookup, update |
-| Pagination | ~150 | Keyset cursor encoding/decoding |
-| Schema change re-encoding | ~200 | ConvertMetadataValue dispatch, scan + rewrite |
-
-This is relatively mechanical code — no query optimizer, no complex algorithms beyond merge-join on sorted cursors.
-
 ## 9. Dedicated Disk — Is It Necessary?
 
 **No, but it helps.**
