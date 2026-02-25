@@ -8,14 +8,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// field describes a single CRD field.
-type field struct {
+// Field describes a single CRD field.
+type Field struct {
 	Name        string
 	Type        string
 	Required    bool
 	Default     string
 	Description string
-	Children    []field
+	Children    []Field
+}
+
+// SpecFields returns the schema fields for the Ledger spec.
+func SpecFields() []Field {
+	return specFields()
+}
+
+// Lookup finds a field by dotted path (e.g. "config.raft.electionTick").
+func Lookup(fields []Field, path string) (Field, bool) {
+	return lookup(fields, path)
 }
 
 // NewCommand returns the "explain" command.
@@ -36,7 +46,7 @@ func runExplain(args []string) error {
 	root := ledgerSchema()
 
 	if len(args) > 0 {
-		node, ok := lookup(root, args[0])
+		node, ok := Lookup(root, args[0])
 		if !ok {
 			return fmt.Errorf("unknown field path %q", args[0])
 		}
@@ -59,7 +69,7 @@ func runExplain(args []string) error {
 	return nil
 }
 
-func lookup(fields []field, path string) (field, bool) {
+func lookup(fields []Field, path string) (Field, bool) {
 	parts := strings.SplitN(path, ".", 2)
 	for _, f := range fields {
 		if f.Name == parts[0] {
@@ -69,10 +79,10 @@ func lookup(fields []field, path string) (field, bool) {
 			return lookup(f.Children, parts[1])
 		}
 	}
-	return field{}, false
+	return Field{}, false
 }
 
-func printFields(fields []field, depth int) {
+func printFields(fields []Field, depth int) {
 	indent := strings.Repeat("  ", depth)
 	for _, f := range fields {
 		req := ""
@@ -95,15 +105,15 @@ func printFields(fields []field, depth int) {
 	}
 }
 
-func ledgerSchema() []field {
-	return []field{
+func ledgerSchema() []Field {
+	return []Field{
 		{Name: "spec", Type: "object", Description: "Desired state of the Ledger deployment.", Children: specFields()},
 		{Name: "status", Type: "object", Description: "Observed state (read-only, set by the operator).", Children: statusFields()},
 	}
 }
 
-func specFields() []field {
-	return []field{
+func specFields() []Field {
+	return []Field{
 		{Name: "replicas", Type: "int32", Default: "3", Description: "Number of Raft nodes (must be odd)."},
 		{Name: "image", Type: "object", Description: "Container image configuration.", Children: imageFields()},
 		{Name: "imagePullSecrets", Type: "[]LocalObjectReference", Description: "Secrets for private container registries."},
@@ -129,24 +139,24 @@ func specFields() []field {
 	}
 }
 
-func imageFields() []field {
-	return []field{
+func imageFields() []Field {
+	return []Field{
 		{Name: "repository", Type: "string", Default: "ghcr.io/formancehq/ledger-v3-poc", Description: "Container image repository."},
 		{Name: "tag", Type: "string", Default: "latest", Description: "Container image tag."},
 		{Name: "pullPolicy", Type: "string", Default: "IfNotPresent", Description: "Image pull policy."},
 	}
 }
 
-func serviceAccountFields() []field {
-	return []field{
+func serviceAccountFields() []Field {
+	return []Field{
 		{Name: "create", Type: "bool", Default: "true", Description: "Create a service account."},
 		{Name: "annotations", Type: "map[string]string", Description: "Annotations on the service account."},
 		{Name: "name", Type: "string", Description: "Override the service account name."},
 	}
 }
 
-func configFields() []field {
-	return []field{
+func configFields() []Field {
+	return []Field{
 		{Name: "clusterID", Type: "string", Default: "default", Description: "Cluster ID for inter-node validation."},
 		{Name: "bindAddr", Type: "string", Default: "0.0.0.0:7777", Description: "Raft transport bind address."},
 		{Name: "grpcPort", Type: "int32", Default: "8888", Description: "gRPC service port."},
@@ -168,8 +178,8 @@ func configFields() []field {
 	}
 }
 
-func raftFields() []field {
-	return []field{
+func raftFields() []Field {
+	return []Field{
 		{Name: "snapshotThreshold", Type: "int32", Description: "Number of log entries before triggering a snapshot."},
 		{Name: "compactionMargin", Type: "int32", Description: "Compaction margin."},
 		{Name: "snapshotInterval", Type: "duration", Description: "Minimum interval between snapshots."},
@@ -180,15 +190,15 @@ func raftFields() []field {
 		{Name: "tickInterval", Type: "duration", Description: "Interval between Raft ticks."},
 		{Name: "proposeQueueCapacity", Type: "int32", Description: "Capacity of the propose queue."},
 		{Name: "learnerPromotionThreshold", Type: "int32", Description: "Max log entry lag before auto-promoting a learner."},
-		{Name: "transport", Type: "object", Description: "Transport queue configuration.", Children: []field{
+		{Name: "transport", Type: "object", Description: "Transport queue configuration.", Children: []Field{
 			{Name: "receptionQueues", Type: "[]int32", Description: "Reception queue capacities per priority."},
 			{Name: "sendQueues", Type: "[]int32", Description: "Send queue capacities per priority."},
 		}},
 	}
 }
 
-func pebbleFields() []field {
-	return []field{
+func pebbleFields() []Field {
+	return []Field{
 		{Name: "memTableSize", Type: "int64", Description: "MemTable size in bytes."},
 		{Name: "memTableStopWritesThreshold", Type: "int32", Description: "Number of memtables before writes stop."},
 		{Name: "l0CompactionThreshold", Type: "int32", Description: "L0 file count to trigger compaction."},
@@ -204,14 +214,14 @@ func pebbleFields() []field {
 	}
 }
 
-func cacheFields() []field {
-	return []field{
+func cacheFields() []Field {
+	return []Field{
 		{Name: "rotationThreshold", Type: "int32", Description: "Raft log entries before rotating cache generations."},
 	}
 }
 
-func healthFields() []field {
-	return []field{
+func healthFields() []Field {
+	return []Field{
 		{Name: "interval", Type: "duration", Description: "Interval between health checks."},
 		{Name: "walThreshold", Type: "string", Description: "WAL volume usage threshold (0.0-1.0)."},
 		{Name: "dataThreshold", Type: "string", Description: "Data volume usage threshold (0.0-1.0)."},
@@ -219,18 +229,18 @@ func healthFields() []field {
 	}
 }
 
-func auditFields() []field {
-	return []field{
+func auditFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable audit logging."},
 	}
 }
 
-func coldStorageFields() []field {
-	return []field{
+func coldStorageFields() []Field {
+	return []Field{
 		{Name: "driver", Type: "string", Description: "Storage driver: \"filesystem\" or \"s3\"."},
 		{Name: "path", Type: "string", Description: "Base path for filesystem driver."},
 		{Name: "bucketId", Type: "string", Description: "Shared namespace prefix for archives."},
-		{Name: "s3", Type: "object", Description: "S3 configuration.", Children: []field{
+		{Name: "s3", Type: "object", Description: "S3 configuration.", Children: []Field{
 			{Name: "bucket", Type: "string", Description: "S3 bucket name."},
 			{Name: "region", Type: "string", Description: "AWS region."},
 			{Name: "endpoint", Type: "string", Description: "Custom S3 endpoint (for MinIO)."},
@@ -238,26 +248,26 @@ func coldStorageFields() []field {
 	}
 }
 
-func tlsFields() []field {
-	return []field{
+func tlsFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable TLS."},
 		{Name: "secretName", Type: "string", Description: "Kubernetes secret with TLS certificate and key."},
 		{Name: "caSecretKey", Type: "string", Description: "Key for the CA certificate in the secret."},
 	}
 }
 
-func responseSigningFields() []field {
-	return []field{
+func responseSigningFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable Ed25519 response signing."},
 		{Name: "secretName", Type: "string", Description: "Kubernetes secret containing the Ed25519 seed."},
 		{Name: "secretKey", Type: "string", Default: "seed", Description: "Key in the secret containing the seed."},
 	}
 }
 
-func monitoringFields() []field {
-	return []field{
+func monitoringFields() []Field {
+	return []Field{
 		{Name: "serviceName", Type: "string", Default: "ledger-v3-poc", Description: "Service name for monitoring."},
-		{Name: "traces", Type: "object", Description: "Trace configuration.", Children: []field{
+		{Name: "traces", Type: "object", Description: "Trace configuration.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable tracing."},
 			{Name: "exporter", Type: "string", Description: "Exporter type (e.g. \"otlp\")."},
 			{Name: "endpoint", Type: "string", Description: "Exporter endpoint."},
@@ -265,12 +275,12 @@ func monitoringFields() []field {
 			{Name: "insecure", Type: "string", Description: "Disable TLS for the exporter."},
 			{Name: "mode", Type: "string", Description: "Exporter mode (e.g. \"grpc\")."},
 			{Name: "batch", Type: "string", Description: "Enable batch mode."},
-			{Name: "sampling", Type: "object", Description: "Sampling configuration.", Children: []field{
+			{Name: "sampling", Type: "object", Description: "Sampling configuration.", Children: []Field{
 				{Name: "enabled", Type: "bool", Description: "Enable error-aware trace sampling."},
 				{Name: "successRatio", Type: "string", Description: "Sampling ratio for successful traces (0.0-1.0)."},
 			}},
 		}},
-		{Name: "metrics", Type: "object", Description: "Metrics configuration.", Children: []field{
+		{Name: "metrics", Type: "object", Description: "Metrics configuration.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable metrics."},
 			{Name: "exporter", Type: "string", Description: "Exporter type."},
 			{Name: "endpoint", Type: "string", Description: "Exporter endpoint."},
@@ -282,7 +292,7 @@ func monitoringFields() []field {
 			{Name: "runtime", Type: "bool", Description: "Enable runtime metrics."},
 			{Name: "runtimeMinimumReadMemStatsInterval", Type: "duration", Description: "Minimum interval for reading mem stats."},
 		}},
-		{Name: "logs", Type: "object", Description: "Log export configuration.", Children: []field{
+		{Name: "logs", Type: "object", Description: "Log export configuration.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable log exporting."},
 			{Name: "level", Type: "string", Description: "Log level."},
 			{Name: "exporter", Type: "string", Description: "Exporter type."},
@@ -292,7 +302,7 @@ func monitoringFields() []field {
 			{Name: "mode", Type: "string", Description: "Exporter mode."},
 		}},
 		{Name: "attributes", Type: "string", Description: "Additional OTEL resource attributes."},
-		{Name: "pyroscope", Type: "object", Description: "Pyroscope continuous profiling.", Children: []field{
+		{Name: "pyroscope", Type: "object", Description: "Pyroscope continuous profiling.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable Pyroscope profiling."},
 			{Name: "serverAddress", Type: "string", Description: "Pyroscope server address."},
 			{Name: "applicationName", Type: "string", Description: "Override the application name."},
@@ -310,8 +320,8 @@ func monitoringFields() []field {
 	}
 }
 
-func serviceFields() []field {
-	return []field{
+func serviceFields() []Field {
+	return []Field{
 		{Name: "type", Type: "string", Default: "ClusterIP", Description: "Service type."},
 		{Name: "httpPort", Type: "int32", Default: "9000", Description: "HTTP service port."},
 		{Name: "grpcPort", Type: "int32", Default: "8888", Description: "gRPC service port."},
@@ -320,40 +330,40 @@ func serviceFields() []field {
 	}
 }
 
-func headlessServiceFields() []field {
-	return []field{
+func headlessServiceFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Default: "true", Description: "Enable the headless service."},
 		{Name: "annotations", Type: "map[string]string", Description: "Annotations on the headless service."},
 	}
 }
 
-func ingressFields() []field {
-	return []field{
+func ingressFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable HTTP ingress."},
 		{Name: "className", Type: "string", Description: "Ingress class name."},
 		{Name: "annotations", Type: "map[string]string", Description: "Annotations on the ingress."},
-		{Name: "hosts", Type: "[]object", Description: "Ingress host rules.", Children: []field{
+		{Name: "hosts", Type: "[]object", Description: "Ingress host rules.", Children: []Field{
 			{Name: "host", Type: "string", Required: true, Description: "Hostname."},
-			{Name: "paths", Type: "[]object", Description: "Path rules.", Children: []field{
+			{Name: "paths", Type: "[]object", Description: "Path rules.", Children: []Field{
 				{Name: "path", Type: "string", Default: "/", Description: "URL path."},
 				{Name: "pathType", Type: "string", Default: "Prefix", Description: "Path matching type."},
 			}},
 		}},
-		{Name: "tls", Type: "[]object", Description: "TLS configuration.", Children: []field{
+		{Name: "tls", Type: "[]object", Description: "TLS configuration.", Children: []Field{
 			{Name: "hosts", Type: "[]string", Description: "TLS hostnames."},
 			{Name: "secretName", Type: "string", Description: "TLS secret name."},
 		}},
 	}
 }
 
-func ingressGrpcFields() []field {
-	return []field{
+func ingressGrpcFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable gRPC ingress."},
 		{Name: "className", Type: "string", Description: "Ingress class name (e.g. \"nginx\", \"traefik\")."},
 		{Name: "annotations", Type: "map[string]string", Description: "Annotations on the ingress."},
 		{Name: "hosts", Type: "[]object", Description: "Ingress host rules."},
 		{Name: "tls", Type: "[]object", Description: "TLS configuration."},
-		{Name: "targetGroupBinding", Type: "object", Description: "AWS TargetGroupBinding configuration.", Children: []field{
+		{Name: "targetGroupBinding", Type: "object", Description: "AWS TargetGroupBinding configuration.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable the TargetGroupBinding."},
 			{Name: "targetGroupARN", Type: "string", Description: "ARN of the target group."},
 			{Name: "targetType", Type: "string", Default: "ip", Description: "Target type: \"instance\" or \"ip\"."},
@@ -362,27 +372,27 @@ func ingressGrpcFields() []field {
 	}
 }
 
-func persistenceFields() []field {
-	return []field{
+func persistenceFields() []Field {
+	return []Field{
 		{Name: "wal", Type: "object", Description: "WAL volume configuration.", Children: volumeSpecFields()},
 		{Name: "data", Type: "object", Description: "Data volume configuration.", Children: volumeSpecFields()},
-		{Name: "retentionPolicy", Type: "object", Description: "PVC retention policy.", Children: []field{
+		{Name: "retentionPolicy", Type: "object", Description: "PVC retention policy.", Children: []Field{
 			{Name: "whenScaled", Type: "string", Default: "Retain", Description: "Policy when scaling down."},
 			{Name: "whenDeleted", Type: "string", Default: "Retain", Description: "Policy when deleting the Ledger."},
 		}},
 	}
 }
 
-func volumeSpecFields() []field {
-	return []field{
+func volumeSpecFields() []Field {
+	return []Field{
 		{Name: "storageClass", Type: "string", Description: "Storage class for the PVC."},
 		{Name: "accessMode", Type: "string", Default: "ReadWriteOnce", Description: "PVC access mode."},
 		{Name: "size", Type: "Quantity", Description: "Volume size (e.g. \"10Gi\")."},
 	}
 }
 
-func podAntiAffinityFields() []field {
-	return []field{
+func podAntiAffinityFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Default: "true", Description: "Enable pod anti-affinity."},
 		{Name: "type", Type: "string", Default: "soft", Description: "Anti-affinity type: \"soft\" or \"hard\"."},
 		{Name: "weight", Type: "int32", Default: "100", Description: "Weight for soft anti-affinity (1-100)."},
@@ -390,16 +400,16 @@ func podAntiAffinityFields() []field {
 	}
 }
 
-func pdbFields() []field {
-	return []field{
+func pdbFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable the PodDisruptionBudget."},
 		{Name: "minAvailable", Type: "int32", Description: "Minimum number of available pods."},
 		{Name: "maxUnavailable", Type: "int32", Description: "Maximum number of unavailable pods."},
 	}
 }
 
-func serviceMonitorFields() []field {
-	return []field{
+func serviceMonitorFields() []Field {
+	return []Field{
 		{Name: "enabled", Type: "bool", Description: "Enable the Prometheus ServiceMonitor."},
 		{Name: "interval", Type: "duration", Description: "Scrape interval."},
 		{Name: "scrapeTimeout", Type: "duration", Description: "Scrape timeout."},
@@ -409,8 +419,8 @@ func serviceMonitorFields() []field {
 	}
 }
 
-func statusFields() []field {
-	return []field{
+func statusFields() []Field {
+	return []Field{
 		{Name: "phase", Type: "string", Description: "Current phase: Pending, Running, or Degraded."},
 		{Name: "readyReplicas", Type: "int32", Description: "Number of ready pods."},
 		{Name: "observedGeneration", Type: "int64", Description: "Generation last observed by the controller."},

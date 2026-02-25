@@ -116,6 +116,31 @@ func ValidateReplicas(replicas int32) error {
 	return nil
 }
 
+// PromptBool prompts the user to select a boolean value or unset it.
+// Returns nil if the user selects "<unset>".
+func PromptBool(prompt string, currentValue *bool) (*bool, error) {
+	options := []string{"true", "false", "<unset>"}
+	defaultOpt := "<unset>"
+	if currentValue != nil {
+		defaultOpt = strconv.FormatBool(*currentValue)
+	}
+
+	selected, err := pterm.DefaultInteractiveSelect.
+		WithOptions(options).
+		WithDefaultText(prompt).
+		WithDefaultOption(defaultOpt).
+		Show()
+	if err != nil {
+		return nil, fmt.Errorf("failed to select value: %w", err)
+	}
+
+	if selected == "<unset>" {
+		return nil, nil //nolint:nilnil // nil means "unset"
+	}
+	v := selected == "true"
+	return &v, nil
+}
+
 // PromptConfirm prompts the user for a yes/no confirmation.
 func PromptConfirm(prompt string, defaultValue bool) (bool, error) {
 	result, err := pterm.DefaultInteractiveConfirm.

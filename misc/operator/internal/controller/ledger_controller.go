@@ -50,6 +50,28 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Apply defaults
 	applyDefaults(ledger)
 
+	// Validate spec — report errors via status condition instead of retrying.
+	if err := validateSpec(ledger); err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Degraded"
+		_ = r.Status().Update(ctx, ledger)
+		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
+	}
+
+	// Clear any previous validation failure.
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "ConfigValid",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Valid",
+		ObservedGeneration: ledger.Generation,
+	})
+
 	// Compute spec hash for rolling updates
 	specHash := computeSpecHash(&ledger.Spec)
 
@@ -223,4 +245,68 @@ func applyDefaults(ledger *ledgerv1alpha1.Ledger) {
 	if ledger.Spec.Service.Type == "" {
 		ledger.Spec.Service.Type = corev1.ServiceTypeClusterIP
 	}
+
+	applyIngressHostDefaults(ingressHosts(ledger.Spec.Ingress))
+	applyIngressHostDefaults(ingressGrpcHosts(ledger.Spec.IngressGrpc))
+}
+
+func applyIngressHostDefaults(hosts []ledgerv1alpha1.IngressHost, enabled bool) {
+	if !enabled {
+		return
+	}
+	for i := range hosts {
+		if len(hosts[i].Paths) == 0 {
+			hosts[i].Paths = defaultIngressPaths()
+		}
+	}
+}
+
+func ingressHosts(spec *ledgerv1alpha1.IngressSpec) ([]ledgerv1alpha1.IngressHost, bool) {
+	if spec == nil {
+		return nil, false
+	}
+	return spec.Hosts, spec.Enabled
+}
+
+func ingressGrpcHosts(spec *ledgerv1alpha1.IngressGrpcSpec) ([]ledgerv1alpha1.IngressHost, bool) {
+	if spec == nil {
+		return nil, false
+	}
+	return spec.Hosts, spec.Enabled
+}
+
+func defaultIngressPaths() []ledgerv1alpha1.IngressPath {
+	return []ledgerv1alpha1.IngressPath{{Path: "/", PathType: "Prefix"}}
+}
+
+// validateSpec checks the Ledger spec for configuration errors that would
+// cause reconciliation to fail. Errors are surfaced via status conditions
+// rather than silently failing in operator logs.
+func validateSpec(ledger *ledgerv1alpha1.Ledger) error {
+	if ledger.Spec.Replicas != nil && *ledger.Spec.Replicas%2 == 0 {
+		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
+	}
+	if hosts, enabled := ingressHosts(ledger.Spec.Ingress); enabled {
+		if err := validateIngressHosts("ingress", hosts); err != nil {
+			return err
+		}
+	}
+	if hosts, enabled := ingressGrpcHosts(ledger.Spec.IngressGrpc); enabled {
+		if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateIngressHosts(field string, hosts []ledgerv1alpha1.IngressHost) error {
+	if len(hosts) == 0 {
+		return fmt.Errorf("%s is enabled but has no hosts configured", field)
+	}
+	for i, h := range hosts {
+		if h.Host == "" {
+			return fmt.Errorf("%s.hosts[%d].host must not be empty", field, i)
+		}
+	}
+	return nil
 }
