@@ -153,3 +153,11 @@ _generate-demo tapes:
         echo "==> Done: misc/demo/${tape}.gif"
     done
     echo "All demos generated."
+
+# Build the kubectl-ledger plugin
+build-kubectl-plugin:
+    cd misc/operator && go build -o ../../build/kubectl-ledger ./cmd/kubectl-ledger
+
+# Install the kubectl-ledger plugin into $GOPATH/bin (makes it available as `kubectl ledger`)
+install-kubectl-plugin:
+    cd misc/operator && go build -o $GOPATH/bin/kubectl-ledger ./cmd/kubectl-ledger
